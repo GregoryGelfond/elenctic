@@ -23,6 +23,9 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# We deliberately use mathematical Unicode (⋂ ⋃ ⊆ ⊇ → ≤ ∅ ∈ …) as KR notation in
+# comments and docstrings; the ambiguous-Unicode (homoglyph) rules would flag it.
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
