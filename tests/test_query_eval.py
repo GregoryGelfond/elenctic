@@ -46,6 +46,8 @@ def atoms(*names: str) -> frozenset[Symbol]:
         ),
         pytest.param(QueryLiteral("p", True, (Var("X"),)), "q(a)", None, id="functor-mismatch"),
         pytest.param(QueryLiteral("p", False, (Var("X"),)), "p(a)", None, id="sign-mismatch"),
+        pytest.param(QueryLiteral("p", True, ()), "p", {}, id="zero-arity-match"),
+        pytest.param(QueryLiteral("p", True, ()), "q", None, id="zero-arity-mismatch"),
     ],
 )
 def test_unify(goal: QueryLiteral, atom: str, expected: dict[str, str] | None) -> None:

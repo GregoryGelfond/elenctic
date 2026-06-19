@@ -49,3 +49,23 @@ def test_contrary_flips_strong_negation() -> None:
 def test_contrary_rejects_non_literal() -> None:
     with pytest.raises(ValueError, match="not a literal"):
         contrary(Number(1))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param("", id="empty"),
+        pytest.param("   ", id="whitespace-only"),
+        pytest.param("foo, 1", id="non-literal-number"),
+        pytest.param('"a string"', id="non-literal-string"),
+        pytest.param("reachable(X)", id="variable-not-ground"),
+    ],
+)
+def test_parse_litset_rejects(body: str) -> None:
+    with pytest.raises(ValueError):
+        parse_litset(body)
+
+
+def test_parse_litset_preserves_quoted_comma() -> None:
+    # The headline robustness claim: a comma inside a quoted string is one atom (clingo parses it).
+    assert parse_litset('p("a,b")') == (parse_term('p("a,b")'),)

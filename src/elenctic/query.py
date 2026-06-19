@@ -22,8 +22,9 @@ from clingo import Symbol, SymbolType
 
 from elenctic.terms import contrary, parse_litset, parse_tupleset
 
-# The ASP lexical form of a variable: an upper-case or underscore initial.
+# The ASP lexical forms: a variable (upper-case / underscore initial), a constant (lower-case).
 _VARIABLE = re.compile(r"[A-Z_][A-Za-z0-9_']*")
+_CONSTANT = re.compile(r"[a-z][A-Za-z0-9_']*")
 
 
 class Answer(Enum):
@@ -89,11 +90,20 @@ type Query = GroundQuery | BindingQuery
 
 
 def parse_query(answer: str, payload: str) -> Query:
-    """Parse a ``@query`` payload into a :class:`GroundQuery` or :class:`BindingQuery` (§2.1)."""
+    """Parse a ``@query`` payload into a :class:`GroundQuery` or :class:`BindingQuery` (§2.1).
+
+    Routes on the first ``=`` (the binding separator); a v1 all-variable goal and its
+    binding tuples contain no ``=``, so the partition is unambiguous.
+    """
     ans = _parse_answer(answer)
     if "=" in payload:  # the binding form: { q(X̄) } = { B }
         goal_text, _, tuples_text = payload.partition("=")
         goal = _parse_goal(_unbrace(goal_text))
+        if not goal.variables:
+            raise ValueError(
+                "a binding query goal must contain at least one variable; "
+                "use the ground form '@query A { … }' for a ground goal"
+            )
         bindings = parse_tupleset(_unbrace(tuples_text), len(goal.variables))
         return BindingQuery(ans, goal, frozenset(bindings))
     return GroundQuery(ans, parse_litset(_unbrace(payload)))
@@ -128,8 +138,8 @@ def _parse_goal(text: str) -> QueryLiteral:
         name = body[: body.index("(")].strip()
         inside = body[body.index("(") + 1 : -1]
         args = tuple(_parse_goal_arg(token.strip()) for token in inside.split(",") if token.strip())
-    if not (name and name[0].islower() and name.isidentifier()):
-        raise ValueError(f"query goal predicate must be a constant, got {name!r}")
+    if not _CONSTANT.fullmatch(name):
+        raise ValueError(f"query goal predicate must be an ASP constant, got {name!r}")
     return QueryLiteral(name, positive, args)
 
 

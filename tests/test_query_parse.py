@@ -65,6 +65,10 @@ def test_parse_binding_query_strong_negation_goal() -> None:
             "yes", "{ path(X, a, Y) } = { (s, t) }", "all-variable", id="partially-ground"
         ),
         pytest.param("yes", "a, b", "brace set", id="missing-braces"),
+        pytest.param("yes", "{ }", "at least one literal", id="empty-litset"),
+        pytest.param("yes", "{ a, 1 }", "must be literals", id="non-literal-conjunct"),
+        pytest.param("yes", "{ reachable(X) }", "variable-free", id="variable-in-ground-litset"),
+        pytest.param("yes", "{ foo } = { }", "at least one variable", id="zero-variable-binding"),
     ],
 )
 def test_parse_query_rejects(answer: str, payload: str, match: str) -> None:

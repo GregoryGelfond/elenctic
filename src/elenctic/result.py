@@ -19,6 +19,10 @@ class Observable:
     the theory (CSP) assignment, empty for pure clingo. Two answer sets with equal
     ``shown`` but different ``assign`` are distinct observables (spec §2.0, TR4),
     which the value equality of this frozen dataclass realises directly.
+
+    Invariant (single-valued, not enforced by the type): ``assign`` holds at most one
+    ``(v, k)`` per CSP variable ``v`` — the hashable realisation of the spec's
+    ``Mapping[Symbol, int]`` (§3); the solver facade constructs it so.
     """
 
     shown: frozenset[Symbol]
