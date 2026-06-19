@@ -21,9 +21,19 @@ Checks are pure over ``SolveResult``; only ``solvers.py`` touches clingo/clingco
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from typing import assert_never
 
 from clingo import Symbol
 
+from elenctic.query import (
+    BindingQuery,
+    GroundQuery,
+    Query,
+    QueryLiteral,
+    Var,
+    binding_set,
+    ground_answer,
+)
 from elenctic.result import Observable, SolveResult, Verdict
 
 
@@ -77,6 +87,21 @@ def _show_assignments(observables: tuple[Observable, ...]) -> str:
 def _show_cost(cost: tuple[int, ...]) -> str:
     """Render a cost vector ``(4, 2)`` for a diagnostic."""
     return "(" + ", ".join(str(component) for component in cost) + ")"
+
+
+def _show_tuples(tuples: Iterable[tuple[Symbol, ...]]) -> str:
+    """Render a binding set ``{ (s), (a, t) }`` (the ``@query`` answer tuples)."""
+    rendered = sorted("(" + ", ".join(str(term) for term in tup) + ")" for tup in tuples)
+    return "{ " + ", ".join(rendered) + " }" if rendered else "{ }"
+
+
+def _show_goal(goal: QueryLiteral) -> str:
+    """Render a query goal literal ``reachable(X)`` / ``-blocked(X)`` for a diagnostic."""
+    sign = "" if goal.positive else "-"
+    if not goal.args:
+        return f"{sign}{goal.name}"
+    args = ", ".join(arg.name if isinstance(arg, Var) else str(arg) for arg in goal.args)
+    return f"{sign}{goal.name}({args})"
 
 
 # --- check construction ---
@@ -231,3 +256,101 @@ def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
         )
 
     return _check("@assign", decide)
+
+
+# --- the optimal base (each mode is its all-base aggregation over Opt(P), §3) ---
+
+
+def _optimal_shown(result: SolveResult) -> tuple[frozenset[Symbol], ...]:
+    return tuple(o.shown for o in result.optimal_observables)
+
+
+def _intersection(family: tuple[frozenset[Symbol], ...]) -> frozenset[Symbol]:
+    """⋂ of a non-empty family of atom sets (the caller guards emptiness)."""
+    return family[0].intersection(*family[1:])
+
+
+def _union(family: tuple[frozenset[Symbol], ...]) -> frozenset[Symbol]:
+    """⋃ of a non-empty family of atom sets (the caller guards emptiness)."""
+    return family[0].union(*family[1:])
+
+
+def optimal_model_is(litset: frozenset[Symbol]) -> Check:
+    """``@optimal { L }`` (= ``@model optimal``): ``L`` is some optimal model (§3)."""
+    return _check("@optimal", lambda result: _witness(litset, _optimal_shown(result)))
+
+
+def cautious_optimal_contains(litset: frozenset[Symbol]) -> Check:
+    """``@cautious optimal { L }``: ``L ⊆ ⋂ Opt(P)`` (the optimal backbone, §3)."""
+
+    def decide(result: SolveResult) -> tuple[Verdict, str]:
+        shown = _optimal_shown(result)
+        if not shown:
+            return Verdict.FAIL, "no optimal models — Opt(P) not enumerated"
+        return _containment(litset, _intersection(shown), "⋂ Opt(P)")
+
+    return _check("@cautious optimal", decide)
+
+
+def brave_optimal_contains(litset: frozenset[Symbol]) -> Check:
+    """``@brave optimal { L }``: ``L ⊆ ⋃ Opt(P)`` (§3)."""
+
+    def decide(result: SolveResult) -> tuple[Verdict, str]:
+        shown = _optimal_shown(result)
+        if not shown:
+            return Verdict.FAIL, "no optimal models — Opt(P) not enumerated"
+        return _containment(litset, _union(shown), "⋃ Opt(P)")
+
+    return _check("@brave optimal", decide)
+
+
+def count_optimal_is(n: int) -> Check:
+    """``@count optimal n``: exactly ``n`` distinct optimal observables (§3)."""
+    return _check(
+        "@count optimal",
+        lambda result: _count(n, len(result.optimal_observables), "optimal models"),
+    )
+
+
+# --- the @query check (Def 2.2.2, base-fixed to AS(P); reads ⋂, and ⋃ for unknown) ---
+
+
+def query_holds(query: Query) -> Check:
+    """The ``@query`` check (Def 2.2.2, spec §3). Reads the cautious consequences ⋂
+    (and the brave ⋃ for an ``unknown`` binding); short-circuits to ``FAIL`` on
+    ``AS(P) = ∅``, where every query is vacuously yes-and-no (§2.2, FR#9).
+
+    Precondition (held by ``runs_for``, §3): an ``unknown``-binding query is routed
+    to a run that also populates ⋃, so ``union`` is present whenever it is needed.
+    """
+
+    def decide(result: SolveResult) -> tuple[Verdict, str]:
+        intersection = result.intersection
+        if intersection is None:
+            return (
+                Verdict.FAIL,
+                "AS(P) = ∅ — every query is vacuously yes-and-no; @query fails (§2.2)",
+            )
+        match query:
+            case GroundQuery(answer, conjuncts):
+                actual = ground_answer(conjuncts, intersection)
+                return (
+                    _verdict(actual is answer),
+                    f"{_show_set(conjuncts)}: expected {answer.value}, computed {actual.value}",
+                )
+            case BindingQuery(answer, goal, bindings):
+                found = binding_set(goal, answer, intersection, result.union)
+                if found == set(bindings):
+                    return (
+                        Verdict.PASS,
+                        f"{answer.value} {_show_goal(goal)}: {_show_tuples(found)}",
+                    )
+                return (
+                    Verdict.FAIL,
+                    f"{_show_goal(goal)}: expected {answer.value} {_show_tuples(bindings)}, "
+                    f"computed {_show_tuples(found)}",
+                )
+            case _:
+                assert_never(query)
+
+    return _check("@query", decide)
