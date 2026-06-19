@@ -41,6 +41,34 @@ def test_brave_reports_union_as_final_model() -> None:
 
 
 @pytest.mark.spike
+@pytest.mark.parametrize(
+    "mode_args",
+    [
+        pytest.param(["--enum-mode=cautious"], id="cautious"),
+        pytest.param(["--enum-mode=brave"], id="brave"),
+        pytest.param([], id="default"),
+    ],
+)
+def test_modes_on_unsat_emit_no_model_and_report_unsatisfiable(mode_args: list[str]) -> None:
+    # Keystone anchor (the `Inconsistent` arm of the result `Determination`). On an UNSAT
+    # program clingo emits ZERO models under every mode — no empty CautiousConsequences /
+    # BraveConsequences final model — and reports `unsatisfiable` as a single whole-result
+    # discriminant. So the facade decides Consistent/Inconsistent ONCE from
+    # `result.unsatisfiable`, never by inferring UNSAT from an empty consequence field
+    # (which is exactly the per-field-sum state clingo cannot produce). `a. :- a.` is UNSAT:
+    # `a` is forced true, then forbidden, so there is no stable model.
+    ctl = Control(["--models=0", *mode_args])
+    ctl.add("base", [], "a. :- a.")
+    ctl.ground([("base", [])])
+    seen: list[tuple[ModelType, frozenset[str]]] = []
+    result = ctl.solve(on_model=lambda m: seen.append((m.type, _names(m))))
+    assert seen == []  # no model of any type — the empty-consequence-model trap does not occur
+    assert result.unsatisfiable is True
+    assert result.satisfiable is False
+    assert result.exhausted is True  # UNSAT ⟹ exhausted: the closed-world claim is honest
+
+
+@pytest.mark.spike
 def test_default_enumeration_reports_distinct_stable_models() -> None:
     # The all-base run sees StableModels; --project gives distinct shown projections.
     ctl = Control(["--models=0", "--project"])
