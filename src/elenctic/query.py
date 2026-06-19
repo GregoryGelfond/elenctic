@@ -3,6 +3,14 @@ conjunction of literals, or the variable-binding ``q(X̄)`` form), a most-genera
 unification literal-unifier, and a three-valued evaluator reading yes/no/unknown
 and the binding partition off the consequence sets ⋂/⋃. It interprets no rules
 (no SLDNF); it evaluates against the entailed atoms the modes compute.
+
+The binding form adheres to Gelfond–Kahl Def 2.2.2: for a query ``q(X1, …, Xn)``,
+where ``X1, …, Xn`` is the list of (distinct) variables occurring in ``q``, an answer
+is a sequence of ground terms ``t1, …, tn`` such that ``Π |= q(t1, …, tn)``. v1 holds
+to the definition strictly: binding goals are **all-variable** (every argument is a
+variable). The binding-tuple arity is the number of **distinct** variables, so a
+repeated-variable goal ``q(X, X)`` has one binding column. Partially-ground goals and
+the conjunctive non-ground join are reserved (§11).
 """
 
 import re
@@ -34,8 +42,9 @@ class Var:
 
 @dataclass(frozen=True, slots=True)
 class QueryLiteral:
-    """A (possibly non-ground) query literal: functor, strong-negation sign, and a
-    per-position list of either a :class:`Var` or a ground ``Symbol`` (spec §2.1)."""
+    """A query literal: functor, strong-negation sign, and per-position arguments. The type
+    admits ground arguments (the unifier is general), but the v1 parser produces all-variable
+    goals (Def 2.2.2); partially-ground goals are reserved (§11)."""
 
     name: str
     positive: bool
@@ -43,7 +52,18 @@ class QueryLiteral:
 
     @property
     def arity(self) -> int:
+        """The predicate arity (number of argument positions); used for unification."""
         return len(self.args)
+
+    @property
+    def variables(self) -> tuple[str, ...]:
+        """Distinct variable names occurring in the goal, in order of first occurrence —
+        the ``X1, …, Xn`` of Def 2.2.2, and the arity of the binding tuples."""
+        ordered: dict[str, None] = {}
+        for arg in self.args:
+            if isinstance(arg, Var):
+                ordered.setdefault(arg.name, None)
+        return tuple(ordered)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +76,8 @@ class GroundQuery:
 
 @dataclass(frozen=True, slots=True)
 class BindingQuery:
-    """A variable-binding query ``A { q(X̄) } = { B }`` (spec §2.1)."""
+    """A variable-binding query ``A { q(X̄) } = { B }`` (spec §2.1). ``bindings`` are
+    variable-binding tuples (arity = number of distinct variables, Def 2.2.2)."""
 
     answer: Answer
     goal: QueryLiteral
@@ -72,7 +93,7 @@ def parse_query(answer: str, payload: str) -> Query:
     if "=" in payload:  # the binding form: { q(X̄) } = { B }
         goal_text, _, tuples_text = payload.partition("=")
         goal = _parse_goal(_unbrace(goal_text))
-        bindings = parse_tupleset(_unbrace(tuples_text), goal.arity)
+        bindings = parse_tupleset(_unbrace(tuples_text), len(goal.variables))
         return BindingQuery(ans, goal, frozenset(bindings))
     return GroundQuery(ans, parse_litset(_unbrace(payload)))
 
@@ -92,9 +113,8 @@ def _unbrace(text: str) -> str:
 
 
 def _parse_goal(text: str) -> QueryLiteral:
-    """Parse a v1 binding-query goal: one literal ``q(X̄)`` / ``-q(X̄)`` whose arguments are
-    variables or ground terms. Ground arguments go through clingo's term parser; variables
-    are the ASP lexical form. Richer non-ground goals (joins) are reserved for §11 (spec §2.1)."""
+    """Parse an all-variable binding-query goal ``q(X̄)`` / ``-q(X̄)`` (Def 2.2.2). Every
+    argument must be a variable; partially-ground goals are reserved (§11)."""
     positive = not text.startswith("-")
     body = text if positive else text[1:].strip()
     name: str
@@ -113,10 +133,11 @@ def _parse_goal(text: str) -> QueryLiteral:
 
 
 def _parse_goal_arg(token: str) -> Var:
-    """A v1 binding-goal argument must be a variable (spec §2.1; ground/compound → §11)."""
+    """A v1 binding-goal argument must be a variable (Def 2.2.2 all-variable query); a
+    ground argument (a partially-ground goal) is reserved (§11)."""
     if not _VARIABLE.fullmatch(token):
         raise ValueError(
-            f"v1 binding-query goal arguments must be variables; {token!r} is not "
-            "(ground-argument and compound goals are reserved, §11)"
+            f"v1 binding-query goals are all-variable (Def 2.2.2); {token!r} is not a variable "
+            "(partially-ground goals are reserved, §11)"
         )
     return Var(token)
