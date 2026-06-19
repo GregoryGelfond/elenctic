@@ -25,14 +25,19 @@ CAUTIOUS_ALL: Final[tuple[str, ...]] = ("--enum-mode=cautious", "--models=0")
 OPT_ENUM: Final[tuple[str, ...]] = ("--opt-mode=optN", "--models=0")
 OPT: Final[tuple[str, ...]] = ("--opt-mode=opt",)
 
+TAXONOMY: Final[frozenset[tuple[str, ...]]] = frozenset(
+    {DEFAULT, ENUM_ALL, BRAVE_ALL, CAUTIOUS_ALL, OPT_ENUM, OPT}
+)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, eq=False)
 class Run:
     """One solve configuration and the checks reading its result (spec §3, §4).
 
     ``args`` is the canonical, solver-agnostic arg tuple of one taxonomy cell; ``checks`` are the
     per-tag checks coalesced onto this one solve, each carrying its own contract-tag label (dx#9),
-    so a run is fully described — and explainable — before any solve.
+    so a run is fully described — and explainable — before any solve. Equality is by identity
+    (``eq=False``, matching ``Check``): compare ``run.args`` / ``check.label``, not ``==``.
     """
 
     args: tuple[str, ...]
@@ -51,7 +56,16 @@ def runs_for(exp: Expectation) -> tuple[Run, ...]:
 
 
 def _sat_runs(exp: Sat) -> tuple[Run, ...]:
-    """Coalesce a satisfiable contract's tags onto the run-configuration taxonomy (spec §3, §4)."""
+    """Coalesce a satisfiable contract's tags onto the run-configuration taxonomy (spec §3, §4).
+
+    Output order is deterministic: ``bucket`` is insertion-ordered and the add-sequence is fixed.
+    Coalescing-soundness invariant: each check is added under a config that populates the
+    ``SolveResult`` fields its decision reads — the enumeration modes + ``@expect`` under
+    ``ENUM_ALL``, ``@cautious``/ground-``@query`` under ``CAUTIOUS_ALL`` (⋂), ``@brave`` under
+    ``BRAVE_ALL`` (⋃), the optimal modes under ``OPT_ENUM``. The ``checks.py`` totality guards are
+    the belt-and-suspenders if a route ever goes stale; lifting ``reads(check) ⊆ populates(config)``
+    into the types is the parked keystone (see reserved-and-deferred.md).
+    """
     bucket: dict[tuple[str, ...], list[Check]] = {}
 
     def add(config: tuple[str, ...], check: Check) -> None:
@@ -85,6 +99,8 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
     # @expect sat reads `observables`, so it rides an existing full enumeration when one exists,
     # else a cheap DEFAULT 1-model solve. It cannot ride CAUTIOUS_ALL / BRAVE_ALL / OPT_ENUM: those
     # populate only ⋂ / ⋃ / optimal_observables, never `observables` (the field expect_sat reads).
+    # §7a edge: a timed-out ENUM_ALL reports UNDECIDED even with a model in hand — verdict-safe,
+    # case-masked by co-located enumeration checks; existential-aware §7a is deferred (ledger).
     add(ENUM_ALL if ENUM_ALL in bucket else DEFAULT, checks.expect_sat())
 
     return tuple(Run(config, tuple(carried)) for config, carried in bucket.items())

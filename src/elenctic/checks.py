@@ -24,7 +24,7 @@ Checks are pure over ``SolveResult``; only ``solvers.py`` touches clingo/clingco
 """
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import assert_never
 
 from clingo import Symbol
@@ -61,7 +61,7 @@ class CheckReport:
 _UNDECIDED_MESSAGE = "the solve did not complete within the budget — UNDECIDED, never FAIL"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Check:
     """A pure per-tag check carrying its contract-tag ``label`` as a first-class, statically
     inspectable identity (dx#9). Every check is labelled — there is no unlabelled check — and the
@@ -70,12 +70,18 @@ class Check:
 
     Calling the check runs it: an incomplete solve (``not completed``) short-circuits to
     ``UNDECIDED`` (consequence-soundness, §7a) *before* any decision logic; otherwise the per-tag
-    ``_decide`` yields the ``(verdict, message)`` of the diagnostic. ``_decide`` is private so the
-    §7a short-circuit cannot be bypassed.
+    ``_decide`` yields the ``(verdict, message)`` of the diagnostic. ``_decide`` is private and
+    omitted from ``repr`` so the §7a short-circuit cannot be bypassed and the identity is the label
+    alone. Equality is by **identity**, not value (``eq=False``): two independently built checks of
+    the same tag are distinct — compare ``check.label``, never ``check == check``.
     """
 
     label: str
-    _decide: Callable[[SolveResult], tuple[Verdict, str]]
+    _decide: Callable[[SolveResult], tuple[Verdict, str]] = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.label.startswith("@"):
+            raise ValueError(f"a check label must be a contract tag, got {self.label!r}")
 
     def __call__(self, result: SolveResult) -> CheckReport:
         if not result.completed:
@@ -135,7 +141,7 @@ def _show_goal(goal: QueryLiteral) -> str:
 
 
 def _check(label: str, decide: Callable[[SolveResult], tuple[Verdict, str]]) -> Check:
-    """Build a labelled check from a per-tag decision (the §7a short-circuit lives in ``Check``)."""
+    """The single construction site for a check (the §7a guard + invariant live in ``Check``)."""
     return Check(label, decide)
 
 

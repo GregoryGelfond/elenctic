@@ -17,7 +17,7 @@ from clingo import Function
 from hypothesis import given
 from hypothesis import strategies as st
 
-from elenctic.expectation import Sat, parse
+from elenctic.expectation import Expectation, Sat, Unsat, parse
 from elenctic.query import Answer, BindingQuery, GroundQuery, QueryLiteral, Var
 from elenctic.run import (
     BRAVE_ALL,
@@ -26,11 +26,10 @@ from elenctic.run import (
     ENUM_ALL,
     OPT,
     OPT_ENUM,
+    TAXONOMY,
     Run,
     runs_for,
 )
-
-TAXONOMY = frozenset({DEFAULT, ENUM_ALL, BRAVE_ALL, CAUTIOUS_ALL, OPT_ENUM, OPT})
 
 
 def runs(contract: str) -> tuple[Run, ...]:
@@ -199,6 +198,15 @@ def test_optimal_modes_coalesce_onto_one_opt_enum_solve() -> None:
     } <= labels(opt_enum_runs[0])
 
 
+def test_enumeration_tags_coalesce_onto_one_enum_all_solve() -> None:
+    # The headline coalescing: the three all-base enumeration tags + @expect sat share one solve.
+    contract = "% @expect sat\n% @model { a }\n% @count 2\n% @assign { x=1 }\n"
+    derived = runs(contract)
+    assert len(derived) == 1
+    assert derived[0].args == ENUM_ALL
+    assert labels(derived[0]) == {"@model", "@count", "@assign", "@expect sat"}
+
+
 def test_every_tag_becomes_exactly_one_check_no_drop_no_duplicate() -> None:
     contract = (
         "% @expect sat\n% @model { a }\n% @cautious { a }\n% @brave { a }\n% @query yes { a }\n"
@@ -209,10 +217,12 @@ def test_every_tag_becomes_exactly_one_check_no_drop_no_duplicate() -> None:
     assert len(all_labels) == len(set(all_labels))  # each tag yields exactly one check
 
 
-def test_runs_for_is_deterministic() -> None:
+def test_runs_for_is_deterministic_in_order() -> None:
+    # Order is a pinned contract (the explain/dry-run usage relies on it): compare the ordered
+    # projection without sorting, so a run/check reordering regression is caught.
     contract = "% @expect sat\n% @model { a }\n% @cautious { a }\n% @query yes { a }\n"
-    first = sorted((run.args, tuple(sorted(labels(run)))) for run in runs(contract))
-    second = sorted((run.args, tuple(sorted(labels(run)))) for run in runs(contract))
+    first = [(run.args, tuple(check.label for check in run.checks)) for run in runs(contract)]
+    second = [(run.args, tuple(check.label for check in run.checks)) for run in runs(contract)]
     assert first == second
 
 
@@ -250,12 +260,18 @@ def _sats(draw: st.DrawFn) -> Sat:
     )
 
 
-@given(_sats())
-def test_runs_for_is_total_onto_the_taxonomy_and_always_expects(sat: Sat) -> None:
-    derived = runs_for(sat)  # total: never raises on any structurally-valid Sat
+def _expectations() -> st.SearchStrategy[Expectation]:
+    """The whole Expectation sum (Unsat | Sat); runs_for is total over it."""
+    return st.one_of(st.just(Unsat()), _sats())
+
+
+@given(_expectations())
+def test_runs_for_is_total_onto_the_taxonomy_and_fully_coalesced(exp: Expectation) -> None:
+    derived = runs_for(exp)  # total: never raises on any structurally-valid Expectation
     assert all(run.args in TAXONOMY for run in derived)  # onto the fixed taxonomy
+    assert len({run.args for run in derived}) == len(derived)  # config-distinct ⟺ fully coalesced
     assert all(check.label for run in derived for check in run.checks)  # every check is labelled
     expects = [
         check.label for run in derived for check in run.checks if check.label.startswith("@expect")
     ]
-    assert expects == ["@expect sat"]  # exactly one @expect sat, always present
+    assert len(expects) == 1  # exactly one @expect (sat|unsat), always present
