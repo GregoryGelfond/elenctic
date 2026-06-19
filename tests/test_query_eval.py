@@ -68,6 +68,8 @@ def test_contrary_literal_flips_sign() -> None:
         pytest.param("start(s)", ("start(s)", "-reachable(x)"), Answer.yes, id="entailed"),
         pytest.param("reachable(x)", ("start(s)", "-reachable(x)"), Answer.no, id="contrary"),
         pytest.param("reachable(y)", ("start(s)", "-reachable(x)"), Answer.unknown, id="neither"),
+        # the queried literal is itself strong-negative: contrary reachable(x) is entailed → no
+        pytest.param("-reachable(x)", ("reachable(x)",), Answer.no, id="strong-negative-literal"),
     ],
 )
 def test_singleton_answer(literal: str, cautious: tuple[str, ...], expected: Answer) -> None:
@@ -100,6 +102,18 @@ def models(*sets: tuple[str, ...]) -> tuple[frozenset[Symbol], ...]:
             Answer.no,
             id="contrary-in-every-model",
         ),
+        # THE DISCRIMINATOR: each model omits a *different* conjunct by ABSENCE (no contrary
+        # present) → unknown, NOT no. The absence-twin of false-in-all-varying-conjunct; this pins
+        # strong-Kleene "false in M" = l̄∈M (Example 2.2.8) for n≥2 — a closed-world impl gives no.
+        pytest.param(
+            ("a", "b"), (("a",), ("b",)), Answer.unknown, id="absent-not-contrary-each-model"
+        ),
+        # neither true-in-all nor false-in-all (true in one model, strongly false in another)
+        pytest.param(
+            ("a", "b"), (("a", "b"), ("-a", "b")), Answer.unknown, id="true-in-one-false-in-other"
+        ),
+        # a single-model census satisfying the conjunction → yes
+        pytest.param(("a", "b"), (("a", "b"),), Answer.yes, id="single-model-yes"),
     ],
 )
 def test_conjunctive_answer(
@@ -107,6 +121,20 @@ def test_conjunctive_answer(
 ) -> None:
     actual = conjunctive_answer(tuple(parse_term(c) for c in conjuncts), models(*census))
     assert actual is expected
+
+
+def test_conjunctive_answer_rejects_empty_census() -> None:
+    # AS(P)=∅ is the Inconsistent arm upstream; an empty census fails loud, never a vacuous "yes".
+    with pytest.raises(ValueError, match="census"):
+        conjunctive_answer((parse_term("a"), parse_term("b")), ())
+
+
+def test_satisfied_conjunctive_requires_census() -> None:
+    q = GroundQuery(Answer.no, (parse_term("a"), parse_term("b")))
+    with pytest.raises(ValueError, match="census"):
+        satisfied(q, frozenset(), None, None)  # no census supplied
+    with pytest.raises(ValueError, match="census"):
+        satisfied(q, frozenset(), None, ())  # empty census — caught too, not just None
 
 
 def test_binding_set_yes_reads_intersection() -> None:
@@ -138,7 +166,7 @@ def test_binding_set_unknown_uses_brave_domain() -> None:
 
 def test_binding_set_unknown_requires_union() -> None:
     goal = QueryLiteral("reachable", True, (Var("X"),))
-    with pytest.raises(ValueError, match="brave union"):
+    with pytest.raises(ValueError, match="brave consequences"):
         binding_set(goal, Answer.unknown, atoms("reachable(s)"), None)
 
 

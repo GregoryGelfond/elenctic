@@ -226,19 +226,30 @@ def singleton_answer(literal: Symbol, cautious: frozenset[Symbol]) -> Answer:
 def conjunctive_answer(
     conjuncts: tuple[Symbol, ...], models: tuple[frozenset[Symbol], ...]
 ) -> Answer:
-    """The three-valued answer to a ground *conjunctive* query (Def 2.2.2, corrected per the
-    published errata, 2026-06-19). Strong-Kleene over the answer-set census: in a model M the
-    conjunction is true iff every conjunct is in M, false iff some conjunct's contrary is in M
-    (else unknown-in-M); the answer is **yes** iff true in all answer sets, **no** iff false in
-    all, else **unknown**.
+    """The three-valued answer to a ground *conjunctive* query (Gelfond–Kahl Def 2.2.2, corrected
+    per the published errata to the 2014 textbook — ``krr_book.html#errata``; confirmed 2026-06-19).
+    Strong-Kleene evaluation over the answer-set census: in a model M the conjunction is true iff
+    every conjunct is in M, false iff some conjunct's *contrary* is in M (else unknown-in-M); the
+    answer is **yes** iff true in all answer sets, **no** iff false in all, else **unknown**.
 
-    The census is required, not ⋂: "false in all" is ``∀M ∃i: l̄i∈M`` — each model may falsify a
-    *different* conjunct, which ⋂/⋃ cannot express (the old ``∃i: l̄i∈⋂`` was the wrong, strictly
-    stronger ∃∀ reading). ``models`` is non-empty: AS(P)=∅ is the ``Inconsistent`` arm upstream.
+    ``models`` is each answer set as the program makes it observable — its ``shown(M)`` projection
+    (spec §2.0; the object ``Observable.shown`` carries), so a ``@query`` conjunct must be
+    ``#show``-visible (a discovery precondition, spec §5). The census is required, not ⋂: "false in
+    all" is ``∀M ∃i: l̄i∈M`` — each model may falsify a *different* conjunct, which ⋂/⋃ cannot
+    express (the old ``∃i: l̄i∈⋂`` was the wrong, strictly stronger ∃∀ reading).
+
+    Precondition: ``models`` is non-empty (AS(P)=∅ is the ``Inconsistent`` arm upstream, and a
+    ``ConsistentEnumeration`` carries ≥1 observable by construction). An empty census is a caller
+    bug, raised rather than answered with a vacuous ``yes`` — a correctness oracle fails loud.
     """
+    if not models:
+        raise ValueError("conjunctive_answer needs a non-empty census (AS(P)=∅ is upstream)")
+    contraries = tuple(contrary(conjunct) for conjunct in conjuncts)
+    # Answer sets are consistent, so false-in-M (∃i l̄i∈M) ⇒ not-true-in-M; the yes-branch above
+    # has excluded all-true, so this elif is sound (no model is both all-true and falsified).
     if all(all(conjunct in model for conjunct in conjuncts) for model in models):
         return Answer.yes
-    if all(any(contrary(conjunct) in model for conjunct in conjuncts) for model in models):
+    if all(any(neg in model for neg in contraries) for model in models):
         return Answer.no
     return Answer.unknown
 
@@ -246,26 +257,27 @@ def conjunctive_answer(
 def binding_set(
     goal: QueryLiteral,
     answer: Answer,
-    intersection: frozenset[Symbol],
-    union: frozenset[Symbol] | None,
+    cautious: frozenset[Symbol],
+    brave: frozenset[Symbol] | None,
 ) -> set[tuple[Symbol, ...]]:
-    """The binding tuples yielding ``answer`` for ``goal`` (spec §2.1). yes/no read ⋂; unknown
-    additionally needs the brave union ⋃ (the entertained-but-unsettled middle)."""
+    """The binding tuples yielding ``answer`` for ``goal`` (spec §2.1). yes/no read the cautious
+    consequences ⋂; unknown additionally needs the brave consequences ⋃ (the entertained-but-
+    unsettled middle)."""
     match answer:
         case Answer.yes:
-            return _bindings_over(goal, intersection)
+            return _bindings_over(goal, cautious)
         case Answer.no:
-            return _bindings_over(contrary_literal(goal), intersection)
+            return _bindings_over(contrary_literal(goal), cautious)
         case Answer.unknown:
-            if union is None:
+            if brave is None:
                 raise ValueError(
-                    "an unknown-binding query needs the brave union "
+                    "an unknown-binding query needs the brave consequences ⋃ "
                     "(route it to a full enumeration)"
                 )
-            entailed_yes = _bindings_over(goal, intersection)
-            entailed_no = _bindings_over(contrary_literal(goal), intersection)
-            brave_domain = _bindings_over(goal, union) | _bindings_over(
-                contrary_literal(goal), union
+            entailed_yes = _bindings_over(goal, cautious)
+            entailed_no = _bindings_over(contrary_literal(goal), cautious)
+            brave_domain = _bindings_over(goal, brave) | _bindings_over(
+                contrary_literal(goal), brave
             )
             return brave_domain - entailed_yes - entailed_no
         case _:
@@ -278,17 +290,17 @@ def satisfied(
     brave: frozenset[Symbol] | None,
     models: tuple[frozenset[Symbol], ...] | None,
 ) -> bool:
-    """Whether the program's computed answer matches the contract's (spec §3). The check layer
-    (``checks.py``) uses ``singleton_answer``/``conjunctive_answer``/``binding_set`` directly to
-    build a diagnostic; this is the boolean convenience over the same evaluators. ``models`` (the
+    """The boolean convenience for *embedders*: whether the program's computed answer matches the
+    contract's (spec §3). The check layer (``checks.py``) calls ``singleton_answer`` /
+    ``conjunctive_answer`` / ``binding_set`` directly to build a diagnostic. ``models`` (the
     answer-set census) is required for a conjunctive ground query, ``brave`` for an unknown binding.
     """
     match query:
         case GroundQuery(answer, conjuncts) if len(conjuncts) == 1:
             return singleton_answer(conjuncts[0], cautious) is answer
         case GroundQuery(answer, conjuncts):
-            if models is None:
-                raise ValueError("a conjunctive ground query needs the model census")
+            if not models:
+                raise ValueError("a conjunctive ground query needs a non-empty model census")
             return conjunctive_answer(conjuncts, models) is answer
         case BindingQuery(answer, goal, bindings):
             return binding_set(goal, answer, cautious, brave) == set(bindings)
