@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elenctic"
+version = "0.1.0"
+description = "A declarative testing framework for Answer Set Programming."
+readme = "README.md"
+requires-python = ">=3.14"
+# license: intentionally unset — deferred strategic decision (Gregory). Do not add one.
+authors = [{ name = "Gregory Gelfond" }]
+dependencies = []  # clingo/clingcon/pytest are supplied by the conda/pixi env (spec §7), not PyPI.
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/elenctic"]
+
+[tool.ruff]
+# Formatter is `ruff format` — black-compatible (Gregory: black, or ruff when it's installed).
+# target-version is inferred from project.requires-python (>=3.14).
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+warn_unreachable = true
+strict_equality = true
+files = ["src", "tests"]
+exclude = ["tests/spikes/"]
+
+[[tool.mypy.overrides]]
+module = ["clingcon", "clingcon.*"]
+ignore_missing_imports = true

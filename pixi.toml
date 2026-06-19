@@ -1,0 +1,26 @@
+# Toolchain for elenctic, pinned. Baseline: `pixi run <cmd>` / `pixi shell`.
+# clingo + clingcon are conda-forge-only (the payoff of dropping clintest, spec §7);
+# clingcon is pinned to 5.2.1 to match the estate reference toolchain (krml, krml-poc, kr-domains).
+# Python 3.14 matches kr-domains' resolved env (the client #1) and unlocks PEP 695 / PEP 649.
+[workspace]
+name = "elenctic"
+description = "A declarative testing framework for Answer Set Programming."
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64"]
+
+[dependencies]
+python = "3.14.*"
+clingo = "5.8.*"
+clingcon = "5.2.1.*"
+pytest = "*"
+mypy = "*"
+ruff = "*"
+
+[pypi-dependencies]
+elenctic = { path = ".", editable = true }
+
+[tasks]
+test = "pytest -q"
+lint = "ruff check . && ruff format --check ."
+typecheck = "mypy"
+check = { depends-on = ["lint", "typecheck", "test"] }
