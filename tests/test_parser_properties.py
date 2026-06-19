@@ -105,6 +105,19 @@ def test_cautious_accumulation_is_order_independent(atom_texts: list[str]) -> No
     assert forward.cautious == frozenset(parse_term(text) for text in atom_texts)
 
 
+@given(
+    st.lists(st.tuples(atoms(), st.integers(min_value=-20, max_value=20)), min_size=1, max_size=5)
+)
+def test_parsed_assign_is_never_empty(bindings: list[tuple[str, int]]) -> None:
+    # The check layer assumes a parsed @assign is non-empty: an empty expected assignment would
+    # PASS vacuously (∅ ⊆ any). parse must never yield an empty Sat.assign — the Task-3 @assign{}
+    # BLOCKER fix, pinned here as the standing cross-layer invariant (checks-task carry-forward).
+    body = ", ".join(f"{atom}={value}" for atom, value in bindings)
+    exp = parse(f"% @expect sat\n% @assign {{ {body} }}\n")
+    assert isinstance(exp, Sat)
+    assert exp.assign is not None and len(exp.assign) > 0
+
+
 @given(st.lists(_terms(), min_size=1, max_size=3), _IDENT)
 def test_unify_recovers_the_binding_that_built_the_atom(arg_values: list[str], pred: str) -> None:
     # Soundness of the unifier: build q(t1, …, tn) from an all-variable goal q(X1, …, Xn); unify
