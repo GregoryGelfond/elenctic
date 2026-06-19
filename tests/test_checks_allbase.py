@@ -1,11 +1,9 @@
 """Unit tests for the all-base and scalar checks (spec §3; plan Task 4 / dx#9).
 
-Each check is a pure ``Callable[[SolveResult], CheckReport]``: it carries a
-three-valued ``Verdict`` plus the diagnostic the dx#9 layer surfaces — the tag
-``label`` and an expected-vs-actual ``message``. The ``note`` (the case's
-``@note``) is attached downstream by ``run_case``, so a freshly-built check
-leaves it ``None``. Checks are pure over ``SolveResult``, so they test with no
-solver (spec §4).
+Each check is a pure ``Check`` — a callable carrying its contract-tag ``label`` — that
+maps a ``SolveResult`` to a ``CheckReport``: a three-valued ``Verdict`` plus the diagnostic
+the dx#9 layer surfaces (the ``label`` and an expected-vs-actual ``message``). Checks are
+pure over ``SolveResult``, so they test with no solver (spec §4).
 """
 
 import pytest
@@ -58,6 +56,14 @@ def test_undecided_when_not_completed(check: Check, label: str) -> None:
     report = check(SolveResult(completed=False))
     assert report.verdict is Verdict.UNDECIDED  # a timeout is never FAIL (§7a)
     assert report.label == label
+
+
+def test_check_label_is_readable_without_solving() -> None:
+    # dx#9 / C: the contract-tag label is a first-class attribute on the check itself, so a
+    # consumer can identify or explain a check before any solve (no SolveResult needed).
+    assert expect_sat().label == "@expect sat"
+    assert has_model(lits("a")).label == "@model"
+    assert cautious_contains(lits("a")).label == "@cautious"
 
 
 def test_expect_sat() -> None:

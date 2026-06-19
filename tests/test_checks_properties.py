@@ -71,6 +71,18 @@ def test_optimal_aggregation_equals_the_pairwise_fold(family: list[frozenset[Sym
     assert brave_optimal_contains(join)(result).verdict is Verdict.PASS
 
 
+@given(_atom_sets)
+def test_static_label_equals_reported_label(litset: frozenset[Symbol]) -> None:
+    # C / single source: every check carries its label statically (no solve), and it is the SAME
+    # label its CheckReport carries — completed or not — so there is one source, no divergence.
+    complete = SolveResult(completed=True)
+    incomplete = SolveResult(completed=False)
+    for check in _every_check(litset):
+        assert check.label  # statically readable, non-empty
+        assert check.label == check(complete).label
+        assert check.label == check(incomplete).label
+
+
 @given(_atom_sets, _atom_sets)
 def test_cautious_passes_iff_subset(
     litset: frozenset[Symbol], aggregate: frozenset[Symbol]

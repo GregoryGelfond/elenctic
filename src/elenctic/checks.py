@@ -1,4 +1,4 @@
-"""Pure per-tag checks: ``Callable[[SolveResult], CheckReport]`` (spec §3, dx#9).
+"""Pure per-tag checks (spec §3, dx#9): each is a :class:`Check`, a labelled callable.
 
 A check reads one :class:`~elenctic.result.SolveResult` and returns a
 :class:`CheckReport` — a three-valued :class:`~elenctic.result.Verdict` *plus the
@@ -58,7 +58,30 @@ class CheckReport:
     message: str
 
 
-type Check = Callable[[SolveResult], CheckReport]
+_UNDECIDED_MESSAGE = "the solve did not complete within the budget — UNDECIDED, never FAIL"
+
+
+@dataclass(frozen=True, slots=True)
+class Check:
+    """A pure per-tag check carrying its contract-tag ``label`` as a first-class, statically
+    inspectable identity (dx#9). Every check is labelled — there is no unlabelled check — and the
+    label it *reports* is the same one it *carries* (a single source), so a consumer can group,
+    identify, or *explain* the checks a run will perform before any solve, without running them.
+
+    Calling the check runs it: an incomplete solve (``not completed``) short-circuits to
+    ``UNDECIDED`` (consequence-soundness, §7a) *before* any decision logic; otherwise the per-tag
+    ``_decide`` yields the ``(verdict, message)`` of the diagnostic. ``_decide`` is private so the
+    §7a short-circuit cannot be bypassed.
+    """
+
+    label: str
+    _decide: Callable[[SolveResult], tuple[Verdict, str]]
+
+    def __call__(self, result: SolveResult) -> CheckReport:
+        if not result.completed:
+            return CheckReport(Verdict.UNDECIDED, self.label, _UNDECIDED_MESSAGE)
+        verdict, message = self._decide(result)
+        return CheckReport(verdict, self.label, message)
 
 
 # --- diagnostic rendering (deterministic: sorted by text, so messages are stable) ---
@@ -110,24 +133,10 @@ def _show_goal(goal: QueryLiteral) -> str:
 
 # --- check construction ---
 
-_UNDECIDED_MESSAGE = "the solve did not complete within the budget — UNDECIDED, never FAIL"
-
-
-def _verdict(passed: bool) -> Verdict:
-    return Verdict.PASS if passed else Verdict.FAIL
-
 
 def _check(label: str, decide: Callable[[SolveResult], tuple[Verdict, str]]) -> Check:
-    """Build a check from a per-tag decision, short-circuiting an incomplete solve to
-    ``UNDECIDED`` (consequence-soundness, §7a) *before* any decision logic runs."""
-
-    def run(result: SolveResult) -> CheckReport:
-        if not result.completed:
-            return CheckReport(Verdict.UNDECIDED, label, _UNDECIDED_MESSAGE)
-        verdict, message = decide(result)
-        return CheckReport(verdict, label, message)
-
-    return run
+    """Build a labelled check from a per-tag decision (the §7a short-circuit lives in ``Check``)."""
+    return Check(label, decide)
 
 
 # --- shared decisions (one per mode; reused across the all/optimal bases) ---
