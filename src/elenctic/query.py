@@ -16,10 +16,11 @@ the conjunctive non-ground join are reserved (§11).
 import re
 from dataclasses import dataclass
 from enum import Enum
+from typing import assert_never
 
-from clingo import Symbol
+from clingo import Symbol, SymbolType
 
-from elenctic.terms import parse_litset, parse_tupleset
+from elenctic.terms import contrary, parse_litset, parse_tupleset
 
 # The ASP lexical form of a variable: an upper-case or underscore initial.
 _VARIABLE = re.compile(r"[A-Z_][A-Za-z0-9_']*")
@@ -141,3 +142,103 @@ def _parse_goal_arg(token: str) -> Var:
             "(partially-ground goals are reserved, §11)"
         )
     return Var(token)
+
+
+# --- evaluation (against the entailed atoms the modes compute; no SLDNF, spec §3) ---
+
+
+def contrary_literal(goal: QueryLiteral) -> QueryLiteral:
+    """The contrary of a query literal: flip its strong-negation sign (spec §2.1)."""
+    return QueryLiteral(goal.name, not goal.positive, goal.args)
+
+
+def unify(goal: QueryLiteral, atom: Symbol) -> dict[str, Symbol] | None:
+    """Most-general unification of a (possibly non-ground) query literal against one ground atom.
+
+    Returns the variable substitution if the atom matches functor, sign, arity, every ground
+    position, and repeated-variable consistency; otherwise ``None``. The unifier is general (it
+    handles ground argument positions for the §11 power-up); the v1 parser only feeds it
+    all-variable goals (Def 2.2.2).
+    """
+    if (
+        atom.type is not SymbolType.Function
+        or atom.name != goal.name
+        or atom.positive != goal.positive
+        or len(atom.arguments) != goal.arity
+    ):
+        return None
+    subst: dict[str, Symbol] = {}
+    for slot, arg in zip(goal.args, atom.arguments, strict=True):
+        if isinstance(slot, Var):
+            if subst.setdefault(slot.name, arg) != arg:
+                return None  # a repeated variable must bind consistently
+        elif slot != arg:
+            return None  # a ground position must match exactly
+    return subst
+
+
+def _bindings_over(goal: QueryLiteral, atoms: frozenset[Symbol]) -> set[tuple[Symbol, ...]]:
+    """The distinct-variable binding tuples of the atoms that unify with ``goal`` (Def 2.2.2)."""
+    bindings: set[tuple[Symbol, ...]] = set()
+    for atom in atoms:
+        subst = unify(goal, atom)
+        if subst is not None:
+            bindings.add(tuple(subst[name] for name in goal.variables))
+    return bindings
+
+
+def ground_answer(conjuncts: tuple[Symbol, ...], intersection: frozenset[Symbol]) -> Answer:
+    """The three-valued answer to a ground conjunctive query off ⋂ (Def 2.2.2, spec §2.1).
+
+    yes iff every conjunct is entailed; no iff SOME conjunct's contrary is entailed (per-conjunct,
+    ``∃i: l̄i ∈ ⋂`` — not ``Π ⊨ ¬(l1∧…∧ln)``); else unknown.
+    """
+    if all(conjunct in intersection for conjunct in conjuncts):
+        return Answer.yes
+    if any(contrary(conjunct) in intersection for conjunct in conjuncts):
+        return Answer.no
+    return Answer.unknown
+
+
+def binding_set(
+    goal: QueryLiteral,
+    answer: Answer,
+    intersection: frozenset[Symbol],
+    union: frozenset[Symbol] | None,
+) -> set[tuple[Symbol, ...]]:
+    """The binding tuples yielding ``answer`` for ``goal`` (spec §2.1). yes/no read ⋂; unknown
+    additionally needs the brave union ⋃ (the entertained-but-unsettled middle)."""
+    match answer:
+        case Answer.yes:
+            return _bindings_over(goal, intersection)
+        case Answer.no:
+            return _bindings_over(contrary_literal(goal), intersection)
+        case Answer.unknown:
+            if union is None:
+                raise ValueError(
+                    "an unknown-binding query needs the brave union "
+                    "(route it to a full enumeration)"
+                )
+            entailed_yes = _bindings_over(goal, intersection)
+            entailed_no = _bindings_over(contrary_literal(goal), intersection)
+            brave_domain = _bindings_over(goal, union) | _bindings_over(
+                contrary_literal(goal), union
+            )
+            return brave_domain - entailed_yes - entailed_no
+        case _:
+            assert_never(answer)
+
+
+def satisfied(
+    query: Query, intersection: frozenset[Symbol], union: frozenset[Symbol] | None
+) -> bool:
+    """Whether the program's computed answer matches the contract's (spec §3). The check layer
+    (``checks.py``) uses ``ground_answer``/``binding_set`` directly to build a diagnostic; this is
+    the boolean convenience."""
+    match query:
+        case GroundQuery(answer, conjuncts):
+            return ground_answer(conjuncts, intersection) is answer
+        case BindingQuery(answer, goal, bindings):
+            return binding_set(goal, answer, intersection, union) == set(bindings)
+        case _:
+            assert_never(query)
