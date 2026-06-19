@@ -34,12 +34,11 @@ def lits(*names: str) -> frozenset[Symbol]:
     return frozenset(parse_term(name) for name in names)
 
 
-def test_check_returns_checkreport_with_label_and_unset_note() -> None:
+def test_check_returns_checkreport_with_verdict_and_label() -> None:
     report = expect_sat()(SolveResult(completed=True, observables=(obs("a"),)))
     assert isinstance(report, CheckReport)
     assert report.verdict is Verdict.PASS
     assert report.label == "@expect sat"
-    assert report.note is None  # the case @note is attached later, by run_case (dx#9)
 
 
 @pytest.mark.parametrize(

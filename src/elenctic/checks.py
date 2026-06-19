@@ -45,19 +45,17 @@ from elenctic.terms import contrary
 
 @dataclass(frozen=True, slots=True)
 class CheckReport:
-    """The outcome of one check: a verdict and the diagnostic to surface (dx#9, §3).
+    """The outcome of one check: a three-valued verdict plus the diagnostic to surface (dx#9, §3).
 
     ``label`` is the contract tag (e.g. ``@cautious optimal``); ``message`` is the
-    expected-vs-actual reading the user sees on a non-``PASS`` (the dx#9 value).
-    ``note`` is the case's ``@note``, attached by ``run_case`` on a failure (§2.1) —
-    a check is pure over ``SolveResult`` alone and so cannot know it, and leaves it
-    ``None``.
+    expected-vs-actual reading the user sees on a non-``PASS`` (the dx#9 value). The report
+    is exactly the *check's* output — the case's documentation (``@note``) and its
+    ``path:line`` are the renderer's concern, read from the case, not carried here.
     """
 
     verdict: Verdict
     label: str
     message: str
-    note: str | None = None
 
 
 type Check = Callable[[SolveResult], CheckReport]

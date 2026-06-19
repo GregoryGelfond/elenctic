@@ -41,7 +41,7 @@ class ContractError(Exception):
 class Unsat:
     """``@expect unsat``: ``AS(P) = ∅`` (spec §2.1); excludes every model-bearing tag (§2.2)."""
 
-    notes: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +64,7 @@ class Sat:
     cost: tuple[int, ...] | None = None
     assign: frozenset[tuple[Symbol, int]] | None = None
     queries: tuple[Query, ...] = ()
-    notes: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
 
 
 type Expectation = Unsat | Sat
