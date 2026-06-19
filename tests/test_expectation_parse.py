@@ -170,3 +170,50 @@ def test_parse_accepts_a_source_label() -> None:
     exp = parse("% @expect sat\n% @model { a }\n", source="cases/x.lp")
     assert isinstance(exp, Sat)
     assert exp.model == L("a")
+
+
+def test_continuation_spans_three_lines() -> None:
+    exp = parse("% @expect sat\n% @model { a,\n%          b,\n%          c }\n")
+    assert isinstance(exp, Sat)
+    assert exp.model == L("a", "b", "c")
+
+
+def test_cautious_optimal_accumulates() -> None:
+    exp = parse("% @expect sat\n% @cautious optimal { a }\n% @cautious optimal { b }\n")
+    assert isinstance(exp, Sat)
+    assert exp.cautious_optimal == L("a", "b")
+
+
+def test_tag_order_is_irrelevant() -> None:
+    # The builder is order-independent: @expect may appear last (a contract is a set of claims).
+    exp = parse("% @model { a }\n% @count 1\n% @expect sat\n")
+    assert isinstance(exp, Sat)
+    assert exp.model == L("a")
+    assert exp.count == 1
+
+
+def test_assign_term_with_internal_comma_is_one_binding() -> None:
+    # _split_top is paren-aware: a comma inside f(a,b) is not a binding separator.
+    exp = parse("% @expect sat\n% @assign { f(a,b)=1 }\n")
+    assert isinstance(exp, Sat)
+    assert exp.assign == frozenset({(parse_term("f(a,b)"), 1)})
+
+
+def test_cost_accepts_a_negative_component() -> None:
+    # A cost component is a clingo integer (a #minimize weight may be negative); §2.0 reads the
+    # natural objective value. The regex accepts -?\d+ deliberately (beyond the plan's \d+ sketch).
+    exp = parse("% @expect sat\n% @cost { -4 2 }\n")
+    assert isinstance(exp, Sat)
+    assert exp.cost == (-4, 2)
+
+
+def test_note_with_brace_does_not_absorb_a_following_prose_line() -> None:
+    # A @note is free prose to end of line (spec §2.1 EBNF), not a litset: a stray '{' in note
+    # prose must NOT turn the following '%' line into a continuation. Only litset-bearing tags
+    # span continuations.
+    exp = parse(
+        "% @expect sat\n% @note uses a { to mark a choice\n% Run: clingo foo.lp\n% @model { a }\n"
+    )
+    assert isinstance(exp, Sat)
+    assert exp.notes == ("uses a { to mark a choice",)
+    assert exp.model == L("a")

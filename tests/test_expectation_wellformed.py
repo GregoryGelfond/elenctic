@@ -76,6 +76,14 @@ from elenctic.expectation import ContractError, Sat, Unsat, parse
         pytest.param(
             "% @expect sat\n% @frobnicate { a }\n", r"unknown contract tag", id="unknown-tag"
         ),
+        # empty / unclosed / non-ground brace bodies — never a silent empty claim (§2.1 grammar).
+        pytest.param("% @expect sat\n% @assign { }\n", r"@assign", id="empty-assign"),
+        pytest.param("% @expect sat\n% @assign {}\n", r"@assign", id="empty-assign-no-space"),
+        pytest.param("% @expect sat\n% @model { a, b\n", r"litset", id="litset-never-closes"),
+        pytest.param(
+            "% @expect sat\n% @model { p(X) }\n", r"variable-free", id="variable-in-litset"
+        ),
+        pytest.param("", r"@expect", id="empty-file-no-contract"),
     ],
 )
 def test_parse_rejects_ill_formed(text: str, match: str) -> None:
@@ -130,3 +138,9 @@ def test_duplicate_cell_error_points_at_the_second_occurrence() -> None:
     # The duplicate @model is on line 3; provenance pins it there, not the first.
     with pytest.raises(ContractError, match=r"x\.lp:3"):
         parse("% @expect sat\n% @model { a }\n% @model { b }\n", source="x.lp")
+
+
+def test_unsat_error_names_the_offending_model_bearing_tags() -> None:
+    # The diagnostic points at the mistake: it names which model-bearing tags conflict with unsat.
+    with pytest.raises(ContractError, match=r"@model.*@brave|@brave.*@model"):
+        parse("% @expect unsat\n% @model { a }\n% @brave { b }\n")

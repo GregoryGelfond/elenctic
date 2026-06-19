@@ -95,6 +95,11 @@ def parse(text: str, source: str | None = None) -> Expectation:
 _TAG = re.compile(r"^\s*%\s*@(?P<tag>\w+)\b(?P<rest>.*)$")
 _CONT = re.compile(r"^\s*%\s*(?P<rest>.*)$")
 
+# Only these tags carry a brace-delimited litset/tupleset, so only they may span a continuation.
+# Gating on the tag keeps the continuation invariant honest ("join an unfinished *litset*", not
+# "join while any brace is unbalanced"): a stray '{' in @note/@expect prose stays single-line.
+_LITSET_TAGS = frozenset({"model", "optimal", "cautious", "brave", "cost", "assign", "query"})
+
 
 @dataclass(frozen=True, slots=True)
 class _Block:
@@ -115,6 +120,7 @@ def _blocks(text: str) -> list[_Block]:
             blocks.append(_Block(tag.group("tag"), tag.group("rest").strip(), line_number))
         elif (
             blocks
+            and blocks[-1].tag in _LITSET_TAGS
             and _has_unclosed_brace(blocks[-1].payload)
             and (cont := _CONT.match(line)) is not None
         ):
@@ -280,8 +286,15 @@ def _cost_vector(rest: str) -> tuple[int, ...]:
 
 
 def _assign_body(rest: str) -> frozenset[tuple[Symbol, int]]:
-    """Parse ``{ term=int, … }`` into theory bindings for ``@assign`` (spec §2.0/§2.1)."""
+    """Parse ``{ term=int, … }`` into theory bindings for ``@assign`` (spec §2.0/§2.1).
+
+    Rejects an empty set: the grammar requires ≥1 binding, and an empty ``@assign`` would be a
+    silent vacuous claim (``frozenset() ⊆ assign`` holds for every model) — the empty-litset
+    false-PASS, here in the one payload parser that does not route through ``parse_litset``.
+    """
     bindings = [_one_bind(piece.strip()) for piece in _split_top(_braced(rest)) if piece.strip()]
+    if not bindings:
+        raise ValueError("empty @assign set: needs at least one term=int binding")
     return frozenset(bindings)
 
 
@@ -328,8 +341,7 @@ def _split_top(body: str) -> list[str]:
 
 def _finish(builder: _Builder, source: str | None) -> Expectation:
     """Validate the cross-tag rules and freeze the builder into an ``Expectation`` (spec §2.2)."""
-    _validate(builder, source)
-    if builder.expect == "unsat":
+    if _validate(builder, source) == "unsat":
         return Unsat(notes=tuple(builder.notes))
     return Sat(
         model=builder.model,
@@ -347,18 +359,19 @@ def _finish(builder: _Builder, source: str | None) -> Expectation:
     )
 
 
-def _validate(builder: _Builder, source: str | None) -> None:
-    """The cross-tag static semantics of §2.2 (rules 1 and 3). Per-cell single-valuedness (rule 2)
-    is enforced during parsing; the precondition rules (rule 4: optimization, clingcon,
-    contrary-shown) need the encoding and are checked at discovery (spec §5)."""
-    if builder.expect is None:  # rule 1
+def _validate(builder: _Builder, source: str | None) -> Literal["sat", "unsat"]:
+    """The cross-tag static semantics of §2.2 (rules 1 and 3), returning the validated ``@expect``.
+    Per-cell single-valuedness (rule 2) is enforced during parsing; the precondition rules (rule 4:
+    optimization, clingcon, contrary-shown) need the encoding and are checked at discovery (§5)."""
+    expect = builder.expect
+    if expect is None:  # rule 1
         _fail_contract(source, "a contract must declare exactly one @expect (sat|unsat)")
 
-    if builder.expect == "unsat":  # rule 3: unsat excludes every model-bearing tag
-        if _is_model_bearing(builder):
+    if expect == "unsat":  # rule 3: unsat excludes every model-bearing tag
+        if tags := _model_bearing_tags(builder):
             _fail_contract(
                 source,
-                "@expect unsat excludes every model-bearing tag "
+                f"@expect unsat excludes the model-bearing tag(s) {', '.join(tags)} "
                 "(only @count 0 / @count optimal 0 is consistent with it)",
             )
     elif builder.count == 0 or builder.count_optimal == 0:  # rule 3: @count 0 ⟺ unsat
@@ -374,24 +387,36 @@ def _validate(builder: _Builder, source: str | None) -> None:
             f"@count optimal {builder.count_optimal} > @count {builder.count}: "
             "Opt(P) ⊆ AS(P) requires m ≤ n",
         )
+    return expect
 
 
-def _is_model_bearing(builder: _Builder) -> bool:
-    """Whether the contract asserts a tag whose truth requires at least one answer set (§2.2):
-    a witness/consequence/cost/assign/query, or a positive count at either base."""
-    return bool(
-        builder.model is not None
-        or builder.optimal_model is not None
-        or builder.cautious
-        or builder.cautious_optimal
-        or builder.brave
-        or builder.brave_optimal
-        or builder.cost is not None
-        or builder.assign is not None
-        or builder.queries
-        or (builder.count is not None and builder.count >= 1)
-        or (builder.count_optimal is not None and builder.count_optimal >= 1)
-    )
+def _model_bearing_tags(builder: _Builder) -> list[str]:
+    """The model-bearing tags actually present (§2.2): each asserts something requiring an answer
+    set. Returned in surface order so the unsat diagnostic can point at the specific offenders."""
+    present: list[str] = []
+    if builder.model is not None:
+        present.append("@model")
+    if builder.optimal_model is not None:
+        present.append("@optimal")
+    if builder.cautious:
+        present.append("@cautious")
+    if builder.cautious_optimal:
+        present.append("@cautious optimal")
+    if builder.brave:
+        present.append("@brave")
+    if builder.brave_optimal:
+        present.append("@brave optimal")
+    if builder.cost is not None:
+        present.append("@cost")
+    if builder.assign is not None:
+        present.append("@assign")
+    if builder.queries:
+        present.append("@query")
+    if builder.count is not None and builder.count >= 1:
+        present.append("@count")
+    if builder.count_optimal is not None and builder.count_optimal >= 1:
+        present.append("@count optimal")
+    return present
 
 
 def _location(source: str | None, line: int) -> str:
