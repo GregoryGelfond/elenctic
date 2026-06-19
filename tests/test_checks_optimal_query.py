@@ -15,8 +15,8 @@ from elenctic.checks import (
     brave_optimal_contains,
     cautious_optimal_contains,
     count_optimal_is,
-    optimal_model_is,
-    query_holds,
+    has_optimal_model,
+    query_matches,
 )
 from elenctic.query import Answer, BindingQuery, GroundQuery, QueryLiteral, Var
 from elenctic.result import Observable, SolveResult, Verdict
@@ -33,14 +33,14 @@ def lits(*names: str) -> frozenset[Symbol]:
 @pytest.mark.parametrize(
     ("check", "label"),
     [
-        pytest.param(optimal_model_is(lits("a")), "@optimal", id="optimal"),
+        pytest.param(has_optimal_model(lits("a")), "@optimal", id="optimal"),
         pytest.param(
             cautious_optimal_contains(lits("a")), "@cautious optimal", id="cautious-optimal"
         ),
         pytest.param(brave_optimal_contains(lits("a")), "@brave optimal", id="brave-optimal"),
         pytest.param(count_optimal_is(1), "@count optimal", id="count-optimal"),
         pytest.param(
-            query_holds(GroundQuery(Answer.yes, (parse_term("a"),))), "@query", id="query"
+            query_matches(GroundQuery(Answer.yes, (parse_term("a"),))), "@query", id="query"
         ),
     ],
 )
@@ -52,7 +52,7 @@ def test_undecided_when_not_completed(check: Check, label: str) -> None:
 
 def test_optimal_base_checks_share_the_optimal_observables() -> None:
     result = SolveResult(True, optimal_observables=(oo("a", "x"), oo("a", "y")))
-    assert optimal_model_is(lits("a", "x"))(result).verdict is Verdict.PASS
+    assert has_optimal_model(lits("a", "x"))(result).verdict is Verdict.PASS
     assert (
         cautious_optimal_contains(lits("a"))(result).verdict is Verdict.PASS
     )  # a: optimal backbone
@@ -65,30 +65,60 @@ def test_optimal_base_checks_share_the_optimal_observables() -> None:
 
 def test_optimal_base_is_total_on_empty() -> None:
     empty = SolveResult(True, optimal_observables=())
-    assert optimal_model_is(lits("a"))(empty).verdict is Verdict.FAIL
+    assert has_optimal_model(lits("a"))(empty).verdict is Verdict.FAIL
     assert cautious_optimal_contains(lits("a"))(empty).verdict is Verdict.FAIL
     assert brave_optimal_contains(lits("a"))(empty).verdict is Verdict.FAIL
     assert count_optimal_is(2)(empty).verdict is Verdict.FAIL
     assert count_optimal_is(0)(empty).verdict is Verdict.PASS  # @count optimal 0 over ∅
 
 
-def test_query_ground_reads_intersection() -> None:
-    asked = query_holds(GroundQuery(Answer.yes, (parse_term("start(s)"),)))
-    assert asked(SolveResult(True, intersection=lits("start(s)"))).verdict is Verdict.PASS
-    missed = asked(SolveResult(True, intersection=lits("end(t)")))
+def test_optimal_base_singleton_class() -> None:
+    # ⋂ Opt(P) = ⋃ Opt(P) = the single optimal model (the family[0].∩(*[]) edge).
+    result = SolveResult(True, optimal_observables=(oo("a", "x"),))
+    assert has_optimal_model(lits("a", "x"))(result).verdict is Verdict.PASS
+    assert cautious_optimal_contains(lits("a", "x"))(result).verdict is Verdict.PASS
+    assert brave_optimal_contains(lits("x"))(result).verdict is Verdict.PASS
+
+
+def test_optimal_base_failures_name_opt_p_not_enumerated_models() -> None:
+    result = SolveResult(True, optimal_observables=(oo("a", "x"), oo("a", "y")))
+    partial = has_optimal_model(lits("a"))(result)  # subset, not the whole model
+    assert partial.verdict is Verdict.FAIL
+    assert "optimal" in partial.message  # names Opt(P), not "enumerated models" (MAJOR-2)
+    assert "enumerated models" not in partial.message
+    brave_miss = brave_optimal_contains(lits("z"))(result)
+    assert brave_miss.verdict is Verdict.FAIL
+    assert "z" in brave_miss.message and "⋃" in brave_miss.message
+
+
+def test_query_ground_reads_intersection_and_localizes() -> None:
+    asked = query_matches(GroundQuery(Answer.yes, (parse_term("start(s)"), parse_term("end(t)"))))
+    assert asked(SolveResult(True, intersection=lits("start(s)", "end(t)"))).verdict is Verdict.PASS
+    missed = asked(
+        SolveResult(True, intersection=lits("start(s)"))
+    )  # end(t) not entailed → unknown
     assert missed.verdict is Verdict.FAIL
     assert "yes" in missed.message and "unknown" in missed.message  # expected yes, computed unknown
+    assert "end(t)" in missed.message  # dx#9: localizes the not-entailed conjunct (MAJOR-4)
+
+
+def test_query_ground_no_via_strong_negation() -> None:
+    asked = query_matches(GroundQuery(Answer.no, (parse_term("reachable(x)"),)))
+    # contrary -reachable(x) entailed ⇒ computed no (Def 2.2.2, §2.1)
+    assert asked(SolveResult(True, intersection=lits("-reachable(x)"))).verdict is Verdict.PASS
+    # mere absence is not falsity ⇒ computed unknown ≠ no ⇒ FAIL
+    assert asked(SolveResult(True, intersection=lits("other"))).verdict is Verdict.FAIL
 
 
 def test_query_short_circuits_to_fail_on_unsat() -> None:
-    asked = query_holds(GroundQuery(Answer.yes, (parse_term("start(s)"),)))
+    asked = query_matches(GroundQuery(Answer.yes, (parse_term("start(s)"),)))
     short = asked(SolveResult(True, intersection=None))
     assert short.verdict is Verdict.FAIL  # AS(P) = ∅: every query is vacuously yes-and-no (§2.2)
     assert "∅" in short.message
 
 
 def test_query_binding_reads_intersection() -> None:
-    asked = query_holds(
+    asked = query_matches(
         BindingQuery(
             Answer.yes,
             QueryLiteral("reachable", True, (Var("X"),)),
@@ -104,8 +134,20 @@ def test_query_binding_reads_intersection() -> None:
     assert short.verdict is Verdict.FAIL  # AS(P) = ∅ short-circuit
 
 
+def test_query_binding_no_via_contrary() -> None:
+    asked = query_matches(
+        BindingQuery(
+            Answer.no,
+            QueryLiteral("blocked", True, (Var("X"),)),
+            frozenset({(parse_term("a"),)}),
+        )
+    )
+    inter = lits("-blocked(a)")  # -blocked(a) entailed ⇒ the no-binding set is { (a) }
+    assert asked(SolveResult(True, intersection=inter)).verdict is Verdict.PASS
+
+
 def test_query_binding_unknown_uses_brave_union() -> None:
-    asked = query_holds(
+    asked = query_matches(
         BindingQuery(
             Answer.unknown,
             QueryLiteral("reachable", True, (Var("X"),)),
@@ -116,3 +158,18 @@ def test_query_binding_unknown_uses_brave_union() -> None:
     union = lits("reachable(s)", "reachable(b)")
     # brave domain { s, b } − yes { s } − no { } = { b }; the contract asserts unknown = { b }
     assert asked(SolveResult(True, intersection=inter, union=union)).verdict is Verdict.PASS
+
+
+def test_query_binding_unknown_missing_union_is_total_fail_not_raise() -> None:
+    # A misroute (intersection present, ⋃ absent for an unknown binding) must be a total
+    # FAIL that names the missing brave consequences — never a raise (MAJOR-1, totality + dx#9).
+    asked = query_matches(
+        BindingQuery(
+            Answer.unknown,
+            QueryLiteral("reachable", True, (Var("X"),)),
+            frozenset({(parse_term("b"),)}),
+        )
+    )
+    report = asked(SolveResult(True, intersection=lits("reachable(s)"), union=None))
+    assert report.verdict is Verdict.FAIL
+    assert "⋃" in report.message  # names the missing brave consequences, not a content failure

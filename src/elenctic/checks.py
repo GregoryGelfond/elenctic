@@ -16,6 +16,10 @@ Two invariants hold for every check (spec §3, §7a):
   ``union``/``intersection`` then ``None``) a check returns ``FAIL`` — never
   raising, never evaluating ``L ⊆ None``.
 
+The litsets and cost vectors a check is built from are non-empty by construction
+(``parse`` rejects an empty litset, §2.1), so a check never faces a vacuous
+``∅ ⊆ A`` PASS through the pipeline.
+
 Checks are pure over ``SolveResult``; only ``solvers.py`` touches clingo/clingcon.
 """
 
@@ -26,6 +30,7 @@ from typing import assert_never
 from clingo import Symbol
 
 from elenctic.query import (
+    Answer,
     BindingQuery,
     GroundQuery,
     Query,
@@ -35,6 +40,7 @@ from elenctic.query import (
     ground_answer,
 )
 from elenctic.result import Observable, SolveResult, Verdict
+from elenctic.terms import contrary
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,28 +66,29 @@ type Check = Callable[[SolveResult], CheckReport]
 # --- diagnostic rendering (deterministic: sorted by text, so messages are stable) ---
 
 
+def _braces(parts: list[str]) -> str:
+    """Wrap already-rendered parts as a set literal ``{ a, b }`` (``{ }`` when empty)."""
+    return "{ " + ", ".join(parts) + " }" if parts else "{ }"
+
+
 def _show_set(symbols: Iterable[Symbol]) -> str:
-    """Render a set of atoms ``{ a, b, c }`` (``{ }`` when empty) for a diagnostic."""
-    rendered = sorted(str(symbol) for symbol in symbols)
-    return "{ " + ", ".join(rendered) + " }" if rendered else "{ }"
+    """Render a set of atoms ``{ a, b, c }`` for a diagnostic."""
+    return _braces(sorted(str(symbol) for symbol in symbols))
 
 
 def _show_models(models: Iterable[frozenset[Symbol]]) -> str:
     """Render a set of shown models (a set of atom-sets) for a diagnostic."""
-    rendered = sorted(_show_set(model) for model in models)
-    return "{ " + ", ".join(rendered) + " }" if rendered else "{ }"
+    return _braces(sorted(_show_set(model) for model in models))
 
 
 def _show_assign(assignment: Iterable[tuple[Symbol, int]]) -> str:
     """Render one theory assignment ``{ v=k, … }`` for a diagnostic."""
-    rendered = sorted(f"{var}={value}" for var, value in assignment)
-    return "{ " + ", ".join(rendered) + " }" if rendered else "{ }"
+    return _braces(sorted(f"{var}={value}" for var, value in assignment))
 
 
 def _show_assignments(observables: tuple[Observable, ...]) -> str:
     """Render the theory assignments observed across a run, for an ``@assign`` failure."""
-    rendered = sorted(_show_assign(o.assign) for o in observables)
-    return "{ " + ", ".join(rendered) + " }" if rendered else "{ }"
+    return _braces(sorted(_show_assign(o.assign) for o in observables))
 
 
 def _show_cost(cost: tuple[int, ...]) -> str:
@@ -91,8 +98,7 @@ def _show_cost(cost: tuple[int, ...]) -> str:
 
 def _show_tuples(tuples: Iterable[tuple[Symbol, ...]]) -> str:
     """Render a binding set ``{ (s), (a, t) }`` (the ``@query`` answer tuples)."""
-    rendered = sorted("(" + ", ".join(str(term) for term in tup) + ")" for tup in tuples)
-    return "{ " + ", ".join(rendered) + " }" if rendered else "{ }"
+    return _braces(sorted("(" + ", ".join(str(term) for term in tup) + ")" for tup in tuples))
 
 
 def _show_goal(goal: QueryLiteral) -> str:
@@ -106,7 +112,7 @@ def _show_goal(goal: QueryLiteral) -> str:
 
 # --- check construction ---
 
-_UNDECIDED_MESSAGE = "the solve did not complete within the budget — UNDECIDED, never FAIL (§7a)"
+_UNDECIDED_MESSAGE = "the solve did not complete within the budget — UNDECIDED, never FAIL"
 
 
 def _verdict(passed: bool) -> Verdict:
@@ -130,12 +136,12 @@ def _check(label: str, decide: Callable[[SolveResult], tuple[Verdict, str]]) -> 
 
 
 def _witness(
-    litset: frozenset[Symbol], models: tuple[frozenset[Symbol], ...]
+    litset: frozenset[Symbol], models: tuple[frozenset[Symbol], ...], noun: str
 ) -> tuple[Verdict, str]:
-    """``L ∈ { shown }`` — whole-shown-model membership over an enumerated class (§3)."""
+    """``L ∈ { shown }`` — whole-shown-model membership over a class named ``noun`` (§3)."""
     if any(model == litset for model in models):
-        return Verdict.PASS, f"{_show_set(litset)} ∈ enumerated models"
-    return Verdict.FAIL, f"{_show_set(litset)} ∉ enumerated models = {_show_models(models)}"
+        return Verdict.PASS, f"{_show_set(litset)} ∈ {noun}"
+    return Verdict.FAIL, f"{_show_set(litset)} ∉ {noun} = {_show_models(models)}"
 
 
 def _containment(
@@ -179,8 +185,8 @@ def expect_unsat() -> Check:
     def decide(result: SolveResult) -> tuple[Verdict, str]:
         if result.observables == ():
             return Verdict.PASS, "AS(P) = ∅ — no model, as expected"
-        witness = _show_set(result.observables[0].shown)
-        return Verdict.FAIL, f"expected unsat, but a model exists: {witness}"
+        witness = min(result.observables, key=lambda o: sorted(map(str, o.shown)))
+        return Verdict.FAIL, f"expected unsat, but a model exists: {_show_set(witness.shown)}"
 
     return _check("@expect unsat", decide)
 
@@ -189,7 +195,9 @@ def has_model(litset: frozenset[Symbol]) -> Check:
     """``@model { L }``: some enumerated observable's shown model equals ``L`` (§3)."""
     return _check(
         "@model",
-        lambda result: _witness(litset, tuple(o.shown for o in result.observables)),
+        lambda result: _witness(
+            litset, tuple(o.shown for o in result.observables), "enumerated models"
+        ),
     )
 
 
@@ -235,7 +243,7 @@ def cost_is(cost: tuple[int, ...]) -> Check:
                 Verdict.FAIL,
                 f"no optimum proven (need an optimization run); expected cost {_show_cost(cost)}",
             )
-        actual = tuple(result.optimum_cost)
+        actual = result.optimum_cost
         if actual == cost:
             return Verdict.PASS, f"optimum cost = {_show_cost(cost)}"
         return Verdict.FAIL, f"expected cost {_show_cost(cost)}, got {_show_cost(actual)}"
@@ -275,9 +283,12 @@ def _union(family: tuple[frozenset[Symbol], ...]) -> frozenset[Symbol]:
     return family[0].union(*family[1:])
 
 
-def optimal_model_is(litset: frozenset[Symbol]) -> Check:
+def has_optimal_model(litset: frozenset[Symbol]) -> Check:
     """``@optimal { L }`` (= ``@model optimal``): ``L`` is some optimal model (§3)."""
-    return _check("@optimal", lambda result: _witness(litset, _optimal_shown(result)))
+    return _check(
+        "@optimal",
+        lambda result: _witness(litset, _optimal_shown(result), "optimal models"),
+    )
 
 
 def cautious_optimal_contains(litset: frozenset[Symbol]) -> Check:
@@ -315,35 +326,57 @@ def count_optimal_is(n: int) -> Check:
 # --- the @query check (Def 2.2.2, base-fixed to AS(P); reads ⋂, and ⋃ for unknown) ---
 
 
-def query_holds(query: Query) -> Check:
-    """The ``@query`` check (Def 2.2.2, spec §3). Reads the cautious consequences ⋂
-    (and the brave ⋃ for an ``unknown`` binding); short-circuits to ``FAIL`` on
-    ``AS(P) = ∅``, where every query is vacuously yes-and-no (§2.2, FR#9).
+def _ground_witness(
+    conjuncts: tuple[Symbol, ...], intersection: frozenset[Symbol], actual: Answer
+) -> str:
+    """Localize a failing ground query — the conjuncts that fell short of the answer (§2.4)."""
+    if actual is Answer.unknown:
+        missing = _show_set(c for c in conjuncts if c not in intersection)
+        return f" (not entailed: {missing})"
+    if actual is Answer.no:
+        refuted = _show_set(c for c in conjuncts if contrary(c) in intersection)
+        return f" (counter-entailed: {refuted})"
+    return ""  # computed yes but a non-yes answer was asserted — the conjuncts are all entailed
 
-    Precondition (held by ``runs_for``, §3): an ``unknown``-binding query is routed
-    to a run that also populates ⋃, so ``union`` is present whenever it is needed.
+
+def query_matches(query: Query) -> Check:
+    """The ``@query`` check (Def 2.2.2, spec §3): the program's computed answer matches the
+    contract's. Reads the cautious consequences ⋂ (and the brave ⋃ for an ``unknown``
+    binding); short-circuits to ``FAIL`` on ``AS(P) = ∅``, where every query is vacuously
+    yes-and-no (§2.2, FR#9).
+
+    Total: a misroute that withholds ⋃ from an ``unknown`` binding is a ``FAIL`` naming the
+    missing aggregate, never a raise. (``runs_for`` routes an ``unknown`` binding to a run
+    that populates ⋃; this guard is the belt-and-suspenders if that ever fails.)
     """
 
     def decide(result: SolveResult) -> tuple[Verdict, str]:
         intersection = result.intersection
         if intersection is None:
-            return (
-                Verdict.FAIL,
-                "AS(P) = ∅ — every query is vacuously yes-and-no; @query fails (§2.2)",
-            )
+            return Verdict.FAIL, "AS(P) = ∅ — every query is vacuously yes-and-no; @query fails"
         match query:
             case GroundQuery(answer, conjuncts):
                 actual = ground_answer(conjuncts, intersection)
+                if actual is answer:
+                    return Verdict.PASS, f"{_show_set(conjuncts)}: computed {answer.value}"
+                witness = _ground_witness(conjuncts, intersection, actual)
                 return (
-                    _verdict(actual is answer),
-                    f"{_show_set(conjuncts)}: expected {answer.value}, computed {actual.value}",
+                    Verdict.FAIL,
+                    f"{_show_set(conjuncts)}: expected {answer.value}, "
+                    f"computed {actual.value}{witness}",
                 )
             case BindingQuery(answer, goal, bindings):
+                if answer is Answer.unknown and result.union is None:
+                    return (
+                        Verdict.FAIL,
+                        f"{_show_goal(goal)}: an unknown binding needs the brave consequences ⋃ "
+                        "— not computed (route to a brave run)",
+                    )
                 found = binding_set(goal, answer, intersection, result.union)
-                if found == set(bindings):
+                if found == bindings:
                     return (
                         Verdict.PASS,
-                        f"{answer.value} {_show_goal(goal)}: {_show_tuples(found)}",
+                        f"{_show_goal(goal)}: computed {answer.value} {_show_tuples(found)}",
                     )
                 return (
                     Verdict.FAIL,

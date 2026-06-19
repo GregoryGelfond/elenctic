@@ -75,6 +75,16 @@ def test_expect_unsat() -> None:
     assert "a" in failed.message  # the witnessing model is surfaced
 
 
+def test_expect_unsat_witness_is_canonical_not_enumeration_order() -> None:
+    # The surfaced witness is canonical (min by text), independent of solver enumeration order,
+    # so the dx#9 message is reproducible (MINOR-7).
+    result = SolveResult(True, observables=(obs("b"), obs("a")))
+    report = expect_unsat()(result)
+    assert report.verdict is Verdict.FAIL
+    assert "{ a }" in report.message  # canonical min witness …
+    assert "{ b }" not in report.message  # … not observables[0]
+
+
 def test_has_model_is_existential_over_whole_shown_model_and_total() -> None:
     result = SolveResult(True, observables=(obs("a", "b"), obs("c")))
     assert has_model(lits("a", "b"))(result).verdict is Verdict.PASS
