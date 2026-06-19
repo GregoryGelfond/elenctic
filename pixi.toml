@@ -13,6 +13,7 @@ python = "3.14.*"
 clingo = "5.8.*"
 clingcon = "5.2.1.*"
 pytest = "*"
+pytest-cov = "*"
 mypy = "*"
 ruff = "*"
 
@@ -21,6 +22,7 @@ elenctic = { path = ".", editable = true }
 
 [tasks]
 test = "pytest -q"
+cov = "pytest --cov=elenctic --cov-report=term-missing"
 lint = "ruff check . && ruff format --check ."
 typecheck = "mypy"
 check = { depends-on = ["lint", "typecheck", "test"] }

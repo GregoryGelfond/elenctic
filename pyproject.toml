@@ -10,7 +10,10 @@ readme = "README.md"
 requires-python = ">=3.14"
 # license: intentionally unset — deferred strategic decision (Gregory). Do not add one.
 authors = [{ name = "Gregory Gelfond" }]
-dependencies = []  # clingo/clingcon/pytest are supplied by the conda/pixi env (spec §7), not PyPI.
+dependencies = ["clingo>=5.8"]  # honest runtime dep; clingo is on conda-forge AND PyPI (no PyPI-only dep, spec §7)
+
+[project.optional-dependencies]
+theory = ["clingcon>=5.2.1"]  # the theory fragment (@assign, CSP @count); conda-forge-primary
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/elenctic"]
@@ -28,7 +31,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
-addopts = "--import-mode=importlib"
+addopts = "--import-mode=importlib --strict-markers --strict-config"
 testpaths = ["tests"]
 
 [tool.mypy]
