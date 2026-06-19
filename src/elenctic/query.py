@@ -198,14 +198,47 @@ def _bindings_over(goal: QueryLiteral, atoms: frozenset[Symbol]) -> set[tuple[Sy
 
 
 def ground_answer(conjuncts: tuple[Symbol, ...], intersection: frozenset[Symbol]) -> Answer:
-    """The three-valued answer to a ground conjunctive query off ⋂ (Def 2.2.2, spec §2.1).
+    """DEPRECATED — superseded by ``singleton_answer`` (⋂) and ``conjunctive_answer`` (census).
 
-    yes iff every conjunct is entailed; no iff SOME conjunct's contrary is entailed (per-conjunct,
-    ``∃i: l̄i ∈ ⋂`` — not ``Π ⊨ ¬(l1∧…∧ln)``); else unknown.
+    Its conjunctive "no" (``∃i: l̄i ∈ ⋂``) is the wrong ∃∀ reading corrected by the errata
+    (see ``conjunctive_answer``). Kept only until ``checks.py`` adopts the new evaluators, then
+    removed (field-compatibility keystone, Task 3).
     """
     if all(conjunct in intersection for conjunct in conjuncts):
         return Answer.yes
     if any(contrary(conjunct) in intersection for conjunct in conjuncts):
+        return Answer.no
+    return Answer.unknown
+
+
+def singleton_answer(literal: Symbol, cautious: frozenset[Symbol]) -> Answer:
+    """The three-valued answer to a ground *singleton* query off ⋂ (Gelfond–Kahl Def 2.2.2):
+    yes iff the literal is entailed, no iff its contrary is entailed, else unknown. ⋂ suffices —
+    for one literal the corrected "false in all answer sets" rule ``∀M: l̄∈M`` is exactly ``l̄∈⋂``.
+    """
+    if literal in cautious:
+        return Answer.yes
+    if contrary(literal) in cautious:
+        return Answer.no
+    return Answer.unknown
+
+
+def conjunctive_answer(
+    conjuncts: tuple[Symbol, ...], models: tuple[frozenset[Symbol], ...]
+) -> Answer:
+    """The three-valued answer to a ground *conjunctive* query (Def 2.2.2, corrected per the
+    published errata, 2026-06-19). Strong-Kleene over the answer-set census: in a model M the
+    conjunction is true iff every conjunct is in M, false iff some conjunct's contrary is in M
+    (else unknown-in-M); the answer is **yes** iff true in all answer sets, **no** iff false in
+    all, else **unknown**.
+
+    The census is required, not ⋂: "false in all" is ``∀M ∃i: l̄i∈M`` — each model may falsify a
+    *different* conjunct, which ⋂/⋃ cannot express (the old ``∃i: l̄i∈⋂`` was the wrong, strictly
+    stronger ∃∀ reading). ``models`` is non-empty: AS(P)=∅ is the ``Inconsistent`` arm upstream.
+    """
+    if all(all(conjunct in model for conjunct in conjuncts) for model in models):
+        return Answer.yes
+    if all(any(contrary(conjunct) in model for conjunct in conjuncts) for model in models):
         return Answer.no
     return Answer.unknown
 
@@ -240,15 +273,24 @@ def binding_set(
 
 
 def satisfied(
-    query: Query, intersection: frozenset[Symbol], union: frozenset[Symbol] | None
+    query: Query,
+    cautious: frozenset[Symbol],
+    brave: frozenset[Symbol] | None,
+    models: tuple[frozenset[Symbol], ...] | None,
 ) -> bool:
     """Whether the program's computed answer matches the contract's (spec §3). The check layer
-    (``checks.py``) uses ``ground_answer``/``binding_set`` directly to build a diagnostic; this is
-    the boolean convenience."""
+    (``checks.py``) uses ``singleton_answer``/``conjunctive_answer``/``binding_set`` directly to
+    build a diagnostic; this is the boolean convenience over the same evaluators. ``models`` (the
+    answer-set census) is required for a conjunctive ground query, ``brave`` for an unknown binding.
+    """
     match query:
+        case GroundQuery(answer, conjuncts) if len(conjuncts) == 1:
+            return singleton_answer(conjuncts[0], cautious) is answer
         case GroundQuery(answer, conjuncts):
-            return ground_answer(conjuncts, intersection) is answer
+            if models is None:
+                raise ValueError("a conjunctive ground query needs the model census")
+            return conjunctive_answer(conjuncts, models) is answer
         case BindingQuery(answer, goal, bindings):
-            return binding_set(goal, answer, intersection, union) == set(bindings)
+            return binding_set(goal, answer, cautious, brave) == set(bindings)
         case _:
             assert_never(query)

@@ -8,9 +8,10 @@ from elenctic.query import (
     QueryLiteral,
     Var,
     binding_set,
+    conjunctive_answer,
     contrary_literal,
-    ground_answer,
     satisfied,
+    singleton_answer,
     unify,
 )
 
@@ -62,27 +63,50 @@ def test_contrary_literal_flips_sign() -> None:
 
 
 @pytest.mark.parametrize(
-    ("conjuncts", "intersection", "expected"),
+    ("literal", "cautious", "expected"),
     [
-        pytest.param(("start(s)",), ("start(s)", "-reachable(x)"), Answer.yes, id="entailed"),
+        pytest.param("start(s)", ("start(s)", "-reachable(x)"), Answer.yes, id="entailed"),
+        pytest.param("reachable(x)", ("start(s)", "-reachable(x)"), Answer.no, id="contrary"),
+        pytest.param("reachable(y)", ("start(s)", "-reachable(x)"), Answer.unknown, id="neither"),
+    ],
+)
+def test_singleton_answer(literal: str, cautious: tuple[str, ...], expected: Answer) -> None:
+    assert singleton_answer(parse_term(literal), atoms(*cautious)) is expected
+
+
+def models(*sets: tuple[str, ...]) -> tuple[frozenset[Symbol], ...]:
+    return tuple(atoms(*s) for s in sets)
+
+
+@pytest.mark.parametrize(
+    ("conjuncts", "census", "expected"),
+    [
+        # true in all answer sets → yes
+        pytest.param(("a", "b"), (("a", "b"), ("a", "b", "c")), Answer.yes, id="true-in-all"),
+        # THE BUG FIX: every model falsifies *some* conjunct (a different one each) → no.
+        # Old ∃i:l̄i∈⋂ gave unknown; corrected ∀M∃i:l̄i∈M gives no.
         pytest.param(
-            ("reachable(x)",), ("start(s)", "-reachable(x)"), Answer.no, id="contrary-entailed"
+            ("p(a)", "p(b)"),
+            (("p(a)", "-p(b)"), ("-p(a)", "p(b)")),
+            Answer.no,
+            id="false-in-all-varying-conjunct",
         ),
-        pytest.param(
-            ("reachable(y)",), ("start(s)", "-reachable(x)"), Answer.unknown, id="neither"
-        ),
+        # one model leaves a conjunct merely unknown (not strongly false) → unknown (strong-Kleene)
+        pytest.param(("a", "b"), (("a",), ("a", "b")), Answer.unknown, id="strong-kleene-unknown"),
+        # overlap case (a conjunct's contrary in ⋂) still no — subset of ∀M∃i
         pytest.param(
             ("start(s)", "reachable(x)"),
-            ("start(s)", "-reachable(x)"),
+            (("start(s)", "-reachable(x)"),),
             Answer.no,
-            id="per-conjunct-no",
+            id="contrary-in-every-model",
         ),
     ],
 )
-def test_ground_answer(
-    conjuncts: tuple[str, ...], intersection: tuple[str, ...], expected: Answer
+def test_conjunctive_answer(
+    conjuncts: tuple[str, ...], census: tuple[tuple[str, ...], ...], expected: Answer
 ) -> None:
-    assert ground_answer(tuple(parse_term(c) for c in conjuncts), atoms(*intersection)) is expected
+    actual = conjunctive_answer(tuple(parse_term(c) for c in conjuncts), models(*census))
+    assert actual is expected
 
 
 def test_binding_set_yes_reads_intersection() -> None:
@@ -124,10 +148,17 @@ def test_binding_set_repeated_variable_one_column() -> None:
     assert binding_set(goal, Answer.yes, inter, None) == {(parse_term("a"),)}
 
 
-def test_satisfied_ground_query() -> None:
+def test_satisfied_singleton_ground_query() -> None:
     yes = GroundQuery(Answer.yes, (parse_term("start(s)"),))
-    assert satisfied(yes, atoms("start(s)"), None) is True
-    assert satisfied(yes, atoms("end(t)"), None) is False
+    assert satisfied(yes, atoms("start(s)"), None, None) is True
+    assert satisfied(yes, atoms("end(t)"), None, None) is False
+
+
+def test_satisfied_conjunctive_ground_query_uses_census() -> None:
+    pa, pb = parse_term("p(a)"), parse_term("p(b)")
+    no = GroundQuery(Answer.no, (pa, pb))
+    census = models(("p(a)", "-p(b)"), ("-p(a)", "p(b)"))  # false in all → no
+    assert satisfied(no, frozenset(), None, census) is True
 
 
 def test_satisfied_binding_query() -> None:
@@ -136,5 +167,5 @@ def test_satisfied_binding_query() -> None:
         QueryLiteral("reachable", True, (Var("X"),)),
         frozenset({(parse_term("s"),), (parse_term("a"),), (parse_term("t"),)}),
     )
-    assert satisfied(bq, atoms("reachable(s)", "reachable(a)", "reachable(t)"), None) is True
-    assert satisfied(bq, atoms("reachable(s)"), None) is False
+    assert satisfied(bq, atoms("reachable(s)", "reachable(a)", "reachable(t)"), None, None) is True
+    assert satisfied(bq, atoms("reachable(s)"), None, None) is False
