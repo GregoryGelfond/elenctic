@@ -15,6 +15,9 @@ dependencies = ["clingo>=5.8"]  # honest runtime dep; clingo is on conda-forge A
 [project.optional-dependencies]
 theory = ["clingcon>=5.2.1"]  # the theory fragment (@assign, CSP @count); conda-forge-primary
 
+[project.scripts]
+elenctic = "elenctic.cli:main"  # the standalone corpus runner (`elenctic <encodings> [cases]`)
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/elenctic"]
 
@@ -29,6 +32,11 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # We deliberately use mathematical Unicode (⋂ ⋃ ⊆ ⊇ → ≤ ∅ ∈ …) as KR notation in
 # comments and docstrings; the ambiguous-Unicode (homoglyph) rules would flag it.
 ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# The package __init__ re-exports the curated API for static visibility (a TYPE_CHECKING block
+# feeding the PEP 562 lazy resolver); those imports are intentional re-exports, not dead code.
+"__init__.py" = ["F401"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --strict-markers --strict-config"

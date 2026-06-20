@@ -287,3 +287,25 @@ def _rewrite_program(control: Control, theory: Any, program: str, files: tuple[P
             parse_string(program, add)
         for path in files:
             parse_string(path.read_text(encoding="utf-8"), add)
+
+
+def _main() -> None:
+    """Inspect a solve: run a ``.lp`` file under a named ``Mode`` with clingo, print the
+    ``Determination``."""
+    import sys
+
+    if len(sys.argv) != 3:
+        print("usage: python -m elenctic.solvers <MODE> <file.lp>", file=sys.stderr)
+        print(f"  MODE one of: {', '.join(mode.name for mode in Mode)}", file=sys.stderr)
+        raise SystemExit(2)
+    try:
+        mode = Mode[sys.argv[1]]
+    except KeyError:
+        known = ", ".join(mode.name for mode in Mode)
+        print(f"unknown mode {sys.argv[1]!r}; one of: {known}", file=sys.stderr)
+        raise SystemExit(2) from None
+    print(run_clingo(mode, files=(Path(sys.argv[2]),)))
+
+
+if __name__ == "__main__":
+    _main()

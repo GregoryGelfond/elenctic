@@ -458,3 +458,19 @@ def _location(source: str | None, line: int) -> str:
 def _fail_contract(source: str | None, message: str) -> NoReturn:
     """Raise a contract-level ``ContractError`` (whole-contract inconsistency, no single line)."""
     raise ContractError(f"{source}: {message}" if source is not None else message)
+
+
+def _main() -> None:
+    """Inspect a contract: parse a ``.lp`` file's ``@``-annotations, print the ``Expectation``."""
+    import sys
+    from pathlib import Path
+
+    if len(sys.argv) != 2:
+        print("usage: python -m elenctic.expectation <file.lp>", file=sys.stderr)
+        raise SystemExit(2)
+    path = Path(sys.argv[1])
+    print(parse(path.read_text(encoding="utf-8"), source=str(path)))
+
+
+if __name__ == "__main__":
+    _main()

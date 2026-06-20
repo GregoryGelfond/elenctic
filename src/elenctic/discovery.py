@@ -332,3 +332,21 @@ def _goal_contrary_name(goal: QueryLiteral) -> str:
     """The sign-aware name of a binding goal's *contrary* literal (§2.2 rule 4): ``-q`` for ``q``,
     ``q`` for ``-q`` — the dual of :func:`_signed_name` for a (non-ground) goal."""
     return f"-{goal.name}" if goal.positive else goal.name
+
+
+def _main() -> None:
+    """Inspect discovery: walk an ``encodings`` (and optional ``cases``) root and list the cases."""
+    import sys
+
+    if not 2 <= len(sys.argv) <= 3:
+        print("usage: python -m elenctic.discovery <encodings_root> [cases_root]", file=sys.stderr)
+        raise SystemExit(2)
+    encodings = Path(sys.argv[1])
+    cases = Path(sys.argv[2]) if len(sys.argv) == 3 else encodings / "_none"
+    for case in discover(Layout(encodings_root=encodings, cases_root=cases)):
+        instance = case.instance.name if case.instance is not None else "(self-contained)"
+        print(f"{case.contract_source} [{case.solver}] {instance}")
+
+
+if __name__ == "__main__":
+    _main()

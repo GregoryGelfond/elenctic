@@ -212,3 +212,27 @@ def _query_mode(query: Query) -> Mode:
             return Mode.ENUM_ALL
         case _:
             assert_never(form)
+
+
+def _main() -> None:
+    """Inspect the run plan (the dry-run): parse a ``.lp`` file and print the runs it derives — each
+    ``Mode`` with its checks, the ``reads``/``populates`` routing made legible before any solve."""
+    import sys
+    from pathlib import Path
+
+    from elenctic.expectation import parse
+
+    if len(sys.argv) != 2:
+        print("usage: python -m elenctic.run <file.lp>", file=sys.stderr)
+        raise SystemExit(2)
+    path = Path(sys.argv[1])
+    for run in runs_for(parse(path.read_text(encoding="utf-8"), source=str(path))):
+        checks = ", ".join(
+            f"{check.label} ({check.subject})" if check.subject else check.label
+            for check in run.checks
+        )
+        print(f"{run.mode.name}: {checks}")
+
+
+if __name__ == "__main__":
+    _main()
