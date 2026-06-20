@@ -66,6 +66,38 @@ class Sat:
     queries: tuple[Query, ...] = ()
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
 
+    @property
+    def has_optimal_base(self) -> bool:
+        """Whether any *optimal*-base tag is present — ``@optimal`` (= ``@model optimal``),
+        ``@cautious optimal``, ``@brave optimal``, ``@count optimal`` — the modes that share the one
+        ``OPTIMAL_ENUM`` enumeration of ``Opt(P)`` (spec §3). The single home for optimal-base
+        membership: ``run`` routes ``@cost``'s shared solve on it, and :attr:`requires_optimization`
+        reads it (the keystone amendment — lift the relation into the visible language, not two
+        copy-pasted disjunctions)."""
+        return (
+            self.optimal_model is not None
+            or bool(self.cautious_optimal)
+            or bool(self.brave_optimal)
+            or self.count_optimal is not None
+        )
+
+    @property
+    def requires_optimization(self) -> bool:
+        """Whether this contract presupposes an optimizing encoding (§2.2 rule 4): any optimal-base
+        tag (:attr:`has_optimal_base`) or bare ``@cost``. Discovery (§5) checks it against
+        ``#minimize``/``#maximize``/``:~``. Wider than :attr:`has_optimal_base` by exactly bare
+        ``@cost`` — which presupposes optimization but rides the cheap ``OPTIMAL`` solve, not the
+        shared ``OPTIMAL_ENUM``, so ``run`` routes on ``has_optimal_base`` while discovery gates on
+        this."""
+        return self.cost is not None or self.has_optimal_base
+
+    @property
+    def requires_theory(self) -> bool:
+        """Whether this contract presupposes a *theory* solver (§2.2 rule 4): ``@assign`` reads the
+        theory half of the observable (§2.0), so the encoding must run under clingcon. The
+        precondition discovery (§5) checks against the case's solver."""
+        return bool(self.assign)
+
 
 type Expectation = Unsat | Sat
 

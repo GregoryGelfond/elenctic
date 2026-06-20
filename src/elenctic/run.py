@@ -182,7 +182,9 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
     if exp.count_optimal is not None:
         add(Mode.OPTIMAL_ENUM, checks.count_optimal_is(exp.count_optimal))
     if exp.cost is not None:
-        add(Mode.OPTIMAL_ENUM if _has_optimal_base(exp) else Mode.OPTIMAL, checks.cost_is(exp.cost))
+        # @cost rides the shared Opt(P) enumeration when an optimal-base mode is present, else a
+        # cheap single-optimum solve (spec §3). Optimal-base membership lives on Sat (one home).
+        add(Mode.OPTIMAL_ENUM if exp.has_optimal_base else Mode.OPTIMAL, checks.cost_is(exp.cost))
 
     for query in exp.queries:
         add(_query_mode(query), checks.query_matches(query))
@@ -194,17 +196,6 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
     add(Mode.ENUM_ALL if Mode.ENUM_ALL in bucket else Mode.DEFAULT, checks.expect_sat())
 
     return tuple(Run(mode, tuple(carried)) for mode, carried in bucket.items())
-
-
-def _has_optimal_base(exp: Sat) -> bool:
-    """Whether any optimal-base mode is present, so @cost rides the shared ``OPTIMAL_ENUM``
-    enumeration of Opt(P) rather than a cheap single-optimum ``OPTIMAL`` solve (spec §3)."""
-    return (
-        exp.optimal_model is not None
-        or bool(exp.cautious_optimal)
-        or bool(exp.brave_optimal)
-        or exp.count_optimal is not None
-    )
 
 
 def _query_mode(query: Query) -> Mode:

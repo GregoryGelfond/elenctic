@@ -144,3 +144,50 @@ def test_unsat_error_names_the_offending_model_bearing_tags() -> None:
     # The diagnostic points at the mistake: it names which model-bearing tags conflict with unsat.
     with pytest.raises(ContractError, match=r"@model.*@brave|@brave.*@model"):
         parse("% @expect unsat\n% @model { a }\n% @brave { b }\n")
+
+
+# --- §2.2 rule-4 precondition classification (Sat.requires_optimization / requires_theory) ---
+# Which encoding capability a contract presupposes. The contract states its precondition here;
+# discovery (§5) checks it against the encoding (`#minimize`/`#maximize`, clingcon). A different
+# predicate from run._has_optimal_base, which excludes bare @cost (it routes @cost's shared solve).
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("% @expect sat\n% @cost { 8 }\n", id="cost"),
+        pytest.param("% @expect sat\n% @optimal { a }\n", id="optimal-witness"),
+        pytest.param("% @expect sat\n% @cautious optimal { a }\n", id="cautious-optimal"),
+        pytest.param("% @expect sat\n% @brave optimal { a }\n", id="brave-optimal"),
+        pytest.param("% @expect sat\n% @count optimal 1\n", id="count-optimal"),
+    ],
+)
+def test_requires_optimization_true_for_cost_and_every_optimal_base_tag(text: str) -> None:
+    exp = parse(text)
+    assert isinstance(exp, Sat)
+    assert exp.requires_optimization
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("% @expect sat\n% @model { a }\n", id="all-base-model"),
+        pytest.param("% @expect sat\n% @cautious { a }\n", id="all-base-cautious"),
+        pytest.param("% @expect sat\n% @brave { a }\n", id="all-base-brave"),
+        pytest.param("% @expect sat\n% @count 2\n", id="all-base-count"),
+        pytest.param("% @expect sat\n% @query yes { a }\n", id="query"),
+        pytest.param("% @expect sat\n% @assign { v=1 }\n", id="assign"),
+    ],
+)
+def test_requires_optimization_false_without_an_optimal_tag(text: str) -> None:
+    exp = parse(text)
+    assert isinstance(exp, Sat)
+    assert not exp.requires_optimization
+
+
+def test_requires_theory_true_iff_assign_present() -> None:
+    with_assign = parse("% @expect sat\n% @assign { digit(s)=9 }\n")
+    without = parse("% @expect sat\n% @model { a }\n")
+    assert isinstance(with_assign, Sat) and isinstance(without, Sat)
+    assert with_assign.requires_theory
+    assert not without.requires_theory
