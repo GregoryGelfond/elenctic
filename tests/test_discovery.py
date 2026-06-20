@@ -234,11 +234,10 @@ def test_optimization_precondition_requires_minimize(tmp_path: Path, contract: s
     "encoding_body",
     [
         pytest.param("#minimize { 1,a : a }.\n", id="minimize"),
-        pytest.param("#maximize { 1,a : a }.\n", id="maximize"),
         pytest.param(":~ a. [1@1]\n", id="weak-constraint"),
     ],
 )
-def test_optimization_precondition_satisfied_by_an_optimizing_construct(
+def test_cost_precondition_satisfied_by_a_minimizing_construct(
     tmp_path: Path, encoding_body: str
 ) -> None:
     write(tmp_path / "encodings/x/e.lp", f"#show a/0.\n{encoding_body}")
@@ -246,6 +245,23 @@ def test_optimization_precondition_satisfied_by_an_optimizing_construct(
     (case,) = discover(make_layout(tmp_path))
     assert isinstance(case.expectation, Sat)
     assert case.expectation.cost == (1,)
+
+
+def test_optimal_base_precondition_satisfied_by_maximize(tmp_path: Path) -> None:
+    # The optimal-base tags are sign-agnostic, so #maximize satisfies their optimization gate.
+    write(tmp_path / "encodings/x/e.lp", "#show a/0.\n#maximize { 1,a : a }.\n")
+    write(tmp_path / "tests/cases/x/i.lp", "% @expect sat\n% @count optimal 1\n")
+    (case,) = discover(make_layout(tmp_path))
+    assert isinstance(case.expectation, Sat)
+
+
+def test_cost_over_maximize_is_rejected_loud(tmp_path: Path) -> None:
+    # @cost states the natural value (§2.0) but clingo reports a #maximize cost negated; v1 defers
+    # sign-normalisation, so discovery rejects @cost-over-#maximize loudly (never a silent miscost).
+    write(tmp_path / "encodings/x/e.lp", "#show a/0.\n#maximize { 1,a : a }.\n")
+    write(tmp_path / "tests/cases/x/i.lp", "% @expect sat\n% @cost { 1 }\n")
+    with pytest.raises(DiscoveryError, match=r"#maximize|negated|not supported"):
+        discover(make_layout(tmp_path))
 
 
 @pytest.mark.parametrize(

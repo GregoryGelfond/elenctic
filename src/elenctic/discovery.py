@@ -50,6 +50,10 @@ _SHOW = re.compile(r"^\s*#show\s+(?P<name>-?[a-z_][A-Za-z0-9_']*)\s*(?:/\s*\d+|\
 # An optimizing construct: a #minimize/#maximize directive, or a :~ weak constraint (§2.2 rule 4).
 _OPTIMIZE = re.compile(r"#(?:minimize|maximize)\b|:~")
 
+# A #maximize objective: clingo reports its cost in negated minimize-internal form, so v1 cannot
+# present @cost's natural value over it (sign-normalisation deferred); discovery rejects it loud.
+_MAXIMIZE = re.compile(r"#maximize\b")
+
 # A variant subdirectory (`variant-03`), the structural flatness signal (spec §5).
 _DEFAULT_VARIANT_DIR = re.compile(r"variant-\d+")
 
@@ -267,6 +271,16 @@ def _check_preconditions(
         raise DiscoveryError(
             f"{where}: @cost/@optimal/an optimal-base tag needs an optimizing encoding "
             "(#minimize/#maximize/:~), but the encoding has none (spec §2.2 rule 4)"
+        )
+    if expectation.cost is not None and _MAXIMIZE.search(encoding_code):
+        # @cost states the objective's *natural* value (§2.0), but clingo reports a #maximize cost
+        # negated; v1 defers sign-normalisation, so reject loudly rather than emit a wrong @cost
+        # verdict. The optimal-class tags (@optimal/@cautious optimal/@count optimal) are sign-
+        # agnostic and stay allowed (the §9.1 spike: the min-cost slice does not read the sign).
+        raise DiscoveryError(
+            f"{where}: @cost over a #maximize objective is not supported in v1 — clingo reports a "
+            "maximize cost in negated form, and natural-value normalisation is deferred (ledger). "
+            "Use #minimize, or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
         )
     if expectation.requires_theory and solver != "clingcon":
         raise DiscoveryError(

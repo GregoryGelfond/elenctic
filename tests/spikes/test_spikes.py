@@ -161,3 +161,48 @@ def test_clingcon_csp_assignment_recoverable_and_multiplicity_observed() -> None
     assert all("x" in a for a in assignments), "CSP variable x not recoverable"
     assert {a["x"] for a in assignments} == {1, 2, 3}
     assert len(assignments) == 3
+
+
+def _clingcon_rows(program: str, args: list[str]) -> list[tuple[tuple[int, ...], dict[str, int]]]:
+    """Run a clingcon program, returning (cost, assignment) per model — shared by the spikes."""
+    import clingcon
+    from clingo.ast import ProgramBuilder, parse_string
+
+    thy = clingcon.ClingconTheory()
+    ctl = Control(args)
+    thy.register(ctl)
+    with ProgramBuilder(ctl) as bld:
+        parse_string(program, lambda ast: thy.rewrite_ast(ast, bld.add))
+    ctl.ground([("base", [])])
+    thy.prepare(ctl)
+    rows: list[tuple[tuple[int, ...], dict[str, int]]] = []
+
+    def on_model(model: Model) -> None:
+        thy.on_model(model)
+        rows.append((tuple(model.cost), {str(s): v for s, v in thy.assignment(model.thread_id)}))
+
+    ctl.solve(on_model=on_model)
+    return rows
+
+
+@pytest.mark.spike
+def test_clingcon_compound_term_assignment_is_recoverable() -> None:
+    # §9 strengthening (BLOCKER): the §9.3 spike probed only a 0-ary `&dom = x`; the send-money
+    # case needs a COMPOUND term `digit(s)`. Confirm a compound CSP variable's assignment is
+    # recovered, and that with `#show.` the answer lives entirely in the assignment (§6.3).
+    pytest.importorskip("clingcon")
+    rows = _clingcon_rows("&dom {0..9} = digit(s). &sum { digit(s) } = 9. #show.", ["--models=0"])
+    assert len(rows) == 1
+    _, assignment = rows[0]
+    assert assignment == {"digit(s)": 9}
+
+
+@pytest.mark.spike
+def test_clingcon_supports_clingo_minimize_optimization() -> None:
+    # §9 strengthening (BLOCKER): clingcon × optimization was unconfirmed. Confirm clingo's
+    # #minimize over regular ASP atoms works UNDER clingcon (the facade reads model.cost the same
+    # way for both backends). Theory-native &minimize stays out of v1 scope (RR6b), unrelated.
+    pytest.importorskip("clingcon")
+    program = "1 {a; b} 1. #minimize { 2,a : a; 1,b : b }. #show a/0."
+    rows = _clingcon_rows(program, ["--opt-mode=opt"])
+    assert min(cost for cost, _ in rows) == (1,)  # picks b (cost 1) over a (cost 2)
