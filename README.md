@@ -20,6 +20,18 @@ itself, and elenctic checks it. The contract language is **language-neutral**: i
 program's *observable behaviour* (its shown atoms and theory output), not any solver's internals.
 This package is its **reference implementation**, over the clingo / clingcon Python API.
 
+## The name
+
+*Elenctic* (from Greek ἔλεγχος, *elenchos*, via the adjective ἐλεγκτικός) means "serving to refute,
+by cross-examination" — the **Socratic elenchus**, the method of testing a claim by questioning it
+until it survives or is shown false. A test harness does exactly that: it cross-examines a program
+against a claimed expectation (the contract) and reports the result.
+
+The fit reaches the design. The contract is a *thesis* about the program; a `FAIL` is a refutation —
+the program entails the contrary of what was claimed; and an `UNDECIDED` is Socratic *aporia*, the
+honest "we cannot say," never collapsed into a false "no." The three-valued verdict is the elenchus'
+own register: a claim upheld, refuted, or left open.
+
 ## A first example
 
 Put a program and its contract in one `.lp` file:
