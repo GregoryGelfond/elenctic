@@ -62,7 +62,7 @@ class Sat:
     count: int | None = None
     count_optimal: int | None = None
     cost: tuple[int, ...] | None = None
-    assign: frozenset[tuple[Symbol, int]] | None = None
+    assign: frozenset[tuple[Symbol, int]] = frozenset()
     queries: tuple[Query, ...] = ()
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
 
@@ -166,7 +166,7 @@ class _Builder:
     count: int | None = None
     count_optimal: int | None = None
     cost: tuple[int, ...] | None = None
-    assign: frozenset[tuple[Symbol, int]] | None = None
+    assign: frozenset[tuple[Symbol, int]] = frozenset()
     queries: list[Query] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -220,7 +220,7 @@ def _apply(block: _Block, builder: _Builder) -> None:
                 raise ValueError("at most one @cost per contract")
             builder.cost = _cost_vector(rest)
         case "assign":
-            if builder.assign is not None:
+            if builder.assign:
                 raise ValueError("at most one @assign per contract")
             builder.assign = _assign_body(rest)
         case "query":
@@ -408,7 +408,7 @@ def _model_bearing_tags(builder: _Builder) -> list[str]:
         present.append("@brave optimal")
     if builder.cost is not None:
         present.append("@cost")
-    if builder.assign is not None:
+    if builder.assign:
         present.append("@assign")
     if builder.queries:
         present.append("@query")

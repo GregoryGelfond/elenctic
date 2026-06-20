@@ -115,7 +115,7 @@ def test_parsed_assign_is_never_empty(bindings: list[tuple[str, int]]) -> None:
     body = ", ".join(f"{atom}={value}" for atom, value in bindings)
     exp = parse(f"% @expect sat\n% @assign {{ {body} }}\n")
     assert isinstance(exp, Sat)
-    assert exp.assign is not None and len(exp.assign) > 0
+    assert len(exp.assign) > 0  # a present @assign is non-empty (empty == absent, like cautious)
 
 
 @given(st.lists(_terms(), min_size=1, max_size=3), _IDENT)

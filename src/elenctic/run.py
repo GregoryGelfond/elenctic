@@ -24,9 +24,10 @@ from elenctic.result import Field, HarnessError
 
 
 class Mode(Enum):
-    """One solve configuration of the fixed run-configuration taxonomy (spec §3). ``args`` is the
-    solver-agnostic lowering for ``solvers.py`` (``--project`` is the clingo facade's business,
-    §6.1, never added here); the explain/dry-run surface names the mode itself."""
+    """One solve configuration of the fixed run-configuration taxonomy (spec §3). The taxonomy is
+    solver-agnostic; ``args`` is its **clingo** lowering (the search-config flags this mode runs
+    as). The facade adds output flags such as ``--project`` (§6.1); the explain surface names the
+    mode itself, which another backend would lower differently."""
 
     DEFAULT = "default"
     ENUM_ALL = "enum-all"
@@ -37,7 +38,8 @@ class Mode(Enum):
 
     @property
     def args(self) -> tuple[str, ...]:
-        """The canonical, solver-agnostic arg tuple this mode lowers to (spec §3)."""
+        """The clingo arg tuple this mode lowers to — its search-config flags (spec §3); another
+        backend would lower the same mode differently."""
         return _ARGS[self]
 
 
@@ -92,10 +94,12 @@ class Run:
         for check in self.checks:
             missing = check.reads - provided
             if missing:
-                names = ", ".join(field.value for field in missing)
+                want = ", ".join(sorted(field.value for field in missing))
+                have = ", ".join(sorted(field.value for field in provided))
                 raise RoutingError(
-                    f"{check.label} reads {{{names}}}, which {self.mode.name} does not populate "
-                    "— the reads ⊆ populates wiring rule is violated"
+                    f"{check.label} reads {{{want}}}, which {self.mode.name} populates only "
+                    f"{{{have}}} — the reads ⊆ populates wiring rule is violated "
+                    "(an elenctic bug, not a verdict)"
                 )
 
 
@@ -123,12 +127,17 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
     def add(mode: Mode, check: Check) -> None:
         bucket.setdefault(mode, []).append(check)
 
+    # ``is not None`` for the Optional cells (absent vs present — @count 0 is a *present* unsat
+    # claim, not absence); truthy for the containment tags, where ∅ is a vacuous claim their
+    # builders reject (so empty == absent), keeping them consistent with cautious/brave.
     if exp.model is not None:
         add(Mode.ENUM_ALL, checks.has_model(exp.model))
     if exp.count is not None:
         add(Mode.ENUM_ALL, checks.count_is(exp.count))
-    if exp.assign is not None:
+    if exp.assign:
         add(Mode.ENUM_ALL, checks.assign_contains(exp.assign))
+    # cautious and brave run as two native consequence solves, not one ENUM_ALL census: clingo's
+    # --enum-mode=cautious/brave compute ⋂/⋃ directly, avoiding a full (possibly exponential) enum.
     if exp.cautious:
         add(Mode.CAUTIOUS_ALL, checks.cautious_contains(exp.cautious))
     if exp.brave:
@@ -146,7 +155,7 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
         add(Mode.OPT_ENUM if _has_optimal_base(exp) else Mode.OPT, checks.cost_is(exp.cost))
 
     for query in exp.queries:
-        add(_query_config(query), checks.query_matches(query))
+        add(_query_mode(query), checks.query_matches(query))
 
     # @expect sat reads ∅ (the arm is the answer), so it could ride any run; it rides an existing
     # full enumeration when one exists, else a cheap DEFAULT 1-model solve — deliberately not an
@@ -168,16 +177,17 @@ def _has_optimal_base(exp: Sat) -> bool:
     )
 
 
-def _query_config(query: Query) -> Mode:
-    """The run a ``@query`` rides (corrected Def 2.2.2). A *conjunctive* ground query needs the
-    census (its "no" is ``∀M ∃i: l̄i∈M``, not a ⋂ property), so it rides ``ENUM_ALL``; a *singleton*
-    ground query and a yes/no binding read ⋂ (``CAUTIOUS_ALL``); an ``unknown`` binding needs ⋃ too,
-    so it rides one full ``ENUM_ALL`` enumeration that yields both ⋂ and ⋃ (spec §3 / §2.4)."""
+def _query_mode(query: Query) -> Mode:
+    """The run a ``@query`` rides (corrected Def 2.2.2), mirroring ``checks.query_matches``'s arms.
+    A *singleton* ground query and a yes/no binding read ⋂ (``CAUTIOUS_ALL``); a *conjunctive*
+    ground query needs the census (its "no" is ``∀M ∃i: l̄i∈M``, not a ⋂ property), so it rides
+    ``ENUM_ALL``; an ``unknown`` binding needs ⋃ too, so it also rides ``ENUM_ALL`` (both ⋂ and ⋃,
+    spec §3 / §2.4)."""
     match query:
-        case GroundQuery(_, conjuncts) if len(conjuncts) > 1:
-            return Mode.ENUM_ALL
-        case GroundQuery():
+        case GroundQuery(_, conjuncts) if len(conjuncts) == 1:
             return Mode.CAUTIOUS_ALL
+        case GroundQuery():
+            return Mode.ENUM_ALL
         case BindingQuery(answer=Answer.unknown):
             return Mode.ENUM_ALL
         case BindingQuery():

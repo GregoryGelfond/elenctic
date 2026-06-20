@@ -50,8 +50,16 @@ def test_mode_lowers_to_its_solver_args() -> None:
     assert Mode.DEFAULT.args == ()
     assert Mode.ENUM_ALL.args == ("--models=0",)
     assert Mode.CAUTIOUS_ALL.args == ("--enum-mode=cautious", "--models=0")
+    assert Mode.BRAVE_ALL.args == ("--enum-mode=brave", "--models=0")
     assert Mode.OPT_ENUM.args == ("--opt-mode=optN", "--models=0")
     assert Mode.OPT.args == ("--opt-mode=opt",)
+
+
+def test_args_and_populates_are_total_over_mode() -> None:
+    # a Mode added without an _ARGS/_POPULATES entry KeyErrors here (the RoutingError scenario)
+    for mode in Mode:
+        assert isinstance(mode.args, tuple)
+        assert isinstance(populates(mode), frozenset)
 
 
 def test_populates_maps_each_mode() -> None:
@@ -68,14 +76,24 @@ def test_populates_maps_each_mode() -> None:
 
 def test_run_rejects_a_misrouted_check_at_construction() -> None:
     # @count reads OBSERVABLES; CAUTIOUS_ALL does not populate it — rejected before any solve, as a
-    # RoutingError (a harness bug), never a verdict.
-    with pytest.raises(RoutingError, match="observables"):
+    # RoutingError (a harness bug), never a verdict; the message names the field, check, and mode.
+    with pytest.raises(RoutingError) as exc:
         Run(Mode.CAUTIOUS_ALL, (checks.count_is(2),))
+    message = str(exc.value)
+    assert "observables" in message  # the missing field
+    assert "@count" in message  # the offending check
+    assert "CAUTIOUS_ALL" in message  # the mode
 
 
 def test_run_accepts_a_well_routed_check() -> None:
     run = Run(Mode.CAUTIOUS_ALL, (checks.cautious_contains(frozenset({Function("a")})),))
     assert labels(run) == {"@cautious"}
+
+
+def test_run_equality_is_by_identity() -> None:
+    one = Run(Mode.DEFAULT, (checks.expect_unsat(),))
+    assert one == one
+    assert one != Run(Mode.DEFAULT, (checks.expect_unsat(),))  # eq=False: distinct objects
 
 
 # --- the core routing: each model-bearing tag rides its taxonomy cell ---
@@ -268,6 +286,9 @@ _BIND_YES = BindingQuery(
 _BIND_UNKNOWN = BindingQuery(
     Answer.unknown, QueryLiteral("p", True, (Var("X"),)), frozenset({(Function("a"),)})
 )
+_BIND_NO = BindingQuery(
+    Answer.no, QueryLiteral("p", True, (Var("X"),)), frozenset({(Function("a"),)})
+)
 _LIT = frozenset({Function("a")})
 
 
@@ -277,7 +298,7 @@ def _sats(draw: st.DrawFn) -> Sat:
     well-formedness is ``parse``'s concern, not runs_for's)."""
     optional_lit = st.sampled_from([_LIT, frozenset()])
     queries: st.SearchStrategy[Query] = st.sampled_from(
-        [_GROUND, _GROUND_CONJ, _BIND_YES, _BIND_UNKNOWN]
+        [_GROUND, _GROUND_CONJ, _BIND_YES, _BIND_NO, _BIND_UNKNOWN]
     )
     return Sat(
         model=draw(st.sampled_from([_LIT, None])),
@@ -289,7 +310,7 @@ def _sats(draw: st.DrawFn) -> Sat:
         count=draw(st.sampled_from([2, None])),
         count_optimal=draw(st.sampled_from([1, None])),
         cost=draw(st.sampled_from([(8,), None])),
-        assign=draw(st.sampled_from([frozenset({(Function("x"), 1)}), None])),
+        assign=draw(st.sampled_from([frozenset({(Function("x"), 1)}), frozenset()])),
         queries=tuple(draw(st.lists(queries, max_size=3))),
     )
 

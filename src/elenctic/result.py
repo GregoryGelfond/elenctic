@@ -76,7 +76,8 @@ class Verdict(Enum):
 
 class Field(Enum):
     """A gated observation a ``Consistent`` outcome can provide — the wiring-rule vocabulary
-    (``Check.reads`` ⊆ ``run.populates(mode)``). Six capabilities, one per readable field; the
+    (``Check.reads`` ⊆ ``populates(mode)``, the wiring rule in ``run.py``). Six capabilities, one
+    per readable field; the
     explain/dry-run surface narrates these, so they stay user-legible."""
 
     WITNESS = "witness"
