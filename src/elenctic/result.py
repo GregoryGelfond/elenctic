@@ -2,20 +2,48 @@
 
 A solved program yields a :data:`Determination` — aspis's three-arm outcome surface
 (``~/Projects/aspis/docs/spec.md §5``): :class:`Inconsistent` (AS(P)=∅), :class:`Inconclusive`
-(the solve was cut off), or one of the :class:`Consistent` family. Under depth D each ``Consistent``
-shape carries *exactly* the observations its run-mode computes, so a field's absence is a type fact,
-not a sentinel — there is no ``NotConfigured`` and no per-field guard (the field-compatibility
-keystone). A check reads a field through one accessor (``*_of``); the single centralised
-``_seam_violation`` is the one provably-unreachable narrowing assertion (the wiring rule in
-``run.py`` makes it unreachable through the supported path). Checks (``checks.py``) are pure
+(the solve was cut off), or one of the :class:`Consistent` family. Each ``Consistent`` shape carries
+*exactly* the observations its run-mode computes, so a field's absence is a type fact, not a
+sentinel — there is no ``NotConfigured`` and no per-field guard.
+
+A check reads a field through one accessor (``*_of``); the single centralised ``_seam_violation`` is
+the one narrowing assertion, unreachable through the supported path on **two** premises: (1) the
+``reads ⊆ populates`` wiring rule (``run.py``) attaches a check only to a run whose mode populates
+what it reads, and (2) the lowering postcondition — ``solvers.py`` produces, for a run of mode M,
+exactly the ``Consistent`` shape whose fields are ``populates(M)``. Checks (``checks.py``) are pure
 functions of a ``Determination``; only ``solvers.py`` constructs one.
 """
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import NoReturn
+from typing import NoReturn, final
 
 from clingo import Symbol
+
+__all__ = [
+    "Consistent",
+    "ConsistentBrave",
+    "ConsistentCautious",
+    "ConsistentEnumeration",
+    "ConsistentOptimalEnumeration",
+    "ConsistentOptimum",
+    "ConsistentWitness",
+    "Determination",
+    "Field",
+    "HarnessError",
+    "Inconclusive",
+    "Inconsistent",
+    "Observable",
+    "Optimum",
+    "SeamError",
+    "Verdict",
+    "brave_of",
+    "cautious_of",
+    "observables_of",
+    "optimal_observables_of",
+    "optimum_of",
+    "witness_of",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,12 +87,20 @@ class Field(Enum):
 
 @dataclass(frozen=True, slots=True)
 class Optimum:
-    """A proof-token of proven optimality (aspis register, §5). Constructed only by the solver
-    facade once the optimum is *proven*, so holding one is the proof — a best-so-far cannot
-    masquerade. ``cost`` is the priority-ordered (lexicographic) cost vector, compared positionally
-    (spec §2.0); never a scalar."""
+    """The proven optimum of an optimisation run (aspis register, §5). ``cost`` is the
+    priority-ordered (lexicographic) cost vector, compared positionally (spec §2.0), never a scalar.
+
+    Read it as a proof-token of *proven* optimality: by construction convention only ``solvers.py``
+    builds one, and only once the optimum is proven, so a best-so-far never reaches a check. Python
+    has no private constructor (as aspis's Rust does), so this is a construction convention, not a
+    type guarantee — sound because checks are pure readers that never mint a result.
+    """
 
     cost: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if not self.cost:
+            raise ValueError("an Optimum carries a non-empty priority-ordered cost vector")
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,13 +116,20 @@ class Inconclusive:
 
 
 class Consistent:
-    """Marker base of the SAT family (the program has ≥1 answer set). Depth D — each concrete
-    shape carries *exactly* the observations its run-mode computes; a field's absence is a type
-    fact, not a sentinel, so there are no ``NotConfigured`` states and no per-field guards."""
+    """Marker base of the SAT family (the program has ≥1 answer set). Each concrete shape carries
+    *exactly* the observations its run-mode computes; a field's absence is a type fact, not a
+    sentinel, so there are no ``NotConfigured`` states and no per-field guards. Abstract: construct
+    one of the six concrete shapes, never ``Consistent`` itself."""
 
     __slots__ = ()
 
+    def __new__(cls, *args: object, **kwargs: object) -> Consistent:
+        if cls is Consistent:
+            raise TypeError("Consistent is abstract; construct one of the six concrete shapes")
+        return super().__new__(cls)
 
+
+@final
 @dataclass(frozen=True, slots=True)
 class ConsistentWitness(Consistent):
     """``DEFAULT``: a single satisfiability witness (the ≤1-model solve), for ``@expect``'s
@@ -95,50 +138,54 @@ class ConsistentWitness(Consistent):
     witness: Observable
 
 
+@final
 @dataclass(frozen=True, slots=True)
 class ConsistentEnumeration(Consistent):
-    """``ENUM_ALL``: the complete answer-set census, with the derived cautious ⋂ and brave ⋃.
-
-    Carries ≥1 observable by construction (Consistent ⟹ AS(P)≠∅) — enforced below, which makes
-    ``query.conjunctive_answer``'s non-empty-census precondition hold structurally (a result-shape
-    invariant, distinct from that function's own boundary guard)."""
+    """``ENUM_ALL``: the complete answer-set census. The cautious ⋂ and brave ⋃ are *views* of it
+    (derived by ``cautious_of`` / ``brave_of``), never stored, so they cannot disagree with the
+    census — single source of truth. Carries ≥1 observable by construction (Consistent ⟹ AS(P)≠∅),
+    which makes ``query.conjunctive_answer``'s non-empty-census precondition hold structurally."""
 
     observables: tuple[Observable, ...]
-    cautious: frozenset[Symbol]
-    brave: frozenset[Symbol]
 
     def __post_init__(self) -> None:
         if not self.observables:
             raise ValueError("a ConsistentEnumeration carries ≥1 observable (AS(P) ≠ ∅)")
 
 
+@final
 @dataclass(frozen=True, slots=True)
 class ConsistentCautious(Consistent):
-    """``CAUTIOUS_ALL``: the cautious consequences ⋂ alone."""
+    """``CAUTIOUS_ALL``: the cautious consequences ⋂ alone (clingo-emitted; no census to derive
+    from)."""
 
     cautious: frozenset[Symbol]
 
 
+@final
 @dataclass(frozen=True, slots=True)
 class ConsistentBrave(Consistent):
-    """``BRAVE_ALL``: the brave consequences ⋃ alone."""
+    """``BRAVE_ALL``: the brave consequences ⋃ alone (clingo-emitted; no census to derive from)."""
 
     brave: frozenset[Symbol]
 
 
+@final
 @dataclass(frozen=True, slots=True)
-class ConsistentOptimalClass(Consistent):
+class ConsistentOptimalEnumeration(Consistent):
     """``OPT_ENUM``: the enumerated optimal class Opt(P), with the proven optimum. Carries ≥1
-    optimal model by construction (Consistent ⟹ Opt(P)≠∅)."""
+    optimal model by construction (Consistent ⟹ Opt(P)≠∅). The optimal-models census; pairs with
+    :class:`ConsistentEnumeration` (all models)."""
 
     optimal_observables: tuple[Observable, ...]
     optimum: Optimum
 
     def __post_init__(self) -> None:
         if not self.optimal_observables:
-            raise ValueError("a ConsistentOptimalClass carries ≥1 optimal model (Opt(P) ≠ ∅)")
+            raise ValueError("a ConsistentOptimalEnumeration carries ≥1 optimal model (Opt(P) ≠ ∅)")
 
 
+@final
 @dataclass(frozen=True, slots=True)
 class ConsistentOptimum(Consistent):
     """``OPT``: the proven optimum cost alone (no optimal-class enumeration)."""
@@ -149,19 +196,45 @@ class ConsistentOptimum(Consistent):
 type Determination = Inconsistent | Inconclusive | Consistent
 
 
-class SeamError(AssertionError):
-    """A check read a field off a ``Consistent`` shape that does not populate it — the
-    ``reads ⊆ populates`` wiring rule (``run.py``) was violated. An elenctic bug, never a verdict.
-    Subclasses ``AssertionError`` for its category, but is raised explicitly (not via ``assert``),
-    so it survives ``python -O``."""
+# --- harness-internal errors (never a Verdict; the runner reports them as harness errors) ---
+
+
+class HarnessError(Exception):
+    """Root of elenctic's own bugs — an internal invariant the harness violated, never a statement
+    about the program under test, so never a ``Verdict``. The runner reports these under a distinct
+    "harness error" status. Raised explicitly (not via ``assert``), so it survives ``python -O``."""
+
+
+class SeamError(HarnessError):
+    """A check read a field off a ``Consistent`` shape that does not populate it — the narrowing
+    seam fired, which means the ``reads ⊆ populates`` wiring rule (``run.py``) was bypassed. An
+    elenctic bug, never a verdict; the seam is the one provably-unreachable narrowing assertion."""
 
 
 def _seam_violation(field: Field, shape: Consistent) -> NoReturn:
-    """The one centralised narrowing assertion: every accessor funnels its unreachable case here."""
+    """The one centralised narrowing assertion: every accessor's unreachable case funnels here."""
     raise SeamError(
-        f"{field.value} read off {type(shape).__name__}, which does not populate it — the "
-        "reads ⊆ populates wiring rule was broken (an elenctic bug, not a test outcome)"
+        f"narrowing seam: {field.value} read off {type(shape).__name__}, which does not populate "
+        "it — the reads ⊆ populates wiring rule was bypassed (an elenctic bug, not a test outcome)"
     )
+
+
+# --- consequence views derived from the census (single source of truth) ---
+
+
+def _shown_intersection(observables: tuple[Observable, ...]) -> frozenset[Symbol]:
+    """⋂ of the census's shown projections (observables is non-empty by the shape's invariant)."""
+    shown = [observable.shown for observable in observables]
+    return shown[0].intersection(*shown[1:])
+
+
+def _shown_union(observables: tuple[Observable, ...]) -> frozenset[Symbol]:
+    """⋃ of the census's shown projections."""
+    shown = [observable.shown for observable in observables]
+    return shown[0].union(*shown[1:])
+
+
+# --- the accessor seam: read one field, narrowing to the shapes that populate it ---
 
 
 def witness_of(shape: Consistent) -> Observable:
@@ -183,19 +256,25 @@ def observables_of(shape: Consistent) -> tuple[Observable, ...]:
 
 
 def cautious_of(shape: Consistent) -> frozenset[Symbol]:
-    """The cautious consequences ⋂ (``Field.CAUTIOUS``)."""
+    """The cautious consequences ⋂ (``Field.CAUTIOUS``): stored for the native cautious run, derived
+    from the census for a full enumeration (single source of truth)."""
     match shape:
-        case ConsistentCautious() | ConsistentEnumeration():
+        case ConsistentCautious():
             return shape.cautious
+        case ConsistentEnumeration():
+            return _shown_intersection(shape.observables)
         case _:
             _seam_violation(Field.CAUTIOUS, shape)
 
 
 def brave_of(shape: Consistent) -> frozenset[Symbol]:
-    """The brave consequences ⋃ (``Field.BRAVE``)."""
+    """The brave consequences ⋃ (``Field.BRAVE``): stored for the native brave run, derived from the
+    census for a full enumeration."""
     match shape:
-        case ConsistentBrave() | ConsistentEnumeration():
+        case ConsistentBrave():
             return shape.brave
+        case ConsistentEnumeration():
+            return _shown_union(shape.observables)
         case _:
             _seam_violation(Field.BRAVE, shape)
 
@@ -203,7 +282,7 @@ def brave_of(shape: Consistent) -> frozenset[Symbol]:
 def optimal_observables_of(shape: Consistent) -> tuple[Observable, ...]:
     """The enumerated optimal class Opt(P) (``Field.OPTIMAL_OBSERVABLES``)."""
     match shape:
-        case ConsistentOptimalClass():
+        case ConsistentOptimalEnumeration():
             return shape.optimal_observables
         case _:
             _seam_violation(Field.OPTIMAL_OBSERVABLES, shape)
@@ -212,7 +291,7 @@ def optimal_observables_of(shape: Consistent) -> tuple[Observable, ...]:
 def optimum_of(shape: Consistent) -> Optimum:
     """The proven optimum (``Field.OPTIMUM``)."""
     match shape:
-        case ConsistentOptimum() | ConsistentOptimalClass():
+        case ConsistentOptimum() | ConsistentOptimalEnumeration():
             return shape.optimum
         case _:
             _seam_violation(Field.OPTIMUM, shape)
@@ -221,13 +300,12 @@ def optimum_of(shape: Consistent) -> Optimum:
 @dataclass(frozen=True, slots=True)
 class SolveResult:
     """DEPRECATED — superseded by :data:`Determination`. Kept only until ``checks.py`` adopts the
-    three-arm shape (field-compatibility keystone, Task 3), then removed. The ``None``/``()``
-    sentinels this carries are exactly the overloaded definedness the keystone lifts into the arms.
+    three-arm shape, then removed. The ``None``/``()`` sentinels it carries are exactly the
+    overloaded definedness the ``Determination`` arms replace.
 
-    The (partial) outcome of one configured run over the observable (spec §3). A run populates only
-    the fields its mode produces; ``None`` and ``()`` are distinct on purpose (``intersection is
-    None`` means the cautious aggregate was never computed; an empty ``frozenset()`` is a real
-    intersection with no shared atom).
+    The (partial) outcome of one configured run over the observable (spec §3). ``None`` and ``()``
+    are distinct on purpose: ``intersection is None`` means the cautious aggregate was never
+    computed; an empty ``frozenset()`` is a real intersection with no shared atom.
     """
 
     completed: bool

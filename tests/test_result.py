@@ -8,10 +8,12 @@ from elenctic.result import (
     ConsistentBrave,
     ConsistentCautious,
     ConsistentEnumeration,
-    ConsistentOptimalClass,
+    ConsistentOptimalEnumeration,
     ConsistentOptimum,
     ConsistentWitness,
+    Determination,
     Field,
+    HarnessError,
     Inconclusive,
     Inconsistent,
     Observable,
@@ -26,6 +28,8 @@ from elenctic.result import (
     optimum_of,
     witness_of,
 )
+
+# --- Observable / Verdict (unchanged) ---
 
 
 def test_observable_is_hashable_and_value_equal() -> None:
@@ -44,6 +48,13 @@ def test_observable_distinct_by_assignment() -> None:
     assert o1 != o2  # spec §2.0: equal shown, different assign ⇒ distinct observables
 
 
+def test_verdict_three_valued() -> None:
+    assert len({Verdict.PASS, Verdict.FAIL, Verdict.UNDECIDED}) == 3
+
+
+# --- SolveResult (transitional; removed once checks.py adopts Determination) ---
+
+
 def test_solveresult_defaults() -> None:
     r = SolveResult(completed=True)
     assert r.observables == ()
@@ -51,10 +62,6 @@ def test_solveresult_defaults() -> None:
     assert r.union is None
     assert r.intersection is None
     assert r.optimum_cost is None
-
-
-def test_verdict_three_valued() -> None:
-    assert len({Verdict.PASS, Verdict.FAIL, Verdict.UNDECIDED}) == 3
 
 
 # --- the Determination arms (depth D) ---
@@ -71,8 +78,39 @@ def test_consistent_shapes_are_consistent_others_are_not() -> None:
     assert not isinstance(Inconclusive(), Consistent)
 
 
-def test_field_vocabulary_is_six_capabilities() -> None:
-    assert len(set(Field)) == 6
+def test_consistent_base_is_abstract() -> None:
+    # the depth-D invariant: only the six concrete shapes are inhabitable, never a bare Consistent
+    with pytest.raises(TypeError, match="abstract"):
+        Consistent()
+
+
+def test_determination_three_arm_match_is_total() -> None:
+    # the mandatory trichotomy (aspis §5.1): match the arm before reading any field. That this
+    # function type-checks with no fall-through is the proof the 3-arm dispatch is exhaustive.
+    def classify(determination: Determination) -> str:
+        match determination:
+            case Inconsistent():
+                return "inconsistent"
+            case Inconclusive():
+                return "inconclusive"
+            case Consistent():
+                return "consistent"
+
+    assert classify(Inconsistent()) == "inconsistent"
+    assert classify(Inconclusive()) == "inconclusive"
+    assert classify(ConsistentWitness(_obs("a"))) == "consistent"
+
+
+def test_field_vocabulary_is_the_six_capabilities() -> None:
+    # these strings surface in explain/--dry-run output — pin them, not just the count
+    assert {field.value for field in Field} == {
+        "witness",
+        "observables",
+        "cautious",
+        "brave",
+        "optimal observables",
+        "optimum",
+    }
 
 
 # --- the Optimum proof-token ---
@@ -81,6 +119,11 @@ def test_field_vocabulary_is_six_capabilities() -> None:
 def test_optimum_carries_the_priority_vector() -> None:
     assert Optimum((4, 2)).cost == (4, 2)
     assert ConsistentOptimum(Optimum((7,))).optimum.cost == (7,)
+
+
+def test_optimum_rejects_an_empty_cost_vector() -> None:
+    with pytest.raises(ValueError, match="cost"):
+        Optimum(())
 
 
 # --- accessor seam: success on the shapes that populate the field ---
@@ -93,31 +136,35 @@ def test_witness_of_reads_the_default_witness() -> None:
 
 def test_observables_of_reads_the_enumeration_census() -> None:
     census = (_obs("a"), _obs("b"))
-    assert observables_of(ConsistentEnumeration(census, frozenset(), frozenset())) == census
+    assert observables_of(ConsistentEnumeration(census)) == census
 
 
-def test_cautious_of_reads_native_and_enumeration() -> None:
+def test_enumeration_derives_cautious_and_brave_from_the_census() -> None:
+    a, b = Function("a"), Function("b")
+    # census {a,b},{a} → ⋂ = {a} (cautious), ⋃ = {a,b} (brave); single source of truth
+    enum = ConsistentEnumeration((Observable(frozenset({a, b})), Observable(frozenset({a}))))
+    assert cautious_of(enum) == frozenset({a})
+    assert brave_of(enum) == frozenset({a, b})
+
+
+def test_cautious_of_reads_the_native_cautious_run() -> None:
     a = Function("a")
     assert cautious_of(ConsistentCautious(frozenset({a}))) == frozenset({a})
-    enum = ConsistentEnumeration((_obs("a"),), frozenset({a}), frozenset())
-    assert cautious_of(enum) == frozenset({a})
 
 
-def test_brave_of_reads_native_and_enumeration() -> None:
+def test_brave_of_reads_the_native_brave_run() -> None:
     a = Function("a")
     assert brave_of(ConsistentBrave(frozenset({a}))) == frozenset({a})
-    enum = ConsistentEnumeration((_obs("a"),), frozenset(), frozenset({a}))
-    assert brave_of(enum) == frozenset({a})
 
 
 def test_optimal_observables_of_reads_the_optimal_class() -> None:
     optimal = (_obs("a"),)
-    assert optimal_observables_of(ConsistentOptimalClass(optimal, Optimum((1,)))) == optimal
+    assert optimal_observables_of(ConsistentOptimalEnumeration(optimal, Optimum((1,)))) == optimal
 
 
 def test_optimum_of_reads_single_and_class() -> None:
     assert optimum_of(ConsistentOptimum(Optimum((1,)))).cost == (1,)
-    assert optimum_of(ConsistentOptimalClass((_obs("a"),), Optimum((2,)))).cost == (2,)
+    assert optimum_of(ConsistentOptimalEnumeration((_obs("a"),), Optimum((2,)))).cost == (2,)
 
 
 # --- accessor seam: SeamError off a shape that does not populate the field ---
@@ -148,14 +195,19 @@ def test_accessor_off_wrong_shape_raises_seam_error(
         accessor(shape)
 
 
-# --- the result-shape invariant: Consistent ⟹ ≥1 model (Task 1 review carry) ---
+def test_seam_error_is_a_harness_error_never_a_verdict() -> None:
+    # category lock: harness bugs share one root (distinct from any Verdict, which is a CheckReport)
+    assert issubclass(SeamError, HarnessError)
+
+
+# --- the result-shape invariant: Consistent ⟹ ≥1 model ---
 
 
 def test_consistent_enumeration_requires_a_nonempty_census() -> None:
     with pytest.raises(ValueError, match="observable"):
-        ConsistentEnumeration((), frozenset(), frozenset())
+        ConsistentEnumeration(())
 
 
-def test_consistent_optimal_class_requires_a_nonempty_class() -> None:
+def test_consistent_optimal_enumeration_requires_a_nonempty_class() -> None:
     with pytest.raises(ValueError, match="optimal"):
-        ConsistentOptimalClass((), Optimum((1,)))
+        ConsistentOptimalEnumeration((), Optimum((1,)))
