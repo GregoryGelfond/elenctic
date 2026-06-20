@@ -40,7 +40,9 @@ __all__ = [
     "SeamError",
     "Verdict",
     "brave_of",
+    "brave_optimal_of",
     "cautious_of",
+    "cautious_optimal_of",
     "observables_of",
     "optimal_observables_of",
     "optimum_of",
@@ -76,9 +78,8 @@ class Verdict(Enum):
 
 class Field(Enum):
     """A gated observation a ``Consistent`` outcome can provide — the wiring-rule vocabulary
-    (``Check.reads`` ⊆ ``populates(mode)``, the wiring rule in ``run.py``). Six capabilities, one
-    per readable field; the
-    explain/dry-run surface narrates these, so they stay user-legible."""
+    (``Check.reads`` ⊆ ``populates(mode)`` in ``run.py``). Six capabilities, one per readable field;
+    the explain/dry-run surface narrates these, so they stay user-legible."""
 
     WITNESS = "witness"
     OBSERVABLES = "observables"
@@ -209,9 +210,12 @@ class HarnessError(Exception):
 
 
 class SeamError(HarnessError):
-    """A check read a field off a ``Consistent`` shape that does not populate it — the narrowing
-    seam fired, which means the ``reads ⊆ populates`` wiring rule (``run.py``) was bypassed. An
-    elenctic bug, never a verdict; the seam is the one provably-unreachable narrowing assertion."""
+    """A check read a field off a ``Consistent`` shape that does not populate it — the one
+    provably-unreachable narrowing assertion fired, unreachable on **two** premises: the
+    ``reads ⊆ populates`` wiring rule (the primary guard, ``run.py``) attaches a check only to a
+    run whose mode populates what it reads; and the ``solvers.py`` lowering postcondition produces,
+    for a run of mode M, the shape whose fields are exactly ``populates(M)``. If it fires, one of
+    those was violated — an elenctic bug, never a verdict."""
 
 
 def _seam_violation(field: Field, shape: Consistent) -> NoReturn:
@@ -296,3 +300,15 @@ def optimum_of(shape: Consistent) -> Optimum:
             return shape.optimum
         case _:
             _seam_violation(Field.OPTIMUM, shape)
+
+
+def cautious_optimal_of(shape: Consistent) -> frozenset[Symbol]:
+    """⋂ Opt(P): the cautious consequences over the optimal class, derived from the optimal census
+    (the optimal-base counterpart of :func:`cautious_of`; reads ``Field.OPTIMAL_OBSERVABLES``)."""
+    return _shown_intersection(optimal_observables_of(shape))
+
+
+def brave_optimal_of(shape: Consistent) -> frozenset[Symbol]:
+    """⋃ Opt(P): the brave consequences over the optimal class (the optimal-base counterpart of
+    :func:`brave_of`; reads ``Field.OPTIMAL_OBSERVABLES``)."""
+    return _shown_union(optimal_observables_of(shape))

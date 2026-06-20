@@ -21,7 +21,9 @@ from elenctic.result import (
     SeamError,
     Verdict,
     brave_of,
+    brave_optimal_of,
     cautious_of,
+    cautious_optimal_of,
     observables_of,
     optimal_observables_of,
     optimum_of,
@@ -147,6 +149,23 @@ def test_brave_of_reads_the_native_brave_run() -> None:
 def test_optimal_observables_of_reads_the_optimal_class() -> None:
     optimal = (_obs("a"),)
     assert optimal_observables_of(ConsistentOptimalEnumeration(optimal, Optimum((1,)))) == optimal
+
+
+def test_optimal_class_derives_cautious_and_brave_consequences() -> None:
+    a, b = Function("a"), Function("b")
+    # optimal census {a,b},{a} → ⋂ Opt = {a}, ⋃ Opt = {a,b} (the optimal-base counterparts of ⋂/⋃)
+    opt = ConsistentOptimalEnumeration(
+        (Observable(frozenset({a, b})), Observable(frozenset({a}))), Optimum((1,))
+    )
+    assert cautious_optimal_of(opt) == frozenset({a})
+    assert brave_optimal_of(opt) == frozenset({a, b})
+
+
+def test_optimal_consequence_accessors_seam_off_a_non_optimal_shape() -> None:
+    # they read OPTIMAL_OBSERVABLES, so a non-optimal shape seams (via optimal_observables_of)
+    for accessor in (cautious_optimal_of, brave_optimal_of):
+        with pytest.raises(SeamError, match="optimal observables"):
+            accessor(ConsistentCautious(frozenset()))
 
 
 def test_optimum_of_reads_single_and_class() -> None:

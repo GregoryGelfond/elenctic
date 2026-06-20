@@ -8,8 +8,9 @@ verdict (``@expect unsat`` PASSes, every other tag FAILs); ``Consistent`` → th
 reading the fields it declared via the accessor seam (``result.*_of``).
 
 Each check declares ``reads: frozenset[Field]`` — the wiring rule (``run.py``) attaches it only to a
-run whose mode populates those fields, so a ``Consistent``-arm read never misses (a misroute is a
-``SeamError`` at the seam, never a verdict). There is therefore no per-field ``is None`` guard. The
+run whose mode populates those fields (a misroute is a ``RoutingError`` at plan construction, before
+any solve; the ``SeamError`` at the accessor seam is the should-never-fire backstop). So a
+``Consistent``-arm read never misses, and there is no per-field ``is None`` guard. The
 containment checks (⊆) reject an empty litset at construction — mirroring ``terms.parse_litset``
 (§2.1) at the type boundary — so no vacuous ``∅ ⊆ A`` PASS arises.
 
@@ -17,7 +18,8 @@ Checks are pure over a ``Determination``; only ``solvers.py`` touches clingo/cli
 """
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field as dc_field
 from typing import assert_never
 
 from clingo import Symbol
@@ -27,9 +29,11 @@ from elenctic.query import (
     BindingQuery,
     GroundQuery,
     Query,
+    QueryForm,
     QueryLiteral,
     Var,
     binding_set,
+    classify,
     conjunctive_answer,
     singleton_answer,
 )
@@ -42,13 +46,15 @@ from elenctic.result import (
     Observable,
     Verdict,
     brave_of,
+    brave_optimal_of,
     cautious_of,
+    cautious_optimal_of,
     observables_of,
     optimal_observables_of,
     optimum_of,
     witness_of,
 )
-from elenctic.terms import contrary, intersect_all, union_all
+from elenctic.terms import contrary, intersect_all
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,22 +77,26 @@ _UNDECIDED_MESSAGE = "the solve did not complete within the budget — UNDECIDED
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Check:
-    """A pure per-tag check carrying its contract-tag ``label`` and the ``reads`` it declares, both
-    first-class and statically inspectable (dx#9 / option C / the wiring rule's LHS), so a consumer
-    can group, identify, route, or *explain* a check before any solve.
+    """A pure per-tag check carrying its contract-tag ``label``, an optional ``subject`` (the
+    instance discriminator for a repeatable tag), and the ``reads`` it declares — all first-class
+    and statically inspectable (dx#9 / option C / the wiring rule's LHS), so a consumer can group,
+    identify, route, or *explain* a check before any solve.
 
     Calling it dispatches on the ``Determination`` arm: ``Inconclusive`` → ``UNDECIDED`` (§7a,
     before any decision logic); ``Inconsistent`` → the static ``_inconsistent`` verdict (AS(P)=∅
     needs no field); ``Consistent`` → ``_decide`` over the shape, reading fields through the seam.
     ``_inconsistent`` and ``_decide`` are private and omitted from ``repr`` so the arm dispatch
-    cannot be bypassed and the identity is the label alone. Equality is by **identity**
-    (``eq=False``): compare ``check.label``, never ``check == check``.
+    cannot be bypassed. ``label`` is the contract tag (it groups checks); ``subject`` discriminates
+    instances of the one repeatable tag (the ``@query`` surface; ``""`` otherwise), so
+    ``(label, subject)`` names a check for explain. Equality is by **identity** (``eq=False``):
+    compare ``check.label`` / ``check.subject``, never ``check == check``.
     """
 
     label: str
     reads: frozenset[Field]
-    _inconsistent: tuple[Verdict, str] = field(repr=False)
-    _decide: Callable[[Consistent], tuple[Verdict, str]] = field(repr=False)
+    _inconsistent: tuple[Verdict, str] = dc_field(repr=False)
+    _decide: Callable[[Consistent], tuple[Verdict, str]] = dc_field(repr=False)
+    subject: str = ""
 
     def __post_init__(self) -> None:
         if not self.label.startswith("@"):
@@ -115,9 +125,10 @@ def _check(
     *,
     inconsistent: tuple[Verdict, str],
     decide: Callable[[Consistent], tuple[Verdict, str]],
+    subject: str = "",
 ) -> Check:
     """The single construction site for a check (the arm dispatch lives in ``Check.__call__``)."""
-    return Check(label, reads, inconsistent, decide)
+    return Check(label, reads, inconsistent, decide, subject)
 
 
 def _unsat_fail(reason: str) -> tuple[Verdict, str]:
@@ -355,7 +366,7 @@ def cautious_optimal_contains(litset: frozenset[Symbol]) -> Check:
         "@cautious optimal",
         frozenset({Field.OPTIMAL_OBSERVABLES}),
         inconsistent=_unsat_fail("no optimal models"),
-        decide=lambda shape: _containment(litset, intersect_all(_optimal_shown(shape)), "⋂ Opt(P)"),
+        decide=lambda shape: _containment(litset, cautious_optimal_of(shape), "⋂ Opt(P)"),
     )
 
 
@@ -366,7 +377,7 @@ def brave_optimal_contains(litset: frozenset[Symbol]) -> Check:
         "@brave optimal",
         frozenset({Field.OPTIMAL_OBSERVABLES}),
         inconsistent=_unsat_fail("no optimal models"),
-        decide=lambda shape: _containment(litset, union_all(_optimal_shown(shape)), "⋃ Opt(P)"),
+        decide=lambda shape: _containment(litset, brave_optimal_of(shape), "⋃ Opt(P)"),
     )
 
 
@@ -450,33 +461,36 @@ def query_matches(query: Query) -> Check:
     ⋃. On the ``Inconsistent`` arm (AS(P)=∅) every query FAILs — each is vacuously yes-and-no (§2.2,
     FR#9).
 
-    Each arm builds its decide closure over the case's pattern bindings and returns immediately; do
-    not defer the returns (``match`` introduces no scope, so the bindings co-exist in this frame).
+    The form comes from the shared ``query.classify`` (so route and read never disagree); the shape
+    match supplies the typed pattern bindings. Each arm builds its decide closure and returns
+    immediately. ``subject`` carries the query's surface so the repeatable ``@query`` tag is
+    discernible before any solve (``label`` stays ``@query``; ``(label, subject)`` is the identity).
     """
     inconsistent = (Verdict.FAIL, "AS(P) = ∅ — every query is vacuously yes-and-no; @query fails")
 
     match query:
-        case GroundQuery(answer, conjuncts) if len(conjuncts) == 1:
-            literal = conjuncts[0]
-
-            def decide_singleton(shape: Consistent) -> tuple[Verdict, str]:
-                cautious = cautious_of(shape)
-                computed = singleton_answer(literal, cautious)
-                return _ground_verdict(
-                    answer,
-                    conjuncts,
-                    computed,
-                    _cautious_localization(conjuncts, cautious, computed),
-                )
-
-            return _check(
-                "@query",
-                frozenset({Field.CAUTIOUS}),
-                inconsistent=inconsistent,
-                decide=decide_singleton,
-            )
-
         case GroundQuery(answer, conjuncts):
+            subject = f"{answer.value} {_show_set(conjuncts)}"
+            if classify(query) is QueryForm.SINGLETON_GROUND:
+                literal = conjuncts[0]
+
+                def decide_singleton(shape: Consistent) -> tuple[Verdict, str]:
+                    cautious = cautious_of(shape)
+                    computed = singleton_answer(literal, cautious)
+                    return _ground_verdict(
+                        answer,
+                        conjuncts,
+                        computed,
+                        _cautious_localization(conjuncts, cautious, computed),
+                    )
+
+                return _check(
+                    "@query",
+                    frozenset({Field.CAUTIOUS}),
+                    inconsistent=inconsistent,
+                    decide=decide_singleton,
+                    subject=subject,
+                )
 
             def decide_conjunctive(shape: Consistent) -> tuple[Verdict, str]:
                 census = tuple(o.shown for o in observables_of(shape))
@@ -490,22 +504,24 @@ def query_matches(query: Query) -> Check:
                 frozenset({Field.OBSERVABLES}),
                 inconsistent=inconsistent,
                 decide=decide_conjunctive,
-            )
-
-        case BindingQuery(answer, goal, bindings) if answer is Answer.unknown:
-
-            def decide_binding_unknown(shape: Consistent) -> tuple[Verdict, str]:
-                found = binding_set(goal, answer, cautious_of(shape), brave_of(shape))
-                return _binding_verdict(goal, answer, bindings, found)
-
-            return _check(
-                "@query",
-                frozenset({Field.CAUTIOUS, Field.BRAVE}),
-                inconsistent=inconsistent,
-                decide=decide_binding_unknown,
+                subject=subject,
             )
 
         case BindingQuery(answer, goal, bindings):
+            subject = f"{answer.value} {_show_goal(goal)}"
+            if classify(query) is QueryForm.BINDING_UNKNOWN:
+
+                def decide_binding_unknown(shape: Consistent) -> tuple[Verdict, str]:
+                    found = binding_set(goal, answer, cautious_of(shape), brave_of(shape))
+                    return _binding_verdict(goal, answer, bindings, found)
+
+                return _check(
+                    "@query",
+                    frozenset({Field.CAUTIOUS, Field.BRAVE}),
+                    inconsistent=inconsistent,
+                    decide=decide_binding_unknown,
+                    subject=subject,
+                )
 
             def decide_binding_settled(shape: Consistent) -> tuple[Verdict, str]:
                 found = binding_set(goal, answer, cautious_of(shape), None)
@@ -516,6 +532,7 @@ def query_matches(query: Query) -> Check:
                 frozenset({Field.CAUTIOUS}),
                 inconsistent=inconsistent,
                 decide=decide_binding_settled,
+                subject=subject,
             )
 
         case _:

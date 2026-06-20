@@ -19,7 +19,7 @@ from typing import Final, assert_never
 from elenctic import checks
 from elenctic.checks import Check
 from elenctic.expectation import Expectation, Sat, Unsat
-from elenctic.query import Answer, BindingQuery, GroundQuery, Query
+from elenctic.query import Query, QueryForm, classify
 from elenctic.result import Field, HarnessError
 
 
@@ -178,19 +178,16 @@ def _has_optimal_base(exp: Sat) -> bool:
 
 
 def _query_mode(query: Query) -> Mode:
-    """The run a ``@query`` rides (corrected Def 2.2.2), mirroring ``checks.query_matches``'s arms.
-    A *singleton* ground query and a yes/no binding read ⋂ (``CAUTIOUS_ALL``); a *conjunctive*
-    ground query needs the census (its "no" is ``∀M ∃i: l̄i∈M``, not a ⋂ property), so it rides
-    ``ENUM_ALL``; an ``unknown`` binding needs ⋃ too, so it also rides ``ENUM_ALL`` (both ⋂ and ⋃,
-    spec §3 / §2.4)."""
-    match query:
-        case GroundQuery(_, conjuncts) if len(conjuncts) == 1:
+    """The run a ``@query`` rides (corrected Def 2.2.2), keyed on the shared ``query.classify`` so
+    route and read never disagree. A *singleton* ground query and a yes/no binding read ⋂
+    (``CAUTIOUS_ALL``); a *conjunctive* ground query needs the census (its "no" is ``∀M ∃i: l̄i∈M``,
+    not a ⋂ property), and an ``unknown`` binding needs ⋃ too, so both ride a full enumeration
+    (``ENUM_ALL``, which carries both ⋂ and ⋃; spec §3 / §2.4)."""
+    form = classify(query)
+    match form:
+        case QueryForm.SINGLETON_GROUND | QueryForm.BINDING_SETTLED:
             return Mode.CAUTIOUS_ALL
-        case GroundQuery():
+        case QueryForm.CONJUNCTIVE_GROUND | QueryForm.BINDING_UNKNOWN:
             return Mode.ENUM_ALL
-        case BindingQuery(answer=Answer.unknown):
-            return Mode.ENUM_ALL
-        case BindingQuery():
-            return Mode.CAUTIOUS_ALL
         case _:
-            assert_never(query)
+            assert_never(form)

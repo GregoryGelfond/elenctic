@@ -17,6 +17,7 @@ from hypothesis import strategies as st
 
 from elenctic.checks import (
     Check,
+    assign_contains,
     brave_contains,
     brave_optimal_contains,
     cautious_contains,
@@ -30,7 +31,7 @@ from elenctic.checks import (
     has_optimal_model,
     query_matches,
 )
-from elenctic.query import Answer, GroundQuery
+from elenctic.query import Answer, BindingQuery, GroundQuery, QueryLiteral, Var
 from elenctic.result import (
     ConsistentBrave,
     ConsistentCautious,
@@ -48,12 +49,15 @@ _litsets = st.frozensets(_atoms, min_size=1, max_size=5)  # a litset is non-empt
 
 
 def _every_check(litset: frozenset[Symbol]) -> list[Check]:
-    """One instance of each public check, built from ``litset`` (non-empty) where one is needed."""
+    """One instance of each public check, built from ``litset`` (non-empty) where one is needed —
+    every tag and every ``@query`` form, so §7a holds across the whole check surface."""
+    goal = QueryLiteral("p", True, (Var("X"),))
     return [
         expect_sat(),
         expect_unsat(),
         has_model(litset),
         count_is(len(litset)),
+        assign_contains(frozenset({(Function("a"), 1)})),
         cautious_contains(litset),
         brave_contains(litset),
         cost_is((1,)),
@@ -61,7 +65,10 @@ def _every_check(litset: frozenset[Symbol]) -> list[Check]:
         cautious_optimal_contains(litset),
         brave_optimal_contains(litset),
         count_optimal_is(1),
-        query_matches(GroundQuery(Answer.yes, (Function("a"),))),
+        query_matches(GroundQuery(Answer.yes, (Function("a"),))),  # singleton ground
+        query_matches(GroundQuery(Answer.no, (Function("a"), Function("b")))),  # conjunctive
+        query_matches(BindingQuery(Answer.yes, goal, frozenset())),  # binding settled
+        query_matches(BindingQuery(Answer.unknown, goal, frozenset())),  # binding unknown
     ]
 
 
@@ -110,6 +117,20 @@ def test_brave_passes_iff_subset(litset: frozenset[Symbol], aggregate: frozenset
     assert brave_contains(litset)(result).verdict is expected
 
 
+def test_query_check_subject_discriminates_instances() -> None:
+    # the repeatable @query tag: label groups, subject (the surface) discriminates instances, so a
+    # consumer/explain can tell two @query checks apart before any solve (Pass B MAJOR).
+    goal = QueryLiteral("p", True, (Var("X"),))
+    singleton = query_matches(GroundQuery(Answer.yes, (Function("a"),)))
+    conjunctive = query_matches(GroundQuery(Answer.no, (Function("a"), Function("b"))))
+    binding = query_matches(BindingQuery(Answer.unknown, goal, frozenset()))
+    assert singleton.label == conjunctive.label == binding.label == "@query"  # the tag groups
+    assert singleton.subject == "yes { a }"
+    assert conjunctive.subject == "no { a, b }"
+    assert binding.subject == "unknown p(X)"
+    assert has_model(frozenset({Function("a")})).subject == ""  # non-repeatable tags: empty subject
+
+
 def test_containment_builders_reject_an_empty_litset() -> None:
     # the empty-litset false-PASS (∅ ⊆ A) is rejected at construction, mirroring the parser (§2.1).
     for build in (
@@ -117,6 +138,7 @@ def test_containment_builders_reject_an_empty_litset() -> None:
         brave_contains,
         cautious_optimal_contains,
         brave_optimal_contains,
+        assign_contains,
     ):
         with pytest.raises(ValueError, match="vacuous"):
             build(frozenset())

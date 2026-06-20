@@ -35,6 +35,16 @@ class Answer(Enum):
     unknown = "unknown"
 
 
+class QueryForm(Enum):
+    """The four query forms that route and read differently (spec §2.1). See :func:`classify` — the
+    single classifier ``run._query_mode`` and ``checks.query_matches`` share."""
+
+    SINGLETON_GROUND = "singleton-ground"
+    CONJUNCTIVE_GROUND = "conjunctive-ground"
+    BINDING_SETTLED = "binding-settled"
+    BINDING_UNKNOWN = "binding-unknown"
+
+
 @dataclass(frozen=True, slots=True)
 class Var:
     """A query variable (an upper-case / underscore identifier in ``q(X̄)``)."""
@@ -281,25 +291,19 @@ def binding_set(
             assert_never(answer)
 
 
-def satisfied(
-    query: Query,
-    cautious: frozenset[Symbol],
-    brave: frozenset[Symbol] | None,
-    models: tuple[frozenset[Symbol], ...] | None,
-) -> bool:
-    """The boolean convenience for *embedders*: whether the program's computed answer matches the
-    contract's (spec §3). The check layer (``checks.py``) calls ``singleton_answer`` /
-    ``conjunctive_answer`` / ``binding_set`` directly to build a diagnostic. ``models`` (the
-    answer-set census) is required for a conjunctive ground query, ``brave`` for an unknown binding.
-    """
+def classify(query: Query) -> QueryForm:
+    """The query's form (spec §2.1) — the single classifier that ``run._query_mode`` (which run it
+    rides) and ``checks.query_matches`` (which fields it reads, and how it decides) both consume, so
+    route and read can never disagree on what a query is. The ``n == 1`` singleton boundary and the
+    ``unknown``-binding split live here, once."""
     match query:
-        case GroundQuery(answer, conjuncts) if len(conjuncts) == 1:
-            return singleton_answer(conjuncts[0], cautious) is answer
-        case GroundQuery(answer, conjuncts):
-            if not models:
-                raise ValueError("a conjunctive ground query needs a non-empty model census")
-            return conjunctive_answer(conjuncts, models) is answer
-        case BindingQuery(answer, goal, bindings):
-            return binding_set(goal, answer, cautious, brave) == set(bindings)
+        case GroundQuery(_, conjuncts) if len(conjuncts) == 1:
+            return QueryForm.SINGLETON_GROUND
+        case GroundQuery():
+            return QueryForm.CONJUNCTIVE_GROUND
+        case BindingQuery(answer=Answer.unknown):
+            return QueryForm.BINDING_UNKNOWN
+        case BindingQuery():
+            return QueryForm.BINDING_SETTLED
         case _:
             assert_never(query)

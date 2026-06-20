@@ -5,12 +5,13 @@ from elenctic.query import (
     Answer,
     BindingQuery,
     GroundQuery,
+    QueryForm,
     QueryLiteral,
     Var,
     binding_set,
+    classify,
     conjunctive_answer,
     contrary_literal,
-    satisfied,
     singleton_answer,
     unify,
 )
@@ -129,12 +130,16 @@ def test_conjunctive_answer_rejects_empty_census() -> None:
         conjunctive_answer((parse_term("a"), parse_term("b")), ())
 
 
-def test_satisfied_conjunctive_requires_census() -> None:
-    q = GroundQuery(Answer.no, (parse_term("a"), parse_term("b")))
-    with pytest.raises(ValueError, match="census"):
-        satisfied(q, frozenset(), None, None)  # no census supplied
-    with pytest.raises(ValueError, match="census"):
-        satisfied(q, frozenset(), None, ())  # empty census — caught too, not just None
+def test_classify_assigns_each_query_its_form() -> None:
+    # the one classifier run._query_mode and checks.query_matches share — they cannot disagree
+    goal = QueryLiteral("p", True, (Var("X"),))
+    assert classify(GroundQuery(Answer.yes, (parse_term("a"),))) is QueryForm.SINGLETON_GROUND
+    assert (
+        classify(GroundQuery(Answer.no, (parse_term("a"), parse_term("b"))))
+        is QueryForm.CONJUNCTIVE_GROUND
+    )
+    assert classify(BindingQuery(Answer.yes, goal, frozenset())) is QueryForm.BINDING_SETTLED
+    assert classify(BindingQuery(Answer.unknown, goal, frozenset())) is QueryForm.BINDING_UNKNOWN
 
 
 def test_binding_set_yes_reads_intersection() -> None:
@@ -176,24 +181,8 @@ def test_binding_set_repeated_variable_one_column() -> None:
     assert binding_set(goal, Answer.yes, inter, None) == {(parse_term("a"),)}
 
 
-def test_satisfied_singleton_ground_query() -> None:
-    yes = GroundQuery(Answer.yes, (parse_term("start(s)"),))
-    assert satisfied(yes, atoms("start(s)"), None, None) is True
-    assert satisfied(yes, atoms("end(t)"), None, None) is False
-
-
-def test_satisfied_conjunctive_ground_query_uses_census() -> None:
-    pa, pb = parse_term("p(a)"), parse_term("p(b)")
-    no = GroundQuery(Answer.no, (pa, pb))
-    census = models(("p(a)", "-p(b)"), ("-p(a)", "p(b)"))  # false in all → no
-    assert satisfied(no, frozenset(), None, census) is True
-
-
-def test_satisfied_binding_query() -> None:
-    bq = BindingQuery(
-        Answer.yes,
-        QueryLiteral("reachable", True, (Var("X"),)),
-        frozenset({(parse_term("s"),), (parse_term("a"),), (parse_term("t"),)}),
-    )
-    assert satisfied(bq, atoms("reachable(s)", "reachable(a)", "reachable(t)"), None, None) is True
-    assert satisfied(bq, atoms("reachable(s)"), None, None) is False
+def test_classify_singleton_boundary_is_arity_one() -> None:
+    # the n==1 boundary lives once, in classify; both consumers inherit it
+    assert classify(GroundQuery(Answer.yes, (parse_term("a"),))) is QueryForm.SINGLETON_GROUND
+    two = GroundQuery(Answer.yes, (parse_term("a"), parse_term("b")))
+    assert classify(two) is QueryForm.CONJUNCTIVE_GROUND
