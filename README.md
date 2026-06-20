@@ -2,23 +2,118 @@
 
 A declarative testing framework for Answer Set Programming.
 
-elenctic lets you state what an answer-set program *should* compute as **in-file `@`-annotations**
-(a contract), and checks the program against it. The contract language is **language-neutral**: it
-describes the program's *observable behaviour* (its shown atoms and theory output), not any solver's
-internals. This package is the **reference implementation**, over the clingo / clingcon Python API.
+**Answer Set Programming (ASP)** is a declarative approach to knowledge representation and
+combinatorial search: you write a logic program (facts, rules, and constraints), and a solver
+computes its **answer sets** — the stable models that are its solutions. ASP is well suited to
+planning, configuration, diagnosis, and default and commonsense reasoning;
+[clingo](https://potassco.org) is the dominant solver, with clingcon extending it to constraints
+over integers.
+
+**Who it's for.** If you write and maintain ASP encodings (in clingo or clingcon) and want to keep
+them correct as they evolve, elenctic is your test harness — what pytest is to Python, but speaking
+ASP's own reasoning modes: what holds in *every* answer set (cautious) or in *some* (brave), what is
+*optimal*, how *many* solutions there are, and what the program *answers* to a three-valued query
+(yes / no / unknown, where "unknown" is a genuine third value, never a guess).
+
+You state the expected behaviour as **in-file `@`-annotations** (a contract) in the `.lp` file
+itself, and elenctic checks it. The contract language is **language-neutral**: it describes the
+program's *observable behaviour* (its shown atoms and theory output), not any solver's internals.
+This package is its **reference implementation**, over the clingo / clingcon Python API.
+
+## A first example
+
+Put a program and its contract in one `.lp` file:
 
 ```asp
-% shortest-path/test-03.lp
-% @expect  sat
-% @cost    { 4 2 }
-% @optimal { included(s,a,2,1), included(a,t,2,1), start(s), end(t) }
-% @note    the budget rules out the direct edge; the two-hop detour is optimal
+% encodings/drinks/drinks.lp
+1 { tea; coffee } 1.        % exactly one drink
+biscuit.                    % always a biscuit
+#show tea/0.
+#show coffee/0.
+#show biscuit/0.
+
+% @expect   sat
+% @count    2
+% @cautious { biscuit }
+% @brave    { tea, coffee }
 ```
 
+The two answer sets are `{tea, biscuit}` and `{coffee, biscuit}`. The contract states that the
+program is satisfiable, has exactly **2** answer sets, has `biscuit` in **every** one (cautious), and
+has `tea` and `coffee` each in **some** one (brave — read severally, not jointly). Run it:
+
 ```console
-$ elenctic encodings/ tests/cases/
-98/98 passed
+$ elenctic encodings/
+1/1 passed
 ```
+
+`--explain` shows how each tag is routed to a solver run, *without solving* — this contract needs
+three (a full enumeration for `@count`, and the native cautious and brave runs):
+
+```console
+$ elenctic encodings/ --explain
+encodings/drinks/drinks.lp [clingo]
+    ENUM_ALL: @count, @expect sat
+    CAUTIOUS_ALL: @cautious
+    BRAVE_ALL: @brave
+```
+
+When a contract is wrong — say you claim `@cautious { tea }`, but `tea` is only in one menu —
+elenctic tells you what it expected and what the program actually does, and exits non-zero:
+
+```console
+$ elenctic encodings/
+encodings/drinks/drinks.lp [clingo] — FAIL
+  [FAIL] @cautious: { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
+
+0/1 passed
+```
+
+## Querying a program with `@query`
+
+The modes above ask about a program's *consequences*. `@query` asks a different question — Gelfond's
+three-valued epistemic query: *what answer does the program give to a goal?* — and the answer is
+**yes**, **no**, or **unknown**.
+
+Here is the classic Tweety example in miniature (the full Gelfond & Kahl §5.4.3 program is in the test
+suite): birds fly by default, but penguins, more specifically, do not. Sam is a (non-penguin) bird,
+Tweety is a penguin, and Opus is a bird flagged as *abnormal* (say, possibly wounded), so the default
+cannot be applied to him.
+
+```asp
+% encodings/birds/birds.lp
+bird(sam).
+bird(tweety).
+penguin(tweety).
+bird(opus).
+ab(opus).                              % opus is an abnormal bird (e.g. possibly wounded)
+
+fly(X)  :- bird(X), not ab(X), not -fly(X).   % birds fly by default (unless abnormal) ...
+-fly(X) :- penguin(X).                         % ... but penguins, specifically, do not
+
+#show fly/1.
+#show -fly/1.
+
+% @expect        sat
+% @query yes     { fly(sam) }
+% @query no      { fly(tweety) }
+% @query unknown { fly(opus) }
+```
+
+The single answer set is `{ fly(sam), -fly(tweety) }` — note it contains *neither* `fly(opus)` nor
+`-fly(opus)`. So all three questions hold, and elenctic confirms it:
+
+```console
+$ elenctic encodings/
+1/1 passed
+```
+
+Does Sam fly? **yes** — the default applies. Does Tweety fly? **no** — the specific penguin rule
+overrides the default. Does Opus fly? **unknown** — the default is blocked (he is abnormal), but
+nothing settles the matter either way. That `unknown` is the point of `@query`: it is exactly what
+the consequence vocabulary (`@cautious`/`@brave`) cannot express. And the `no` is *known* falsity, not
+a mere failure to derive — it holds because the program entails the **contrary** `-fly(tweety)`, which
+is why the encoding must `#show` `-fly`.
 
 ## What it gives you over hand-written solver calls
 
@@ -63,7 +158,10 @@ base qualifier: `all` (the default — every answer set `AS(P)`) or `optimal` (t
 | `@note …` | free prose, surfaced in the diagnostic |
 
 A litset `{ … }` is comma-separated and paren-aware (an atom may contain commas, e.g.
-`included(s,a,2,1)`), and may span continuation `%` lines while a brace stays open.
+`included(s,a,2,1)`), and may span continuation `%` lines while a brace stays open. An `@`-tag's
+payload runs to the end of its line, so write explanatory comments on their own lines (a `%%` or `%`
+line), not after the payload — `% @count 2  % two answer sets` would read the comment as part of the
+count. (Inline-comment support after a payload is a planned convenience.)
 
 ### The three-valued query
 
@@ -104,6 +202,15 @@ UNSAT, with a documenting note:
 % @note   the budget cap excludes every s–t path
 ```
 
+Optimization — the proven optimal cost, and one optimal model (a shortest path under an edge budget):
+
+```asp
+% @expect  sat
+% @cost    { 4 2 }
+% @optimal { included(s,a,2,1), included(a,t,2,1), start(s), end(t) }
+% @note    the budget rules out the direct edge; the two-hop detour is optimal
+```
+
 A unique, counted, CSP-only solution (the answer lives entirely in the theory assignment):
 
 ```asp
@@ -118,10 +225,13 @@ relevant strong-negation literals, so a "no" means *known* false, not merely und
 
 ```asp
 % @expect    sat
-% @query yes     { afraid(john,math) }   % an english student: the default holds
-% @query no      { afraid(mary,math) }   % a stated strong exception: known not afraid
-% @query unknown { afraid(bob,math) }    % a CS student: may or may not be — genuinely undetermined
+% @query yes     { afraid(john,math) }
+% @query no      { afraid(mary,math) }
+% @query unknown { afraid(bob,math) }
 ```
+
+John (English) is afraid of math by default; Mary is a stated strong exception (known *not* afraid);
+Bob, in CS, is genuinely undetermined — the **unknown** that the consequence vocabulary cannot name.
 
 ## Running
 
