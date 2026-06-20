@@ -41,7 +41,7 @@ from elenctic.result import (
     optimum_of,
     witness_of,
 )
-from elenctic.run import Mode, populates, runs_for
+from elenctic.run import Mode, populates, runs_for, shape_for
 
 
 def _obs(*names: str) -> Observable:
@@ -59,11 +59,11 @@ _MODE_SHAPES: list[tuple[Mode, Consistent, frozenset[Field]]] = [
     (Mode.CAUTIOUS_ALL, ConsistentCautious(frozenset()), frozenset({Field.CAUTIOUS})),
     (Mode.BRAVE_ALL, ConsistentBrave(frozenset()), frozenset({Field.BRAVE})),
     (
-        Mode.OPT_ENUM,
+        Mode.OPTIMAL_ENUM,
         ConsistentOptimalEnumeration((_obs("a"),), Optimum((0,))),
         frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM}),
     ),
-    (Mode.OPT, ConsistentOptimum(Optimum((0,))), frozenset({Field.OPTIMUM})),
+    (Mode.OPTIMAL, ConsistentOptimum(Optimum((0,))), frozenset({Field.OPTIMUM})),
 ]
 
 _ACCESSORS = {
@@ -83,6 +83,7 @@ def test_populates_matches_each_modes_shape_via_the_accessor_seam() -> None:
     # iff the field is populated, else SeamError. (Premise 2 of the seam's unreachability.)
     assert {mode for mode, _, _ in _MODE_SHAPES} == set(Mode)  # every mode covered
     for mode, shape, fields in _MODE_SHAPES:
+        assert type(shape) is shape_for(mode)  # the source Mode→shape arrow solvers.py must honour
         assert populates(mode) == fields
         for field, accessor in _ACCESSORS.items():
             if field in fields:
@@ -92,7 +93,7 @@ def test_populates_matches_each_modes_shape_via_the_accessor_seam() -> None:
                     accessor(shape)
 
 
-# Contracts chosen so runs_for exercises all six modes (DEFAULT and OPT need their own).
+# Contracts chosen so runs_for exercises all six modes (DEFAULT and OPTIMAL need their own).
 _CONTRACTS = [
     (
         "% @expect sat\n% @model { a }\n% @count 2\n% @assign { x=1 }\n% @cautious { a }\n"

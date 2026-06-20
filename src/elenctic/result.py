@@ -177,7 +177,7 @@ class ConsistentBrave(Consistent):
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentOptimalEnumeration(Consistent):
-    """``OPT_ENUM``: the enumerated optimal class Opt(P), with the proven optimum. Carries ≥1
+    """``OPTIMAL_ENUM``: the enumerated optimal class Opt(P), with the proven optimum. Carries ≥1
     optimal model by construction (Consistent ⟹ Opt(P)≠∅). The optimal-models census; pairs with
     :class:`ConsistentEnumeration` (all models)."""
 

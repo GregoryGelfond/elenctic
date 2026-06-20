@@ -11,8 +11,8 @@ check, so ``runs_for`` returning at all already proves every derived run is well
 The subtleties under test: ``@expect sat`` (which reads ∅) rides an existing full enumeration else a
 cheap ``DEFAULT`` solve, never an expensive cautious/brave/opt run. A conjunctive ground ``@query``
 rides ``ENUM_ALL`` (the census); a singleton ground or yes/no binding rides ``CAUTIOUS_ALL`` (⋂); an
-unknown binding rides ``ENUM_ALL``; and ``@cost`` rides ``OPT_ENUM`` with an optimal base, else
-``OPT``.
+unknown binding rides ``ENUM_ALL``; and ``@cost`` rides ``OPTIMAL_ENUM`` with an optimal base, else
+``OPTIMAL``.
 """
 
 import pytest
@@ -51,8 +51,8 @@ def test_mode_lowers_to_its_solver_args() -> None:
     assert Mode.ENUM_ALL.args == ("--models=0",)
     assert Mode.CAUTIOUS_ALL.args == ("--enum-mode=cautious", "--models=0")
     assert Mode.BRAVE_ALL.args == ("--enum-mode=brave", "--models=0")
-    assert Mode.OPT_ENUM.args == ("--opt-mode=optN", "--models=0")
-    assert Mode.OPT.args == ("--opt-mode=opt",)
+    assert Mode.OPTIMAL_ENUM.args == ("--opt-mode=optN", "--models=0")
+    assert Mode.OPTIMAL.args == ("--opt-mode=opt",)
 
 
 def test_args_and_populates_are_total_over_mode() -> None:
@@ -67,8 +67,8 @@ def test_populates_maps_each_mode() -> None:
     assert populates(Mode.ENUM_ALL) == frozenset({Field.OBSERVABLES, Field.CAUTIOUS, Field.BRAVE})
     assert populates(Mode.CAUTIOUS_ALL) == frozenset({Field.CAUTIOUS})
     assert populates(Mode.BRAVE_ALL) == frozenset({Field.BRAVE})
-    assert populates(Mode.OPT_ENUM) == frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM})
-    assert populates(Mode.OPT) == frozenset({Field.OPTIMUM})
+    assert populates(Mode.OPTIMAL_ENUM) == frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM})
+    assert populates(Mode.OPTIMAL) == frozenset({Field.OPTIMUM})
 
 
 # --- the wiring rule (Half B): reads ⊆ populates, enforced at construction ---
@@ -109,22 +109,24 @@ def test_run_equality_is_by_identity() -> None:
             "% @expect sat\n% @cautious { a }\n", Mode.CAUTIOUS_ALL, "@cautious", id="cautious"
         ),
         pytest.param("% @expect sat\n% @brave { a }\n", Mode.BRAVE_ALL, "@brave", id="brave"),
-        pytest.param("% @expect sat\n% @optimal { a }\n", Mode.OPT_ENUM, "@optimal", id="optimal"),
+        pytest.param(
+            "% @expect sat\n% @optimal { a }\n", Mode.OPTIMAL_ENUM, "@optimal", id="optimal"
+        ),
         pytest.param(
             "% @expect sat\n% @cautious optimal { a }\n",
-            Mode.OPT_ENUM,
+            Mode.OPTIMAL_ENUM,
             "@cautious optimal",
             id="cautious-optimal",
         ),
         pytest.param(
             "% @expect sat\n% @brave optimal { a }\n",
-            Mode.OPT_ENUM,
+            Mode.OPTIMAL_ENUM,
             "@brave optimal",
             id="brave-optimal",
         ),
         pytest.param(
             "% @expect sat\n% @count optimal 1\n",
-            Mode.OPT_ENUM,
+            Mode.OPTIMAL_ENUM,
             "@count optimal",
             id="count-optimal",
         ),
@@ -162,7 +164,7 @@ def test_expect_sat_takes_default_alongside_a_cautious_run() -> None:
 
 def test_expect_sat_takes_default_under_optimisation_only() -> None:
     contract = "% @expect sat\n% @optimal { a }\n"
-    assert configs(contract) == {Mode.OPT_ENUM, Mode.DEFAULT}
+    assert configs(contract) == {Mode.OPTIMAL_ENUM, Mode.DEFAULT}
     assert labels(run_at(contract, Mode.DEFAULT)) == {"@expect sat"}
 
 
@@ -220,14 +222,14 @@ def test_yes_binding_query_uses_cautious() -> None:
 
 def test_cost_alone_uses_the_cheap_single_optimum() -> None:
     contract = "% @expect sat\n% @cost { 8 }\n"
-    assert "@cost" in labels(run_at(contract, Mode.OPT))
-    assert Mode.OPT_ENUM not in configs(contract)
+    assert "@cost" in labels(run_at(contract, Mode.OPTIMAL))
+    assert Mode.OPTIMAL_ENUM not in configs(contract)
 
 
 def test_cost_with_an_optimal_base_rides_the_shared_opt_enum() -> None:
     contract = "% @expect sat\n% @cost { 8 }\n% @count optimal 2\n"
-    assert {"@cost", "@count optimal"} <= labels(run_at(contract, Mode.OPT_ENUM))
-    assert Mode.OPT not in configs(contract)
+    assert {"@cost", "@count optimal"} <= labels(run_at(contract, Mode.OPTIMAL_ENUM))
+    assert Mode.OPTIMAL not in configs(contract)
 
 
 # --- coalescing: shared solves merge, and no tag is dropped or invented ---
@@ -241,7 +243,7 @@ def test_optimal_modes_coalesce_onto_one_opt_enum_solve() -> None:
         "% @brave optimal { a }\n"
         "% @count optimal 1\n"
     )
-    opt_enum_runs = [run for run in runs(contract) if run.mode == Mode.OPT_ENUM]
+    opt_enum_runs = [run for run in runs(contract) if run.mode == Mode.OPTIMAL_ENUM]
     assert len(opt_enum_runs) == 1  # one shared enumeration of Opt(P), not four
     assert {
         "@optimal",

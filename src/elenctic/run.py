@@ -6,7 +6,7 @@ genuinely different searches (brave vs cautious vs optimisation vs full enumerat
 ``runs_for`` is **pure**: it reads the :class:`~elenctic.expectation.Expectation` and constructs
 runs; only ``solvers.py`` ever touches a solver.
 
-The wiring rule (Half B of the field-compatibility keystone): a check declares ``reads`` and a mode
+The wiring rule (the field-compatibility keystone): a check declares ``reads`` and a mode
 ``populates`` a field-set; ``Run.__post_init__`` asserts ``reads ⊆ populates(mode)`` per check, so a
 stale route fails loud at plan construction (a :class:`~elenctic.result.HarnessError`), before any
 solve — never as a costumed verdict.
@@ -20,7 +20,17 @@ from elenctic import checks
 from elenctic.checks import Check
 from elenctic.expectation import Expectation, Sat, Unsat
 from elenctic.query import Query, QueryForm, classify
-from elenctic.result import Field, HarnessError
+from elenctic.result import (
+    Consistent,
+    ConsistentBrave,
+    ConsistentCautious,
+    ConsistentEnumeration,
+    ConsistentOptimalEnumeration,
+    ConsistentOptimum,
+    ConsistentWitness,
+    Field,
+    HarnessError,
+)
 
 
 class Mode(Enum):
@@ -33,8 +43,8 @@ class Mode(Enum):
     ENUM_ALL = "enum-all"
     BRAVE_ALL = "brave-all"
     CAUTIOUS_ALL = "cautious-all"
-    OPT_ENUM = "opt-enum"
-    OPT = "opt"
+    OPTIMAL_ENUM = "optimal-enum"
+    OPTIMAL = "optimal"
 
     @property
     def args(self) -> tuple[str, ...]:
@@ -48,8 +58,8 @@ _ARGS: Final[dict[Mode, tuple[str, ...]]] = {
     Mode.ENUM_ALL: ("--models=0",),
     Mode.BRAVE_ALL: ("--enum-mode=brave", "--models=0"),
     Mode.CAUTIOUS_ALL: ("--enum-mode=cautious", "--models=0"),
-    Mode.OPT_ENUM: ("--opt-mode=optN", "--models=0"),
-    Mode.OPT: ("--opt-mode=opt",),
+    Mode.OPTIMAL_ENUM: ("--opt-mode=optN", "--models=0"),
+    Mode.OPTIMAL: ("--opt-mode=opt",),
 }
 
 _POPULATES: Final[dict[Mode, frozenset[Field]]] = {
@@ -57,8 +67,8 @@ _POPULATES: Final[dict[Mode, frozenset[Field]]] = {
     Mode.ENUM_ALL: frozenset({Field.OBSERVABLES, Field.CAUTIOUS, Field.BRAVE}),
     Mode.BRAVE_ALL: frozenset({Field.BRAVE}),
     Mode.CAUTIOUS_ALL: frozenset({Field.CAUTIOUS}),
-    Mode.OPT_ENUM: frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM}),
-    Mode.OPT: frozenset({Field.OPTIMUM}),
+    Mode.OPTIMAL_ENUM: frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM}),
+    Mode.OPTIMAL: frozenset({Field.OPTIMUM}),
 }
 
 
@@ -69,11 +79,31 @@ def populates(mode: Mode) -> frozenset[Field]:
     return _POPULATES[mode]
 
 
+_SHAPE: Final[dict[Mode, type[Consistent]]] = {
+    Mode.DEFAULT: ConsistentWitness,
+    Mode.ENUM_ALL: ConsistentEnumeration,
+    Mode.BRAVE_ALL: ConsistentBrave,
+    Mode.CAUTIOUS_ALL: ConsistentCautious,
+    Mode.OPTIMAL_ENUM: ConsistentOptimalEnumeration,
+    Mode.OPTIMAL: ConsistentOptimum,
+}
+
+
+def shape_for(mode: Mode) -> type[Consistent]:
+    """The ``Consistent`` shape ``solvers.py`` must produce for a run of ``mode`` — the source-level
+    Mode→shape arrow of the lowering contract (the seam's second premise; spec §3, §5). The shape an
+    instance of this type makes readable through the accessor seam is exactly ``populates(mode)``;
+    the keystone seam test ties the two so the premise cannot silently drift when ``solvers.py``
+    lands. Lifting the arrow here (not leaving it in docstrings) is the keystone's own discipline —
+    lift the structure into the visible language — applied to its second premise."""
+    return _SHAPE[mode]
+
+
 class RoutingError(HarnessError):
     """A check was paired with a run whose mode does not populate the fields it reads — the
     ``reads ⊆ populates`` wiring rule was violated at plan construction. A harness-internal bug (a
     stale route, or a mode added without updating ``populates``), never a contract or a verdict; the
-    session reports it as a harness error, not a program-under-test failure."""
+    runner reports it as a harness error, not a program-under-test failure."""
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -144,15 +174,15 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
         add(Mode.BRAVE_ALL, checks.brave_contains(exp.brave))
 
     if exp.optimal_model is not None:
-        add(Mode.OPT_ENUM, checks.has_optimal_model(exp.optimal_model))
+        add(Mode.OPTIMAL_ENUM, checks.has_optimal_model(exp.optimal_model))
     if exp.cautious_optimal:
-        add(Mode.OPT_ENUM, checks.cautious_optimal_contains(exp.cautious_optimal))
+        add(Mode.OPTIMAL_ENUM, checks.cautious_optimal_contains(exp.cautious_optimal))
     if exp.brave_optimal:
-        add(Mode.OPT_ENUM, checks.brave_optimal_contains(exp.brave_optimal))
+        add(Mode.OPTIMAL_ENUM, checks.brave_optimal_contains(exp.brave_optimal))
     if exp.count_optimal is not None:
-        add(Mode.OPT_ENUM, checks.count_optimal_is(exp.count_optimal))
+        add(Mode.OPTIMAL_ENUM, checks.count_optimal_is(exp.count_optimal))
     if exp.cost is not None:
-        add(Mode.OPT_ENUM if _has_optimal_base(exp) else Mode.OPT, checks.cost_is(exp.cost))
+        add(Mode.OPTIMAL_ENUM if _has_optimal_base(exp) else Mode.OPTIMAL, checks.cost_is(exp.cost))
 
     for query in exp.queries:
         add(_query_mode(query), checks.query_matches(query))
@@ -167,8 +197,8 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
 
 
 def _has_optimal_base(exp: Sat) -> bool:
-    """Whether any optimal-base mode is present, so @cost rides the shared ``OPT_ENUM`` enumeration
-    of Opt(P) rather than a cheap single-optimum ``OPT`` solve (spec §3)."""
+    """Whether any optimal-base mode is present, so @cost rides the shared ``OPTIMAL_ENUM``
+    enumeration of Opt(P) rather than a cheap single-optimum ``OPTIMAL`` solve (spec §3)."""
     return (
         exp.optimal_model is not None
         or bool(exp.cautious_optimal)
