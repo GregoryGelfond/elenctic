@@ -1,9 +1,9 @@
-"""Unit tests for the all-base and scalar checks (spec §3; plan Task 4 / dx#9).
+"""Unit tests for the all-base and scalar checks (spec §3, dx#9).
 
-Each check is a pure ``Check`` — a callable carrying its contract-tag ``label`` — that
-maps a ``SolveResult`` to a ``CheckReport``: a three-valued ``Verdict`` plus the diagnostic
-the dx#9 layer surfaces (the ``label`` and an expected-vs-actual ``message``). Checks are
-pure over ``SolveResult``, so they test with no solver (spec §4).
+Each check is a pure ``Check`` mapping a ``Determination`` to a ``CheckReport`` (a three-valued
+``Verdict`` plus the dx#9 diagnostic). A check dispatches on the arm — ``Inconclusive`` → UNDECIDED
+(§7a), ``Inconsistent`` → the AS(P)=∅ verdict, ``Consistent`` → the per-tag decision read through
+the accessor seam. Pure over a ``Determination``; tested with no solver (spec §4).
 """
 
 import pytest
@@ -21,7 +21,19 @@ from elenctic.checks import (
     expect_unsat,
     has_model,
 )
-from elenctic.result import Observable, SolveResult, Verdict
+from elenctic.result import (
+    ConsistentBrave,
+    ConsistentCautious,
+    ConsistentEnumeration,
+    ConsistentOptimum,
+    ConsistentWitness,
+    Field,
+    Inconclusive,
+    Inconsistent,
+    Observable,
+    Optimum,
+    Verdict,
+)
 
 
 def obs(*names: str) -> Observable:
@@ -32,8 +44,12 @@ def lits(*names: str) -> frozenset[Symbol]:
     return frozenset(parse_term(name) for name in names)
 
 
+def enum(*observables: Observable) -> ConsistentEnumeration:
+    return ConsistentEnumeration(observables)
+
+
 def test_check_returns_checkreport_with_verdict_and_label() -> None:
-    report = expect_sat()(SolveResult(completed=True, observables=(obs("a"),)))
+    report = expect_sat()(enum(obs("a")))
     assert isinstance(report, CheckReport)
     assert report.verdict is Verdict.PASS
     assert report.label == "@expect sat"
@@ -52,98 +68,97 @@ def test_check_returns_checkreport_with_verdict_and_label() -> None:
         pytest.param(assign_contains(frozenset({(parse_term("x"), 1)})), "@assign", id="assign"),
     ],
 )
-def test_undecided_when_not_completed(check: Check, label: str) -> None:
-    report = check(SolveResult(completed=False))
+def test_undecided_when_inconclusive(check: Check, label: str) -> None:
+    report = check(Inconclusive())
     assert report.verdict is Verdict.UNDECIDED  # a timeout is never FAIL (§7a)
     assert report.label == label
 
 
 def test_check_label_is_readable_without_solving() -> None:
-    # dx#9 / C: the contract-tag label is a first-class attribute on the check itself, so a
-    # consumer can identify or explain a check before any solve (no SolveResult needed).
+    # dx#9 / option C: the contract-tag label is a first-class attribute, readable before any solve.
     assert expect_sat().label == "@expect sat"
     assert has_model(lits("a")).label == "@model"
     assert cautious_contains(lits("a")).label == "@cautious"
 
 
+def test_check_declares_what_it_reads_statically() -> None:
+    # the wiring rule's LHS (Half B / explain): reads is statically inspectable, no solve needed.
+    assert expect_sat().reads == frozenset()
+    assert cautious_contains(lits("a")).reads == frozenset({Field.CAUTIOUS})
+    assert brave_contains(lits("a")).reads == frozenset({Field.BRAVE})
+    assert has_model(lits("a")).reads == frozenset({Field.OBSERVABLES})
+    assert cost_is((1,)).reads == frozenset({Field.OPTIMUM})
+    assert expect_unsat().reads == frozenset({Field.WITNESS})
+
+
 def test_expect_sat() -> None:
-    assert expect_sat()(SolveResult(True, observables=(obs("a"),))).verdict is Verdict.PASS
-    failed = expect_sat()(SolveResult(True, observables=()))
+    assert expect_sat()(enum(obs("a"))).verdict is Verdict.PASS
+    failed = expect_sat()(Inconsistent())
     assert failed.verdict is Verdict.FAIL  # AS(P) = ∅ is the regression catch
     assert "∅" in failed.message
 
 
 def test_expect_unsat() -> None:
-    assert expect_unsat()(SolveResult(True, observables=())).verdict is Verdict.PASS
-    failed = expect_unsat()(SolveResult(True, observables=(obs("a"),)))
+    assert expect_unsat()(Inconsistent()).verdict is Verdict.PASS
+    failed = expect_unsat()(ConsistentWitness(obs("a")))
     assert failed.verdict is Verdict.FAIL
     assert "a" in failed.message  # the witnessing model is surfaced
 
 
-def test_expect_unsat_witness_is_canonical_not_enumeration_order() -> None:
-    # The surfaced witness is canonical (min by text), independent of solver enumeration order,
-    # so the dx#9 message is reproducible (MINOR-7).
-    result = SolveResult(True, observables=(obs("b"), obs("a")))
-    report = expect_unsat()(result)
-    assert report.verdict is Verdict.FAIL
-    assert "{ a }" in report.message  # canonical min witness …
-    assert "{ b }" not in report.message  # … not observables[0]
-
-
 def test_has_model_is_existential_over_whole_shown_model_and_total() -> None:
-    result = SolveResult(True, observables=(obs("a", "b"), obs("c")))
+    result = enum(obs("a", "b"), obs("c"))
     assert has_model(lits("a", "b"))(result).verdict is Verdict.PASS
     partial = has_model(lits("a"))(result)
     assert partial.verdict is Verdict.FAIL  # the whole shown model, not a subset
     assert "a" in partial.message
-    empty = has_model(lits("a"))(SolveResult(True, observables=()))
-    assert empty.verdict is Verdict.FAIL  # total on the empty base
+    empty = has_model(lits("a"))(Inconsistent())
+    assert empty.verdict is Verdict.FAIL  # AS(P) = ∅ arm
 
 
 def test_count_is_total_at_both_ends() -> None:
-    two = SolveResult(True, observables=(obs("a"), obs("b")))
+    two = enum(obs("a"), obs("b"))
     assert count_is(2)(two).verdict is Verdict.PASS
-    missed = count_is(2)(SolveResult(True, observables=()))
+    missed = count_is(2)(Inconsistent())
     assert missed.verdict is Verdict.FAIL
     assert "2" in missed.message and "0" in missed.message  # expected 2, got 0
-    assert count_is(0)(SolveResult(True, observables=())).verdict is Verdict.PASS  # @count 0 over ∅
+    assert count_is(0)(Inconsistent()).verdict is Verdict.PASS  # @count 0 ⟺ unsat
 
 
-def test_cautious_reads_intersection_and_is_total_on_none() -> None:
-    present = SolveResult(True, intersection=lits("a", "b"))
+def test_cautious_reads_intersection_and_is_total_on_unsat() -> None:
+    present = ConsistentCautious(lits("a", "b"))
     assert cautious_contains(lits("a"))(present).verdict is Verdict.PASS
     missing = cautious_contains(lits("c"))(present)
     assert missing.verdict is Verdict.FAIL
     assert "c" in missing.message and "⋂" in missing.message
-    none = cautious_contains(lits("a"))(SolveResult(True, intersection=None))
-    assert none.verdict is Verdict.FAIL  # empty base: never evaluate L ⊆ None
+    unsat = cautious_contains(lits("a"))(Inconsistent())
+    assert unsat.verdict is Verdict.FAIL  # AS(P) = ∅ arm; never evaluate L ⊆ (missing)
 
 
-def test_brave_reads_union_and_is_total_on_none() -> None:
-    present = SolveResult(True, union=lits("a", "b"))
+def test_brave_reads_union_and_is_total_on_unsat() -> None:
+    present = ConsistentBrave(lits("a", "b"))
     assert brave_contains(lits("a"))(present).verdict is Verdict.PASS
     missing = brave_contains(lits("c"))(present)
     assert missing.verdict is Verdict.FAIL
     assert "c" in missing.message and "⋃" in missing.message
-    none = brave_contains(lits("a"))(SolveResult(True, union=None))
-    assert none.verdict is Verdict.FAIL
+    unsat = brave_contains(lits("a"))(Inconsistent())
+    assert unsat.verdict is Verdict.FAIL
 
 
 def test_cost_compares_the_vector_by_value() -> None:
-    assert cost_is((4, 2))(SolveResult(True, optimum_cost=(4, 2))).verdict is Verdict.PASS
-    missed = cost_is((4, 2))(SolveResult(True, optimum_cost=(4, 3)))
+    assert cost_is((4, 2))(ConsistentOptimum(Optimum((4, 2)))).verdict is Verdict.PASS
+    missed = cost_is((4, 2))(ConsistentOptimum(Optimum((4, 3))))
     assert missed.verdict is Verdict.FAIL
     assert "4" in missed.message
-    none = cost_is((4, 2))(SolveResult(True, optimum_cost=None))
-    assert none.verdict is Verdict.FAIL  # no optimization run populated a cost
+    unsat = cost_is((4, 2))(Inconsistent())
+    assert unsat.verdict is Verdict.FAIL  # no optimum — AS(P) = ∅
 
 
 def test_assign_is_existential_over_observables() -> None:
     target = frozenset({(parse_term("digit(s)"), 9)})
-    result = SolveResult(True, observables=(Observable(frozenset(), target),))
+    result = enum(Observable(frozenset(), target))
     assert assign_contains(target)(result).verdict is Verdict.PASS
     missed = assign_contains(frozenset({(parse_term("digit(s)"), 1)}))(result)
     assert missed.verdict is Verdict.FAIL
     assert "digit(s)" in missed.message
-    empty = assign_contains(target)(SolveResult(True, observables=()))
-    assert empty.verdict is Verdict.FAIL  # total on the empty base
+    empty = assign_contains(target)(Inconsistent())
+    assert empty.verdict is Verdict.FAIL  # AS(P) = ∅ arm

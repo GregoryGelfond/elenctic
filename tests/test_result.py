@@ -19,7 +19,6 @@ from elenctic.result import (
     Observable,
     Optimum,
     SeamError,
-    SolveResult,
     Verdict,
     brave_of,
     cautious_of,
@@ -50,18 +49,6 @@ def test_observable_distinct_by_assignment() -> None:
 
 def test_verdict_three_valued() -> None:
     assert len({Verdict.PASS, Verdict.FAIL, Verdict.UNDECIDED}) == 3
-
-
-# --- SolveResult (transitional; removed once checks.py adopts Determination) ---
-
-
-def test_solveresult_defaults() -> None:
-    r = SolveResult(completed=True)
-    assert r.observables == ()
-    assert r.optimal_observables == ()
-    assert r.union is None
-    assert r.intersection is None
-    assert r.optimum_cost is None
 
 
 # --- the Determination arms (depth D) ---

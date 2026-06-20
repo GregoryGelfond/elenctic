@@ -197,20 +197,6 @@ def _bindings_over(goal: QueryLiteral, atoms: frozenset[Symbol]) -> set[tuple[Sy
     return bindings
 
 
-def ground_answer(conjuncts: tuple[Symbol, ...], intersection: frozenset[Symbol]) -> Answer:
-    """DEPRECATED — superseded by ``singleton_answer`` (⋂) and ``conjunctive_answer`` (census).
-
-    Its conjunctive "no" (``∃i: l̄i ∈ ⋂``) is the wrong ∃∀ reading corrected by the errata
-    (see ``conjunctive_answer``). Kept only until ``checks.py`` adopts the new evaluators, then
-    removed (field-compatibility keystone, Task 3).
-    """
-    if all(conjunct in intersection for conjunct in conjuncts):
-        return Answer.yes
-    if any(contrary(conjunct) in intersection for conjunct in conjuncts):
-        return Answer.no
-    return Answer.unknown
-
-
 def singleton_answer(literal: Symbol, cautious: frozenset[Symbol]) -> Answer:
     """The three-valued answer to a ground *singleton* query off ⋂ (Gelfond–Kahl Def 2.2.2):
     yes iff the literal is entailed, no iff its contrary is entailed, else unknown. ⋂ suffices —

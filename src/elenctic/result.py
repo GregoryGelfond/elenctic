@@ -295,22 +295,3 @@ def optimum_of(shape: Consistent) -> Optimum:
             return shape.optimum
         case _:
             _seam_violation(Field.OPTIMUM, shape)
-
-
-@dataclass(frozen=True, slots=True)
-class SolveResult:
-    """DEPRECATED — superseded by :data:`Determination`. Kept only until ``checks.py`` adopts the
-    three-arm shape, then removed. The ``None``/``()`` sentinels it carries are exactly the
-    overloaded definedness the ``Determination`` arms replace.
-
-    The (partial) outcome of one configured run over the observable (spec §3). ``None`` and ``()``
-    are distinct on purpose: ``intersection is None`` means the cautious aggregate was never
-    computed; an empty ``frozenset()`` is a real intersection with no shared atom.
-    """
-
-    completed: bool
-    observables: tuple[Observable, ...] = ()
-    union: frozenset[Symbol] | None = None
-    intersection: frozenset[Symbol] | None = None
-    optimum_cost: tuple[int, ...] | None = None
-    optimal_observables: tuple[Observable, ...] = ()
