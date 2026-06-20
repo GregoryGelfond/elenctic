@@ -1,15 +1,18 @@
 """Unit tests for ``runs_for``: the pure derivation of solver runs and their checks (spec §3, §4).
 
-A contract's tags coalesce onto the fixed run-configuration taxonomy (Global Constraints): tags
+A contract's tags coalesce onto the fixed run-configuration taxonomy (the :class:`Mode` enum): tags
 that can share one solve land on one :class:`Run`; the genuinely different searches (brave vs
 cautious vs optimization vs full enumeration) do not. Each run carries its checks as self-describing
 :class:`~elenctic.checks.Check`s, so a test reads ``check.label`` with no solve (dx#9 / option C).
 
-The subtleties under test: ``@expect sat`` rides an existing full enumeration (which populates
-``observables``) else a cheap ``DEFAULT`` solve, never a cautious/brave/optimisation run; an
-``unknown``-*binding* ``@query`` escalates to one full ``ENUM_ALL`` enumeration that yields both ⋂
-and ⋃ (ground and yes/no queries read ⋂ alone); and ``@cost`` rides the shared ``OPT_ENUM`` when an
-optimal-base mode is present, else a cheap single-optimum ``OPT``.
+The wiring rule (Half B) is enforced in ``Run.__post_init__``: ``reads ⊆ populates(mode)`` for every
+check, so ``runs_for`` returning at all already proves every derived run is well-routed.
+
+The subtleties under test: ``@expect sat`` (which reads ∅) rides an existing full enumeration else a
+cheap ``DEFAULT`` solve, never an expensive cautious/brave/opt run. A conjunctive ground ``@query``
+rides ``ENUM_ALL`` (the census); a singleton ground or yes/no binding rides ``CAUTIOUS_ALL`` (⋂); an
+unknown binding rides ``ENUM_ALL``; and ``@cost`` rides ``OPT_ENUM`` with an optimal base, else
+``OPT``.
 """
 
 import pytest
@@ -17,19 +20,11 @@ from clingo import Function
 from hypothesis import given
 from hypothesis import strategies as st
 
+from elenctic import checks
 from elenctic.expectation import Expectation, Sat, Unsat, parse
-from elenctic.query import Answer, BindingQuery, GroundQuery, QueryLiteral, Var
-from elenctic.run import (
-    BRAVE_ALL,
-    CAUTIOUS_ALL,
-    DEFAULT,
-    ENUM_ALL,
-    OPT,
-    OPT_ENUM,
-    TAXONOMY,
-    Run,
-    runs_for,
-)
+from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral, Var
+from elenctic.result import Field
+from elenctic.run import Mode, RoutingError, Run, populates, runs_for
 
 
 def runs(contract: str) -> tuple[Run, ...]:
@@ -40,49 +35,85 @@ def labels(run: Run) -> set[str]:
     return {check.label for check in run.checks}  # static — no solve (option C)
 
 
-def configs(contract: str) -> set[tuple[str, ...]]:
-    return {run.args for run in runs(contract)}
+def configs(contract: str) -> set[Mode]:
+    return {run.mode for run in runs(contract)}
 
 
-def run_at(contract: str, args: tuple[str, ...]) -> Run:
-    return next(run for run in runs(contract) if run.args == args)
+def run_at(contract: str, mode: Mode) -> Run:
+    return next(run for run in runs(contract) if run.mode == mode)
+
+
+# --- the Mode taxonomy: the lowering and the populates map ---
+
+
+def test_mode_lowers_to_its_solver_args() -> None:
+    assert Mode.DEFAULT.args == ()
+    assert Mode.ENUM_ALL.args == ("--models=0",)
+    assert Mode.CAUTIOUS_ALL.args == ("--enum-mode=cautious", "--models=0")
+    assert Mode.OPT_ENUM.args == ("--opt-mode=optN", "--models=0")
+    assert Mode.OPT.args == ("--opt-mode=opt",)
+
+
+def test_populates_maps_each_mode() -> None:
+    assert populates(Mode.DEFAULT) == frozenset({Field.WITNESS})
+    assert populates(Mode.ENUM_ALL) == frozenset({Field.OBSERVABLES, Field.CAUTIOUS, Field.BRAVE})
+    assert populates(Mode.CAUTIOUS_ALL) == frozenset({Field.CAUTIOUS})
+    assert populates(Mode.BRAVE_ALL) == frozenset({Field.BRAVE})
+    assert populates(Mode.OPT_ENUM) == frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM})
+    assert populates(Mode.OPT) == frozenset({Field.OPTIMUM})
+
+
+# --- the wiring rule (Half B): reads ⊆ populates, enforced at construction ---
+
+
+def test_run_rejects_a_misrouted_check_at_construction() -> None:
+    # @count reads OBSERVABLES; CAUTIOUS_ALL does not populate it — rejected before any solve, as a
+    # RoutingError (a harness bug), never a verdict.
+    with pytest.raises(RoutingError, match="observables"):
+        Run(Mode.CAUTIOUS_ALL, (checks.count_is(2),))
+
+
+def test_run_accepts_a_well_routed_check() -> None:
+    run = Run(Mode.CAUTIOUS_ALL, (checks.cautious_contains(frozenset({Function("a")})),))
+    assert labels(run) == {"@cautious"}
 
 
 # --- the core routing: each model-bearing tag rides its taxonomy cell ---
 
 
 @pytest.mark.parametrize(
-    ("contract", "config", "label"),
+    ("contract", "mode", "label"),
     [
-        pytest.param("% @expect sat\n% @model { a }\n", ENUM_ALL, "@model", id="model"),
-        pytest.param("% @expect sat\n% @count 2\n", ENUM_ALL, "@count", id="count"),
-        pytest.param("% @expect sat\n% @assign { x=1 }\n", ENUM_ALL, "@assign", id="assign"),
+        pytest.param("% @expect sat\n% @model { a }\n", Mode.ENUM_ALL, "@model", id="model"),
+        pytest.param("% @expect sat\n% @count 2\n", Mode.ENUM_ALL, "@count", id="count"),
+        pytest.param("% @expect sat\n% @assign { x=1 }\n", Mode.ENUM_ALL, "@assign", id="assign"),
         pytest.param(
-            "% @expect sat\n% @cautious { a }\n", CAUTIOUS_ALL, "@cautious", id="cautious"
+            "% @expect sat\n% @cautious { a }\n", Mode.CAUTIOUS_ALL, "@cautious", id="cautious"
         ),
-        pytest.param("% @expect sat\n% @brave { a }\n", BRAVE_ALL, "@brave", id="brave"),
-        pytest.param("% @expect sat\n% @optimal { a }\n", OPT_ENUM, "@optimal", id="optimal"),
+        pytest.param("% @expect sat\n% @brave { a }\n", Mode.BRAVE_ALL, "@brave", id="brave"),
+        pytest.param("% @expect sat\n% @optimal { a }\n", Mode.OPT_ENUM, "@optimal", id="optimal"),
         pytest.param(
             "% @expect sat\n% @cautious optimal { a }\n",
-            OPT_ENUM,
+            Mode.OPT_ENUM,
             "@cautious optimal",
             id="cautious-optimal",
         ),
         pytest.param(
             "% @expect sat\n% @brave optimal { a }\n",
-            OPT_ENUM,
+            Mode.OPT_ENUM,
             "@brave optimal",
             id="brave-optimal",
         ),
         pytest.param(
-            "% @expect sat\n% @count optimal 1\n", OPT_ENUM, "@count optimal", id="count-optimal"
+            "% @expect sat\n% @count optimal 1\n",
+            Mode.OPT_ENUM,
+            "@count optimal",
+            id="count-optimal",
         ),
     ],
 )
-def test_model_bearing_tag_rides_its_taxonomy_config(
-    contract: str, config: tuple[str, ...], label: str
-) -> None:
-    assert label in labels(run_at(contract, config))
+def test_model_bearing_tag_rides_its_mode(contract: str, mode: Mode, label: str) -> None:
+    assert label in labels(run_at(contract, mode))
 
 
 # --- @expect sat: ride a full enumeration if one exists, else a cheap DEFAULT solve ---
@@ -91,31 +122,30 @@ def test_model_bearing_tag_rides_its_taxonomy_config(
 def test_expect_sat_alone_is_one_default_run() -> None:
     derived = runs("% @expect sat\n")
     assert len(derived) == 1
-    assert derived[0].args == DEFAULT
+    assert derived[0].mode == Mode.DEFAULT
     assert labels(derived[0]) == {"@expect sat"}
 
 
 def test_expect_sat_rides_an_existing_full_enumeration() -> None:
-    # @model already forces ENUM_ALL (which populates `observables`), so @expect sat coalesces
-    # onto it — one solve, not two.
+    # @model already forces ENUM_ALL, so @expect sat coalesces onto it — one solve, not two.
     derived = runs("% @expect sat\n% @model { a }\n")
     assert len(derived) == 1
-    assert derived[0].args == ENUM_ALL
+    assert derived[0].mode == Mode.ENUM_ALL
     assert labels(derived[0]) == {"@model", "@expect sat"}
 
 
 def test_expect_sat_takes_default_alongside_a_cautious_run() -> None:
-    # A cautious run reports only ⋂, not `observables`, so @expect sat cannot ride it; it gets its
-    # own cheap DEFAULT solve.
-    assert configs("% @expect sat\n% @cautious { a }\n") == {CAUTIOUS_ALL, DEFAULT}
-    assert labels(run_at("% @expect sat\n% @cautious { a }\n", DEFAULT)) == {"@expect sat"}
+    # @expect sat reads ∅ (it could ride any run), but takes a cheap DEFAULT solve rather than the
+    # expensive cautious run — the cautious solve is likelier to time out and report UNDECIDED where
+    # the 1-model DEFAULT solve would decide satisfiability.
+    assert configs("% @expect sat\n% @cautious { a }\n") == {Mode.CAUTIOUS_ALL, Mode.DEFAULT}
+    assert labels(run_at("% @expect sat\n% @cautious { a }\n", Mode.DEFAULT)) == {"@expect sat"}
 
 
 def test_expect_sat_takes_default_under_optimisation_only() -> None:
-    # OPT_ENUM populates optimal_observables, not observables, so @expect sat still needs DEFAULT.
     contract = "% @expect sat\n% @optimal { a }\n"
-    assert configs(contract) == {OPT_ENUM, DEFAULT}
-    assert labels(run_at(contract, DEFAULT)) == {"@expect sat"}
+    assert configs(contract) == {Mode.OPT_ENUM, Mode.DEFAULT}
+    assert labels(run_at(contract, Mode.DEFAULT)) == {"@expect sat"}
 
 
 # --- @expect unsat: a single default run, nothing else ---
@@ -124,41 +154,47 @@ def test_expect_sat_takes_default_under_optimisation_only() -> None:
 def test_unsat_is_one_default_run_with_only_expect_unsat() -> None:
     derived = runs("% @expect unsat\n")
     assert len(derived) == 1
-    assert derived[0].args == DEFAULT
+    assert derived[0].mode == Mode.DEFAULT
     assert labels(derived[0]) == {"@expect unsat"}
 
 
-# --- @query routing (the bridge theorem and the unknown-binding escalation) ---
+# --- @query routing (bridge theorem, conjunctive-census escalation, unknown-binding escalation) ---
 
 
-def test_ground_query_shares_the_cautious_run() -> None:
-    # The bridge theorem (spec §2.4): a positive ground @query yes { L } reads ⋂, the same run a
+def test_singleton_ground_query_shares_the_cautious_run() -> None:
+    # The bridge theorem (spec §2.4): a singleton ground @query yes { L } reads ⋂, the same run a
     # @cautious { L } needs — so they coalesce onto the one cautious solve.
     contract = "% @expect sat\n% @cautious { a }\n% @query yes { a }\n"
-    assert {"@cautious", "@query"} <= labels(run_at(contract, CAUTIOUS_ALL))
+    assert {"@cautious", "@query"} <= labels(run_at(contract, Mode.CAUTIOUS_ALL))
+
+
+def test_conjunctive_ground_query_rides_a_full_enumeration() -> None:
+    # corrected Def 2.2.2: a conjunctive ground @query's "no" is a per-model property (the census),
+    # not a ⋂ property — so it rides ENUM_ALL, not CAUTIOUS_ALL.
+    contract = "% @expect sat\n% @query no { a, b }\n"
+    assert configs(contract) == {Mode.ENUM_ALL}
+    assert "@query" in labels(run_at(contract, Mode.ENUM_ALL))
 
 
 def test_unknown_binding_query_rides_one_full_enumeration() -> None:
-    # An unknown-binding query needs both ⋂ and ⋃; one ENUM_ALL solve yields both (reconciling the
-    # spec's "two runs" wording with the one-enumeration realisation). @expect sat rides it too.
+    # An unknown-binding query needs both ⋂ and ⋃; one ENUM_ALL solve yields both. @expect sat too.
     contract = "% @expect sat\n% @query unknown { p(X) } = { a }\n"
-    assert configs(contract) == {ENUM_ALL}
-    assert labels(run_at(contract, ENUM_ALL)) == {"@query", "@expect sat"}
+    assert configs(contract) == {Mode.ENUM_ALL}
+    assert labels(run_at(contract, Mode.ENUM_ALL)) == {"@query", "@expect sat"}
 
 
-def test_ground_unknown_query_uses_cautious_not_enum_all() -> None:
-    # A *ground* query reads ⋂ for every answer (yes/no/unknown), so it stays on CAUTIOUS_ALL; only
-    # an unknown *binding* query needs ⋃.
+def test_singleton_ground_query_uses_cautious_even_when_unknown() -> None:
+    # A *singleton* ground query reads ⋂ for every answer (yes/no/unknown) — only an unknown
+    # *binding* needs ⋃, and only a *conjunctive* ground query needs the census.
     contract = "% @expect sat\n% @query unknown { a }\n"
-    assert "@query" in labels(run_at(contract, CAUTIOUS_ALL))
-    assert ENUM_ALL not in configs(contract)
+    assert "@query" in labels(run_at(contract, Mode.CAUTIOUS_ALL))
+    assert Mode.ENUM_ALL not in configs(contract)
 
 
 def test_yes_binding_query_uses_cautious() -> None:
-    # A yes-binding query reads ⋂ alone, so it does not escalate to a full enumeration.
     contract = "% @expect sat\n% @query yes { p(X) } = { a }\n"
-    assert "@query" in labels(run_at(contract, CAUTIOUS_ALL))
-    assert ENUM_ALL not in configs(contract)
+    assert "@query" in labels(run_at(contract, Mode.CAUTIOUS_ALL))
+    assert Mode.ENUM_ALL not in configs(contract)
 
 
 # --- @cost: cheap single optimum, unless an optimal-base mode forces the shared enumeration ---
@@ -166,15 +202,14 @@ def test_yes_binding_query_uses_cautious() -> None:
 
 def test_cost_alone_uses_the_cheap_single_optimum() -> None:
     contract = "% @expect sat\n% @cost { 8 }\n"
-    assert "@cost" in labels(run_at(contract, OPT))
-    assert OPT_ENUM not in configs(contract)
-    assert ENUM_ALL not in configs(contract)
+    assert "@cost" in labels(run_at(contract, Mode.OPT))
+    assert Mode.OPT_ENUM not in configs(contract)
 
 
 def test_cost_with_an_optimal_base_rides_the_shared_opt_enum() -> None:
     contract = "% @expect sat\n% @cost { 8 }\n% @count optimal 2\n"
-    assert {"@cost", "@count optimal"} <= labels(run_at(contract, OPT_ENUM))
-    assert OPT not in configs(contract)
+    assert {"@cost", "@count optimal"} <= labels(run_at(contract, Mode.OPT_ENUM))
+    assert Mode.OPT not in configs(contract)
 
 
 # --- coalescing: shared solves merge, and no tag is dropped or invented ---
@@ -188,7 +223,7 @@ def test_optimal_modes_coalesce_onto_one_opt_enum_solve() -> None:
         "% @brave optimal { a }\n"
         "% @count optimal 1\n"
     )
-    opt_enum_runs = [run for run in runs(contract) if run.args == OPT_ENUM]
+    opt_enum_runs = [run for run in runs(contract) if run.mode == Mode.OPT_ENUM]
     assert len(opt_enum_runs) == 1  # one shared enumeration of Opt(P), not four
     assert {
         "@optimal",
@@ -199,11 +234,10 @@ def test_optimal_modes_coalesce_onto_one_opt_enum_solve() -> None:
 
 
 def test_enumeration_tags_coalesce_onto_one_enum_all_solve() -> None:
-    # The headline coalescing: the three all-base enumeration tags + @expect sat share one solve.
     contract = "% @expect sat\n% @model { a }\n% @count 2\n% @assign { x=1 }\n"
     derived = runs(contract)
     assert len(derived) == 1
-    assert derived[0].args == ENUM_ALL
+    assert derived[0].mode == Mode.ENUM_ALL
     assert labels(derived[0]) == {"@model", "@count", "@assign", "@expect sat"}
 
 
@@ -218,17 +252,16 @@ def test_every_tag_becomes_exactly_one_check_no_drop_no_duplicate() -> None:
 
 
 def test_runs_for_is_deterministic_in_order() -> None:
-    # Order is a pinned contract (the explain/dry-run usage relies on it): compare the ordered
-    # projection without sorting, so a run/check reordering regression is caught.
     contract = "% @expect sat\n% @model { a }\n% @cautious { a }\n% @query yes { a }\n"
-    first = [(run.args, tuple(check.label for check in run.checks)) for run in runs(contract)]
-    second = [(run.args, tuple(check.label for check in run.checks)) for run in runs(contract)]
+    first = [(run.mode, tuple(check.label for check in run.checks)) for run in runs(contract)]
+    second = [(run.mode, tuple(check.label for check in run.checks)) for run in runs(contract)]
     assert first == second
 
 
-# --- a Hypothesis property: runs_for is total, onto the taxonomy, and always carries @expect ---
+# --- a Hypothesis property: runs_for is total, well-routed, coalesced, carries one @expect ---
 
 _GROUND = GroundQuery(Answer.yes, (Function("a"),))
+_GROUND_CONJ = GroundQuery(Answer.no, (Function("a"), Function("b")))
 _BIND_YES = BindingQuery(
     Answer.yes, QueryLiteral("p", True, (Var("X"),)), frozenset({(Function("a"),)})
 )
@@ -243,6 +276,9 @@ def _sats(draw: st.DrawFn) -> Sat:
     """An arbitrary structurally-valid ``Sat`` (runs_for derives runs from any Sat; cross-tag
     well-formedness is ``parse``'s concern, not runs_for's)."""
     optional_lit = st.sampled_from([_LIT, frozenset()])
+    queries: st.SearchStrategy[Query] = st.sampled_from(
+        [_GROUND, _GROUND_CONJ, _BIND_YES, _BIND_UNKNOWN]
+    )
     return Sat(
         model=draw(st.sampled_from([_LIT, None])),
         optimal_model=draw(st.sampled_from([_LIT, None])),
@@ -254,9 +290,7 @@ def _sats(draw: st.DrawFn) -> Sat:
         count_optimal=draw(st.sampled_from([1, None])),
         cost=draw(st.sampled_from([(8,), None])),
         assign=draw(st.sampled_from([frozenset({(Function("x"), 1)}), None])),
-        queries=tuple(
-            draw(st.lists(st.sampled_from([_GROUND, _BIND_YES, _BIND_UNKNOWN]), max_size=3))
-        ),
+        queries=tuple(draw(st.lists(queries, max_size=3))),
     )
 
 
@@ -266,10 +300,11 @@ def _expectations() -> st.SearchStrategy[Expectation]:
 
 
 @given(_expectations())
-def test_runs_for_is_total_onto_the_taxonomy_and_fully_coalesced(exp: Expectation) -> None:
-    derived = runs_for(exp)  # total: never raises on any structurally-valid Expectation
-    assert all(run.args in TAXONOMY for run in derived)  # onto the fixed taxonomy
-    assert len({run.args for run in derived}) == len(derived)  # config-distinct ⟺ fully coalesced
+def test_runs_for_builds_only_well_routed_coalesced_runs(exp: Expectation) -> None:
+    derived = runs_for(exp)  # total; well-routed by construction (else __post_init__ raised)
+    # THE Half-B property: every check reads a subset of what its run's mode populates.
+    assert all(check.reads <= populates(run.mode) for run in derived for check in run.checks)
+    assert len({run.mode for run in derived}) == len(derived)  # mode-distinct ⟺ fully coalesced
     assert all(check.label for run in derived for check in run.checks)  # every check is labelled
     expects = [
         check.label for run in derived for check in run.checks if check.label.startswith("@expect")

@@ -1,54 +1,109 @@
 """``runs_for``: derive the solver runs (and their checks) a contract requires (spec §3, §4).
 
-A :class:`Run` is one solve configuration plus the self-describing checks (dx#9 / option C) that
-read its result; tags that can share a configuration coalesce onto one run, while the genuinely
-different searches (brave vs cautious vs optimisation vs full enumeration) stay separate.
+A :class:`Run` is one solve configuration (:class:`Mode`) plus the self-describing checks (dx#9 /
+option C) that read its result; tags that can share a configuration coalesce onto one run, while the
+genuinely different searches (brave vs cautious vs optimisation vs full enumeration) stay separate.
 ``runs_for`` is **pure**: it reads the :class:`~elenctic.expectation.Expectation` and constructs
 runs; only ``solvers.py`` ever touches a solver.
 
-The run-configuration taxonomy is fixed (Global Constraints / spec §3). The canonical arg tuples are
-solver-agnostic; ``--project`` is the clingo facade's business (§6.1), never added here.
+The wiring rule (Half B of the field-compatibility keystone): a check declares ``reads`` and a mode
+``populates`` a field-set; ``Run.__post_init__`` asserts ``reads ⊆ populates(mode)`` per check, so a
+stale route fails loud at plan construction (a :class:`~elenctic.result.HarnessError`), before any
+solve — never as a costumed verdict.
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Final, assert_never
 
 from elenctic import checks
 from elenctic.checks import Check
 from elenctic.expectation import Expectation, Sat, Unsat
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query
+from elenctic.result import Field, HarnessError
 
-DEFAULT: Final[tuple[str, ...]] = ()
-ENUM_ALL: Final[tuple[str, ...]] = ("--models=0",)
-BRAVE_ALL: Final[tuple[str, ...]] = ("--enum-mode=brave", "--models=0")
-CAUTIOUS_ALL: Final[tuple[str, ...]] = ("--enum-mode=cautious", "--models=0")
-OPT_ENUM: Final[tuple[str, ...]] = ("--opt-mode=optN", "--models=0")
-OPT: Final[tuple[str, ...]] = ("--opt-mode=opt",)
 
-TAXONOMY: Final[frozenset[tuple[str, ...]]] = frozenset(
-    {DEFAULT, ENUM_ALL, BRAVE_ALL, CAUTIOUS_ALL, OPT_ENUM, OPT}
-)
+class Mode(Enum):
+    """One solve configuration of the fixed run-configuration taxonomy (spec §3). ``args`` is the
+    solver-agnostic lowering for ``solvers.py`` (``--project`` is the clingo facade's business,
+    §6.1, never added here); the explain/dry-run surface names the mode itself."""
+
+    DEFAULT = "default"
+    ENUM_ALL = "enum-all"
+    BRAVE_ALL = "brave-all"
+    CAUTIOUS_ALL = "cautious-all"
+    OPT_ENUM = "opt-enum"
+    OPT = "opt"
+
+    @property
+    def args(self) -> tuple[str, ...]:
+        """The canonical, solver-agnostic arg tuple this mode lowers to (spec §3)."""
+        return _ARGS[self]
+
+
+_ARGS: Final[dict[Mode, tuple[str, ...]]] = {
+    Mode.DEFAULT: (),
+    Mode.ENUM_ALL: ("--models=0",),
+    Mode.BRAVE_ALL: ("--enum-mode=brave", "--models=0"),
+    Mode.CAUTIOUS_ALL: ("--enum-mode=cautious", "--models=0"),
+    Mode.OPT_ENUM: ("--opt-mode=optN", "--models=0"),
+    Mode.OPT: ("--opt-mode=opt",),
+}
+
+_POPULATES: Final[dict[Mode, frozenset[Field]]] = {
+    Mode.DEFAULT: frozenset({Field.WITNESS}),
+    Mode.ENUM_ALL: frozenset({Field.OBSERVABLES, Field.CAUTIOUS, Field.BRAVE}),
+    Mode.BRAVE_ALL: frozenset({Field.BRAVE}),
+    Mode.CAUTIOUS_ALL: frozenset({Field.CAUTIOUS}),
+    Mode.OPT_ENUM: frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM}),
+    Mode.OPT: frozenset({Field.OPTIMUM}),
+}
+
+
+def populates(mode: Mode) -> frozenset[Field]:
+    """The fields a ``Consistent`` result of ``mode`` makes readable (total over ``Mode``). The
+    lowering contract's postcondition for ``solvers.py`` (a ``Consistent`` of ``mode`` carries
+    exactly these fields) is the seam's second unreachability premise (``result``)."""
+    return _POPULATES[mode]
+
+
+class RoutingError(HarnessError):
+    """A check was paired with a run whose mode does not populate the fields it reads — the
+    ``reads ⊆ populates`` wiring rule was violated at plan construction. A harness-internal bug (a
+    stale route, or a mode added without updating ``populates``), never a contract or a verdict; the
+    session reports it as a harness error, not a program-under-test failure."""
 
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Run:
-    """One solve configuration and the checks reading its result (spec §3, §4).
+    """One solve configuration (:class:`Mode`) and the checks reading its result (spec §3, §4).
 
-    ``args`` is the canonical, solver-agnostic arg tuple of one taxonomy cell; ``checks`` are the
-    per-tag checks coalesced onto this one solve, each carrying its own contract-tag label (dx#9),
-    so a run is fully described — and explainable — before any solve. Equality is by identity
-    (``eq=False``, matching ``Check``): compare ``run.args`` / ``check.label``, not ``==``.
+    The wiring rule is a property of a *valid* ``Run`` (Hoare), enforced at construction: a check
+    whose ``reads`` exceed ``populates(mode)`` is rejected before any solve, naming the offending
+    check, the missing fields, and the mode. Equality is by identity (``eq=False``, matching
+    ``Check``): compare ``run.mode`` / ``check.label``, not ``==``.
     """
 
-    args: tuple[str, ...]
+    mode: Mode
     checks: tuple[Check, ...]
+
+    def __post_init__(self) -> None:
+        provided = populates(self.mode)
+        for check in self.checks:
+            missing = check.reads - provided
+            if missing:
+                names = ", ".join(field.value for field in missing)
+                raise RoutingError(
+                    f"{check.label} reads {{{names}}}, which {self.mode.name} does not populate "
+                    "— the reads ⊆ populates wiring rule is violated"
+                )
 
 
 def runs_for(exp: Expectation) -> tuple[Run, ...]:
     """Derive the coalesced runs an expectation requires (pure, spec §3, §4)."""
     match exp:
         case Unsat():
-            return (Run(DEFAULT, (checks.expect_unsat(),)),)
+            return (Run(Mode.DEFAULT, (checks.expect_unsat(),)),)
         case Sat():
             return _sat_runs(exp)
         case _:
@@ -59,51 +114,47 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
     """Coalesce a satisfiable contract's tags onto the run-configuration taxonomy (spec §3, §4).
 
     Output order is deterministic: ``bucket`` is insertion-ordered and the add-sequence is fixed.
-    Coalescing-soundness invariant: each check is added under a config that populates the
-    ``SolveResult`` fields its decision reads — the enumeration modes + ``@expect`` under
-    ``ENUM_ALL``, ``@cautious``/ground-``@query`` under ``CAUTIOUS_ALL`` (⋂), ``@brave`` under
-    ``BRAVE_ALL`` (⋃), the optimal modes under ``OPT_ENUM``. The ``checks.py`` totality guards are
-    the belt-and-suspenders if a route ever goes stale; lifting ``reads(check) ⊆ populates(config)``
-    into the types is the parked keystone (see reserved-and-deferred.md).
+    Each check is added under a mode that populates the fields its decision reads; the wiring rule
+    (``Run.__post_init__``) verifies ``reads ⊆ populates`` per run, so coalescing soundness is
+    enforced by construction rather than by hand.
     """
-    bucket: dict[tuple[str, ...], list[Check]] = {}
+    bucket: dict[Mode, list[Check]] = {}
 
-    def add(config: tuple[str, ...], check: Check) -> None:
-        bucket.setdefault(config, []).append(check)
+    def add(mode: Mode, check: Check) -> None:
+        bucket.setdefault(mode, []).append(check)
 
     if exp.model is not None:
-        add(ENUM_ALL, checks.has_model(exp.model))
+        add(Mode.ENUM_ALL, checks.has_model(exp.model))
     if exp.count is not None:
-        add(ENUM_ALL, checks.count_is(exp.count))
+        add(Mode.ENUM_ALL, checks.count_is(exp.count))
     if exp.assign is not None:
-        add(ENUM_ALL, checks.assign_contains(exp.assign))
+        add(Mode.ENUM_ALL, checks.assign_contains(exp.assign))
     if exp.cautious:
-        add(CAUTIOUS_ALL, checks.cautious_contains(exp.cautious))
+        add(Mode.CAUTIOUS_ALL, checks.cautious_contains(exp.cautious))
     if exp.brave:
-        add(BRAVE_ALL, checks.brave_contains(exp.brave))
+        add(Mode.BRAVE_ALL, checks.brave_contains(exp.brave))
 
     if exp.optimal_model is not None:
-        add(OPT_ENUM, checks.has_optimal_model(exp.optimal_model))
+        add(Mode.OPT_ENUM, checks.has_optimal_model(exp.optimal_model))
     if exp.cautious_optimal:
-        add(OPT_ENUM, checks.cautious_optimal_contains(exp.cautious_optimal))
+        add(Mode.OPT_ENUM, checks.cautious_optimal_contains(exp.cautious_optimal))
     if exp.brave_optimal:
-        add(OPT_ENUM, checks.brave_optimal_contains(exp.brave_optimal))
+        add(Mode.OPT_ENUM, checks.brave_optimal_contains(exp.brave_optimal))
     if exp.count_optimal is not None:
-        add(OPT_ENUM, checks.count_optimal_is(exp.count_optimal))
+        add(Mode.OPT_ENUM, checks.count_optimal_is(exp.count_optimal))
     if exp.cost is not None:
-        add(OPT_ENUM if _has_optimal_base(exp) else OPT, checks.cost_is(exp.cost))
+        add(Mode.OPT_ENUM if _has_optimal_base(exp) else Mode.OPT, checks.cost_is(exp.cost))
 
     for query in exp.queries:
         add(_query_config(query), checks.query_matches(query))
 
-    # @expect sat reads `observables`, so it rides an existing full enumeration when one exists,
-    # else a cheap DEFAULT 1-model solve. It cannot ride CAUTIOUS_ALL / BRAVE_ALL / OPT_ENUM: those
-    # populate only ⋂ / ⋃ / optimal_observables, never `observables` (the field expect_sat reads).
-    # §7a edge: a timed-out ENUM_ALL reports UNDECIDED even with a model in hand — verdict-safe,
-    # case-masked by co-located enumeration checks; existential-aware §7a is deferred (ledger).
-    add(ENUM_ALL if ENUM_ALL in bucket else DEFAULT, checks.expect_sat())
+    # @expect sat reads ∅ (the arm is the answer), so it could ride any run; it rides an existing
+    # full enumeration when one exists, else a cheap DEFAULT 1-model solve — deliberately not an
+    # expensive cautious/brave/opt run, which is likelier to time out and report UNDECIDED where the
+    # cheap solve would decide satisfiability. (Existential-aware §7a is deferred — ledger.)
+    add(Mode.ENUM_ALL if Mode.ENUM_ALL in bucket else Mode.DEFAULT, checks.expect_sat())
 
-    return tuple(Run(config, tuple(carried)) for config, carried in bucket.items())
+    return tuple(Run(mode, tuple(carried)) for mode, carried in bucket.items())
 
 
 def _has_optimal_base(exp: Sat) -> bool:
@@ -117,14 +168,19 @@ def _has_optimal_base(exp: Sat) -> bool:
     )
 
 
-def _query_config(query: Query) -> tuple[str, ...]:
-    """The run a ``@query`` rides: ground and yes/no-binding queries read the cautious consequences
-    ⋂ (``CAUTIOUS_ALL``); an ``unknown``-binding query also needs the brave ⋃, so it rides one full
-    ``ENUM_ALL`` enumeration that yields both ⋂ and ⋃ off a single solve (spec §3 / §2.4)."""
+def _query_config(query: Query) -> Mode:
+    """The run a ``@query`` rides (corrected Def 2.2.2). A *conjunctive* ground query needs the
+    census (its "no" is ``∀M ∃i: l̄i∈M``, not a ⋂ property), so it rides ``ENUM_ALL``; a *singleton*
+    ground query and a yes/no binding read ⋂ (``CAUTIOUS_ALL``); an ``unknown`` binding needs ⋃ too,
+    so it rides one full ``ENUM_ALL`` enumeration that yields both ⋂ and ⋃ (spec §3 / §2.4)."""
     match query:
+        case GroundQuery(_, conjuncts) if len(conjuncts) > 1:
+            return Mode.ENUM_ALL
+        case GroundQuery():
+            return Mode.CAUTIOUS_ALL
         case BindingQuery(answer=Answer.unknown):
-            return ENUM_ALL
-        case BindingQuery() | GroundQuery():
-            return CAUTIOUS_ALL
+            return Mode.ENUM_ALL
+        case BindingQuery():
+            return Mode.CAUTIOUS_ALL
         case _:
             assert_never(query)
