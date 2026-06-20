@@ -33,7 +33,7 @@ from elenctic.result import (
 )
 
 
-def oo(*names: str) -> Observable:
+def obs(*names: str) -> Observable:
     return Observable(frozenset(parse_term(name) for name in names))
 
 
@@ -70,7 +70,7 @@ def test_undecided_when_inconclusive(check: Check, label: str) -> None:
 
 
 def test_optimal_base_checks_share_the_optimal_observables() -> None:
-    result = opt_enum(oo("a", "x"), oo("a", "y"))
+    result = opt_enum(obs("a", "x"), obs("a", "y"))
     assert has_optimal_model(lits("a", "x"))(result).verdict is Verdict.PASS
     assert cautious_optimal_contains(lits("a"))(result).verdict is Verdict.PASS  # optimal backbone
     missing = cautious_optimal_contains(lits("x"))(result)
@@ -90,14 +90,14 @@ def test_optimal_base_is_total_on_unsat() -> None:
 
 def test_optimal_base_singleton_class() -> None:
     # ⋂ Opt(P) = ⋃ Opt(P) = the single optimal model (the family[0].∩(*[]) edge).
-    result = opt_enum(oo("a", "x"))
+    result = opt_enum(obs("a", "x"))
     assert has_optimal_model(lits("a", "x"))(result).verdict is Verdict.PASS
     assert cautious_optimal_contains(lits("a", "x"))(result).verdict is Verdict.PASS
     assert brave_optimal_contains(lits("x"))(result).verdict is Verdict.PASS
 
 
 def test_optimal_base_failures_name_opt_p_not_enumerated_models() -> None:
-    result = opt_enum(oo("a", "x"), oo("a", "y"))
+    result = opt_enum(obs("a", "x"), obs("a", "y"))
     partial = has_optimal_model(lits("a"))(result)  # subset, not the whole model
     assert partial.verdict is Verdict.FAIL
     assert "optimal" in partial.message  # names Opt(P), not "enumerated models"
@@ -112,12 +112,24 @@ def test_optimal_base_failures_name_opt_p_not_enumerated_models() -> None:
 
 def test_query_ground_conjunctive_reads_the_census_and_localizes() -> None:
     asked = query_matches(GroundQuery(Answer.yes, (parse_term("start(s)"), parse_term("end(t)"))))
-    both = asked(enum(oo("start(s)", "end(t)")))  # both conjuncts true in all → computed yes
+    both = asked(enum(obs("start(s)", "end(t)")))  # both conjuncts true in all → computed yes
     assert both.verdict is Verdict.PASS
-    missed = asked(enum(oo("start(s)")))  # end(t) not in the census → computed unknown ≠ yes
+    missed = asked(enum(obs("start(s)")))  # end(t) not in the census → computed unknown ≠ yes
     assert missed.verdict is Verdict.FAIL
     assert "yes" in missed.message and "unknown" in missed.message  # expected yes, computed unknown
     assert "end(t)" in missed.message  # dx#9: localizes the not-entailed conjunct
+
+
+def test_query_ground_conjunctive_no_localizes_from_the_census() -> None:
+    # each model falsifies a *different* conjunct → computed "no" (∀M ∃i: l̄i∈M); ⋂ is empty here,
+    # so the localization MUST come from the census, not ⋂ (the regression fence for the
+    # "(counter-entailed: { })" defect).
+    asked = query_matches(GroundQuery(Answer.yes, (parse_term("p(a)"), parse_term("p(b)"))))
+    missed = asked(enum(obs("p(a)", "-p(b)"), obs("-p(a)", "p(b)")))
+    assert missed.verdict is Verdict.FAIL  # expected yes, computed no
+    assert "no" in missed.message
+    assert "falsified" in missed.message  # census-based, not an empty counter-entailed set
+    assert "p(a)" in missed.message and "p(b)" in missed.message  # both falsified (in some model)
 
 
 def test_query_ground_singleton_no_via_strong_negation() -> None:
@@ -172,7 +184,7 @@ def test_query_binding_unknown_reads_brave_from_the_enumeration() -> None:
     )
     # census {reachable(s), reachable(b)}, {reachable(s)} → ⋂ = {reachable(s)}, ⋃ adds reachable(b);
     # brave domain { s, b } − yes { s } − no { } = { b }; the contract asserts unknown = { b }
-    result = enum(oo("reachable(s)", "reachable(b)"), oo("reachable(s)"))
+    result = enum(obs("reachable(s)", "reachable(b)"), obs("reachable(s)"))
     assert asked(result).verdict is Verdict.PASS
 
 

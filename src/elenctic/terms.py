@@ -68,3 +68,16 @@ def contrary(literal: Symbol) -> Symbol:
     if literal.type is not SymbolType.Function:
         raise ValueError(f"not a literal (no contrary): {literal}")
     return Function(literal.name, list(literal.arguments), not literal.positive)
+
+
+def intersect_all(family: tuple[frozenset[Symbol], ...]) -> frozenset[Symbol]:
+    """⋂ of a non-empty family of atom sets — the cautious fold (the caller guarantees non-empty).
+
+    The single home for the meet-over-a-non-empty-family idiom and its precondition, shared by the
+    consequence views (``result``) and the optimal-base aggregation (``checks``)."""
+    return family[0].intersection(*family[1:])
+
+
+def union_all(family: tuple[frozenset[Symbol], ...]) -> frozenset[Symbol]:
+    """⋃ of a non-empty family of atom sets — the brave fold (the caller guarantees non-empty)."""
+    return family[0].union(*family[1:])

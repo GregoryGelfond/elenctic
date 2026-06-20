@@ -70,10 +70,21 @@ class QueryLiteral:
 
 @dataclass(frozen=True, slots=True)
 class GroundQuery:
-    """A ground conjunctive query ``A { l1, …, ln }`` (v1 is conjunctive-only, §2.1)."""
+    """A ground conjunctive query ``A { l1, …, ln }`` (v1 is conjunctive-only, §2.1). The conjuncts
+    are literals (atoms or strong-negation ``-atoms``), enforced at construction so the evaluators
+    and ``contrary`` never face a non-literal term, and so an empty (vacuously-true) conjunction is
+    unrepresentable — mirroring ``terms.parse_litset`` at the type boundary."""
 
     answer: Answer
     conjuncts: tuple[Symbol, ...]
+
+    def __post_init__(self) -> None:
+        if not self.conjuncts:
+            raise ValueError("a ground query needs at least one conjunct")
+        if any(conjunct.type is not SymbolType.Function for conjunct in self.conjuncts):
+            raise ValueError(
+                f"@query conjuncts must be literals (atoms or -atoms); got {self.conjuncts}"
+            )
 
 
 @dataclass(frozen=True, slots=True)

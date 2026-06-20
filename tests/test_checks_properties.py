@@ -3,12 +3,14 @@
 These pin the structural guarantees the example tests only sample: consequence-soundness (an
 incomplete solve is *always* UNDECIDED, never FAIL/raise — the ``Inconclusive`` arm), the variadic
 optimal aggregation (⋂/⋃ over the whole class equals the pairwise fold, singleton included), the
-single-source label, and containment soundness (PASS iff ⊆).
+single-source label, containment soundness (PASS iff ⊆), and that the containment builders reject
+an empty (vacuous) litset.
 """
 
 import functools
 import operator
 
+import pytest
 from clingo import Function, Symbol
 from hypothesis import given
 from hypothesis import strategies as st
@@ -30,6 +32,7 @@ from elenctic.checks import (
 )
 from elenctic.query import Answer, GroundQuery
 from elenctic.result import (
+    ConsistentBrave,
     ConsistentCautious,
     ConsistentOptimalEnumeration,
     Inconclusive,
@@ -41,10 +44,11 @@ from elenctic.result import (
 
 _atoms = st.builds(Function, st.sampled_from(["a", "b", "c", "d", "e"]))
 _atom_sets = st.frozensets(_atoms, max_size=5)
+_litsets = st.frozensets(_atoms, min_size=1, max_size=5)  # a litset is non-empty (§2.1)
 
 
 def _every_check(litset: frozenset[Symbol]) -> list[Check]:
-    """One instance of each public check, built from ``litset`` where a litset is needed."""
+    """One instance of each public check, built from ``litset`` (non-empty) where one is needed."""
     return [
         expect_sat(),
         expect_unsat(),
@@ -61,7 +65,7 @@ def _every_check(litset: frozenset[Symbol]) -> list[Check]:
     ]
 
 
-@given(_atom_sets)
+@given(_litsets)
 def test_every_check_is_undecided_on_inconclusive(litset: frozenset[Symbol]) -> None:
     for check in _every_check(litset):
         assert check(Inconclusive()).verdict is Verdict.UNDECIDED  # §7a — never FAIL, never raises
@@ -70,15 +74,17 @@ def test_every_check_is_undecided_on_inconclusive(litset: frozenset[Symbol]) -> 
 @given(st.lists(_atom_sets, min_size=1, max_size=4))
 def test_optimal_aggregation_equals_the_pairwise_fold(family: list[frozenset[Symbol]]) -> None:
     # The check's variadic ⋂/⋃ over Opt(P) must equal the pairwise fold for every family size —
-    # singleton included (the ``family[0].intersection(*family[1:])`` edge).
-    result = ConsistentOptimalEnumeration(tuple(Observable(s) for s in family), Optimum((0,)))
-    meet: frozenset[Symbol] = functools.reduce(operator.and_, family)
-    join: frozenset[Symbol] = functools.reduce(operator.or_, family)
+    # singleton included. A common atom keeps meet/join non-empty (litsets are non-empty).
+    common = Function("z")
+    members = [members_set | {common} for members_set in family]
+    result = ConsistentOptimalEnumeration(tuple(Observable(s) for s in members), Optimum((0,)))
+    meet: frozenset[Symbol] = functools.reduce(operator.and_, members)
+    join: frozenset[Symbol] = functools.reduce(operator.or_, members)
     assert cautious_optimal_contains(meet)(result).verdict is Verdict.PASS
     assert brave_optimal_contains(join)(result).verdict is Verdict.PASS
 
 
-@given(_atom_sets)
+@given(_litsets)
 def test_static_label_equals_reported_label(litset: frozenset[Symbol]) -> None:
     # option C / single source: every check carries its label statically, and it is the SAME label
     # its CheckReport carries on every (field-free) arm — one source, no divergence.
@@ -88,10 +94,29 @@ def test_static_label_equals_reported_label(litset: frozenset[Symbol]) -> None:
         assert check.label == check(Inconsistent()).label
 
 
-@given(_atom_sets, _atom_sets)
+@given(_litsets, _atom_sets)
 def test_cautious_passes_iff_subset(
     litset: frozenset[Symbol], aggregate: frozenset[Symbol]
 ) -> None:
     result = ConsistentCautious(aggregate)
     expected = Verdict.PASS if litset <= aggregate else Verdict.FAIL
     assert cautious_contains(litset)(result).verdict is expected
+
+
+@given(_litsets, _atom_sets)
+def test_brave_passes_iff_subset(litset: frozenset[Symbol], aggregate: frozenset[Symbol]) -> None:
+    result = ConsistentBrave(aggregate)
+    expected = Verdict.PASS if litset <= aggregate else Verdict.FAIL
+    assert brave_contains(litset)(result).verdict is expected
+
+
+def test_containment_builders_reject_an_empty_litset() -> None:
+    # the empty-litset false-PASS (∅ ⊆ A) is rejected at construction, mirroring the parser (§2.1).
+    for build in (
+        cautious_contains,
+        brave_contains,
+        cautious_optimal_contains,
+        brave_optimal_contains,
+    ):
+        with pytest.raises(ValueError, match="vacuous"):
+            build(frozenset())

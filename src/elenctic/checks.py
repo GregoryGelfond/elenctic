@@ -9,9 +9,9 @@ reading the fields it declared via the accessor seam (``result.*_of``).
 
 Each check declares ``reads: frozenset[Field]`` — the wiring rule (``run.py``) attaches it only to a
 run whose mode populates those fields, so a ``Consistent``-arm read never misses (a misroute is a
-``SeamError`` at the seam, never a verdict). There is therefore no per-field ``is None`` guard and
-no "missing field" case: the litsets a check is built from are non-empty by construction (``parse``
-rejects an empty litset, §2.1), so no vacuous ``∅ ⊆ A`` PASS arises.
+``SeamError`` at the seam, never a verdict). There is therefore no per-field ``is None`` guard. The
+containment checks (⊆) reject an empty litset at construction — mirroring ``terms.parse_litset``
+(§2.1) at the type boundary — so no vacuous ``∅ ⊆ A`` PASS arises.
 
 Checks are pure over a ``Determination``; only ``solvers.py`` touches clingo/clingcon.
 """
@@ -48,7 +48,7 @@ from elenctic.result import (
     optimum_of,
     witness_of,
 )
-from elenctic.terms import contrary
+from elenctic.terms import contrary, intersect_all, union_all
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +102,34 @@ class Check:
             case Consistent() as shape:
                 verdict, message = self._decide(shape)
                 return CheckReport(verdict, self.label, message)
+            case _:
+                assert_never(determination)
+
+
+# --- construction helpers ---
+
+
+def _check(
+    label: str,
+    reads: frozenset[Field],
+    *,
+    inconsistent: tuple[Verdict, str],
+    decide: Callable[[Consistent], tuple[Verdict, str]],
+) -> Check:
+    """The single construction site for a check (the arm dispatch lives in ``Check.__call__``)."""
+    return Check(label, reads, inconsistent, decide)
+
+
+def _unsat_fail(reason: str) -> tuple[Verdict, str]:
+    """The ``Inconsistent``-arm FAIL for a model-needing tag: ``<reason> — AS(P) = ∅``."""
+    return Verdict.FAIL, f"{reason} — AS(P) = ∅"
+
+
+def _require_nonempty(items: frozenset[Symbol] | frozenset[tuple[Symbol, int]], tag: str) -> None:
+    """Reject an empty litset/assignment at construction: ``∅ ⊆ A`` would be a vacuous PASS (the
+    empty-litset false-PASS), mirroring ``terms.parse_litset``'s §2.1 rejection at the boundary."""
+    if not items:
+        raise ValueError(f"{tag} needs a non-empty set — an empty set is a vacuous claim")
 
 
 # --- diagnostic rendering (deterministic: sorted by text, so messages are stable) ---
@@ -149,20 +177,6 @@ def _show_goal(goal: QueryLiteral) -> str:
         return f"{sign}{goal.name}"
     args = ", ".join(arg.name if isinstance(arg, Var) else str(arg) for arg in goal.args)
     return f"{sign}{goal.name}({args})"
-
-
-# --- check construction ---
-
-
-def _check(
-    label: str,
-    reads: frozenset[Field],
-    *,
-    inconsistent: tuple[Verdict, str],
-    decide: Callable[[Consistent], tuple[Verdict, str]],
-) -> Check:
-    """The single construction site for a check (the arm dispatch lives in ``Check.__call__``)."""
-    return Check(label, reads, inconsistent, decide)
 
 
 # --- shared decisions (one per mode; reused across the all/optimal bases) ---
@@ -232,7 +246,7 @@ def has_model(litset: frozenset[Symbol]) -> Check:
     return _check(
         "@model",
         frozenset({Field.OBSERVABLES}),
-        inconsistent=(Verdict.FAIL, f"no model equals {_show_set(litset)} — AS(P) = ∅"),
+        inconsistent=_unsat_fail(f"no model equals {_show_set(litset)}"),
         decide=lambda shape: _witness(
             litset, tuple(o.shown for o in observables_of(shape)), "enumerated models"
         ),
@@ -243,7 +257,7 @@ def count_is(n: int) -> Check:
     """``@count n``: exactly ``n`` distinct observables (total at both ends, §3). ``@count 0`` is
     the unsat case, so it PASSes on ``Inconsistent``."""
     inconsistent = (
-        (Verdict.PASS, "|models| = 0") if n == 0 else (Verdict.FAIL, f"expected {n} models, got 0")
+        (Verdict.PASS, "|models| = 0") if n == 0 else _unsat_fail(f"expected {n} models, got 0")
     )
     return _check(
         "@count",
@@ -255,21 +269,23 @@ def count_is(n: int) -> Check:
 
 def cautious_contains(litset: frozenset[Symbol]) -> Check:
     """``@cautious { L }``: ``L ⊆ ⋂`` (the cautious consequences, §3)."""
+    _require_nonempty(litset, "@cautious")
     return _check(
         "@cautious",
         frozenset({Field.CAUTIOUS}),
-        inconsistent=(Verdict.FAIL, "no cautious consequences — AS(P) = ∅"),
-        decide=lambda shape: _containment(litset, cautious_of(shape), "⋂"),
+        inconsistent=_unsat_fail("no cautious consequences"),
+        decide=lambda shape: _containment(litset, cautious_of(shape), "⋂ AS(P)"),
     )
 
 
 def brave_contains(litset: frozenset[Symbol]) -> Check:
     """``@brave { L }``: ``L ⊆ ⋃`` (the brave consequences, §3)."""
+    _require_nonempty(litset, "@brave")
     return _check(
         "@brave",
         frozenset({Field.BRAVE}),
-        inconsistent=(Verdict.FAIL, "no brave consequences — AS(P) = ∅"),
-        decide=lambda shape: _containment(litset, brave_of(shape), "⋃"),
+        inconsistent=_unsat_fail("no brave consequences"),
+        decide=lambda shape: _containment(litset, brave_of(shape), "⋃ AS(P)"),
     )
 
 
@@ -295,6 +311,7 @@ def cost_is(cost: tuple[int, ...]) -> Check:
 
 def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
     """``@assign { A }``: some observable's theory assignment ⊇ ``A`` (§3, §6.3)."""
+    _require_nonempty(assignment, "@assign")
 
     def decide(shape: Consistent) -> tuple[Verdict, str]:
         observables = observables_of(shape)
@@ -309,7 +326,7 @@ def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
     return _check(
         "@assign",
         frozenset({Field.OBSERVABLES}),
-        inconsistent=(Verdict.FAIL, f"no assignment ⊇ {_show_assign(assignment)} — AS(P) = ∅"),
+        inconsistent=_unsat_fail(f"no assignment ⊇ {_show_assign(assignment)}"),
         decide=decide,
     )
 
@@ -321,43 +338,35 @@ def _optimal_shown(shape: Consistent) -> tuple[frozenset[Symbol], ...]:
     return tuple(o.shown for o in optimal_observables_of(shape))
 
 
-def _intersection(family: tuple[frozenset[Symbol], ...]) -> frozenset[Symbol]:
-    """⋂ of a non-empty family of atom sets (the shape's invariant guarantees non-emptiness)."""
-    return family[0].intersection(*family[1:])
-
-
-def _union(family: tuple[frozenset[Symbol], ...]) -> frozenset[Symbol]:
-    """⋃ of a non-empty family of atom sets."""
-    return family[0].union(*family[1:])
-
-
 def has_optimal_model(litset: frozenset[Symbol]) -> Check:
     """``@optimal { L }`` (= ``@model optimal``): ``L`` is some optimal model (§3)."""
     return _check(
         "@optimal",
         frozenset({Field.OPTIMAL_OBSERVABLES}),
-        inconsistent=(Verdict.FAIL, f"no optimal model equals {_show_set(litset)} — AS(P) = ∅"),
+        inconsistent=_unsat_fail(f"no optimal model equals {_show_set(litset)}"),
         decide=lambda shape: _witness(litset, _optimal_shown(shape), "optimal models"),
     )
 
 
 def cautious_optimal_contains(litset: frozenset[Symbol]) -> Check:
     """``@cautious optimal { L }``: ``L ⊆ ⋂ Opt(P)`` (the optimal backbone, §3)."""
+    _require_nonempty(litset, "@cautious optimal")
     return _check(
         "@cautious optimal",
         frozenset({Field.OPTIMAL_OBSERVABLES}),
-        inconsistent=(Verdict.FAIL, "no optimal models — AS(P) = ∅"),
-        decide=lambda shape: _containment(litset, _intersection(_optimal_shown(shape)), "⋂ Opt(P)"),
+        inconsistent=_unsat_fail("no optimal models"),
+        decide=lambda shape: _containment(litset, intersect_all(_optimal_shown(shape)), "⋂ Opt(P)"),
     )
 
 
 def brave_optimal_contains(litset: frozenset[Symbol]) -> Check:
     """``@brave optimal { L }``: ``L ⊆ ⋃ Opt(P)`` (§3)."""
+    _require_nonempty(litset, "@brave optimal")
     return _check(
         "@brave optimal",
         frozenset({Field.OPTIMAL_OBSERVABLES}),
-        inconsistent=(Verdict.FAIL, "no optimal models — AS(P) = ∅"),
-        decide=lambda shape: _containment(litset, _union(_optimal_shown(shape)), "⋃ Opt(P)"),
+        inconsistent=_unsat_fail("no optimal models"),
+        decide=lambda shape: _containment(litset, union_all(_optimal_shown(shape)), "⋃ Opt(P)"),
     )
 
 
@@ -366,7 +375,7 @@ def count_optimal_is(n: int) -> Check:
     inconsistent = (
         (Verdict.PASS, "|optimal models| = 0")
         if n == 0
-        else (Verdict.FAIL, f"expected {n} optimal models, got 0")
+        else _unsat_fail(f"expected {n} optimal models, got 0")
     )
     return _check(
         "@count optimal",
@@ -379,30 +388,41 @@ def count_optimal_is(n: int) -> Check:
 # --- the @query check (Def 2.2.2, corrected per the errata; base-fixed to AS(P)) ---
 
 
-def _ground_witness(
+def _cautious_localization(
     conjuncts: tuple[Symbol, ...], cautious: frozenset[Symbol], computed: Answer
 ) -> str:
-    """Localize a failing ground query — the conjuncts that fell short of the answer (§2.4). Uses ⋂
-    for the localization even in the conjunctive (census) case, which is an adequate diagnostic."""
+    """Localize a failing *singleton* ground query off ⋂ (§2.4)."""
     if computed is Answer.unknown:
-        missing = _show_set(c for c in conjuncts if c not in cautious)
+        return f" (not entailed: {_show_set(c for c in conjuncts if c not in cautious)})"
+    if computed is Answer.no:
+        return f" (counter-entailed: {_show_set(c for c in conjuncts if contrary(c) in cautious)})"
+    return ""
+
+
+def _census_localization(
+    conjuncts: tuple[Symbol, ...], census: tuple[frozenset[Symbol], ...], computed: Answer
+) -> str:
+    """Localize a failing *conjunctive* ground query off the census (§2.4): for ``no`` a conjunct is
+    falsified iff some model carries its contrary (⋂ would be empty when each model falsifies a
+    different conjunct — the errata-headline case)."""
+    if computed is Answer.unknown:
+        missing = _show_set(c for c in conjuncts if c not in intersect_all(census))
         return f" (not entailed: {missing})"
     if computed is Answer.no:
-        refuted = _show_set(c for c in conjuncts if contrary(c) in cautious)
-        return f" (counter-entailed: {refuted})"
-    return ""  # computed yes but a non-yes answer was asserted — the conjuncts are all entailed
+        falsified = _show_set(c for c in conjuncts if any(contrary(c) in model for model in census))
+        return f" (falsified in some model: {falsified})"
+    return ""
 
 
 def _ground_verdict(
-    answer: Answer, conjuncts: tuple[Symbol, ...], computed: Answer, cautious: frozenset[Symbol]
+    answer: Answer, conjuncts: tuple[Symbol, ...], computed: Answer, localization: str
 ) -> tuple[Verdict, str]:
     """The program's computed answer vs the contract's, for a ground query (§3)."""
     if computed is answer:
         return Verdict.PASS, f"{_show_set(conjuncts)}: computed {answer.value}"
     return (
         Verdict.FAIL,
-        f"{_show_set(conjuncts)}: expected {answer.value}, computed {computed.value}"
-        f"{_ground_witness(conjuncts, cautious, computed)}",
+        f"{_show_set(conjuncts)}: expected {answer.value}, computed {computed.value}{localization}",
     )
 
 
@@ -428,7 +448,11 @@ def query_matches(query: Query) -> Check:
     consequences ⋂; a *conjunctive* (n≥2) ground query reads the model census (its "no"/"unknown" is
     a per-model property ⋂ cannot express); a yes/no binding reads ⋂; an unknown binding reads ⋂ and
     ⋃. On the ``Inconsistent`` arm (AS(P)=∅) every query FAILs — each is vacuously yes-and-no (§2.2,
-    FR#9)."""
+    FR#9).
+
+    Each arm builds its decide closure over the case's pattern bindings and returns immediately; do
+    not defer the returns (``match`` introduces no scope, so the bindings co-exist in this frame).
+    """
     inconsistent = (Verdict.FAIL, "AS(P) = ∅ — every query is vacuously yes-and-no; @query fails")
 
     match query:
@@ -438,7 +462,12 @@ def query_matches(query: Query) -> Check:
             def decide_singleton(shape: Consistent) -> tuple[Verdict, str]:
                 cautious = cautious_of(shape)
                 computed = singleton_answer(literal, cautious)
-                return _ground_verdict(answer, conjuncts, computed, cautious)
+                return _ground_verdict(
+                    answer,
+                    conjuncts,
+                    computed,
+                    _cautious_localization(conjuncts, cautious, computed),
+                )
 
             return _check(
                 "@query",
@@ -452,7 +481,9 @@ def query_matches(query: Query) -> Check:
             def decide_conjunctive(shape: Consistent) -> tuple[Verdict, str]:
                 census = tuple(o.shown for o in observables_of(shape))
                 computed = conjunctive_answer(conjuncts, census)
-                return _ground_verdict(answer, conjuncts, computed, _intersection(census))
+                return _ground_verdict(
+                    answer, conjuncts, computed, _census_localization(conjuncts, census, computed)
+                )
 
             return _check(
                 "@query",
@@ -463,7 +494,7 @@ def query_matches(query: Query) -> Check:
 
         case BindingQuery(answer, goal, bindings) if answer is Answer.unknown:
 
-            def decide_unknown(shape: Consistent) -> tuple[Verdict, str]:
+            def decide_binding_unknown(shape: Consistent) -> tuple[Verdict, str]:
                 found = binding_set(goal, answer, cautious_of(shape), brave_of(shape))
                 return _binding_verdict(goal, answer, bindings, found)
 
@@ -471,12 +502,12 @@ def query_matches(query: Query) -> Check:
                 "@query",
                 frozenset({Field.CAUTIOUS, Field.BRAVE}),
                 inconsistent=inconsistent,
-                decide=decide_unknown,
+                decide=decide_binding_unknown,
             )
 
         case BindingQuery(answer, goal, bindings):
 
-            def decide_binding(shape: Consistent) -> tuple[Verdict, str]:
+            def decide_binding_settled(shape: Consistent) -> tuple[Verdict, str]:
                 found = binding_set(goal, answer, cautious_of(shape), None)
                 return _binding_verdict(goal, answer, bindings, found)
 
@@ -484,7 +515,7 @@ def query_matches(query: Query) -> Check:
                 "@query",
                 frozenset({Field.CAUTIOUS}),
                 inconsistent=inconsistent,
-                decide=decide_binding,
+                decide=decide_binding_settled,
             )
 
         case _:

@@ -20,6 +20,8 @@ from typing import NoReturn, final
 
 from clingo import Symbol
 
+from elenctic.terms import intersect_all, union_all
+
 __all__ = [
     "Consistent",
     "ConsistentBrave",
@@ -224,14 +226,12 @@ def _seam_violation(field: Field, shape: Consistent) -> NoReturn:
 
 def _shown_intersection(observables: tuple[Observable, ...]) -> frozenset[Symbol]:
     """⋂ of the census's shown projections (observables is non-empty by the shape's invariant)."""
-    shown = [observable.shown for observable in observables]
-    return shown[0].intersection(*shown[1:])
+    return intersect_all(tuple(observable.shown for observable in observables))
 
 
 def _shown_union(observables: tuple[Observable, ...]) -> frozenset[Symbol]:
     """⋃ of the census's shown projections."""
-    shown = [observable.shown for observable in observables]
-    return shown[0].union(*shown[1:])
+    return union_all(tuple(observable.shown for observable in observables))
 
 
 # --- the accessor seam: read one field, narrowing to the shapes that populate it ---

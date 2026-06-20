@@ -87,6 +87,9 @@ def test_check_declares_what_it_reads_statically() -> None:
     assert cautious_contains(lits("a")).reads == frozenset({Field.CAUTIOUS})
     assert brave_contains(lits("a")).reads == frozenset({Field.BRAVE})
     assert has_model(lits("a")).reads == frozenset({Field.OBSERVABLES})
+    assert count_is(2).reads == frozenset({Field.OBSERVABLES})
+    assign_reads = assign_contains(frozenset({(parse_term("x"), 1)})).reads
+    assert assign_reads == frozenset({Field.OBSERVABLES})
     assert cost_is((1,)).reads == frozenset({Field.OPTIMUM})
     assert expect_unsat().reads == frozenset({Field.WITNESS})
 
@@ -122,6 +125,9 @@ def test_count_is_total_at_both_ends() -> None:
     assert missed.verdict is Verdict.FAIL
     assert "2" in missed.message and "0" in missed.message  # expected 2, got 0
     assert count_is(0)(Inconsistent()).verdict is Verdict.PASS  # @count 0 ⟺ unsat
+    wrong = count_is(2)(enum(obs("a"), obs("b"), obs("c")))
+    assert wrong.verdict is Verdict.FAIL  # wrong count on a Consistent enumeration
+    assert "2" in wrong.message and "3" in wrong.message  # expected 2, got 3
 
 
 def test_cautious_reads_intersection_and_is_total_on_unsat() -> None:
@@ -162,3 +168,12 @@ def test_assign_is_existential_over_observables() -> None:
     assert "digit(s)" in missed.message
     empty = assign_contains(target)(Inconsistent())
     assert empty.verdict is Verdict.FAIL  # AS(P) = ∅ arm
+
+
+def test_assign_finds_a_match_among_multiple_observables() -> None:
+    target = frozenset({(parse_term("x"), 2)})
+    result = enum(
+        Observable(frozenset(), frozenset({(parse_term("x"), 1)})),
+        Observable(frozenset(), frozenset({(parse_term("x"), 2)})),
+    )
+    assert assign_contains(target)(result).verdict is Verdict.PASS  # matches the 2nd observable
