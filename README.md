@@ -261,6 +261,25 @@ encoding (no instances) carries its contract in its own header.
 
 ## Installation
 
-elenctic runs on Python ≥ 3.14 and needs **clingo** (and **clingcon** for the theory fragment). Both
-are on conda-forge; install the environment with `pixi install`, then `pixi run check` for the gate
-(ruff, mypy --strict, pytest) or `pixi run test`.
+elenctic runs on **Python ≥ 3.14** (a deliberate floor — the implementation uses modern Python
+idioms) and needs **clingo**, plus **clingcon** for the theory fragment (`@assign` and CSP `@count`).
+Both solvers are on conda-forge *and* on PyPI.
+
+The development setup uses [pixi](https://pixi.sh), which also pins the solvers and runs the gate:
+
+```console
+$ git clone https://github.com/GregoryGelfond/elenctic
+$ cd elenctic && pixi install
+$ pixi run check        # ruff + mypy --strict + pytest
+```
+
+Or install with pip (clingo ships 3.14 wheels; clingcon may build from source on 3.14):
+
+```console
+$ pip install "git+https://github.com/GregoryGelfond/elenctic.git"                    # answer-set fragment
+$ pip install "elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic.git" # + clingcon
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
