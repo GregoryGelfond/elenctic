@@ -63,8 +63,8 @@ class CheckReport:
 
     ``label`` is the contract tag (e.g. ``@cautious optimal``); ``message`` is the diagnostic the
     user sees on a non-``PASS`` (the expected-vs-actual reading, dx#9). The report is exactly the
-    *check's* output — the case's ``@note`` and ``path:line`` are the renderer's concern, read from
-    the case, not carried here.
+    *check's* output — the case's ``@note`` and its source provenance are the renderer's concern,
+    read from the case (Model A), not carried here.
     """
 
     verdict: Verdict
