@@ -7,9 +7,19 @@ name = "elenctic"
 version = "0.1.0"
 description = "A declarative testing framework for Answer Set Programming."
 readme = "README.md"
-requires-python = ">=3.14"
-# license: intentionally unset — deferred strategic decision (Gregory). Do not add one.
+requires-python = ">=3.14"  # deliberate floor: load-bearing 3.14 idioms (Gregory, 2026-06-20); the
+                            # long arc is the aspis/Rust stack. Downstream users may target lower.
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Gregory Gelfond" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = ["clingo>=5.8"]  # honest runtime dep; clingo is on conda-forge AND PyPI (no PyPI-only dep, spec §7)
 
 [project.optional-dependencies]
