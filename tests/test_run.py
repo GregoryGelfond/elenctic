@@ -23,8 +23,8 @@ from hypothesis import strategies as st
 from elenctic import checks
 from elenctic.expectation import Expectation, Sat, Unsat, parse
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral, Var
-from elenctic.result import Field
-from elenctic.run import Mode, RoutingError, Run, populates, runs_for
+from elenctic.result import Consistent, Field
+from elenctic.run import Mode, RoutingError, Run, populates, runs_for, shape_for
 
 
 def runs(contract: str) -> tuple[Run, ...]:
@@ -55,11 +55,14 @@ def test_mode_lowers_to_its_solver_args() -> None:
     assert Mode.OPTIMAL.args == ("--opt-mode=opt",)
 
 
-def test_args_and_populates_are_total_over_mode() -> None:
-    # a Mode added without an _ARGS/_POPULATES entry KeyErrors here (the RoutingError scenario)
+def test_mode_keyed_structures_all_agree_on_the_mode_set() -> None:
+    # The three Mode-keyed structures (_ARGS via .args, _POPULATES via populates, _SHAPE via
+    # shape_for) must agree on the Mode set: a Mode added without all three entries KeyErrors here.
+    # This pins their cross-agreement by test (the by-construction single-table lift is ledgered).
     for mode in Mode:
         assert isinstance(mode.args, tuple)
         assert isinstance(populates(mode), frozenset)
+        assert issubclass(shape_for(mode), Consistent)
 
 
 def test_populates_maps_each_mode() -> None:
