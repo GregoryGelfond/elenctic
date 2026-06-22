@@ -65,18 +65,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _explain(cases: tuple[Case, ...]) -> int:
-    """Narrate the derived run plan per case without solving (the dry-run); 0, or 2 on misroute."""
+    """Narrate the derived run plan per case without solving (the dry-run): each run's mode and the
+    projection decision (which the contract's reads induce), and each check with the fields it
+    reads. 0, or 2 on a misroute."""
     status = 0
     for case in cases:
         print(f"{case.contract_source} [{case.solver}]")
         try:
             for run in runs_for(case.expectation, case.solver == "clingcon"):
-                # subject discerns the repeatable @query tag before any solve (keystone surface).
-                checks = ", ".join(
-                    f"{check.label} ({check.subject})" if check.subject else check.label
-                    for check in run.checks
-                )
-                print(f"    {run.mode.name}: {checks}")
+                projects = "yes" if run.projects_to_shown else "no"
+                print(f"    {run.mode.name} (projects: {projects}):")
+                for check in run.checks:
+                    # subject discerns the repeatable @query tag before any solve.
+                    name = f"{check.label} ({check.subject})" if check.subject else check.label
+                    reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
+                    print(f"        {name} — reads {{{reads}}}")
         except HarnessError as exc:
             print(f"    HARNESS ERROR: {exc}", file=sys.stderr)
             status = 2

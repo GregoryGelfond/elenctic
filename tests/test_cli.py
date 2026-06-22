@@ -51,7 +51,8 @@ def test_cli_explain_narrates_the_plan_without_solving(
     status = main([str(tmp_path / "encodings"), "--explain"])
     out = capsys.readouterr().out
     assert status == 0
-    assert "CAUTIOUS_ALL: @cautious" in out  # the derived run plan, no solve
+    assert "CAUTIOUS_ALL (projects: no):" in out  # the run, its projection decision
+    assert "@cautious — reads {cautious}" in out  # the check and the fields it reads
 
 
 def test_cli_runs_the_krbook_dogfood_corpus(capsys: pytest.CaptureFixture[str]) -> None:
@@ -82,3 +83,26 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
     assert "HARNESS ERROR" in captured.err and "bad" in captured.err  # the misrouted case named
     assert "1/2 passed" in captured.out  # the good case still ran and passed
     assert "1 harness error" in captured.out
+
+
+def test_cli_explain_narrates_reads_and_the_projection_decision(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --explain prints each check's reads and a per-run projects: line, so the reads/populates
+    # surface is dogfooded. A shown-only clingcon enumeration projects (yes); a @count one does not
+    # (no). The dry-run does not solve, so clingcon need not be installed.
+    write(
+        tmp_path / "encodings/shown/e-clingcon.lp",
+        "&dom {1..3} = v(x). ok. #show ok/0.\n% @expect sat\n% @model { ok }\n",
+    )
+    write(
+        tmp_path / "encodings/full/e-clingcon.lp",
+        "&dom {1..3} = v(x). ok. #show ok/0.\n% @expect sat\n% @count 3\n",
+    )
+    status = main([str(tmp_path / "encodings"), "--explain"])
+    out = capsys.readouterr().out
+    assert status == 0
+    assert "reads {shown census}" in out  # @model narrates its read token
+    assert "projects: yes" in out  # the shown-only run projects (the issue-#1 acceleration)
+    assert "reads {full census}" in out  # @count narrates the full token
+    assert "projects: no" in out  # the full-census run suppresses projection

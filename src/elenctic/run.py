@@ -303,11 +303,13 @@ def _main() -> None:
         raise SystemExit(2)
     path = Path(sys.argv[1])
     for run in runs_for(parse(path.read_text(encoding="utf-8"), source=str(path))):
-        checks = ", ".join(
-            f"{check.label} ({check.subject})" if check.subject else check.label
-            for check in run.checks
-        )
-        print(f"{run.mode.name}: {checks}")
+        # solver-independent: the dry-run shows the mode and each check's reads, not the projection
+        # decision (which needs the solver — narrated by the CLI's --explain, which has the case).
+        print(f"{run.mode.name}:")
+        for check in run.checks:
+            name = f"{check.label} ({check.subject})" if check.subject else check.label
+            reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
+            print(f"    {name} — reads {{{reads}}}")
 
 
 if __name__ == "__main__":

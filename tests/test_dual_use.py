@@ -41,7 +41,8 @@ def test_run_module_prints_the_derived_plan(tmp_path: Path) -> None:
     contract = write(tmp_path / "c.lp", "% @expect sat\n% @cautious { a }\n")
     result = run_module("run", str(contract))
     assert result.returncode == 0
-    assert "CAUTIOUS_ALL: @cautious" in result.stdout
+    assert "CAUTIOUS_ALL:" in result.stdout
+    assert "@cautious — reads {cautious}" in result.stdout
     assert result.stderr == ""
 
 
