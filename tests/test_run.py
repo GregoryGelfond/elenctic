@@ -437,3 +437,11 @@ def test_runs_for_builds_only_well_routed_coalesced_runs(exp: Expectation) -> No
 def test_assign_optimal_rides_the_optimal_enum_run() -> None:
     contract = "% @expect sat\n% @assign optimal { w=2 }\n"
     assert "@assign optimal" in labels(run_at(contract, Mode.OPTIMAL_ENUM))
+
+
+def test_where_witness_reads_full_token_and_suppresses_projection() -> None:
+    where_check = checks.has_model(
+        WitnessClaim(shown=frozenset({Function("a")}), assign=frozenset({(Function("v"), 1)}))
+    )
+    assert reads_full_census(where_check)  # the where-clause makes it read the full census
+    assert should_project(True, Mode.ENUM_ALL, (where_check,)) is False  # suppressed

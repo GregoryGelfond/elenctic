@@ -238,3 +238,24 @@ def test_assign_optimal_is_a_distinct_cell_from_assign() -> None:
     assert isinstance(exp, Sat)
     assert exp.assign == frozenset({(parse_term("v"), 1)})
     assert exp.assign_optimal == frozenset({(parse_term("w"), 2)})
+
+
+def test_where_witness_single_line() -> None:
+    exp = parse("% @expect sat\n% @model { a } where { v=1 }\n")
+    assert isinstance(exp, Sat)
+    assert exp.model == WitnessClaim(shown=L("a"), assign=frozenset({(parse_term("v"), 1)}))
+
+
+def test_where_witness_on_the_optimal_base() -> None:
+    exp = parse("% @expect sat\n% @optimal { a } where { start(t)=3 }\n")
+    assert isinstance(exp, Sat)
+    binding = frozenset({(parse_term("start(t)"), 3)})
+    assert exp.optimal_model == WitnessClaim(shown=L("a"), assign=binding)
+
+
+def test_where_continues_while_a_brace_is_open() -> None:
+    # where { re-opens a brace, so the clause may brace-continue onto the next % line.
+    exp = parse("% @expect sat\n% @model { a } where { v=1,\n%   w=2 }\n")
+    assert isinstance(exp, Sat)
+    binding = frozenset({(parse_term("v"), 1), (parse_term("w"), 2)})
+    assert exp.model == WitnessClaim(shown=L("a"), assign=binding)

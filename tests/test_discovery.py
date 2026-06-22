@@ -410,3 +410,11 @@ def test_assign_optimal_requires_an_optimizing_encoding(tmp_path: Path) -> None:
     write(tmp_path / "tests/cases/x/i.lp", "% @expect sat\n% @assign optimal { w=1 }\n")
     with pytest.raises(DiscoveryError, match=r"minimize|maximize|optimi"):
         discover(make_layout(tmp_path))
+
+
+def test_where_witness_requires_clingcon(tmp_path: Path) -> None:
+    # A where-qualified witness binds theory output, so it needs clingcon.
+    write(tmp_path / "encodings/x/e.lp", "a. #show a/0.\n")  # clingo baseline, no theory
+    write(tmp_path / "tests/cases/x/i.lp", "% @expect sat\n% @model { a } where { v=1 }\n")
+    with pytest.raises(DiscoveryError, match=r"clingcon"):
+        discover(make_layout(tmp_path))

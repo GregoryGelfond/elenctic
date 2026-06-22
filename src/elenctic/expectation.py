@@ -110,9 +110,14 @@ class Sat:
     @property
     def requires_theory(self) -> bool:
         """Whether this contract presupposes a *theory* solver: ``@assign`` / ``@assign optimal``
-        read the theory half of the observable, so the encoding must run under clingcon. The
-        precondition discovery checks against the case's solver."""
-        return bool(self.assign) or bool(self.assign_optimal)
+        read the theory half of the observable, and a ``where``-qualified witness binds it jointly —
+        all require clingcon. The precondition discovery checks against the case's solver."""
+        return (
+            bool(self.assign)
+            or bool(self.assign_optimal)
+            or (self.model is not None and bool(self.model.assign))
+            or (self.optimal_model is not None and bool(self.optimal_model.assign))
+        )
 
 
 type Expectation = Unsat | Sat
@@ -127,7 +132,7 @@ def parse(text: str, source: str | None = None) -> Expectation:
     (rules 1 and 3 of §2.2) is checked once the builder is complete.
     """
     builder = _Builder()
-    for block in _blocks(text):
+    for block in _blocks(text, source):
         try:
             _apply(block, builder)
         except (ValueError, RuntimeError) as exc:
@@ -142,6 +147,11 @@ def parse(text: str, source: str | None = None) -> Expectation:
 # starts a new tag (litset elements are ASP literals, which never begin with `@`).
 _TAG = re.compile(r"^\s*%\s*@(?P<tag>\w+)\b(?P<rest>.*)$")
 _CONT = re.compile(r"^\s*%\s*(?P<rest>.*)$")
+
+# A `%`-line whose content begins with a `where {` clause (the keyword then a brace) — the dangling-
+# witness shape. NOT merely the word "where" (an ordinary `% where the cost is…` prose comment, no
+# brace, stays a comment). When such a line is not absorbed by an open brace it is a loud error.
+_DANGLING_WHERE = re.compile(r"^\s*%\s*where\s*\{")
 
 # Only these tags carry a brace-delimited litset/tupleset, so only they may span a continuation.
 # Gating on the tag keeps the continuation invariant honest ("join an unfinished *litset*", not
@@ -158,10 +168,12 @@ class _Block:
     line: int
 
 
-def _blocks(text: str) -> list[_Block]:
+def _blocks(text: str, source: str | None = None) -> list[_Block]:
     """Tokenize the contract line(s) into ``_Block``s, joining continuation ``%`` lines into the
-    preceding tag's payload *only while its brace is unclosed* (spec §2.1; prose lines after a
-    closed litset are left alone)."""
+    preceding tag's payload *only while its brace is unclosed* (prose lines after a closed litset
+    are left alone). A ``%``-line that begins a ``where { … }`` clause but is not absorbed by an
+    open brace is a *dangling witness* — a loud ``ContractError`` with provenance, never silently
+    dropped."""
     blocks: list[_Block] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         if (tag := _TAG.match(line)) is not None:
@@ -175,6 +187,15 @@ def _blocks(text: str) -> list[_Block]:
             last = blocks[-1]
             joined = f"{last.payload} {cont.group('rest').strip()}".strip()
             blocks[-1] = replace(last, payload=joined)
+        elif blocks and blocks[-1].tag in {"model", "optimal"} and _DANGLING_WHERE.match(line):
+            # only `where {` directly after a witness tag (its litset brace already closed, else the
+            # continuation branch absorbed it) is a dangling witness; `where {` elsewhere (e.g.
+            # set-builder notation in prose) stays an ordinary comment.
+            raise ContractError(
+                f"{_location(source, line_number)}: dangling `where`: place it on the witness's "
+                "brace-closing line (a `where` clause must ride the litset's closing brace, or be "
+                "brace-continued while a brace is open)"
+            )
     return blocks
 
 
@@ -233,15 +254,18 @@ def _apply(block: _Block, builder: _Builder) -> None:
                 raise ValueError("at most one @expect per contract")
             builder.expect = _expect_value(rest)
         case "model":
-            is_optimal, litset = _base_litset(rest)
+            litset_text, assign = _split_where(rest)
+            is_optimal, litset = _base_litset(litset_text)
+            claim = WitnessClaim(shown=litset, assign=assign)
             if is_optimal:
-                _set_optimal_model(builder, WitnessClaim(shown=litset))
+                _set_optimal_model(builder, claim)
             elif builder.model is not None:
                 raise ValueError("at most one @model per contract (the 'all' base)")
             else:
-                builder.model = WitnessClaim(shown=litset)
-        case "optimal":  # sugar: @optimal ≡ @model optimal (spec §2.1)
-            _set_optimal_model(builder, WitnessClaim(shown=_litset(rest)))
+                builder.model = claim
+        case "optimal":  # sugar: @optimal ≡ @model optimal
+            litset_text, assign = _split_where(rest)
+            _set_optimal_model(builder, WitnessClaim(shown=_litset(litset_text), assign=assign))
         case "cautious":
             is_optimal, litset = _base_litset(rest)
             if is_optimal:
@@ -300,6 +324,9 @@ _LITSET = re.compile(r"^\{(?P<body>.*)\}$", re.S)
 _BASE_INT = re.compile(r"^(?P<base>optimal\s+)?(?P<n>\d+)$")
 _COST = re.compile(r"^\{\s*(?P<ints>-?\d+(?:\s+-?\d+)*)\s*\}$")
 _BIND = re.compile(r"^(?P<term>.+?)\s*=\s*(?P<value>-?\d+)$")
+# A `where { … }` suffix on a witness payload, split BEFORE the litset braces so the greedy litset
+# regex never swallows it; the keyword `where` immediately preceding `{` is the marker.
+_WHERE_SPLIT = re.compile(r"\bwhere\s*(?P<where>\{.*\})\s*$", re.S)
 
 
 def _expect_value(rest: str) -> Literal["sat", "unsat"]:
@@ -346,6 +373,19 @@ def _base_assign(rest: str) -> tuple[bool, frozenset[tuple[Symbol, int]]]:
     if (match := re.match(r"^optimal\s+", stripped)) is not None:
         return True, _assign_body(stripped[match.end() :])
     return False, _assign_body(stripped)
+
+
+def _split_where(rest: str) -> tuple[str, frozenset[tuple[Symbol, int]]]:
+    """Split an optional ``where { binds }`` suffix off a witness payload, before the litset braces.
+    Returns ``(litset_text, assign)``; ``assign`` is empty when there is no ``where`` (a bare
+    witness). An empty ``where { }`` is rejected with a where-specific diagnostic; ``parse`` adds
+    the ``source:line`` provenance."""
+    stripped = rest.strip()
+    if (match := _WHERE_SPLIT.search(stripped)) is None:
+        return stripped, frozenset()
+    if not match.group("where")[1:-1].strip():
+        raise ValueError("empty where { }: a where-clause needs at least one term=int binding")
+    return stripped[: match.start()].strip(), _assign_body(match.group("where"))
 
 
 def _assign_body(rest: str) -> frozenset[tuple[Symbol, int]]:

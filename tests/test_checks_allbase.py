@@ -182,3 +182,18 @@ def test_assign_finds_a_match_among_multiple_observables() -> None:
         Observable(frozenset(), frozenset({(parse_term("x"), 2)})),
     )
     assert assign_contains(target)(result).verdict is Verdict.PASS  # matches the 2nd observable
+
+
+def test_where_witness_couples_shown_and_assignment_on_one_model() -> None:
+    # The joint witness binds shown AND assignment to ONE model: shown matching on a different model
+    # than the one carrying the assignment is a FAIL (stronger than the two tags separately).
+    claim = WitnessClaim(
+        shown=frozenset({parse_term("a")}), assign=frozenset({(parse_term("v"), 1)})
+    )
+    coupled = enum(Observable(frozenset({parse_term("a")}), frozenset({(parse_term("v"), 1)})))
+    split = enum(
+        Observable(frozenset({parse_term("a")}), frozenset({(parse_term("v"), 9)})),
+        Observable(frozenset({parse_term("b")}), frozenset({(parse_term("v"), 1)})),
+    )
+    assert has_model(claim)(coupled).verdict is Verdict.PASS
+    assert has_model(claim)(split).verdict is Verdict.FAIL

@@ -206,3 +206,28 @@ def test_unsat_excludes_assign_optimal() -> None:
 def test_assign_and_assign_optimal_coexist() -> None:
     exp = parse("% @expect sat\n% @assign { v=1 }\n% @assign optimal { w=2 }\n")
     assert isinstance(exp, Sat | Unsat)
+
+
+def test_dangling_where_after_a_closed_litset_is_rejected() -> None:
+    # a where clause on its own % line, after the litset brace closed, would be silently dropped
+    # by the old tokenizer; it is now a loud ContractError with source:line provenance.
+    with pytest.raises(ContractError, match=r"dangling `where`"):
+        parse("% @expect sat\n% @model { a }\n%   where { v=1 }\n")
+
+
+def test_empty_where_is_rejected() -> None:
+    with pytest.raises(ContractError, match=r"where"):
+        parse("% @expect sat\n% @model { a } where { }\n")
+
+
+def test_prose_where_without_a_brace_stays_a_comment() -> None:
+    # 'where' as ordinary prose (no following brace) is a comment, not a dangling witness.
+    exp = parse("% @expect sat\n% @model { a }\n% where the cost is low\n% @count 1\n")
+    assert isinstance(exp, Sat) and exp.count == 1
+
+
+def test_prose_where_with_a_brace_outside_a_witness_stays_a_comment() -> None:
+    # set-builder notation in a comment (% where {x : ...}) with no preceding witness is prose,
+    # not a dangling witness — the dangling rule fires only directly after a @model/@optimal tag.
+    exp = parse("% @expect sat\n% where {x : p(x)} ranges over the grid\n% @model { a }\n")
+    assert isinstance(exp, Sat)

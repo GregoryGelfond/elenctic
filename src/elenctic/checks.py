@@ -174,6 +174,12 @@ def _show_assignments(observables: tuple[Observable, ...]) -> str:
     return _braces(sorted(_show_assign(o.assign) for o in observables))
 
 
+def _show_observables(observables: tuple[Observable, ...]) -> str:
+    """Render observed (shown, assignment) pairs, for a joint ``where``-witness failure — the shown
+    and the assignment together, so a failure shows which coordinate (or coupling) did not hold."""
+    return _braces(sorted(f"({_show_set(o.shown)}, {_show_assign(o.assign)})" for o in observables))
+
+
 def _show_cost(cost: tuple[int, ...]) -> str:
     """Render a cost vector ``(4, 2)`` for a diagnostic."""
     return "(" + ", ".join(str(component) for component in cost) + ")"
@@ -204,6 +210,24 @@ def _witness(
     if any(model == litset for model in models):
         return Verdict.PASS, f"{_show_set(litset)} ∈ {noun}"
     return Verdict.FAIL, f"{_show_set(litset)} ∉ {noun} = {_show_models(models)}"
+
+
+def _joint_witness(
+    claim: WitnessClaim, observables: tuple[Observable, ...], noun: str
+) -> tuple[Verdict, str]:
+    """``∃ M: shown(M) = L ∧ assign(M) ⊇ A`` — the joint (pair) witness over the full census: shown
+    by equality, assignment by containment, both on one model."""
+    if any(o.shown == claim.shown and claim.assign <= o.assign for o in observables):
+        return (
+            Verdict.PASS,
+            f"some {noun} is {_show_set(claim.shown)} with assignment "
+            f"⊇ {_show_assign(claim.assign)}",
+        )
+    return (
+        Verdict.FAIL,
+        f"no {noun} is {_show_set(claim.shown)} with assignment ⊇ {_show_assign(claim.assign)}; "
+        f"observed = {_show_observables(observables)}",
+    )
 
 
 def _containment(
@@ -257,13 +281,24 @@ def expect_unsat() -> Check:
 
 
 def has_model(claim: WitnessClaim) -> Check:
-    """``@model { L }``: ``L`` is some answer set's shown projection (``L`` is in the shown census).
-    A bare claim (empty ``assign``) reads the shown census (projection-invariant)."""
+    """``@model { L } [where { A }]``: a bare claim asserts ``L`` is some answer set's shown
+    projection (the shown census, projection-invariant); a ``where``-qualified claim asserts there
+    is one model with ``shown(M) = L`` AND ``assign(M) ⊇ A`` (the joint witness, full census — so it
+    suppresses projection by reading the full token)."""
+    if not claim.assign:
+        return _check(
+            "@model",
+            frozenset({Field.SHOWN_CENSUS}),
+            inconsistent=_unsat_fail(f"no model equals {_show_set(claim.shown)}"),
+            decide=lambda shape: _witness(claim.shown, shown_census_of(shape), "enumerated models"),
+        )
     return _check(
         "@model",
-        frozenset({Field.SHOWN_CENSUS}),
-        inconsistent=_unsat_fail(f"no model equals {_show_set(claim.shown)}"),
-        decide=lambda shape: _witness(claim.shown, shown_census_of(shape), "enumerated models"),
+        frozenset({Field.FULL_CENSUS}),
+        inconsistent=_unsat_fail(
+            f"no model is {_show_set(claim.shown)} with assignment ⊇ {_show_assign(claim.assign)}"
+        ),
+        decide=lambda shape: _joint_witness(claim, observables_of(shape), "model"),
     )
 
 
@@ -351,16 +386,27 @@ def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
 
 
 def has_optimal_model(claim: WitnessClaim) -> Check:
-    """``@optimal { L }`` (= ``@model optimal``): ``L`` is some optimal model's shown projection.
-    A bare claim reads the shown optimal census (projection-invariant) — what lets it ride a
-    projecting optimal run and terminate."""
+    """``@optimal { L } [where { A }]``: a bare claim reads the shown optimal census
+    (projection-invariant) — what lets it ride a projecting optimal run and terminate; a
+    ``where``-qualified claim asserts one optimal model with ``shown(M) = L`` AND ``assign(M) ⊇ A``
+    (the joint witness over the full optimal census)."""
+    if not claim.assign:
+        return _check(
+            "@optimal",
+            frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
+            inconsistent=_unsat_fail(f"no optimal model equals {_show_set(claim.shown)}"),
+            decide=lambda shape: _witness(
+                claim.shown, shown_optimal_census_of(shape), "optimal models"
+            ),
+        )
     return _check(
         "@optimal",
-        frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
-        inconsistent=_unsat_fail(f"no optimal model equals {_show_set(claim.shown)}"),
-        decide=lambda shape: _witness(
-            claim.shown, shown_optimal_census_of(shape), "optimal models"
+        frozenset({Field.FULL_OPTIMAL_CENSUS}),
+        inconsistent=_unsat_fail(
+            f"no optimal model is {_show_set(claim.shown)} with assignment ⊇ "
+            f"{_show_assign(claim.assign)}"
         ),
+        decide=lambda shape: _joint_witness(claim, optimal_observables_of(shape), "optimal model"),
     )
 
 
