@@ -102,20 +102,6 @@ class _Collector:
         """The brave consequences ⋃ (``BRAVE_ALL``), from the final consequence model."""
         return _require_consequence(self._brave, "brave")
 
-    def optimal_class(self) -> tuple[tuple[Observable, ...], Optimum]:
-        """The distinct optimal observables and the proven optimum (``OPTIMAL_ENUM``). Under
-        ``--opt-mode=optN`` the stream holds the improving prefix *and* the optimal class, so the
-        class is the min-cost slice (spec §9.2/TR7), deduplicated."""
-        optimum = self._optimum_cost()
-        optimal = tuple(
-            dict.fromkeys(
-                observable
-                for observable, cost in zip(self._observables, self._costs, strict=True)
-                if cost == optimum
-            )
-        )
-        return optimal, Optimum(optimum)
-
     def optimum(self) -> Optimum:
         """The proven optimum cost alone (``OPTIMAL``): the lexicographic min over the stream."""
         return Optimum(self._optimum_cost())
@@ -160,7 +146,10 @@ def _consistent_shape(
         case Mode.BRAVE_ALL:
             return ConsistentBrave(collector.brave())
         case Mode.OPTIMAL_ENUM:
-            optimal, optimum = collector.optimal_class()
+            # reached via the two-phase driver: the collector holds the cost-c* class (a single
+            # optimization level), so its observables ARE the optimal class and its min cost is c*.
+            optimal = collector.observables()
+            optimum = collector.optimum()
             if projects_to_shown:
                 return ConsistentShownOptimalCensus(frozenset(o.shown for o in optimal), optimum)
             return ConsistentOptimalEnumeration(optimal, optimum)
@@ -186,6 +175,18 @@ def _determination(
     return _consistent_shape(mode, collector, projects_to_shown)
 
 
+def _solve_under_budget(
+    control: Control, on_model: Callable[[Model], None], budget: float
+) -> tuple[bool, SolveResult]:
+    """One async solve under ``budget`` reduced to ``(completed, result)``: ``wait(budget)`` then
+    ``cancel`` on a miss; the handle closes via the context manager."""
+    with control.solve(on_model=on_model, async_=True) as handle:
+        completed = handle.wait(budget)
+        if not completed:
+            handle.cancel()
+        return completed, handle.get()
+
+
 def _drive(
     control: Control,
     mode: Mode,
@@ -194,14 +195,50 @@ def _drive(
     budget: float,
     projects_to_shown: bool = False,
 ) -> Determination:
-    """Run an async solve under ``budget`` and reduce it to a ``Determination``: ``wait(budget)``
-    then ``cancel`` on a miss; the handle closes via the context manager."""
-    with control.solve(on_model=on_model, async_=True) as handle:
-        completed = handle.wait(budget)
-        if not completed:
-            handle.cancel()
-        result = handle.get()
+    """Run one async solve under ``budget`` and reduce it to a ``Determination`` (the single-solve
+    modes; ``OPTIMAL_ENUM`` uses the two-phase driver instead)."""
+    completed, result = _solve_under_budget(control, on_model, budget)
     return _determination(mode, collector, completed, result, projects_to_shown)
+
+
+def _set_opt_mode(control: Control, opt_mode: str) -> None:
+    """Set clingo's optimization mode on an already-grounded control (``'opt'`` or
+    ``'enum,<bound>'``). The configuration proxy is dynamically typed, so the assignment is isolated
+    here, mirroring the untyped clingcon-theory boundary."""
+    control.configuration.solve.opt_mode = opt_mode  # type: ignore[union-attr]
+
+
+def _optimal_enum_two_phase(
+    control: Control,
+    make_on_model: Callable[[_Collector], Callable[[Model], None]],
+    budget: float,
+    projects_to_shown: bool,
+) -> Determination:
+    """Enumerate Opt(P) in two phases on one grounded ``control``, so the optimal class is correct
+    independent of clingo's ``--project`` cross-level deduplication scoping:
+
+    1. Prove the optimum c* (``opt_mode='opt'``) — a single-optimum solve.
+    2. Enumerate at the fixed optimum (``opt_mode='enum,c*'``; ``--project`` is already on the
+       control when projecting) — a single optimization level, so every emitted model has cost c*
+       and is optimal (no post-filter needed) and no model below the optimum is enumerable.
+
+    Each phase honours ``budget`` (a per-solve hang cap): a miss in either phase yields
+    ``Inconclusive``; UNSAT in phase 1 yields ``Inconsistent``. Setting ``opt_mode`` overrides the
+    construction ``--opt-mode=optN``."""
+    _set_opt_mode(control, "opt")
+    prover = _Collector()
+    completed, result = _solve_under_budget(control, make_on_model(prover), budget)
+    if not completed:
+        return Inconclusive()
+    if result.unsatisfiable:
+        return Inconsistent()
+    optimum = prover.optimum()  # the proven optimum cost vector — the phase-2 bound
+    _set_opt_mode(control, "enum," + ",".join(str(c) for c in optimum.cost))
+    enumerator = _Collector()
+    completed, _ = _solve_under_budget(control, make_on_model(enumerator), budget)
+    if not completed:
+        return Inconclusive()
+    return _consistent_shape(Mode.OPTIMAL_ENUM, enumerator, projects_to_shown)
 
 
 # clingo's enumeration modes always project: ``--project`` is information-preserving here (the
@@ -224,6 +261,10 @@ def run_clingo(
     control = Control(_solver_args(mode, project or mode in _CLINGO_ENUM_MODES))
     _add_program(control, program, files)
     control.ground([("base", [])])
+    if mode is Mode.OPTIMAL_ENUM:
+        return _optimal_enum_two_phase(
+            control, lambda c: c.on_model, budget, projects_to_shown=False
+        )
     collector = _Collector()
     return _drive(control, mode, collector, collector.on_model, budget, projects_to_shown=False)
 
@@ -252,16 +293,23 @@ def run_clingcon(
     _rewrite_program(control, theory, program, files)
     control.ground([("base", [])])
     theory.prepare(control)
+
+    def make_on_model(collector: _Collector) -> Callable[[Model], None]:
+        def on_model(model: Model) -> None:
+            theory.on_model(model)  # populate the theory assignment before reading it
+            # clingcon is a linear-integer CSP solver, so assignment() yields (Symbol, int) pairs:
+            # `Observable.assign`'s `int` is exact here, not a narrowing of the untyped boundary.
+            assign = frozenset((sym, val) for sym, val in theory.assignment(model.thread_id))
+            collector.on_model(model, assign)
+
+        return on_model
+
+    if mode is Mode.OPTIMAL_ENUM:
+        return _optimal_enum_two_phase(control, make_on_model, budget, projects_to_shown=project)
     collector = _Collector()
-
-    def on_model(model: Model) -> None:
-        theory.on_model(model)  # populate the theory assignment before reading it
-        # clingcon is a linear-*integer* CSP solver, so assignment() yields (Symbol, int) pairs —
-        # `Observable.assign`'s `int` is exact here, not a silent narrowing of the untyped boundary.
-        assign = frozenset((sym, val) for sym, val in theory.assignment(model.thread_id))
-        collector.on_model(model, assign)
-
-    return _drive(control, mode, collector, on_model, budget, projects_to_shown=project)
+    return _drive(
+        control, mode, collector, make_on_model(collector), budget, projects_to_shown=project
+    )
 
 
 type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool], Determination]

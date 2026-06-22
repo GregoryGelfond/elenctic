@@ -106,6 +106,43 @@ def test_optimum_cost_vector_is_priority_ordered_highest_first() -> None:
     assert optimum_of(det).cost == (2, 3)
 
 
+# a collision program: {a} at cost (0,) is optimal, {b} at cost (1,) is sub-optimal, and both
+# project to the same shown class { mark } (so a cross-level dedup loss would corrupt the class).
+_COLLISION = "1 { a; b } 1. mark :- a. mark :- b. #minimize { 0,a : a; 1,b : b }. #show mark/0."
+
+
+def test_optimal_enum_pins_the_collision_class_to_the_proven_optimum() -> None:
+    # The two-phase optimal lowering pins the optimal class to { mark } at the proven optimum (0,),
+    # regardless of the sub-optimal {b} -> {mark} collision sharing the shown projection. Robust by
+    # construction: phase 2 enumerates a single optimization level, so no model below the optimum is
+    # enumerable and cross-level deduplication cannot empty or corrupt the class.
+    det = run_clingo(Mode.OPTIMAL_ENUM, _COLLISION)
+    assert isinstance(det, ConsistentOptimalEnumeration)
+    assert optimum_of(det).cost == (0,)
+    assert shown_names(optimal_observables_of(det)) == {frozenset({"mark"})}
+
+
+def test_optimal_enum_timeout_yields_inconclusive() -> None:
+    # The two-phase optimal driver honours the budget in each phase: a hit budget in phase 1
+    # (proving the optimum) yields Inconclusive, never a fabricated or partial optimal class.
+    program = "{ p(1..28) }. #minimize { 1,p(X) : p(X) }. #show p/1."
+    det = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0)
+    assert isinstance(det, Inconclusive)
+
+
+def test_clingcon_optimal_enum_two_phase_yields_the_optimal_class() -> None:
+    # The clingcon OPTIMAL_ENUM path is two-phase too (prove c*, then enumerate at enum,c*); confirm
+    # the optimum and the optimal class over a #minimize the facade reads the same way as clingo.
+    pytest.importorskip("clingcon")
+    from elenctic.solvers import run_clingcon
+
+    program = "1 {a; b} 1. #minimize { 2,a : a; 1,b : b }. #show a/0. #show b/0."
+    det = run_clingcon(Mode.OPTIMAL_ENUM, program)
+    assert isinstance(det, ConsistentOptimalEnumeration)
+    assert optimum_of(det).cost == (1,)  # choosing b (cost 1) over a (cost 2)
+    assert shown_names(optimal_observables_of(det)) == {frozenset({"b"})}
+
+
 # --- the Inconsistent arm: the whole-result bit, never an empty field (§9.7) ---
 
 
