@@ -206,3 +206,68 @@ def test_clingcon_supports_clingo_minimize_optimization() -> None:
     program = "1 {a; b} 1. #minimize { 2,a : a; 1,b : b }. #show a/0."
     rows = _clingcon_rows(program, ["--opt-mode=opt"])
     assert min(cost for cost, _ in rows) == (1,)  # picks b (cost 1) over a (cost 2)
+
+
+def _clingcon_shown_rows(
+    program: str, args: list[str]
+) -> list[tuple[frozenset[str], dict[str, int]]]:
+    """Run a clingcon program, returning (shown atoms, CSP assignment) per model."""
+    import clingcon
+    from clingo.ast import ProgramBuilder, parse_string
+
+    thy = clingcon.ClingconTheory()
+    ctl = Control(args)
+    thy.register(ctl)
+    with ProgramBuilder(ctl) as bld:
+        parse_string(program, lambda ast: thy.rewrite_ast(ast, bld.add))
+    ctl.ground([("base", [])])
+    thy.prepare(ctl)
+    rows: list[tuple[frozenset[str], dict[str, int]]] = []
+
+    def on_model(model: Model) -> None:
+        thy.on_model(model)
+        rows.append((_names(model), {str(s): v for s, v in thy.assignment(model.thread_id)}))
+
+    ctl.solve(on_model=on_model)
+    return rows
+
+
+@pytest.mark.spike
+def test_clingcon_project_collapses_multiplicity_onto_shown_preserving_shown_set() -> None:
+    # clingcon --project deduplicates by #show atoms, collapsing CSP multiplicity onto the shown
+    # census while preserving the shown set exactly. `&dom {1..3} = x` with a constant shown atom
+    # `ok`: without --project, 3 distinct CSP solutions share 1 shown class; with --project, exactly
+    # 1 model, the shown set unchanged. The surviving projected model carries an ARBITRARY
+    # representative assignment — which is why a projected shown-only census must withhold the
+    # assignment (reading it would return a misleading representative).
+    pytest.importorskip("clingcon")
+    program = "&dom {1..3} = x. ok. #show ok/0."
+    no_project = _clingcon_shown_rows(program, ["--models=0"])
+    projected = _clingcon_shown_rows(program, ["--models=0", "--project"])
+    assert len(no_project) == 3  # the 3 distinct CSP solutions are real (no projection)
+    assert {shown for shown, _ in no_project} == {frozenset({"ok"})}  # one shown class { {ok} }
+    assert len(projected) == 1  # --project collapses them to the single shown class
+    assert {shown for shown, _ in projected} == {frozenset({"ok"})}  # shown set preserved exactly
+
+
+@pytest.mark.spike
+def test_clingo_opt_mode_enum_bound_is_cost_leq_bound() -> None:
+    # --opt-mode=enum,<bound> enumerates exactly the models with cost <= bound. Proving the optimum
+    # c* with --opt-mode=opt, then enumerating at enum,c*, yields exactly the optimal class: at a
+    # single optimization level no cross-level deduplication can occur. The collision program below
+    # shares one shown projection { mark } between the optimal {a} (cost 0) and the sub-optimal {b}
+    # (cost 1) — the case most likely to expose a cross-level dedup loss, if one existed.
+    program = "1 { a; b } 1. mark :- a. mark :- b. #minimize { 0,a : a; 1,b : b }. #show mark/0."
+    ctl = Control(["--models=0"])
+    ctl.add("base", [], program)
+    ctl.ground([("base", [])])
+    ctl.configuration.solve.opt_mode = "opt"
+    proved: list[tuple[int, ...]] = []
+    ctl.solve(on_model=lambda m: proved.append(tuple(m.cost)))
+    cstar = min(proved)
+    assert cstar == (0,)
+    ctl.configuration.solve.opt_mode = "enum," + ",".join(str(c) for c in cstar)
+    at_optimum: list[tuple[tuple[int, ...], frozenset[str]]] = []
+    ctl.solve(on_model=lambda m: at_optimum.append((tuple(m.cost), _names(m))))
+    assert all(cost == cstar for cost, _ in at_optimum)  # exactly the optimal class
+    assert {names for _, names in at_optimum} == {frozenset({"mark"})}  # the shown optimal class
