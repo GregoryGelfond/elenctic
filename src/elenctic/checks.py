@@ -52,6 +52,8 @@ from elenctic.result import (
     observables_of,
     optimal_observables_of,
     optimum_of,
+    shown_census_of,
+    shown_optimal_census_of,
     witness_of,
 )
 from elenctic.terms import contrary, intersect_all
@@ -194,9 +196,10 @@ def _show_goal(goal: QueryLiteral) -> str:
 
 
 def _witness(
-    litset: frozenset[Symbol], models: tuple[frozenset[Symbol], ...], noun: str
+    litset: frozenset[Symbol], shown_models: Iterable[frozenset[Symbol]], noun: str
 ) -> tuple[Verdict, str]:
-    """``L ∈ { shown }`` — whole-shown-model membership over a class named ``noun`` (§3)."""
+    """``L ∈ { shown }`` — whole-shown-model membership over a class named ``noun``."""
+    models = tuple(shown_models)  # materialise once: both the test and the diagnostic read it
     if any(model == litset for model in models):
         return Verdict.PASS, f"{_show_set(litset)} ∈ {noun}"
     return Verdict.FAIL, f"{_show_set(litset)} ∉ {noun} = {_show_models(models)}"
@@ -253,26 +256,26 @@ def expect_unsat() -> Check:
 
 
 def has_model(litset: frozenset[Symbol]) -> Check:
-    """``@model { L }``: some enumerated observable's shown model equals ``L`` (§3)."""
+    """``@model { L }``: ``L`` is some answer set's shown projection (``L`` is in the shown census).
+    Reads the shown census (projection-invariant)."""
     return _check(
         "@model",
-        frozenset({Field.OBSERVABLES}),
+        frozenset({Field.SHOWN_CENSUS}),
         inconsistent=_unsat_fail(f"no model equals {_show_set(litset)}"),
-        decide=lambda shape: _witness(
-            litset, tuple(o.shown for o in observables_of(shape)), "enumerated models"
-        ),
+        decide=lambda shape: _witness(litset, shown_census_of(shape), "enumerated models"),
     )
 
 
 def count_is(n: int) -> Check:
-    """``@count n``: exactly ``n`` distinct observables (total at both ends, §3). ``@count 0`` is
-    the unsat case, so it PASSes on ``Inconsistent``."""
+    """``@count n``: exactly ``n`` distinct observables (total at both ends). ``@count 0`` is the
+    unsat case, so it PASSes on ``Inconsistent``. Reads the full census — its theory-distinct count
+    is what projection would collapse, so a ``@count`` rider suppresses projection."""
     inconsistent = (
         (Verdict.PASS, "|models| = 0") if n == 0 else _unsat_fail(f"expected {n} models, got 0")
     )
     return _check(
         "@count",
-        frozenset({Field.OBSERVABLES}),
+        frozenset({Field.FULL_CENSUS}),
         inconsistent=inconsistent,
         decide=lambda shape: _count(n, len(observables_of(shape)), "models"),
     )
@@ -321,7 +324,8 @@ def cost_is(cost: tuple[int, ...]) -> Check:
 
 
 def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
-    """``@assign { A }``: some observable's theory assignment ⊇ ``A`` (§3, §6.3)."""
+    """``@assign { A }``: some observable's theory assignment ⊇ ``A``. Reads the full census (the
+    assignment dimension projection would erase, so an ``@assign`` rider suppresses projection)."""
     _require_nonempty(assignment, "@assign")
 
     def decide(shape: Consistent) -> tuple[Verdict, str]:
@@ -336,53 +340,54 @@ def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
 
     return _check(
         "@assign",
-        frozenset({Field.OBSERVABLES}),
+        frozenset({Field.FULL_CENSUS}),
         inconsistent=_unsat_fail(f"no assignment ⊇ {_show_assign(assignment)}"),
         decide=decide,
     )
 
 
-# --- the optimal base (each mode is its all-base aggregation over Opt(P), §3) ---
-
-
-def _optimal_shown(shape: Consistent) -> tuple[frozenset[Symbol], ...]:
-    return tuple(o.shown for o in optimal_observables_of(shape))
+# --- the optimal base (each mode is its all-base aggregation over Opt(P)) ---
 
 
 def has_optimal_model(litset: frozenset[Symbol]) -> Check:
-    """``@optimal { L }`` (= ``@model optimal``): ``L`` is some optimal model (§3)."""
+    """``@optimal { L }`` (= ``@model optimal``): ``L`` is some optimal model's shown projection.
+    Reads the shown optimal census (projection-invariant) — what lets it ride a projecting optimal
+    run and terminate."""
     return _check(
         "@optimal",
-        frozenset({Field.OPTIMAL_OBSERVABLES}),
+        frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
         inconsistent=_unsat_fail(f"no optimal model equals {_show_set(litset)}"),
-        decide=lambda shape: _witness(litset, _optimal_shown(shape), "optimal models"),
+        decide=lambda shape: _witness(litset, shown_optimal_census_of(shape), "optimal models"),
     )
 
 
 def cautious_optimal_contains(litset: frozenset[Symbol]) -> Check:
-    """``@cautious optimal { L }``: ``L ⊆ ⋂ Opt(P)`` (the optimal backbone, §3)."""
+    """``@cautious optimal { L }``: ``L ⊆ ⋂ Opt(P)`` (the optimal backbone). Reads the shown optimal
+    census (projection-invariant)."""
     _require_nonempty(litset, "@cautious optimal")
     return _check(
         "@cautious optimal",
-        frozenset({Field.OPTIMAL_OBSERVABLES}),
+        frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
         inconsistent=_unsat_fail("no optimal models"),
         decide=lambda shape: _containment(litset, cautious_optimal_of(shape), "⋂ Opt(P)"),
     )
 
 
 def brave_optimal_contains(litset: frozenset[Symbol]) -> Check:
-    """``@brave optimal { L }``: ``L ⊆ ⋃ Opt(P)`` (§3)."""
+    """``@brave optimal { L }``: ``L ⊆ ⋃ Opt(P)``. Reads the shown optimal census
+    (projection-invariant)."""
     _require_nonempty(litset, "@brave optimal")
     return _check(
         "@brave optimal",
-        frozenset({Field.OPTIMAL_OBSERVABLES}),
+        frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
         inconsistent=_unsat_fail("no optimal models"),
         decide=lambda shape: _containment(litset, brave_optimal_of(shape), "⋃ Opt(P)"),
     )
 
 
 def count_optimal_is(n: int) -> Check:
-    """``@count optimal n``: exactly ``n`` distinct optimal observables (§3)."""
+    """``@count optimal n``: exactly ``n`` distinct optimal observables. Reads the full optimal
+    census (the theory-distinct count projection would collapse, so it suppresses projection)."""
     inconsistent = (
         (Verdict.PASS, "|optimal models| = 0")
         if n == 0
@@ -390,7 +395,7 @@ def count_optimal_is(n: int) -> Check:
     )
     return _check(
         "@count optimal",
-        frozenset({Field.OPTIMAL_OBSERVABLES}),
+        frozenset({Field.FULL_OPTIMAL_CENSUS}),
         inconsistent=inconsistent,
         decide=lambda shape: _count(n, len(optimal_observables_of(shape)), "optimal models"),
     )
@@ -411,13 +416,13 @@ def _cautious_localization(
 
 
 def _census_localization(
-    conjuncts: tuple[Symbol, ...], census: tuple[frozenset[Symbol], ...], computed: Answer
+    conjuncts: tuple[Symbol, ...], census: frozenset[frozenset[Symbol]], computed: Answer
 ) -> str:
-    """Localize a failing *conjunctive* ground query off the census (§2.4): for ``no`` a conjunct is
+    """Localize a failing *conjunctive* ground query off the census: for ``no`` a conjunct is
     falsified iff some model carries its contrary (⋂ would be empty when each model falsifies a
-    different conjunct — the errata-headline case)."""
+    different conjunct — the case the published errata corrected)."""
     if computed is Answer.unknown:
-        missing = _show_set(c for c in conjuncts if c not in intersect_all(census))
+        missing = _show_set(c for c in conjuncts if c not in intersect_all(tuple(census)))
         return f" (not entailed: {missing})"
     if computed is Answer.no:
         falsified = _show_set(c for c in conjuncts if any(contrary(c) in model for model in census))
@@ -493,7 +498,7 @@ def query_matches(query: Query) -> Check:
                 )
 
             def decide_conjunctive(shape: Consistent) -> tuple[Verdict, str]:
-                census = tuple(o.shown for o in observables_of(shape))
+                census = shown_census_of(shape)
                 computed = conjunctive_answer(conjuncts, census)
                 return _ground_verdict(
                     answer, conjuncts, computed, _census_localization(conjuncts, census, computed)
@@ -501,7 +506,7 @@ def query_matches(query: Query) -> Check:
 
             return _check(
                 "@query",
-                frozenset({Field.OBSERVABLES}),
+                frozenset({Field.SHOWN_CENSUS}),
                 inconsistent=inconsistent,
                 decide=decide_conjunctive,
                 subject=subject,

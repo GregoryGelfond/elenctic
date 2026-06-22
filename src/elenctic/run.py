@@ -27,6 +27,8 @@ from elenctic.result import (
     ConsistentEnumeration,
     ConsistentOptimalEnumeration,
     ConsistentOptimum,
+    ConsistentShownCensus,
+    ConsistentShownOptimalCensus,
     ConsistentWitness,
     Field,
     HarnessError,
@@ -64,19 +66,34 @@ _ARGS: Final[dict[Mode, tuple[str, ...]]] = {
 
 _POPULATES: Final[dict[Mode, frozenset[Field]]] = {
     Mode.DEFAULT: frozenset({Field.WITNESS}),
-    Mode.ENUM_ALL: frozenset({Field.OBSERVABLES, Field.CAUTIOUS, Field.BRAVE}),
+    Mode.ENUM_ALL: frozenset({Field.SHOWN_CENSUS, Field.FULL_CENSUS, Field.CAUTIOUS, Field.BRAVE}),
     Mode.BRAVE_ALL: frozenset({Field.BRAVE}),
     Mode.CAUTIOUS_ALL: frozenset({Field.CAUTIOUS}),
-    Mode.OPTIMAL_ENUM: frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM}),
+    Mode.OPTIMAL_ENUM: frozenset(
+        {Field.SHOWN_OPTIMAL_CENSUS, Field.FULL_OPTIMAL_CENSUS, Field.OPTIMUM}
+    ),
     Mode.OPTIMAL: frozenset({Field.OPTIMUM}),
 }
 
+# The projection-sensitive (full-census) token each projecting mode SHEDS when it projects to shown:
+# under a theory ``--project`` erases the multiplicity/assignment that token carries. Non-projecting
+# modes are absent here, so the projection coordinate is a no-op for them.
+_FULL_TOKEN: Final[dict[Mode, Field]] = {
+    Mode.ENUM_ALL: Field.FULL_CENSUS,
+    Mode.OPTIMAL_ENUM: Field.FULL_OPTIMAL_CENSUS,
+}
 
-def populates(mode: Mode) -> frozenset[Field]:
-    """The fields a ``Consistent`` result of ``mode`` makes readable (total over ``Mode``). The
-    lowering contract's postcondition for ``solvers.py`` (a ``Consistent`` of ``mode`` carries
-    exactly these fields) is the seam's second unreachability premise (``result``)."""
-    return _POPULATES[mode]
+
+def populates(mode: Mode, projects_to_shown: bool = False) -> frozenset[Field]:
+    """The fields a ``Consistent`` result of ``(mode, projects_to_shown)`` makes readable (total). A
+    projecting run sheds exactly its full-census token (multiplicity/assignment erased), keeping the
+    shown view and the consequence views (both derivable from the shown set). The lowering
+    postcondition for ``solvers.py`` — a ``Consistent`` of ``(mode, projects_to_shown)`` carries
+    exactly these fields — is the accessor seam's second unreachability premise."""
+    fields = _POPULATES[mode]
+    if projects_to_shown and mode in _FULL_TOKEN:
+        return fields - {_FULL_TOKEN[mode]}
+    return fields
 
 
 _SHAPE: Final[dict[Mode, type[Consistent]]] = {
@@ -88,14 +105,21 @@ _SHAPE: Final[dict[Mode, type[Consistent]]] = {
     Mode.OPTIMAL: ConsistentOptimum,
 }
 
+# The shown-only shape each projecting mode builds when projecting to shown (a theory phenomenon).
+_PROJECTED_SHAPE: Final[dict[Mode, type[Consistent]]] = {
+    Mode.ENUM_ALL: ConsistentShownCensus,
+    Mode.OPTIMAL_ENUM: ConsistentShownOptimalCensus,
+}
 
-def shape_for(mode: Mode) -> type[Consistent]:
-    """The ``Consistent`` shape ``solvers.py`` must produce for a run of ``mode`` — the source-level
-    Mode→shape arrow of the lowering contract (the seam's second premise; spec §3, §5). The shape an
-    instance of this type makes readable through the accessor seam is exactly ``populates(mode)``;
-    the keystone seam test ties the two so the premise cannot silently drift when ``solvers.py``
-    lands. Lifting the arrow here (not leaving it in docstrings) is the keystone's own discipline —
-    lift the structure into the visible language — applied to its second premise."""
+
+def shape_for(mode: Mode, projects_to_shown: bool = False) -> type[Consistent]:
+    """The ``Consistent`` shape ``solvers.py`` must produce for ``(mode, projects_to_shown)`` — the
+    source-level Mode→shape arrow of the lowering contract. A projecting run of a projecting mode
+    builds the shown-only shape; everything else builds the full shape. The fields an instance makes
+    readable through the accessor seam are exactly ``populates(mode, projects_to_shown)``; a seam
+    test ties the two so the lowering postcondition cannot silently drift."""
+    if projects_to_shown and mode in _PROJECTED_SHAPE:
+        return _PROJECTED_SHAPE[mode]
     return _SHAPE[mode]
 
 
@@ -108,28 +132,42 @@ class RoutingError(HarnessError):
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Run:
-    """One solve configuration (:class:`Mode`) and the checks reading its result (spec §3, §4).
+    """One solve configuration (:class:`Mode`), the checks reading its result, and the projection
+    state.
 
-    The wiring rule is a property of a *valid* ``Run`` (Hoare), enforced at construction: a check
-    whose ``reads`` exceed ``populates(mode)`` is rejected before any solve, naming the offending
-    check, the missing fields, and the mode. Equality is by identity (``eq=False``, matching
-    ``Check``): compare ``run.mode`` / ``check.label``, not ``==``.
+    ``project`` is the ``--project`` decision (:func:`should_project`); ``theory_in_force`` is
+    whether a theory (CSP) solver runs it. ``projects_to_shown = project ∧ theory_in_force`` is the
+    *shape collapse* — true only when projection erases information (a theory solver), so a
+    projecting pure clingo run still yields the full shape (``--project`` is information-preserving
+    there). The wiring rule is a property of a *valid* ``Run``, enforced at construction: a check
+    whose ``reads`` exceed ``populates(mode, projects_to_shown)`` is rejected before any solve,
+    naming the offending check, the missing fields, and the mode — so a ``should_project``
+    mis-derive (a full-view reader on a projecting run) is a ``RoutingError`` here, before any
+    solve, never a costumed verdict. Equality is by identity (``eq=False``, matching ``Check``):
+    compare ``run.mode`` / ``check.label``, not ``==``.
     """
 
     mode: Mode
     checks: tuple[Check, ...]
+    project: bool = False
+    theory_in_force: bool = False
+
+    @property
+    def projects_to_shown(self) -> bool:
+        """The shape-collapse coordinate: ``--project`` erases information only under a theory."""
+        return self.project and self.theory_in_force
 
     def __post_init__(self) -> None:
-        provided = populates(self.mode)
+        provided = populates(self.mode, self.projects_to_shown)
         for check in self.checks:
             missing = check.reads - provided
             if missing:
                 want = ", ".join(sorted(field.value for field in missing))
                 have = ", ".join(sorted(field.value for field in provided))
                 raise RoutingError(
-                    f"{check.label} reads {{{want}}}, which {self.mode.name} populates only "
-                    f"{{{have}}} — the reads ⊆ populates wiring rule is violated "
-                    "(an elenctic bug, not a verdict)"
+                    f"{check.label} reads {{{want}}}, which {self.mode.name} "
+                    f"(projects_to_shown={self.projects_to_shown}) populates only {{{have}}} — the "
+                    "reads ⊆ populates wiring rule is violated (an elenctic bug, not a verdict)"
                 )
 
 

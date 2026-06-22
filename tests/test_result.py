@@ -10,6 +10,8 @@ from elenctic.result import (
     ConsistentEnumeration,
     ConsistentOptimalEnumeration,
     ConsistentOptimum,
+    ConsistentShownCensus,
+    ConsistentShownOptimalCensus,
     ConsistentWitness,
     Determination,
     Field,
@@ -27,6 +29,8 @@ from elenctic.result import (
     observables_of,
     optimal_observables_of,
     optimum_of,
+    shown_census_of,
+    shown_optimal_census_of,
     witness_of,
 )
 
@@ -90,14 +94,17 @@ def test_determination_three_arm_match_is_total() -> None:
     assert classify(ConsistentWitness(_obs("a"))) == "consistent"
 
 
-def test_field_vocabulary_is_the_six_capabilities() -> None:
-    # these strings surface in explain/--dry-run output — pin them, not just the count
+def test_field_vocabulary_is_the_eight_capabilities() -> None:
+    # these strings surface in explain/--dry-run output — pin them, not just the count. The census
+    # splits into a shown view (projection-invariant) and a full view (multiplicity/assignment).
     assert {field.value for field in Field} == {
         "witness",
-        "observables",
+        "shown census",
+        "full census",
         "cautious",
         "brave",
-        "optimal observables",
+        "shown optimal census",
+        "full optimal census",
         "optimum",
     }
 
@@ -162,9 +169,9 @@ def test_optimal_class_derives_cautious_and_brave_consequences() -> None:
 
 
 def test_optimal_consequence_accessors_seam_off_a_non_optimal_shape() -> None:
-    # they read OPTIMAL_OBSERVABLES, so a non-optimal shape seams (via optimal_observables_of)
+    # they read the shown optimal census, so a non-optimal shape seams (via shown_optimal_census_of)
     for accessor in (cautious_optimal_of, brave_optimal_of):
-        with pytest.raises(SeamError, match="optimal observables"):
+        with pytest.raises(SeamError, match="shown optimal census"):
             accessor(ConsistentCautious(frozenset()))
 
 
@@ -181,15 +188,24 @@ def test_optimum_of_reads_single_and_class() -> None:
     [
         pytest.param(witness_of, ConsistentCautious(frozenset()), "witness", id="witness"),
         pytest.param(
-            observables_of, ConsistentCautious(frozenset()), "observables", id="observables"
+            shown_census_of, ConsistentCautious(frozenset()), "shown census", id="shown-census"
+        ),
+        pytest.param(
+            observables_of, ConsistentCautious(frozenset()), "full census", id="full-census"
         ),
         pytest.param(cautious_of, ConsistentBrave(frozenset()), "cautious", id="cautious"),
         pytest.param(brave_of, ConsistentCautious(frozenset()), "brave", id="brave"),
         pytest.param(
+            shown_optimal_census_of,
+            ConsistentCautious(frozenset()),
+            "shown optimal census",
+            id="shown-optimal-census",
+        ),
+        pytest.param(
             optimal_observables_of,
             ConsistentOptimum(Optimum((1,))),
-            "optimal observables",
-            id="optimal-observables",
+            "full optimal census",
+            id="full-optimal-census",
         ),
         pytest.param(optimum_of, ConsistentCautious(frozenset()), "optimum", id="optimum"),
     ],
@@ -217,3 +233,39 @@ def test_consistent_enumeration_requires_a_nonempty_census() -> None:
 def test_consistent_optimal_enumeration_requires_a_nonempty_class() -> None:
     with pytest.raises(ValueError, match="optimal"):
         ConsistentOptimalEnumeration((), Optimum((1,)))
+
+
+# --- the projected shapes and the shown-census accessors (the field split) ---
+
+
+def test_shown_census_accessor_is_total_over_both_enumeration_shapes_and_agrees() -> None:
+    # shown_census_of returns the SET of shown projections — derived on the full shape, stored on
+    # the projected shape — and the two agree on the same census.
+    a, b = Function("a"), Function("b")
+    full = ConsistentEnumeration((Observable(frozenset({a})), Observable(frozenset({b}))))
+    projected = ConsistentShownCensus(frozenset({frozenset({a}), frozenset({b})}))
+    assert shown_census_of(full) == frozenset({frozenset({a}), frozenset({b})})
+    assert shown_census_of(projected) == shown_census_of(full)
+
+
+def test_observables_of_narrows_to_the_full_shape_only() -> None:
+    # The full census (with multiplicity/assignment) is readable only off the full shape; reading it
+    # off the projected shown-only shape is a SeamError by construction.
+    with pytest.raises(SeamError):
+        observables_of(ConsistentShownCensus(frozenset({frozenset({Function("a")})})))
+
+
+def test_consequence_views_derive_from_either_enumeration_shape() -> None:
+    # ⋂/⋃ are functions of the shown-census SET, so they read both the full and projected shapes.
+    a, b, c = Function("a"), Function("b"), Function("c")
+    projected = ConsistentShownCensus(frozenset({frozenset({a, c}), frozenset({b, c})}))
+    assert cautious_of(projected) == frozenset({c})  # ⋂ derived from the shown set
+    assert brave_of(projected) == frozenset({a, b, c})  # ⋃ derived from the shown set
+
+
+def test_projected_optimal_shape_carries_optimum_and_withholds_the_full_class() -> None:
+    shape = ConsistentShownOptimalCensus(frozenset({frozenset({Function("a")})}), Optimum((1,)))
+    assert optimum_of(shape).cost == (1,)
+    assert shown_optimal_census_of(shape) == frozenset({frozenset({Function("a")})})
+    with pytest.raises(SeamError):
+        optimal_observables_of(shape)  # the full optimal class is withheld

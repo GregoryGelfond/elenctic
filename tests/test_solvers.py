@@ -31,6 +31,8 @@ from elenctic.result import (
     observables_of,
     optimal_observables_of,
     optimum_of,
+    shown_census_of,
+    shown_optimal_census_of,
     witness_of,
 )
 from elenctic.run import Mode, populates, shape_for
@@ -150,14 +152,25 @@ def test_timeout_yields_inconclusive() -> None:
     assert isinstance(det, Inconclusive)
 
 
+def test_clingo_enumeration_projects_so_a_hidden_blowup_still_decides() -> None:
+    # clingo enumeration projects onto shown atoms (information-preserving), so a program with an
+    # astronomically large hidden space but a single shown class decides instead of timing out:
+    # 2^30 hidden p-subsets all project to the one shown class { s }, enumerated as a single model.
+    det = run_clingo(Mode.ENUM_ALL, "{ p(1..30) }. s. #show s/0.", budget=5.0)
+    assert isinstance(det, ConsistentEnumeration)  # decided, not Inconclusive
+    assert shown_names(observables_of(det)) == {frozenset({"s"})}  # the single shown class
+
+
 # --- THE GATING property: the lowering postcondition (the seam's second premise) ---
 
 _ACCESSORS = {
     Field.WITNESS: witness_of,
-    Field.OBSERVABLES: observables_of,
+    Field.SHOWN_CENSUS: shown_census_of,
+    Field.FULL_CENSUS: observables_of,
     Field.CAUTIOUS: cautious_of,
     Field.BRAVE: brave_of,
-    Field.OPTIMAL_OBSERVABLES: optimal_observables_of,
+    Field.SHOWN_OPTIMAL_CENSUS: shown_optimal_census_of,
+    Field.FULL_OPTIMAL_CENSUS: optimal_observables_of,
     Field.OPTIMUM: optimum_of,
 }
 
@@ -183,18 +196,21 @@ def _readable_fields(shape: Consistent) -> frozenset[Field]:
     return frozenset(readable)
 
 
+@pytest.mark.parametrize("project", [False, True], ids=["no-project", "project"])
 @pytest.mark.parametrize("solver", ["clingo", "clingcon"])
 @pytest.mark.parametrize("mode", list(Mode), ids=lambda mode: mode.name)
-def test_lowering_postcondition(solver: str, mode: Mode) -> None:
-    # The merge-gating property (over BOTH backends): solvers produces, for a SAT run of `mode`,
-    # exactly the shape `run.shape_for(mode)`, and the fields readable on it are exactly
-    # `populates(mode)`. This empirically closes the accessor seam's second unreachability premise.
+def test_lowering_postcondition(solver: str, mode: Mode, project: bool) -> None:
+    # The merge-gating property over BOTH backends × the projection coordinate: solvers produces,
+    # for a SAT run of (mode, project), exactly shape_for(mode, projects_to_shown), whose readable
+    # fields are exactly populates(mode, projects_to_shown), with projects_to_shown = project and a
+    # theory solver.
     if solver == "clingcon":
         pytest.importorskip("clingcon")
-    det = solve(solver, mode, _SAT_PROGRAM[mode])
+    projects_to_shown = project and solver == "clingcon"
+    det = solve(solver, mode, _SAT_PROGRAM[mode], project=project)
     assert isinstance(det, Consistent)
-    assert type(det) is shape_for(mode)
-    assert _readable_fields(det) == populates(mode)
+    assert type(det) is shape_for(mode, projects_to_shown)
+    assert _readable_fields(det) == populates(mode, projects_to_shown)
 
 
 # --- the clingcon facade: the theory half of the observable (§6.3) and registry dispatch ---

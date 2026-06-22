@@ -36,6 +36,8 @@ from elenctic.result import (
     ConsistentEnumeration,
     ConsistentOptimalEnumeration,
     ConsistentOptimum,
+    ConsistentShownCensus,
+    ConsistentShownOptimalCensus,
     ConsistentWitness,
     Determination,
     HarnessError,
@@ -48,12 +50,7 @@ from elenctic.run import Mode
 
 __all__ = ["TIME_BUDGET", "run_clingcon", "run_clingo", "solve"]
 
-TIME_BUDGET: float = 30.0  # seconds; the harness-level hang-protection default (spec §7a)
-
-# The enumeration modes that count distinct *shown* observables: clingo projects onto shown atoms so
-# the stream is already deduplicated (spec §3 table). The consequence and witness modes do not (the
-# §9.1 consequence model is computed regardless); clingcon never projects (§9.3).
-_PROJECTED: Final = frozenset({Mode.ENUM_ALL, Mode.OPTIMAL_ENUM})
+TIME_BUDGET: float = 30.0  # seconds; the hang-protection default (a hit budget is UNDECIDED)
 
 
 class _Collector:
@@ -91,6 +88,11 @@ class _Collector:
     def observables(self) -> tuple[Observable, ...]:
         """The distinct enumerated observables (``ENUM_ALL``), deduplicated order-preservingly."""
         return tuple(dict.fromkeys(self._observables))
+
+    def shown_census(self) -> frozenset[frozenset[Symbol]]:
+        """The set of shown projections (for the projected enumeration shapes). Under ``--project``
+        the stream is already shown-deduplicated; collecting the shown sets is total either way."""
+        return frozenset(observable.shown for observable in self._observables)
 
     def cautious(self) -> frozenset[Symbol]:
         """The cautious consequences ⋂ (``CAUTIOUS_ALL``), from the final consequence model."""
@@ -140,13 +142,18 @@ def _require_consequence(value: frozenset[Symbol] | None, register: str) -> froz
     return value
 
 
-def _consistent_shape(mode: Mode, collector: _Collector) -> Consistent:
-    """The Mode→shape lowering arrow — the keystone's premise 2. Total over ``Mode``; produces
-    exactly ``run.shape_for(mode)`` (the gating lowering-postcondition test proves it)."""
+def _consistent_shape(
+    mode: Mode, collector: _Collector, projects_to_shown: bool = False
+) -> Consistent:
+    """The Mode→shape lowering arrow. Total over ``Mode`` × the projection coordinate; produces
+    exactly ``run.shape_for(mode, projects_to_shown)`` (the lowering-postcondition test proves it).
+    A projecting run of an enumeration mode builds the shown-only shape."""
     match mode:
         case Mode.DEFAULT:
             return ConsistentWitness(collector.witness())
         case Mode.ENUM_ALL:
+            if projects_to_shown:
+                return ConsistentShownCensus(collector.shown_census())
             return ConsistentEnumeration(collector.observables())
         case Mode.CAUTIOUS_ALL:
             return ConsistentCautious(collector.cautious())
@@ -154,6 +161,8 @@ def _consistent_shape(mode: Mode, collector: _Collector) -> Consistent:
             return ConsistentBrave(collector.brave())
         case Mode.OPTIMAL_ENUM:
             optimal, optimum = collector.optimal_class()
+            if projects_to_shown:
+                return ConsistentShownOptimalCensus(frozenset(o.shown for o in optimal), optimum)
             return ConsistentOptimalEnumeration(optimal, optimum)
         case Mode.OPTIMAL:
             return ConsistentOptimum(collector.optimum())
@@ -162,15 +171,19 @@ def _consistent_shape(mode: Mode, collector: _Collector) -> Consistent:
 
 
 def _determination(
-    mode: Mode, collector: _Collector, completed: bool, result: SolveResult
+    mode: Mode,
+    collector: _Collector,
+    completed: bool,
+    result: SolveResult,
+    projects_to_shown: bool = False,
 ) -> Determination:
-    """The three-arm decision (spec §3, §7a, §9.7): timeout → ``Inconclusive``; the whole-result
-    ``unsatisfiable`` bit → ``Inconsistent``; else the mode's ``Consistent`` shape."""
+    """The three-arm decision: timeout → ``Inconclusive``; the whole-result ``unsatisfiable`` bit →
+    ``Inconsistent``; else the mode's ``Consistent`` shape (shown-only when projecting)."""
     if not completed:
         return Inconclusive()
     if result.unsatisfiable:
         return Inconsistent()
-    return _consistent_shape(mode, collector)
+    return _consistent_shape(mode, collector, projects_to_shown)
 
 
 def _drive(
@@ -179,42 +192,62 @@ def _drive(
     collector: _Collector,
     on_model: Callable[[Model], None],
     budget: float,
+    projects_to_shown: bool = False,
 ) -> Determination:
-    """Run an async solve under ``budget`` and reduce it to a ``Determination`` (spec §6.1/§7a):
-    ``wait(budget)`` then ``cancel`` on a miss; the handle closes via the context manager."""
+    """Run an async solve under ``budget`` and reduce it to a ``Determination``: ``wait(budget)``
+    then ``cancel`` on a miss; the handle closes via the context manager."""
     with control.solve(on_model=on_model, async_=True) as handle:
         completed = handle.wait(budget)
         if not completed:
             handle.cancel()
         result = handle.get()
-    return _determination(mode, collector, completed, result)
+    return _determination(mode, collector, completed, result, projects_to_shown)
+
+
+# clingo's enumeration modes always project: ``--project`` is information-preserving here (the
+# theory assignment is empty, so deduplicating by shown atoms equals deduplicating by observable),
+# a pure performance win that never changes the result.
+_CLINGO_ENUM_MODES: Final = frozenset({Mode.ENUM_ALL, Mode.OPTIMAL_ENUM})
 
 
 def run_clingo(
-    mode: Mode, program: str = "", files: tuple[Path, ...] = (), budget: float = TIME_BUDGET
+    mode: Mode,
+    program: str = "",
+    files: tuple[Path, ...] = (),
+    budget: float = TIME_BUDGET,
+    project: bool = False,
 ) -> Determination:
-    """Run pure clingo for ``mode`` over ``program`` + ``files``; collect a ``Determination``."""
-    control = Control(_clingo_args(mode))
+    """Run pure clingo for ``mode`` over ``program`` + ``files``; collect a ``Determination``. The
+    enumeration modes always project (information-preserving on clingo: ``assign ≡ ∅``), a pure
+    performance win; a projecting clingo run still yields the full shape (``projects_to_shown`` is
+    always ``False`` for a non-theory solver)."""
+    control = Control(_solver_args(mode, project or mode in _CLINGO_ENUM_MODES))
     _add_program(control, program, files)
     control.ground([("base", [])])
     collector = _Collector()
-    return _drive(control, mode, collector, collector.on_model, budget)
+    return _drive(control, mode, collector, collector.on_model, budget, projects_to_shown=False)
 
 
 def run_clingcon(
-    mode: Mode, program: str = "", files: tuple[Path, ...] = (), budget: float = TIME_BUDGET
+    mode: Mode,
+    program: str = "",
+    files: tuple[Path, ...] = (),
+    budget: float = TIME_BUDGET,
+    project: bool = False,
 ) -> Determination:
-    """Run clingcon (theory-aware) for ``mode``; the observable carries the CSP assignment (§6.3).
+    """Run clingcon (theory-aware) for ``mode``; the observable carries the CSP assignment.
 
-    No ``--project``: it would erase theory multiplicity (§9.3/§6.3), the distinctness that lets
-    ``@count``/``@assign`` denote uniqueness over CSP output. Theory atoms are rewritten through a
-    ``ProgramBuilder`` (``Control.load`` does not rewrite theory atoms, §6.2)."""
+    Projection here erases theory multiplicity — the distinctness that lets ``@count``/``@assign``
+    denote uniqueness over CSP output — so it is applied only when ``project`` is set (no rider
+    reads the full census), and a projecting run builds the shown-only shape
+    (``projects_to_shown = project``). Theory atoms are rewritten through a ``ProgramBuilder``
+    (``Control.load`` does not rewrite theory atoms)."""
     import clingcon
 
     # clingcon is untyped; isolate the dynamic boundary to this one Any (the theory handle), so the
     # downstream register/rewrite/prepare/on_model/assignment calls need no scattered ignores.
     theory: Any = clingcon.ClingconTheory()  # type: ignore[no-untyped-call]
-    control = Control(list(mode.args))
+    control = Control(_solver_args(mode, project))
     theory.register(control)
     _rewrite_program(control, theory, program, files)
     control.ground([("base", [])])
@@ -222,16 +255,16 @@ def run_clingcon(
     collector = _Collector()
 
     def on_model(model: Model) -> None:
-        theory.on_model(model)  # populate the theory assignment before reading it (spec §6.1)
+        theory.on_model(model)  # populate the theory assignment before reading it
         # clingcon is a linear-*integer* CSP solver, so assignment() yields (Symbol, int) pairs —
         # `Observable.assign`'s `int` is exact here, not a silent narrowing of the untyped boundary.
         assign = frozenset((sym, val) for sym, val in theory.assignment(model.thread_id))
         collector.on_model(model, assign)
 
-    return _drive(control, mode, collector, on_model, budget)
+    return _drive(control, mode, collector, on_model, budget, projects_to_shown=project)
 
 
-type _Facade = Callable[[Mode, str, tuple[Path, ...], float], Determination]
+type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool], Determination]
 
 _FACADES: Final[dict[str, _Facade]] = {"clingo": run_clingo, "clingcon": run_clingcon}
 
@@ -242,9 +275,11 @@ def solve(
     program: str = "",
     files: tuple[Path, ...] = (),
     budget: float = TIME_BUDGET,
+    project: bool = False,
 ) -> Determination:
     """Dispatch to the named solver facade (the run_case entry point). ``solver`` is the case's
-    derived solver name (``"clingo"`` | ``"clingcon"``); an unknown name is a programming error."""
+    derived solver name (``"clingo"`` | ``"clingcon"``); an unknown name is a programming error.
+    ``project`` defaults False — a direct caller with no declared consumer does not project."""
     try:
         facade = _FACADES[solver]
     except KeyError:
@@ -252,14 +287,15 @@ def solve(
         # boundary (a bad argument), not a mid-run harness-invariant violation — hence ValueError,
         # not HarnessError: crash loudly at the dispatch boundary, do not report it per-case.
         raise ValueError(f"unknown solver {solver!r} (known: {sorted(_FACADES)})") from None
-    return facade(mode, program, files, budget)
+    return facade(mode, program, files, budget, project)
 
 
-def _clingo_args(mode: Mode) -> list[str]:
-    """clingo's args for ``mode``: the mode's lowering, plus ``--project`` for the enumeration modes
-    that count distinct shown observables (spec §3 table). clingcon never projects (§9.3)."""
+def _solver_args(mode: Mode, project: bool) -> list[str]:
+    """The mode's search-config flags, plus ``--project`` iff the run projects. Shared by both
+    backends — they append ``--project`` identically; whether it erases information (and so
+    collapses the shape) is the facade's theory-awareness, not the flag."""
     args = list(mode.args)
-    if mode in _PROJECTED:
+    if project:
         args.append("--project")
     return args
 

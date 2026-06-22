@@ -77,8 +77,8 @@ def test_singleton_answer(literal: str, cautious: tuple[str, ...], expected: Ans
     assert singleton_answer(parse_term(literal), atoms(*cautious)) is expected
 
 
-def models(*sets: tuple[str, ...]) -> tuple[frozenset[Symbol], ...]:
-    return tuple(atoms(*s) for s in sets)
+def models(*sets: tuple[str, ...]) -> frozenset[frozenset[Symbol]]:
+    return frozenset(atoms(*s) for s in sets)
 
 
 @pytest.mark.parametrize(
@@ -127,7 +127,7 @@ def test_conjunctive_answer(
 def test_conjunctive_answer_rejects_empty_census() -> None:
     # AS(P)=∅ is the Inconsistent arm upstream; an empty census fails loud, never a vacuous "yes".
     with pytest.raises(ValueError, match="census"):
-        conjunctive_answer((parse_term("a"), parse_term("b")), ())
+        conjunctive_answer((parse_term("a"), parse_term("b")), frozenset())
 
 
 def test_classify_assigns_each_query_its_form() -> None:

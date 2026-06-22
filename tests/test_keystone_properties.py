@@ -26,6 +26,8 @@ from elenctic.result import (
     ConsistentEnumeration,
     ConsistentOptimalEnumeration,
     ConsistentOptimum,
+    ConsistentShownCensus,
+    ConsistentShownOptimalCensus,
     ConsistentWitness,
     Field,
     Inconclusive,
@@ -39,6 +41,8 @@ from elenctic.result import (
     observables_of,
     optimal_observables_of,
     optimum_of,
+    shown_census_of,
+    shown_optimal_census_of,
     witness_of,
 )
 from elenctic.run import Mode, populates, runs_for, shape_for
@@ -48,43 +52,63 @@ def _obs(*names: str) -> Observable:
     return Observable(frozenset(Function(n) for n in names))
 
 
-# A minimal Consistent shape for each mode, with the fields it makes readable.
-_MODE_SHAPES: list[tuple[Mode, Consistent, frozenset[Field]]] = [
-    (Mode.DEFAULT, ConsistentWitness(_obs("a")), frozenset({Field.WITNESS})),
+# A minimal Consistent shape for each (mode, projects_to_shown), with the fields it makes readable.
+_MODE_SHAPES: list[tuple[Mode, bool, Consistent, frozenset[Field]]] = [
+    (Mode.DEFAULT, False, ConsistentWitness(_obs("a")), frozenset({Field.WITNESS})),
     (
         Mode.ENUM_ALL,
+        False,
         ConsistentEnumeration((_obs("a"),)),
-        frozenset({Field.OBSERVABLES, Field.CAUTIOUS, Field.BRAVE}),
+        frozenset({Field.SHOWN_CENSUS, Field.FULL_CENSUS, Field.CAUTIOUS, Field.BRAVE}),
     ),
-    (Mode.CAUTIOUS_ALL, ConsistentCautious(frozenset()), frozenset({Field.CAUTIOUS})),
-    (Mode.BRAVE_ALL, ConsistentBrave(frozenset()), frozenset({Field.BRAVE})),
+    (
+        Mode.ENUM_ALL,
+        True,
+        ConsistentShownCensus(frozenset({frozenset({Function("a")})})),
+        frozenset({Field.SHOWN_CENSUS, Field.CAUTIOUS, Field.BRAVE}),
+    ),
+    (Mode.CAUTIOUS_ALL, False, ConsistentCautious(frozenset()), frozenset({Field.CAUTIOUS})),
+    (Mode.BRAVE_ALL, False, ConsistentBrave(frozenset()), frozenset({Field.BRAVE})),
     (
         Mode.OPTIMAL_ENUM,
+        False,
         ConsistentOptimalEnumeration((_obs("a"),), Optimum((0,))),
-        frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM}),
+        frozenset({Field.SHOWN_OPTIMAL_CENSUS, Field.FULL_OPTIMAL_CENSUS, Field.OPTIMUM}),
     ),
-    (Mode.OPTIMAL, ConsistentOptimum(Optimum((0,))), frozenset({Field.OPTIMUM})),
+    (
+        Mode.OPTIMAL_ENUM,
+        True,
+        ConsistentShownOptimalCensus(frozenset({frozenset({Function("a")})}), Optimum((0,))),
+        frozenset({Field.SHOWN_OPTIMAL_CENSUS, Field.OPTIMUM}),
+    ),
+    (Mode.OPTIMAL, False, ConsistentOptimum(Optimum((0,))), frozenset({Field.OPTIMUM})),
 ]
 
 _ACCESSORS = {
     Field.WITNESS: witness_of,
-    Field.OBSERVABLES: observables_of,
+    Field.SHOWN_CENSUS: shown_census_of,
+    Field.FULL_CENSUS: observables_of,
     Field.CAUTIOUS: cautious_of,
     Field.BRAVE: brave_of,
-    Field.OPTIMAL_OBSERVABLES: optimal_observables_of,
+    Field.SHOWN_OPTIMAL_CENSUS: shown_optimal_census_of,
+    Field.FULL_OPTIMAL_CENSUS: optimal_observables_of,
     Field.OPTIMUM: optimum_of,
 }
 
-_MINIMAL_SHAPE = {mode: shape for mode, shape, _ in _MODE_SHAPES}
+# The non-projecting (full) shape per mode, for the reads-honesty check below: the routed checks in
+# this module's contracts are non-projecting, so they read the full tokens.
+_MINIMAL_SHAPE = {mode: shape for mode, projects, shape, _ in _MODE_SHAPES if not projects}
 
 
 def test_populates_matches_each_modes_shape_via_the_accessor_seam() -> None:
-    # The full 6×6 grid: populates(mode) == the fields the mode's shape exposes; an accessor returns
-    # iff the field is populated, else SeamError. (Premise 2 of the seam's unreachability.)
-    assert {mode for mode, _, _ in _MODE_SHAPES} == set(Mode)  # every mode covered
-    for mode, shape, fields in _MODE_SHAPES:
-        assert type(shape) is shape_for(mode)  # the source Mode→shape arrow solvers.py must honour
-        assert populates(mode) == fields
+    # populates(mode, projects) == the fields the mode's shape exposes; an accessor returns iff the
+    # field is populated, else SeamError (the lowering postcondition the accessor seam relies on).
+    covered = {(mode, projects) for mode, projects, _, _ in _MODE_SHAPES}
+    assert {mode for mode, _ in covered} == set(Mode)  # every mode covered
+    assert {(Mode.ENUM_ALL, True), (Mode.OPTIMAL_ENUM, True)} <= covered  # both projected shapes
+    for mode, projects, shape, fields in _MODE_SHAPES:
+        assert type(shape) is shape_for(mode, projects)  # the Mode→shape arrow solvers.py honours
+        assert populates(mode, projects) == fields
         for field, accessor in _ACCESSORS.items():
             if field in fields:
                 accessor(shape)  # readable — no SeamError
@@ -119,8 +143,9 @@ def test_correctly_routed_checks_read_cleanly(contract: str) -> None:
 
 
 def test_expect_sat_is_mode_agnostic() -> None:
-    # @expect sat reads ∅: PASS on EVERY Consistent shape (no emptiness-read false-FAIL).
-    for _, shape, _ in _MODE_SHAPES:
+    # @expect sat reads ∅: PASS on EVERY Consistent shape (no emptiness-read false-FAIL), including
+    # the projected shapes.
+    for _mode, _projects, shape, _fields in _MODE_SHAPES:
         assert expect_sat()(shape).verdict is Verdict.PASS
     assert expect_sat()(Inconsistent()).verdict is Verdict.FAIL
     assert expect_sat()(Inconclusive()).verdict is Verdict.UNDECIDED

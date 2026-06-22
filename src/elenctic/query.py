@@ -231,32 +231,34 @@ def singleton_answer(literal: Symbol, cautious: frozenset[Symbol]) -> Answer:
 
 
 def conjunctive_answer(
-    conjuncts: tuple[Symbol, ...], models: tuple[frozenset[Symbol], ...]
+    conjuncts: tuple[Symbol, ...], census: frozenset[frozenset[Symbol]]
 ) -> Answer:
     """The three-valued answer to a ground *conjunctive* query (Gelfond–Kahl Def 2.2.2, corrected
-    per the published errata to the 2014 textbook — ``krr_book.html#errata``; confirmed 2026-06-19).
-    Strong-Kleene evaluation over the answer-set census: in a model M the conjunction is true iff
-    every conjunct is in M, false iff some conjunct's *contrary* is in M (else unknown-in-M); the
-    answer is **yes** iff true in all answer sets, **no** iff false in all, else **unknown**.
+    per the published errata to the 2014 textbook — ``krr_book.html#errata``). Strong-Kleene
+    evaluation over the answer-set census: in a model M the conjunction is true iff every conjunct
+    is in M, false iff some conjunct's *contrary* is in M (else unknown-in-M); the answer is **yes**
+    iff true in all answer sets, **no** iff false in all, else **unknown**.
 
-    ``models`` is each answer set as the program makes it observable — its ``shown(M)`` projection
-    (spec §2.0; the object ``Observable.shown`` carries), so a ``@query`` conjunct must be
-    ``#show``-visible (a discovery precondition, spec §5). The census is required, not ⋂: "false in
-    all" is ``∀M ∃i: l̄i∈M`` — each model may falsify a *different* conjunct, which ⋂/⋃ cannot
-    express (the old ``∃i: l̄i∈⋂`` was the wrong, strictly stronger ∃∀ reading).
+    ``census`` is the *set* of shown projections ``{shown(M)}`` (what ``Observable.shown`` carries),
+    so a ``@query`` conjunct must be ``#show``-visible (a discovery precondition). A conjunct is
+    shown, so false-in-M depends only on ``shown(M)``: evaluating over the set of distinct shown
+    projections is exact, and projection (which preserves that set) does not change the answer. The
+    census is needed, not ⋂ — "false in all" is ``∀M ∃i: l̄i∈M``, where each model may falsify a
+    *different* conjunct, which ⋂/⋃ cannot express (the old ``∃i: l̄i∈⋂`` was the wrong, stronger ∃∀
+    reading).
 
-    Precondition: ``models`` is non-empty (AS(P)=∅ is the ``Inconsistent`` arm upstream, and a
+    Precondition: ``census`` is non-empty (AS(P)=∅ is the ``Inconsistent`` arm upstream, and a
     ``ConsistentEnumeration`` carries ≥1 observable by construction). An empty census is a caller
     bug, raised rather than answered with a vacuous ``yes`` — a correctness oracle fails loud.
     """
-    if not models:
+    if not census:
         raise ValueError("conjunctive_answer needs a non-empty census (AS(P)=∅ is upstream)")
     contraries = tuple(contrary(conjunct) for conjunct in conjuncts)
     # Answer sets are consistent, so false-in-M (∃i l̄i∈M) ⇒ not-true-in-M; the yes-branch above
     # has excluded all-true, so this elif is sound (no model is both all-true and falsified).
-    if all(all(conjunct in model for conjunct in conjuncts) for model in models):
+    if all(all(conjunct in model for conjunct in conjuncts) for model in census):
         return Answer.yes
-    if all(any(neg in model for neg in contraries) for model in models):
+    if all(any(neg in model for neg in contraries) for model in census):
         return Answer.no
     return Answer.unknown
 

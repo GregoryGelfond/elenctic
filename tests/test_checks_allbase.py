@@ -82,14 +82,14 @@ def test_check_label_is_readable_without_solving() -> None:
 
 
 def test_check_declares_what_it_reads_statically() -> None:
-    # the wiring rule's LHS (Half B / explain): reads is statically inspectable, no solve needed.
+    # the wiring rule's LHS: reads is statically inspectable, no solve needed.
     assert expect_sat().reads == frozenset()
     assert cautious_contains(lits("a")).reads == frozenset({Field.CAUTIOUS})
     assert brave_contains(lits("a")).reads == frozenset({Field.BRAVE})
-    assert has_model(lits("a")).reads == frozenset({Field.OBSERVABLES})
-    assert count_is(2).reads == frozenset({Field.OBSERVABLES})
+    assert has_model(lits("a")).reads == frozenset({Field.SHOWN_CENSUS})
+    assert count_is(2).reads == frozenset({Field.FULL_CENSUS})
     assign_reads = assign_contains(frozenset({(parse_term("x"), 1)})).reads
-    assert assign_reads == frozenset({Field.OBSERVABLES})
+    assert assign_reads == frozenset({Field.FULL_CENSUS})
     assert cost_is((1,)).reads == frozenset({Field.OPTIMUM})
     assert expect_unsat().reads == frozenset({Field.WITNESS})
 

@@ -23,7 +23,12 @@ from hypothesis import strategies as st
 from elenctic import checks
 from elenctic.expectation import Expectation, Sat, Unsat, parse
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral, Var
-from elenctic.result import Consistent, Field
+from elenctic.result import (
+    Consistent,
+    ConsistentShownCensus,
+    ConsistentShownOptimalCensus,
+    Field,
+)
 from elenctic.run import Mode, RoutingError, Run, populates, runs_for, shape_for
 
 
@@ -55,35 +60,58 @@ def test_mode_lowers_to_its_solver_args() -> None:
     assert Mode.OPTIMAL.args == ("--opt-mode=opt",)
 
 
-def test_mode_keyed_structures_all_agree_on_the_mode_set() -> None:
-    # The three Mode-keyed structures (_ARGS via .args, _POPULATES via populates, _SHAPE via
-    # shape_for) must agree on the Mode set: a Mode added without all three entries KeyErrors here.
-    # This pins their cross-agreement by test (the by-construction single-table lift is ledgered).
+def test_mode_keyed_structures_agree_over_both_projection_coordinates() -> None:
+    # The Mode-keyed structures (.args, populates, shape_for) stay total over Mode × the projection
+    # coordinate: a Mode added without an entry KeyErrors here.
     for mode in Mode:
         assert isinstance(mode.args, tuple)
-        assert isinstance(populates(mode), frozenset)
-        assert issubclass(shape_for(mode), Consistent)
+        for projects in (False, True):
+            assert isinstance(populates(mode, projects), frozenset)
+            assert issubclass(shape_for(mode, projects), Consistent)
 
 
-def test_populates_maps_each_mode() -> None:
+def test_populates_maps_each_mode_full_shape() -> None:
     assert populates(Mode.DEFAULT) == frozenset({Field.WITNESS})
-    assert populates(Mode.ENUM_ALL) == frozenset({Field.OBSERVABLES, Field.CAUTIOUS, Field.BRAVE})
+    assert populates(Mode.ENUM_ALL) == frozenset(
+        {Field.SHOWN_CENSUS, Field.FULL_CENSUS, Field.CAUTIOUS, Field.BRAVE}
+    )
     assert populates(Mode.CAUTIOUS_ALL) == frozenset({Field.CAUTIOUS})
     assert populates(Mode.BRAVE_ALL) == frozenset({Field.BRAVE})
-    assert populates(Mode.OPTIMAL_ENUM) == frozenset({Field.OPTIMAL_OBSERVABLES, Field.OPTIMUM})
+    assert populates(Mode.OPTIMAL_ENUM) == frozenset(
+        {Field.SHOWN_OPTIMAL_CENSUS, Field.FULL_OPTIMAL_CENSUS, Field.OPTIMUM}
+    )
     assert populates(Mode.OPTIMAL) == frozenset({Field.OPTIMUM})
+
+
+def test_projection_sheds_exactly_the_full_token() -> None:
+    # The uniform law: populates(m, True) = populates(m, False) \ {full token of m}.
+    assert populates(Mode.ENUM_ALL, True) == populates(Mode.ENUM_ALL, False) - {Field.FULL_CENSUS}
+    assert populates(Mode.OPTIMAL_ENUM, True) == (
+        populates(Mode.OPTIMAL_ENUM, False) - {Field.FULL_OPTIMAL_CENSUS}
+    )
+    # Non-projecting modes have no full token, so the coordinate is a no-op.
+    for mode in (Mode.DEFAULT, Mode.CAUTIOUS_ALL, Mode.BRAVE_ALL, Mode.OPTIMAL):
+        assert populates(mode, True) == populates(mode, False)
+
+
+def test_shape_for_selects_the_projected_shape_only_for_projecting_modes() -> None:
+    assert shape_for(Mode.ENUM_ALL, True) is ConsistentShownCensus
+    assert shape_for(Mode.OPTIMAL_ENUM, True) is ConsistentShownOptimalCensus
+    assert shape_for(Mode.ENUM_ALL, False) is not ConsistentShownCensus
+    for mode in (Mode.DEFAULT, Mode.CAUTIOUS_ALL, Mode.BRAVE_ALL, Mode.OPTIMAL):
+        assert shape_for(mode, True) is shape_for(mode, False)
 
 
 # --- the wiring rule (Half B): reads ⊆ populates, enforced at construction ---
 
 
 def test_run_rejects_a_misrouted_check_at_construction() -> None:
-    # @count reads OBSERVABLES; CAUTIOUS_ALL does not populate it — rejected before any solve, as a
-    # RoutingError (a harness bug), never a verdict; the message names the field, check, and mode.
+    # @count reads the full census; CAUTIOUS_ALL does not populate it — rejected before any solve,
+    # as a RoutingError (a harness bug), never a verdict; the message names the field, check, mode.
     with pytest.raises(RoutingError) as exc:
         Run(Mode.CAUTIOUS_ALL, (checks.count_is(2),))
     message = str(exc.value)
-    assert "observables" in message  # the missing field
+    assert "full census" in message  # the missing field
     assert "@count" in message  # the offending check
     assert "CAUTIOUS_ALL" in message  # the mode
 

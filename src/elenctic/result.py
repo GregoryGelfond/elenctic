@@ -29,6 +29,8 @@ __all__ = [
     "ConsistentEnumeration",
     "ConsistentOptimalEnumeration",
     "ConsistentOptimum",
+    "ConsistentShownCensus",
+    "ConsistentShownOptimalCensus",
     "ConsistentWitness",
     "Determination",
     "Field",
@@ -46,6 +48,8 @@ __all__ = [
     "observables_of",
     "optimal_observables_of",
     "optimum_of",
+    "shown_census_of",
+    "shown_optimal_census_of",
     "witness_of",
 ]
 
@@ -78,14 +82,18 @@ class Verdict(Enum):
 
 class Field(Enum):
     """A gated observation a ``Consistent`` outcome can provide — the wiring-rule vocabulary
-    (``Check.reads`` ⊆ ``populates(mode)`` in ``run.py``). Six capabilities, one per readable field;
-    the explain/dry-run surface narrates these, so they stay user-legible."""
+    (``Check.reads`` ⊆ ``populates(mode, projects_to_shown)`` in ``run.py``). The census splits
+    into a shown view (projection-invariant) and a full view (projection-sensitive): a check reading
+    the full view suppresses projection, one reading only the shown view rides a projecting run. The
+    explain/dry-run surface narrates these, so they stay user-legible."""
 
     WITNESS = "witness"
-    OBSERVABLES = "observables"
+    SHOWN_CENSUS = "shown census"
+    FULL_CENSUS = "full census"
     CAUTIOUS = "cautious"
     BRAVE = "brave"
-    OPTIMAL_OBSERVABLES = "optimal observables"
+    SHOWN_OPTIMAL_CENSUS = "shown optimal census"
+    FULL_OPTIMAL_CENSUS = "full optimal census"
     OPTIMUM = "optimum"
 
 
@@ -159,6 +167,21 @@ class ConsistentEnumeration(Consistent):
 
 @final
 @dataclass(frozen=True, slots=True)
+class ConsistentShownCensus(Consistent):
+    """``ENUM_ALL`` projected to shown (a theory solver run under ``--project``): the *set* of shown
+    projections, theory multiplicity erased. Carries ≥1 shown class by construction
+    (Consistent ⟹ AS(P)≠∅). The full census (multiplicity + assignment) is irrecoverable from the
+    shown set — a different object, not a coarser view of one — so reading it is a ``SeamError``."""
+
+    shown_census: frozenset[frozenset[Symbol]]
+
+    def __post_init__(self) -> None:
+        if not self.shown_census:
+            raise ValueError("a ConsistentShownCensus carries ≥1 shown class (AS(P) ≠ ∅)")
+
+
+@final
+@dataclass(frozen=True, slots=True)
 class ConsistentCautious(Consistent):
     """``CAUTIOUS_ALL``: the cautious consequences ⋂ alone (clingo-emitted; no census to derive
     from)."""
@@ -187,6 +210,22 @@ class ConsistentOptimalEnumeration(Consistent):
     def __post_init__(self) -> None:
         if not self.optimal_observables:
             raise ValueError("a ConsistentOptimalEnumeration carries ≥1 optimal model (Opt(P) ≠ ∅)")
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class ConsistentShownOptimalCensus(Consistent):
+    """``OPTIMAL_ENUM`` projected to shown: the *set* of shown projections of Opt(P), with the
+    proven optimum — what lets the shown-only optimal modes terminate when a theory solver would
+    otherwise enumerate an astronomically large optimal class. The full optimal class is withheld
+    (a ``SeamError``); ``optimum`` is projection-invariant and kept."""
+
+    shown_census: frozenset[frozenset[Symbol]]
+    optimum: Optimum
+
+    def __post_init__(self) -> None:
+        if not self.shown_census:
+            raise ValueError("a ConsistentShownOptimalCensus carries ≥1 shown class (Opt(P) ≠ ∅)")
 
 
 @final
@@ -229,14 +268,14 @@ def _seam_violation(field: Field, shape: Consistent) -> NoReturn:
 # --- consequence views derived from the census (single source of truth) ---
 
 
-def _shown_intersection(observables: tuple[Observable, ...]) -> frozenset[Symbol]:
-    """⋂ of the census's shown projections (observables is non-empty by the shape's invariant)."""
-    return intersect_all(tuple(observable.shown for observable in observables))
+def _meet(census: frozenset[frozenset[Symbol]]) -> frozenset[Symbol]:
+    """⋂ of a non-empty set of shown projections (the shape invariant guarantees non-empty)."""
+    return intersect_all(tuple(census))
 
 
-def _shown_union(observables: tuple[Observable, ...]) -> frozenset[Symbol]:
-    """⋃ of the census's shown projections."""
-    return union_all(tuple(observable.shown for observable in observables))
+def _join(census: frozenset[frozenset[Symbol]]) -> frozenset[Symbol]:
+    """⋃ of a non-empty set of shown projections."""
+    return union_all(tuple(census))
 
 
 # --- the accessor seam: read one field, narrowing to the shapes that populate it ---
@@ -251,64 +290,95 @@ def witness_of(shape: Consistent) -> Observable:
             _seam_violation(Field.WITNESS, shape)
 
 
+def shown_census_of(shape: Consistent) -> frozenset[frozenset[Symbol]]:
+    """The set of shown projections ``{shown(M)}`` (``Field.SHOWN_CENSUS``): derived from the census
+    on the full shape, stored on the projected shape. Projection-invariant — its cardinality is the
+    shown-distinct count, which ``@count`` (wanting the theory-distinct count) cannot read here."""
+    match shape:
+        case ConsistentEnumeration():
+            return frozenset(observable.shown for observable in shape.observables)
+        case ConsistentShownCensus():
+            return shape.shown_census
+        case _:
+            _seam_violation(Field.SHOWN_CENSUS, shape)
+
+
 def observables_of(shape: Consistent) -> tuple[Observable, ...]:
-    """The complete answer-set census (``Field.OBSERVABLES``)."""
+    """The complete answer-set census, with multiplicity and theory assignment
+    (``Field.FULL_CENSUS``) — narrows to the full shape; unreadable off a projected shown-only
+    shape (the multiplicity/assignment was erased by ``--project`` and cannot be recovered)."""
     match shape:
         case ConsistentEnumeration():
             return shape.observables
         case _:
-            _seam_violation(Field.OBSERVABLES, shape)
+            _seam_violation(Field.FULL_CENSUS, shape)
 
 
 def cautious_of(shape: Consistent) -> frozenset[Symbol]:
     """The cautious consequences ⋂ (``Field.CAUTIOUS``): stored for the native cautious run, derived
-    from the census for a full enumeration (single source of truth)."""
+    from the shown census for either enumeration shape (single source of truth)."""
     match shape:
         case ConsistentCautious():
             return shape.cautious
-        case ConsistentEnumeration():
-            return _shown_intersection(shape.observables)
+        case ConsistentEnumeration() | ConsistentShownCensus():
+            return _meet(shown_census_of(shape))
         case _:
             _seam_violation(Field.CAUTIOUS, shape)
 
 
 def brave_of(shape: Consistent) -> frozenset[Symbol]:
     """The brave consequences ⋃ (``Field.BRAVE``): stored for the native brave run, derived from the
-    census for a full enumeration."""
+    shown census for either enumeration shape."""
     match shape:
         case ConsistentBrave():
             return shape.brave
-        case ConsistentEnumeration():
-            return _shown_union(shape.observables)
+        case ConsistentEnumeration() | ConsistentShownCensus():
+            return _join(shown_census_of(shape))
         case _:
             _seam_violation(Field.BRAVE, shape)
 
 
+def shown_optimal_census_of(shape: Consistent) -> frozenset[frozenset[Symbol]]:
+    """The set of shown projections of Opt(P) (``Field.SHOWN_OPTIMAL_CENSUS``): derived on the full
+    optimal shape, stored on the projected one."""
+    match shape:
+        case ConsistentOptimalEnumeration():
+            return frozenset(observable.shown for observable in shape.optimal_observables)
+        case ConsistentShownOptimalCensus():
+            return shape.shown_census
+        case _:
+            _seam_violation(Field.SHOWN_OPTIMAL_CENSUS, shape)
+
+
 def optimal_observables_of(shape: Consistent) -> tuple[Observable, ...]:
-    """The enumerated optimal class Opt(P) (``Field.OPTIMAL_OBSERVABLES``)."""
+    """The enumerated optimal class Opt(P) with multiplicity/assignment
+    (``Field.FULL_OPTIMAL_CENSUS``) — narrows to the full optimal shape; withheld off the projected
+    one."""
     match shape:
         case ConsistentOptimalEnumeration():
             return shape.optimal_observables
         case _:
-            _seam_violation(Field.OPTIMAL_OBSERVABLES, shape)
+            _seam_violation(Field.FULL_OPTIMAL_CENSUS, shape)
 
 
 def optimum_of(shape: Consistent) -> Optimum:
-    """The proven optimum (``Field.OPTIMUM``)."""
+    """The proven optimum (``Field.OPTIMUM``) — every optimal shape carries it
+    (projection-invariant)."""
     match shape:
-        case ConsistentOptimum() | ConsistentOptimalEnumeration():
+        case ConsistentOptimum() | ConsistentOptimalEnumeration() | ConsistentShownOptimalCensus():
             return shape.optimum
         case _:
             _seam_violation(Field.OPTIMUM, shape)
 
 
 def cautious_optimal_of(shape: Consistent) -> frozenset[Symbol]:
-    """⋂ Opt(P): the cautious consequences over the optimal class, derived from the optimal census
-    (the optimal-base counterpart of :func:`cautious_of`; reads ``Field.OPTIMAL_OBSERVABLES``)."""
-    return _shown_intersection(optimal_observables_of(shape))
+    """⋂ Opt(P): the cautious consequences over the optimal class, derived from the shown optimal
+    census (the optimal-base counterpart of :func:`cautious_of`; reads
+    ``Field.SHOWN_OPTIMAL_CENSUS``)."""
+    return _meet(shown_optimal_census_of(shape))
 
 
 def brave_optimal_of(shape: Consistent) -> frozenset[Symbol]:
-    """⋃ Opt(P): the brave consequences over the optimal class (the optimal-base counterpart of
-    :func:`brave_of`; reads ``Field.OPTIMAL_OBSERVABLES``)."""
-    return _shown_union(optimal_observables_of(shape))
+    """⋃ Opt(P): the brave consequences over the optimal class (reads
+    ``Field.SHOWN_OPTIMAL_CENSUS``)."""
+    return _join(shown_optimal_census_of(shape))
