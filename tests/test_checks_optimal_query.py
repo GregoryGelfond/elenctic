@@ -19,6 +19,7 @@ from elenctic.checks import (
     has_optimal_model,
     query_matches,
 )
+from elenctic.expectation import WitnessClaim
 from elenctic.query import Answer, BindingQuery, GroundQuery, QueryLiteral, Var
 from elenctic.result import (
     ConsistentCautious,
@@ -41,6 +42,10 @@ def lits(*names: str) -> frozenset[Symbol]:
     return frozenset(parse_term(name) for name in names)
 
 
+def wm(*names: str) -> WitnessClaim:
+    return WitnessClaim(shown=lits(*names))
+
+
 def opt_enum(*observables: Observable) -> ConsistentOptimalEnumeration:
     return ConsistentOptimalEnumeration(observables, Optimum((0,)))
 
@@ -52,7 +57,7 @@ def enum(*observables: Observable) -> ConsistentEnumeration:
 @pytest.mark.parametrize(
     ("check", "label"),
     [
-        pytest.param(has_optimal_model(lits("a")), "@optimal", id="optimal"),
+        pytest.param(has_optimal_model(wm("a")), "@optimal", id="optimal"),
         pytest.param(
             cautious_optimal_contains(lits("a")), "@cautious optimal", id="cautious-optimal"
         ),
@@ -71,7 +76,7 @@ def test_undecided_when_inconclusive(check: Check, label: str) -> None:
 
 def test_optimal_base_checks_share_the_optimal_observables() -> None:
     result = opt_enum(obs("a", "x"), obs("a", "y"))
-    assert has_optimal_model(lits("a", "x"))(result).verdict is Verdict.PASS
+    assert has_optimal_model(wm("a", "x"))(result).verdict is Verdict.PASS
     assert cautious_optimal_contains(lits("a"))(result).verdict is Verdict.PASS  # optimal backbone
     missing = cautious_optimal_contains(lits("x"))(result)
     assert missing.verdict is Verdict.FAIL  # x is in only one optimum
@@ -81,7 +86,7 @@ def test_optimal_base_checks_share_the_optimal_observables() -> None:
 
 
 def test_optimal_base_is_total_on_unsat() -> None:
-    assert has_optimal_model(lits("a"))(Inconsistent()).verdict is Verdict.FAIL
+    assert has_optimal_model(wm("a"))(Inconsistent()).verdict is Verdict.FAIL
     assert cautious_optimal_contains(lits("a"))(Inconsistent()).verdict is Verdict.FAIL
     assert brave_optimal_contains(lits("a"))(Inconsistent()).verdict is Verdict.FAIL
     assert count_optimal_is(2)(Inconsistent()).verdict is Verdict.FAIL
@@ -91,14 +96,14 @@ def test_optimal_base_is_total_on_unsat() -> None:
 def test_optimal_base_singleton_class() -> None:
     # ⋂ Opt(P) = ⋃ Opt(P) = the single optimal model (the family[0].∩(*[]) edge).
     result = opt_enum(obs("a", "x"))
-    assert has_optimal_model(lits("a", "x"))(result).verdict is Verdict.PASS
+    assert has_optimal_model(wm("a", "x"))(result).verdict is Verdict.PASS
     assert cautious_optimal_contains(lits("a", "x"))(result).verdict is Verdict.PASS
     assert brave_optimal_contains(lits("x"))(result).verdict is Verdict.PASS
 
 
 def test_optimal_base_failures_name_opt_p_not_enumerated_models() -> None:
     result = opt_enum(obs("a", "x"), obs("a", "y"))
-    partial = has_optimal_model(lits("a"))(result)  # subset, not the whole model
+    partial = has_optimal_model(wm("a"))(result)  # subset, not the whole model
     assert partial.verdict is Verdict.FAIL
     assert "optimal" in partial.message  # names Opt(P), not "enumerated models"
     assert "enumerated models" not in partial.message

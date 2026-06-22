@@ -21,7 +21,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from elenctic import checks
-from elenctic.expectation import Expectation, Sat, Unsat, parse
+from elenctic.expectation import Expectation, Sat, Unsat, WitnessClaim, parse
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral, Var
 from elenctic.result import (
     Consistent,
@@ -145,7 +145,8 @@ def test_reads_full_census_is_a_vocabulary_membership_test() -> None:
     assert reads_full_census(checks.count_is(2))  # @count reads the full census
     assert reads_full_census(checks.assign_contains(frozenset({(Function("x"), 1)})))
     assert reads_full_census(checks.count_optimal_is(1))  # reads the full optimal census
-    assert not reads_full_census(checks.has_model(frozenset({Function("a")})))  # shown census
+    bare_model = checks.has_model(WitnessClaim(shown=frozenset({Function("a")})))
+    assert not reads_full_census(bare_model)  # @model reads the shown census, not full
     assert not reads_full_census(checks.cautious_contains(frozenset({Function("a")})))
 
 
@@ -167,7 +168,7 @@ def test_should_project_decision_matrix(
     theory: bool, mode: Mode, carried: tuple[str, ...], expected: bool
 ) -> None:
     factory = {
-        "model": lambda: checks.has_model(frozenset({Function("a")})),
+        "model": lambda: checks.has_model(WitnessClaim(shown=frozenset({Function("a")}))),
         "count": lambda: checks.count_is(2),
         "assign": lambda: checks.assign_contains(frozenset({(Function("x"), 1)})),
     }
@@ -401,8 +402,8 @@ def _sats(draw: st.DrawFn) -> Sat:
         [_GROUND, _GROUND_CONJ, _BIND_YES, _BIND_NO, _BIND_UNKNOWN]
     )
     return Sat(
-        model=draw(st.sampled_from([_LIT, None])),
-        optimal_model=draw(st.sampled_from([_LIT, None])),
+        model=draw(st.sampled_from([WitnessClaim(shown=_LIT), None])),
+        optimal_model=draw(st.sampled_from([WitnessClaim(shown=_LIT), None])),
         cautious=draw(optional_lit),
         cautious_optimal=draw(optional_lit),
         brave=draw(optional_lit),

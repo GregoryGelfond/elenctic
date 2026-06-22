@@ -21,6 +21,7 @@ from elenctic.checks import (
     expect_unsat,
     has_model,
 )
+from elenctic.expectation import WitnessClaim
 from elenctic.result import (
     ConsistentBrave,
     ConsistentCautious,
@@ -44,6 +45,10 @@ def lits(*names: str) -> frozenset[Symbol]:
     return frozenset(parse_term(name) for name in names)
 
 
+def wm(*names: str) -> WitnessClaim:
+    return WitnessClaim(shown=lits(*names))
+
+
 def enum(*observables: Observable) -> ConsistentEnumeration:
     return ConsistentEnumeration(observables)
 
@@ -60,7 +65,7 @@ def test_check_returns_checkreport_with_verdict_and_label() -> None:
     [
         pytest.param(expect_sat(), "@expect sat", id="expect-sat"),
         pytest.param(expect_unsat(), "@expect unsat", id="expect-unsat"),
-        pytest.param(has_model(lits("a")), "@model", id="model"),
+        pytest.param(has_model(wm("a")), "@model", id="model"),
         pytest.param(count_is(1), "@count", id="count"),
         pytest.param(cautious_contains(lits("a")), "@cautious", id="cautious"),
         pytest.param(brave_contains(lits("a")), "@brave", id="brave"),
@@ -77,7 +82,7 @@ def test_undecided_when_inconclusive(check: Check, label: str) -> None:
 def test_check_label_is_readable_without_solving() -> None:
     # dx#9 / option C: the contract-tag label is a first-class attribute, readable before any solve.
     assert expect_sat().label == "@expect sat"
-    assert has_model(lits("a")).label == "@model"
+    assert has_model(wm("a")).label == "@model"
     assert cautious_contains(lits("a")).label == "@cautious"
 
 
@@ -86,7 +91,7 @@ def test_check_declares_what_it_reads_statically() -> None:
     assert expect_sat().reads == frozenset()
     assert cautious_contains(lits("a")).reads == frozenset({Field.CAUTIOUS})
     assert brave_contains(lits("a")).reads == frozenset({Field.BRAVE})
-    assert has_model(lits("a")).reads == frozenset({Field.SHOWN_CENSUS})
+    assert has_model(wm("a")).reads == frozenset({Field.SHOWN_CENSUS})
     assert count_is(2).reads == frozenset({Field.FULL_CENSUS})
     assign_reads = assign_contains(frozenset({(parse_term("x"), 1)})).reads
     assert assign_reads == frozenset({Field.FULL_CENSUS})
@@ -110,11 +115,11 @@ def test_expect_unsat() -> None:
 
 def test_has_model_is_existential_over_whole_shown_model_and_total() -> None:
     result = enum(obs("a", "b"), obs("c"))
-    assert has_model(lits("a", "b"))(result).verdict is Verdict.PASS
-    partial = has_model(lits("a"))(result)
+    assert has_model(wm("a", "b"))(result).verdict is Verdict.PASS
+    partial = has_model(wm("a"))(result)
     assert partial.verdict is Verdict.FAIL  # the whole shown model, not a subset
     assert "a" in partial.message
-    empty = has_model(lits("a"))(Inconsistent())
+    empty = has_model(wm("a"))(Inconsistent())
     assert empty.verdict is Verdict.FAIL  # AS(P) = ∅ arm
 
 

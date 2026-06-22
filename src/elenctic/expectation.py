@@ -38,6 +38,19 @@ class ContractError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class WitnessClaim:
+    """A witness cell's claim: the shown model and an optional joint theory binding.
+
+    ``assign`` empty ⇒ a bare witness (``@model { L }``); non-empty ⇒ a ``where``-qualified joint
+    witness (``@model { L } where { A }``), binding shown and assignment to one model. The
+    expectation-side counterpart of the result-side ``ConsistentWitness`` (hence ``…Claim``). One
+    cell holds one ``WitnessClaim``: ``assign`` empty (bare) or the ``where``-binding."""
+
+    shown: frozenset[Symbol]
+    assign: frozenset[tuple[Symbol, int]] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
 class Unsat:
     """``@expect unsat``: ``AS(P) = ∅`` (spec §2.1); excludes every model-bearing tag (§2.2)."""
 
@@ -53,8 +66,8 @@ class Sat:
     (the ``(mode, base)`` cells of §2.2 rule 2), so ``@model`` and ``@model optimal`` coexist.
     """
 
-    model: frozenset[Symbol] | None = None
-    optimal_model: frozenset[Symbol] | None = None
+    model: WitnessClaim | None = None
+    optimal_model: WitnessClaim | None = None
     cautious: frozenset[Symbol] = frozenset()
     cautious_optimal: frozenset[Symbol] = frozenset()
     brave: frozenset[Symbol] = frozenset()
@@ -189,8 +202,8 @@ class _Builder:
     """
 
     expect: Literal["sat", "unsat"] | None = None
-    model: frozenset[Symbol] | None = None
-    optimal_model: frozenset[Symbol] | None = None
+    model: WitnessClaim | None = None
+    optimal_model: WitnessClaim | None = None
     cautious: frozenset[Symbol] = frozenset()
     cautious_optimal: frozenset[Symbol] = frozenset()
     brave: frozenset[Symbol] = frozenset()
@@ -218,13 +231,13 @@ def _apply(block: _Block, builder: _Builder) -> None:
         case "model":
             is_optimal, litset = _base_litset(rest)
             if is_optimal:
-                _set_optimal_model(builder, litset)
+                _set_optimal_model(builder, WitnessClaim(shown=litset))
             elif builder.model is not None:
                 raise ValueError("at most one @model per contract (the 'all' base)")
             else:
-                builder.model = litset
+                builder.model = WitnessClaim(shown=litset)
         case "optimal":  # sugar: @optimal ≡ @model optimal (spec §2.1)
-            _set_optimal_model(builder, _litset(rest))
+            _set_optimal_model(builder, WitnessClaim(shown=_litset(rest)))
         case "cautious":
             is_optimal, litset = _base_litset(rest)
             if is_optimal:
@@ -263,11 +276,11 @@ def _apply(block: _Block, builder: _Builder) -> None:
             raise ValueError(f"unknown contract tag: @{block.tag}")
 
 
-def _set_optimal_model(builder: _Builder, litset: frozenset[Symbol]) -> None:
+def _set_optimal_model(builder: _Builder, claim: WitnessClaim) -> None:
     """Set the optimal-witness cell, shared by ``@optimal`` and ``@model optimal`` (§2.2)."""
     if builder.optimal_model is not None:
         raise ValueError("at most one @optimal / @model optimal per contract (the same cell)")
-    builder.optimal_model = litset
+    builder.optimal_model = claim
 
 
 # --- payload parsers (each raises ValueError; parse wraps with provenance) ---

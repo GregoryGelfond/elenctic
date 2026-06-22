@@ -4,13 +4,18 @@ and a source label threads file:line provenance into diagnostics (spec §2.1).""
 
 from clingo import Symbol, parse_term
 
-from elenctic.expectation import Sat, Unsat, parse
+from elenctic.expectation import Sat, Unsat, WitnessClaim, parse
 from elenctic.query import Answer, GroundQuery
 
 
 def L(*names: str) -> frozenset[Symbol]:
     """A litset built from clingo ground terms — the structural-equality currency (spec §2.0)."""
     return frozenset(parse_term(name) for name in names)
+
+
+def WL(*names: str) -> WitnessClaim:
+    """A WitnessClaim built from a litset (a bare, empty-assign witness)."""
+    return WitnessClaim(shown=L(*names))
 
 
 def test_parse_expect_unsat_with_note() -> None:
@@ -22,8 +27,17 @@ def test_parse_expect_unsat_with_note() -> None:
 def test_parse_expect_sat_minimal_model() -> None:
     exp = parse("% @expect sat\n% @model { a }\n")
     assert isinstance(exp, Sat)
-    assert exp.model == L("a")
+    assert exp.model == WL("a")
     assert exp.optimal_model is None
+
+
+def test_bare_witness_carries_an_empty_assignment() -> None:
+    # A bare @model parses to a WitnessClaim with no joint binding — the where-clause (later) fills
+    # the assign; until then assign is empty, so has_model reads the shown census, not the full one.
+    exp = parse("% @expect sat\n% @model { a, b }\n")
+    assert isinstance(exp, Sat)
+    assert exp.model == WitnessClaim(shown=L("a", "b"))
+    assert exp.model is not None and exp.model.assign == frozenset()
 
 
 def test_parse_sat_with_cost_and_optimal_witness() -> None:
@@ -34,7 +48,7 @@ def test_parse_sat_with_cost_and_optimal_witness() -> None:
     )
     assert isinstance(exp, Sat)
     assert exp.cost == (4, 2)
-    assert exp.optimal_model == L("included(s,a,2,1)", "included(a,t,2,1)", "start(s)", "end(t)")
+    assert exp.optimal_model == WL("included(s,a,2,1)", "included(a,t,2,1)", "start(s)", "end(t)")
     assert exp.model is None
 
 
@@ -87,7 +101,7 @@ def test_assign_accepts_a_negative_value() -> None:
 def test_model_optimal_populates_the_optimal_cell() -> None:
     exp = parse("% @expect sat\n% @model optimal { a, b }\n")
     assert isinstance(exp, Sat)
-    assert exp.optimal_model == L("a", "b")
+    assert exp.optimal_model == WL("a", "b")
     assert exp.model is None
 
 
@@ -95,8 +109,8 @@ def test_optimal_is_sugar_for_model_optimal_and_coexists_with_model() -> None:
     # @optimal ≡ @model optimal (spec §2.1); the all-base @model is a distinct cell (§2.2 rule 2).
     exp = parse("% @expect sat\n% @model { a }\n% @optimal { b }\n")
     assert isinstance(exp, Sat)
-    assert exp.model == L("a")
-    assert exp.optimal_model == L("b")
+    assert exp.model == WL("a")
+    assert exp.optimal_model == WL("b")
 
 
 def test_litset_accepts_strong_negation_literal() -> None:
@@ -108,7 +122,7 @@ def test_litset_accepts_strong_negation_literal() -> None:
 def test_litset_is_paren_aware() -> None:
     exp = parse("% @expect sat\n% @model { included(s,a,2,1), start(s) }\n")
     assert isinstance(exp, Sat)
-    assert exp.model == L("included(s,a,2,1)", "start(s)")
+    assert exp.model == WL("included(s,a,2,1)", "start(s)")
 
 
 def test_queries_are_collected_in_order() -> None:
@@ -135,7 +149,7 @@ def test_notes_accumulate() -> None:
 def test_continuation_joins_an_unclosed_litset() -> None:
     exp = parse("% @expect sat\n% @model { assign(s,9),\n%          assign(e,5) }\n")
     assert isinstance(exp, Sat)
-    assert exp.model == L("assign(s,9)", "assign(e,5)")
+    assert exp.model == WL("assign(s,9)", "assign(e,5)")
 
 
 def test_continuation_does_not_absorb_prose_after_a_closed_litset() -> None:
@@ -149,7 +163,7 @@ def test_continuation_does_not_absorb_prose_after_a_closed_litset() -> None:
         "% Run: clingo shortest-path.lp variant-03.lp\n"
     )
     assert isinstance(exp, Sat)
-    assert exp.model == L("included(s,a,2,1)", "start(s)")
+    assert exp.model == WL("included(s,a,2,1)", "start(s)")
 
 
 def test_prose_comment_between_tags_is_ignored() -> None:
@@ -162,20 +176,20 @@ def test_prose_comment_between_tags_is_ignored() -> None:
 def test_ignores_non_contract_comments_and_program_code() -> None:
     exp = parse("% a real comment\nfoo :- bar.\n% @expect sat\n% @model { a }\n")
     assert isinstance(exp, Sat)
-    assert exp.model == L("a")
+    assert exp.model == WL("a")
 
 
 def test_parse_accepts_a_source_label() -> None:
     # dx#2: a source label is accepted (and threaded into diagnostics — see the well-formed suite).
     exp = parse("% @expect sat\n% @model { a }\n", source="cases/x.lp")
     assert isinstance(exp, Sat)
-    assert exp.model == L("a")
+    assert exp.model == WL("a")
 
 
 def test_continuation_spans_three_lines() -> None:
     exp = parse("% @expect sat\n% @model { a,\n%          b,\n%          c }\n")
     assert isinstance(exp, Sat)
-    assert exp.model == L("a", "b", "c")
+    assert exp.model == WL("a", "b", "c")
 
 
 def test_cautious_optimal_accumulates() -> None:
@@ -188,7 +202,7 @@ def test_tag_order_is_irrelevant() -> None:
     # The builder is order-independent: @expect may appear last (a contract is a set of claims).
     exp = parse("% @model { a }\n% @count 1\n% @expect sat\n")
     assert isinstance(exp, Sat)
-    assert exp.model == L("a")
+    assert exp.model == WL("a")
     assert exp.count == 1
 
 
@@ -216,4 +230,4 @@ def test_note_with_brace_does_not_absorb_a_following_prose_line() -> None:
     )
     assert isinstance(exp, Sat)
     assert exp.notes == ("uses a { to mark a choice",)
-    assert exp.model == L("a")
+    assert exp.model == WL("a")

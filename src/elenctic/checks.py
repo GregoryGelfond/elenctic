@@ -24,6 +24,7 @@ from typing import assert_never
 
 from clingo import Symbol
 
+from elenctic.expectation import WitnessClaim
 from elenctic.query import (
     Answer,
     BindingQuery,
@@ -255,14 +256,14 @@ def expect_unsat() -> Check:
     )
 
 
-def has_model(litset: frozenset[Symbol]) -> Check:
+def has_model(claim: WitnessClaim) -> Check:
     """``@model { L }``: ``L`` is some answer set's shown projection (``L`` is in the shown census).
-    Reads the shown census (projection-invariant)."""
+    A bare claim (empty ``assign``) reads the shown census (projection-invariant)."""
     return _check(
         "@model",
         frozenset({Field.SHOWN_CENSUS}),
-        inconsistent=_unsat_fail(f"no model equals {_show_set(litset)}"),
-        decide=lambda shape: _witness(litset, shown_census_of(shape), "enumerated models"),
+        inconsistent=_unsat_fail(f"no model equals {_show_set(claim.shown)}"),
+        decide=lambda shape: _witness(claim.shown, shown_census_of(shape), "enumerated models"),
     )
 
 
@@ -349,15 +350,17 @@ def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
 # --- the optimal base (each mode is its all-base aggregation over Opt(P)) ---
 
 
-def has_optimal_model(litset: frozenset[Symbol]) -> Check:
+def has_optimal_model(claim: WitnessClaim) -> Check:
     """``@optimal { L }`` (= ``@model optimal``): ``L`` is some optimal model's shown projection.
-    Reads the shown optimal census (projection-invariant) — what lets it ride a projecting optimal
-    run and terminate."""
+    A bare claim reads the shown optimal census (projection-invariant) — what lets it ride a
+    projecting optimal run and terminate."""
     return _check(
         "@optimal",
         frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
-        inconsistent=_unsat_fail(f"no optimal model equals {_show_set(litset)}"),
-        decide=lambda shape: _witness(litset, shown_optimal_census_of(shape), "optimal models"),
+        inconsistent=_unsat_fail(f"no optimal model equals {_show_set(claim.shown)}"),
+        decide=lambda shape: _witness(
+            claim.shown, shown_optimal_census_of(shape), "optimal models"
+        ),
     )
 
 

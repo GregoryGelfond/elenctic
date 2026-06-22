@@ -31,6 +31,7 @@ from elenctic.checks import (
     has_optimal_model,
     query_matches,
 )
+from elenctic.expectation import WitnessClaim
 from elenctic.query import Answer, BindingQuery, GroundQuery, QueryLiteral, Var
 from elenctic.result import (
     ConsistentBrave,
@@ -55,13 +56,13 @@ def _every_check(litset: frozenset[Symbol]) -> list[Check]:
     return [
         expect_sat(),
         expect_unsat(),
-        has_model(litset),
+        has_model(WitnessClaim(shown=litset)),
         count_is(len(litset)),
         assign_contains(frozenset({(Function("a"), 1)})),
         cautious_contains(litset),
         brave_contains(litset),
         cost_is((1,)),
-        has_optimal_model(litset),
+        has_optimal_model(WitnessClaim(shown=litset)),
         cautious_optimal_contains(litset),
         brave_optimal_contains(litset),
         count_optimal_is(1),
@@ -128,7 +129,8 @@ def test_query_check_subject_discriminates_instances() -> None:
     assert singleton.subject == "yes { a }"
     assert conjunctive.subject == "no { a, b }"
     assert binding.subject == "unknown p(X)"
-    assert has_model(frozenset({Function("a")})).subject == ""  # non-repeatable tags: empty subject
+    bare = WitnessClaim(shown=frozenset({Function("a")}))
+    assert has_model(bare).subject == ""  # non-repeatable tags carry an empty subject
 
 
 def test_containment_builders_reject_an_empty_litset() -> None:
