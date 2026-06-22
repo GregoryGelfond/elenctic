@@ -171,19 +171,47 @@ class Run:
                 )
 
 
-def runs_for(exp: Expectation) -> tuple[Run, ...]:
-    """Derive the coalesced runs an expectation requires (pure, spec §3, §4)."""
+def reads_full_census(check: Check) -> bool:
+    """Whether ``check`` reads a projection-sensitive full-census token (the multiplicity/assignment
+    view). A pure vocabulary-membership test over ``check.reads`` — no stored bool to drift, so a
+    future check that reads a full token is automatically an assignment/multiplicity observer."""
+    return bool(check.reads & {Field.FULL_CENSUS, Field.FULL_OPTIMAL_CENSUS})
+
+
+def should_project(theory_in_force: bool, mode: Mode, checks: tuple[Check, ...]) -> bool:
+    """Whether a run may project its census onto shown atoms — the contract-induced projection rule.
+    Pure; carried on the :class:`Run`. A non-enumeration mode has nothing to collapse. With no
+    theory in force the assignment is empty, so projection is information-preserving and always
+    safe. Under a theory, project iff no rider observes the full (multiplicity/assignment) census.
+
+    Soundness is enforced, not assumed: a mis-derive (projecting with a full-view reader present)
+    builds the ``Run`` against the projected ``populates``, the full token is absent, and
+    ``Run.__post_init__`` raises ``RoutingError`` before any solve, so ``should_project`` reduces to
+    the ``reads ⊆ populates`` feasibility check. No ``bool(checks)`` guard: a check-less enumeration
+    has no verdict to preserve, so the facade default (``solve(project=False)``) handles raw callers
+    separately from this soundness predicate."""
+    if mode not in {Mode.ENUM_ALL, Mode.OPTIMAL_ENUM}:
+        return False
+    if not theory_in_force:
+        return True
+    return not any(reads_full_census(check) for check in checks)
+
+
+def runs_for(exp: Expectation, theory_in_force: bool = False) -> tuple[Run, ...]:
+    """Derive the coalesced runs an expectation requires (pure). ``theory_in_force`` (whether the
+    case's solver is a theory solver) parameterizes the per-run projection decision; it defaults
+    ``False`` (pure clingo) so the solver-less dry-run and existing callers are unaffected."""
     match exp:
         case Unsat():
-            return (Run(Mode.DEFAULT, (checks.expect_unsat(),)),)
+            return (Run(Mode.DEFAULT, (checks.expect_unsat(),), theory_in_force=theory_in_force),)
         case Sat():
-            return _sat_runs(exp)
+            return _sat_runs(exp, theory_in_force)
         case _:
             assert_never(exp)
 
 
-def _sat_runs(exp: Sat) -> tuple[Run, ...]:
-    """Coalesce a satisfiable contract's tags onto the run-configuration taxonomy (spec §3, §4).
+def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
+    """Coalesce a satisfiable contract's tags onto the run-configuration taxonomy.
 
     Output order is deterministic: ``bucket`` is insertion-ordered and the add-sequence is fixed.
     Each check is added under a mode that populates the fields its decision reads; the wiring rule
@@ -233,7 +261,15 @@ def _sat_runs(exp: Sat) -> tuple[Run, ...]:
     # cheap solve would decide satisfiability. (Existential-aware §7a is deferred — ledger.)
     add(Mode.ENUM_ALL if Mode.ENUM_ALL in bucket else Mode.DEFAULT, checks.expect_sat())
 
-    return tuple(Run(mode, tuple(carried)) for mode, carried in bucket.items())
+    return tuple(
+        Run(
+            mode,
+            tuple(carried),
+            project=should_project(theory_in_force, mode, tuple(carried)),
+            theory_in_force=theory_in_force,
+        )
+        for mode, carried in bucket.items()
+    )
 
 
 def _query_mode(query: Query) -> Mode:

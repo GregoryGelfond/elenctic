@@ -29,7 +29,16 @@ from elenctic.result import (
     ConsistentShownOptimalCensus,
     Field,
 )
-from elenctic.run import Mode, RoutingError, Run, populates, runs_for, shape_for
+from elenctic.run import (
+    Mode,
+    RoutingError,
+    Run,
+    populates,
+    reads_full_census,
+    runs_for,
+    shape_for,
+    should_project,
+)
 
 
 def runs(contract: str) -> tuple[Run, ...]:
@@ -114,6 +123,64 @@ def test_run_rejects_a_misrouted_check_at_construction() -> None:
     assert "full census" in message  # the missing field
     assert "@count" in message  # the offending check
     assert "CAUTIOUS_ALL" in message  # the mode
+
+
+def test_wiring_rule_catches_a_bad_projection_at_construction() -> None:
+    # A Run whose projection state is on, carrying a full-view reader (@count reads the full
+    # census), is rejected at construction: populates(ENUM_ALL, projects_to_shown=True) sheds the
+    # full-census token, so the wiring rule fires before any solve — no should_project mis-derive
+    # can reach one.
+    with pytest.raises(RoutingError) as exc:
+        Run(Mode.ENUM_ALL, (checks.count_is(2),), project=True, theory_in_force=True)
+    message = str(exc.value)
+    assert "full census" in message  # the missing token
+    assert "@count" in message  # the offending check
+    assert "projects_to_shown=True" in message
+
+
+# --- should_project: the contract-induced projection decision, derived and backstopped ---
+
+
+def test_reads_full_census_is_a_vocabulary_membership_test() -> None:
+    assert reads_full_census(checks.count_is(2))  # @count reads the full census
+    assert reads_full_census(checks.assign_contains(frozenset({(Function("x"), 1)})))
+    assert reads_full_census(checks.count_optimal_is(1))  # reads the full optimal census
+    assert not reads_full_census(checks.has_model(frozenset({Function("a")})))  # shown census
+    assert not reads_full_census(checks.cautious_contains(frozenset({Function("a")})))
+
+
+@pytest.mark.parametrize(
+    ("theory", "mode", "carried", "expected"),
+    [
+        pytest.param(True, Mode.DEFAULT, (), False, id="default-never"),
+        pytest.param(True, Mode.CAUTIOUS_ALL, (), False, id="cautious-never"),
+        pytest.param(True, Mode.OPTIMAL, (), False, id="opt-single-never"),
+        pytest.param(False, Mode.ENUM_ALL, (), True, id="clingo-enum-projects"),
+        pytest.param(False, Mode.OPTIMAL_ENUM, (), True, id="clingo-optenum-projects"),
+        pytest.param(True, Mode.ENUM_ALL, ("model",), True, id="theory-shown-only-projects"),
+        pytest.param(True, Mode.ENUM_ALL, ("count",), False, id="theory-count-suppresses"),
+        pytest.param(True, Mode.ENUM_ALL, ("assign",), False, id="theory-assign-suppresses"),
+        pytest.param(True, Mode.ENUM_ALL, ("model", "count"), False, id="theory-mixed-suppresses"),
+    ],
+)
+def test_should_project_decision_matrix(
+    theory: bool, mode: Mode, carried: tuple[str, ...], expected: bool
+) -> None:
+    factory = {
+        "model": lambda: checks.has_model(frozenset({Function("a")})),
+        "count": lambda: checks.count_is(2),
+        "assign": lambda: checks.assign_contains(frozenset({(Function("x"), 1)})),
+    }
+    built = tuple(factory[name]() for name in carried)
+    assert should_project(theory, mode, built) is expected
+
+
+def test_count_diverges_requires_theory_from_reads_full_census() -> None:
+    # @count reads the full census (so it suppresses projection under a theory) yet does NOT itself
+    # require a theory solver (@count is meaningful on pure clingo) — the two properties diverge.
+    assert reads_full_census(checks.count_is(2))
+    exp = parse("% @expect sat\n% @count 2\n")
+    assert isinstance(exp, Sat) and not exp.requires_theory
 
 
 def test_run_accepts_a_well_routed_check() -> None:

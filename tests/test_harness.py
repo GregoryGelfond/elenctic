@@ -91,12 +91,27 @@ def test_run_case_propagates_a_misrouted_plan_as_a_harness_error(
     # (it does NOT swallow it as a CheckReport). runs_for is correct-by-construction, so inject it.
     case = self_contained(tmp_path, "a. #show a/0.\n% @expect sat\n")
 
-    def misrouted(_expectation: object) -> tuple[object, ...]:
+    def misrouted(_expectation: object, _theory_in_force: bool = False) -> tuple[object, ...]:
         raise RoutingError("a stale route")
 
     monkeypatch.setattr("elenctic.harness.runs_for", misrouted)
     with pytest.raises(RoutingError, match=r"stale route"):
         run_case(case)
+
+
+def test_run_case_projects_a_shown_only_clingcon_contract(tmp_path: Path) -> None:
+    # End-to-end: a clingcon contract whose only census rider is shown-base (@model) projects —
+    # distinctness lives in the CSP assignment, which no rider reads, so projection is safe and the
+    # enumeration terminates on the small shown class. The plan is well-routed and the case passes.
+    pytest.importorskip("clingcon")
+    write(
+        tmp_path / "encodings/d/e-clingcon.lp",
+        "&dom {1..3} = v(x). ok. #show ok/0.\n% @expect sat\n% @model { ok }\n",
+    )
+    (case,) = discover(Layout(encodings_root=tmp_path / "encodings", cases_root=tmp_path / "none"))
+    assert case.solver == "clingcon"
+    reports = run_case(case)
+    assert case_verdict(reports) is Verdict.PASS
 
 
 # --- case_verdict: FAIL dominates UNDECIDED dominates PASS (a definite failure sinks the case) ---

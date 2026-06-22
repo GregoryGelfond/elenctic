@@ -41,11 +41,16 @@ __all__ = ["case_verdict", "render", "run_case"]
 def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]:
     """Run ``case`` to its check reports (impure via ``solvers.solve``): for each derived run, solve
     under ``budget`` and apply the run's checks. Output order follows ``runs_for`` (deterministic).
-    A misrouted plan raises a ``RoutingError`` (``HarnessError``) from ``runs_for`` — propagated to
-    the runner as a harness error, never a verdict."""
+    ``theory_in_force`` is fixed once at the boundary as the case's solver being a theory solver
+    (clingcon), then flows as a property into the per-run projection decision. A misrouted plan
+    raises a ``RoutingError`` (``HarnessError``) from ``runs_for`` — propagated to the runner as a
+    harness error, never a verdict."""
+    theory_in_force = case.solver == "clingcon"
     reports: list[CheckReport] = []
-    for run in runs_for(case.expectation):
-        determination = solve(case.solver, run.mode, files=case.files, budget=budget)
+    for run in runs_for(case.expectation, theory_in_force):
+        determination = solve(
+            case.solver, run.mode, files=case.files, budget=budget, project=run.project
+        )
         reports.extend(check(determination) for check in run.checks)
     return tuple(reports)
 

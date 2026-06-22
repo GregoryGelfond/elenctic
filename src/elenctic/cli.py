@@ -70,7 +70,7 @@ def _explain(cases: tuple[Case, ...]) -> int:
     for case in cases:
         print(f"{case.contract_source} [{case.solver}]")
         try:
-            for run in runs_for(case.expectation):
+            for run in runs_for(case.expectation, case.solver == "clingcon"):
                 # subject discerns the repeatable @query tag before any solve (keystone surface).
                 checks = ", ".join(
                     f"{check.label} ({check.subject})" if check.subject else check.label
@@ -117,7 +117,7 @@ def _validate_plans(cases: tuple[Case, ...]) -> tuple[list[Case], list[Case]]:
     harness_errors: list[Case] = []
     for case in cases:
         try:
-            runs_for(case.expectation)
+            runs_for(case.expectation, case.solver == "clingcon")
         except HarnessError as exc:
             print(f"HARNESS ERROR — {case.contract_source}: {exc}", file=sys.stderr)
             harness_errors.append(case)

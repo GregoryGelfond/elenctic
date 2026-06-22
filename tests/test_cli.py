@@ -70,10 +70,10 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
     write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
     write(tmp_path / "encodings/bad/e.lp", "a. #show a/0.\n% @expect sat\n% @note BOOM\n")
 
-    def selectively_misroute(expectation: object) -> object:
+    def selectively_misroute(expectation: object, theory_in_force: bool = False) -> object:
         if "BOOM" in getattr(expectation, "notes", ()):
             raise RoutingError("a stale route")
-        return real_runs_for(expectation)  # type: ignore[arg-type]
+        return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
 
     monkeypatch.setattr(cli, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings")])

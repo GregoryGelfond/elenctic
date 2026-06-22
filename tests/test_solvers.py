@@ -19,6 +19,7 @@ from elenctic.result import (
     ConsistentEnumeration,
     ConsistentOptimalEnumeration,
     ConsistentOptimum,
+    ConsistentShownCensus,
     ConsistentWitness,
     Field,
     HarnessError,
@@ -248,6 +249,35 @@ def test_lowering_postcondition(solver: str, mode: Mode, project: bool) -> None:
     assert isinstance(det, Consistent)
     assert type(det) is shape_for(mode, projects_to_shown)
     assert _readable_fields(det) == populates(mode, projects_to_shown)
+
+
+# --- projection: the decoupling of project (the flag) from projects_to_shown (the shape) ---
+
+
+def test_clingo_projects_but_yields_the_full_shape() -> None:
+    # The decoupling: clingo @count over ENUM_ALL passes --project (perf) yet yields the FULL shape
+    # (assign ≡ ∅, so --project is information-preserving), read correctly — clingo is unaffected.
+    det = solve("clingo", Mode.ENUM_ALL, _CHOICE, project=True)
+    assert isinstance(det, ConsistentEnumeration)  # the full shape, despite --project
+    assert len(observables_of(det)) == 2  # {a}, {b}
+
+
+def test_clingcon_projects_to_the_shown_shape_when_no_full_reader() -> None:
+    # A projecting clingcon enumeration collapses CSP multiplicity onto the shown census (the
+    # shown-only shape), so a shown-only contract terminates instead of enumerating the CSP space.
+    pytest.importorskip("clingcon")
+    det = solve("clingcon", Mode.ENUM_ALL, "&dom {1..3} = v(x). ok. #show ok/0.", project=True)
+    assert isinstance(det, ConsistentShownCensus)
+    assert shown_census_of(det) == {frozenset({Function("ok")})}  # 3 CSP solutions -> 1 shown class
+
+
+def test_clingcon_stays_full_when_project_is_off() -> None:
+    # project=False keeps the full census (3 distinct CSP observables): the multiplicity a @count
+    # or @assign rider needs is preserved.
+    pytest.importorskip("clingcon")
+    det = solve("clingcon", Mode.ENUM_ALL, "&dom {1..3} = v(x). #show.", project=False)
+    assert isinstance(det, ConsistentEnumeration)
+    assert len(observables_of(det)) == 3
 
 
 # --- the clingcon facade: the theory half of the observable (§6.3) and registry dispatch ---

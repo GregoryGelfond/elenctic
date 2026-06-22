@@ -157,3 +157,24 @@ def test_expect_unsat_passes_only_on_inconsistent() -> None:
     assert expect_unsat()(Inconsistent()).verdict is Verdict.PASS
     assert expect_unsat()(ConsistentWitness(_obs("a"))).verdict is Verdict.FAIL  # rides DEFAULT
     assert expect_unsat()(Inconclusive()).verdict is Verdict.UNDECIDED
+
+
+def test_forgotten_full_declaration_is_a_seam_error_not_a_silent_wrong_verdict() -> None:
+    # A check that READS the full census (observables_of) while DECLARING only the shown token
+    # rides a projecting theory run without a RoutingError (its reads ⊆ populates), but trips the
+    # accessor seam — a loud SeamError, never a silent wrong verdict (a projected shape has no full
+    # census).
+    from elenctic.checks import _check
+
+    def decide(shape: Consistent) -> tuple[Verdict, str]:
+        return Verdict.PASS, str(len(observables_of(shape)))  # reads a token it never declared
+
+    liar = _check(
+        "@liar",
+        frozenset({Field.SHOWN_CENSUS}),
+        inconsistent=(Verdict.FAIL, "unreachable"),
+        decide=decide,
+    )
+    projected = ConsistentShownCensus(frozenset({frozenset({Function("a")})}))
+    with pytest.raises(SeamError):
+        liar(projected)
