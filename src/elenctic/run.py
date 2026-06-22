@@ -247,6 +247,8 @@ def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
         add(Mode.OPTIMAL_ENUM, checks.brave_optimal_contains(exp.brave_optimal))
     if exp.count_optimal is not None:
         add(Mode.OPTIMAL_ENUM, checks.count_optimal_is(exp.count_optimal))
+    if exp.assign_optimal:
+        add(Mode.OPTIMAL_ENUM, checks.assign_optimal_contains(exp.assign_optimal))
     if exp.cost is not None:
         # @cost rides the shared Opt(P) enumeration when an optimal-base mode is present, else a
         # cheap single-optimum solve (spec §3). Optimal-base membership lives on Sat (one home).

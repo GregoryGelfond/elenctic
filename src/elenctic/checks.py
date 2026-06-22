@@ -404,6 +404,30 @@ def count_optimal_is(n: int) -> Check:
     )
 
 
+def assign_optimal_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
+    """``@assign optimal { A }``: some optimal model's theory assignment ⊇ ``A`` — there is an
+    M ∈ Opt(P) with assign(M) ⊇ A. Reads the full optimal census (projection-sensitive, so it
+    suppresses projection)."""
+    _require_nonempty(assignment, "@assign optimal")
+
+    def decide(shape: Consistent) -> tuple[Verdict, str]:
+        observables = optimal_observables_of(shape)
+        if any(assignment <= o.assign for o in observables):
+            return Verdict.PASS, f"{_show_assign(assignment)} ⊆ some optimal model's assignment"
+        return (
+            Verdict.FAIL,
+            f"no optimal model's assignment ⊇ {_show_assign(assignment)}; "
+            f"assignments seen = {_show_assignments(observables)}",
+        )
+
+    return _check(
+        "@assign optimal",
+        frozenset({Field.FULL_OPTIMAL_CENSUS}),
+        inconsistent=_unsat_fail(f"no optimal assignment ⊇ {_show_assign(assignment)}"),
+        decide=decide,
+    )
+
+
 # --- the @query check (Def 2.2.2, corrected per the errata; base-fixed to AS(P)) ---
 
 

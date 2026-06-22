@@ -13,6 +13,7 @@ from clingo import Symbol, parse_term
 
 from elenctic.checks import (
     Check,
+    assign_optimal_contains,
     brave_optimal_contains,
     cautious_optimal_contains,
     count_optimal_is,
@@ -205,3 +206,15 @@ def test_query_binding_unknown_off_a_cautious_only_shape_raises_seam_error() -> 
     )
     with pytest.raises(SeamError):
         asked(ConsistentCautious(lits("reachable(s)")))
+
+
+def test_assign_optimal_contains_reads_the_optimal_assignment() -> None:
+    # @assign optimal { A }: some optimal model's theory assignment contains A. Reads the full
+    # optimal census (the assignment dimension), so it suppresses projection.
+    want = frozenset({(parse_term("w"), 2)})
+    carrying = opt_enum(Observable(frozenset({parse_term("a")}), frozenset({(parse_term("w"), 2)})))
+    missing = opt_enum(Observable(frozenset({parse_term("a")}), frozenset({(parse_term("w"), 9)})))
+    assert assign_optimal_contains(want)(carrying).verdict is Verdict.PASS
+    assert assign_optimal_contains(want)(missing).verdict is Verdict.FAIL
+    assert assign_optimal_contains(want)(Inconsistent()).verdict is Verdict.FAIL
+    assert assign_optimal_contains(want)(Inconclusive()).verdict is Verdict.UNDECIDED

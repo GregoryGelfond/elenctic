@@ -231,3 +231,10 @@ def test_note_with_brace_does_not_absorb_a_following_prose_line() -> None:
     assert isinstance(exp, Sat)
     assert exp.notes == ("uses a { to mark a choice",)
     assert exp.model == WL("a")
+
+
+def test_assign_optimal_is_a_distinct_cell_from_assign() -> None:
+    exp = parse("% @expect sat\n% @assign { v=1 }\n% @assign optimal { w=2 }\n")
+    assert isinstance(exp, Sat)
+    assert exp.assign == frozenset({(parse_term("v"), 1)})
+    assert exp.assign_optimal == frozenset({(parse_term("w"), 2)})

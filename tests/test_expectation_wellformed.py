@@ -191,3 +191,18 @@ def test_requires_theory_true_iff_assign_present() -> None:
     assert isinstance(with_assign, Sat) and isinstance(without, Sat)
     assert with_assign.requires_theory
     assert not without.requires_theory
+
+
+def test_two_assign_optimal_is_rejected() -> None:
+    with pytest.raises(ContractError, match=r"@assign optimal"):
+        parse("% @expect sat\n% @assign optimal { v=1 }\n% @assign optimal { w=2 }\n")
+
+
+def test_unsat_excludes_assign_optimal() -> None:
+    with pytest.raises(ContractError, match=r"unsat"):
+        parse("% @expect unsat\n% @assign optimal { v=1 }\n")
+
+
+def test_assign_and_assign_optimal_coexist() -> None:
+    exp = parse("% @expect sat\n% @assign { v=1 }\n% @assign optimal { w=2 }\n")
+    assert isinstance(exp, Sat | Unsat)

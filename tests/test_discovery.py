@@ -394,3 +394,19 @@ def test_variant_instance_without_a_matching_encoding_is_unmatched(tmp_path: Pat
     write(tmp_path / "tests/cases/tsp/variant-99/t.lp", "% @expect sat\n")  # no variant-99 encoding
     with pytest.raises(DiscoveryError, match=r"variant-99|matches no|no encoding"):
         discover(make_layout(tmp_path))
+
+
+def test_assign_optimal_requires_clingcon(tmp_path: Path) -> None:
+    # @assign optimal reads the theory half, so it needs clingcon (here over a minimizing encoding).
+    write(tmp_path / "encodings/x/e.lp", "#show a/0.\n#minimize { 1,a : a }.\n")  # clingo baseline
+    write(tmp_path / "tests/cases/x/i.lp", "% @expect sat\n% @assign optimal { w=1 }\n")
+    with pytest.raises(DiscoveryError, match=r"clingcon"):
+        discover(make_layout(tmp_path))
+
+
+def test_assign_optimal_requires_an_optimizing_encoding(tmp_path: Path) -> None:
+    # @assign optimal is an optimal-base tag, so it needs #minimize/#maximize/:~ (even on clingcon).
+    write(tmp_path / "encodings/x/e-clingcon.lp", "#show.\n")  # clingcon, but no optimization
+    write(tmp_path / "tests/cases/x/i.lp", "% @expect sat\n% @assign optimal { w=1 }\n")
+    with pytest.raises(DiscoveryError, match=r"minimize|maximize|optimi"):
+        discover(make_layout(tmp_path))

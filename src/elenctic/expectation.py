@@ -48,6 +48,7 @@ class WitnessClaim:
 
     shown: frozenset[Symbol]
     assign: frozenset[tuple[Symbol, int]] = frozenset()
+    assign_optimal: frozenset[tuple[Symbol, int]] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +77,7 @@ class Sat:
     count_optimal: int | None = None
     cost: tuple[int, ...] | None = None
     assign: frozenset[tuple[Symbol, int]] = frozenset()
+    assign_optimal: frozenset[tuple[Symbol, int]] = frozenset()
     queries: tuple[Query, ...] = ()
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
 
@@ -92,6 +94,7 @@ class Sat:
             or bool(self.cautious_optimal)
             or bool(self.brave_optimal)
             or self.count_optimal is not None
+            or bool(self.assign_optimal)
         )
 
     @property
@@ -106,10 +109,10 @@ class Sat:
 
     @property
     def requires_theory(self) -> bool:
-        """Whether this contract presupposes a *theory* solver (§2.2 rule 4): ``@assign`` reads the
-        theory half of the observable (§2.0), so the encoding must run under clingcon. The
-        precondition discovery (§5) checks against the case's solver."""
-        return bool(self.assign)
+        """Whether this contract presupposes a *theory* solver: ``@assign`` / ``@assign optimal``
+        read the theory half of the observable, so the encoding must run under clingcon. The
+        precondition discovery checks against the case's solver."""
+        return bool(self.assign) or bool(self.assign_optimal)
 
 
 type Expectation = Unsat | Sat
@@ -212,6 +215,7 @@ class _Builder:
     count_optimal: int | None = None
     cost: tuple[int, ...] | None = None
     assign: frozenset[tuple[Symbol, int]] = frozenset()
+    assign_optimal: frozenset[tuple[Symbol, int]] = frozenset()
     queries: list[Query] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -265,9 +269,15 @@ def _apply(block: _Block, builder: _Builder) -> None:
                 raise ValueError("at most one @cost per contract")
             builder.cost = _cost_vector(rest)
         case "assign":
-            if builder.assign:
-                raise ValueError("at most one @assign per contract")
-            builder.assign = _assign_body(rest)
+            is_optimal, bindings = _base_assign(rest)
+            if is_optimal:
+                if builder.assign_optimal:
+                    raise ValueError("at most one @assign optimal per contract")
+                builder.assign_optimal = bindings
+            elif builder.assign:
+                raise ValueError("at most one @assign per contract (the 'all' base)")
+            else:
+                builder.assign = bindings
         case "query":
             builder.queries.append(_query(rest))
         case "note":
@@ -328,6 +338,14 @@ def _cost_vector(rest: str) -> tuple[int, ...]:
     if (match := _COST.match(rest.strip())) is None:
         raise ValueError(f"@cost expects {{ <int> … }}, got: {rest!r}")
     return tuple(int(component) for component in match.group("ints").split())
+
+
+def _base_assign(rest: str) -> tuple[bool, frozenset[tuple[Symbol, int]]]:
+    """Parse ``[optimal] { term=int, … }`` into ``(is_optimal, bindings)`` for ``@assign``."""
+    stripped = rest.strip()
+    if (match := re.match(r"^optimal\s+", stripped)) is not None:
+        return True, _assign_body(stripped[match.end() :])
+    return False, _assign_body(stripped)
 
 
 def _assign_body(rest: str) -> frozenset[tuple[Symbol, int]]:
@@ -399,6 +417,7 @@ def _finish(builder: _Builder, source: str | None) -> Expectation:
         count_optimal=builder.count_optimal,
         cost=builder.cost,
         assign=builder.assign,
+        assign_optimal=builder.assign_optimal,
         queries=tuple(builder.queries),
         notes=tuple(builder.notes),
     )
@@ -455,6 +474,8 @@ def _model_bearing_tags(builder: _Builder) -> list[str]:
         present.append("@cost")
     if builder.assign:
         present.append("@assign")
+    if builder.assign_optimal:
+        present.append("@assign optimal")
     if builder.queries:
         present.append("@query")
     if builder.count is not None and builder.count >= 1:

@@ -432,3 +432,8 @@ def test_runs_for_builds_only_well_routed_coalesced_runs(exp: Expectation) -> No
         check.label for run in derived for check in run.checks if check.label.startswith("@expect")
     ]
     assert len(expects) == 1  # exactly one @expect (sat|unsat), always present
+
+
+def test_assign_optimal_rides_the_optimal_enum_run() -> None:
+    contract = "% @expect sat\n% @assign optimal { w=2 }\n"
+    assert "@assign optimal" in labels(run_at(contract, Mode.OPTIMAL_ENUM))
