@@ -59,15 +59,20 @@ $ elenctic encodings/
 1/1 passed
 ```
 
-`--explain` shows how each tag is routed to a solver run, *without solving* — this contract needs
-three (a full enumeration for `@count`, and the native cautious and brave runs):
+`--explain` shows how each tag is routed to a solver run and the fields it reads, *without solving*,
+and whether the run projects its census onto the shown atoms. This contract needs three runs (a full
+enumeration for `@count`, and the native cautious and brave runs):
 
 ```console
 $ elenctic encodings/ --explain
 encodings/drinks/drinks.lp [clingo]
-    ENUM_ALL: @count, @expect sat
-    CAUTIOUS_ALL: @cautious
-    BRAVE_ALL: @brave
+    ENUM_ALL (projects: no):
+        @count — reads {full census}
+        @expect sat — reads {—}
+    CAUTIOUS_ALL (projects: no):
+        @cautious — reads {cautious}
+    BRAVE_ALL (projects: no):
+        @brave — reads {brave}
 ```
 
 When a contract is wrong — say you claim `@cautious { tea }`, but `tea` is only in one menu —
@@ -164,7 +169,8 @@ base qualifier: `all` (the default — every answer set `AS(P)`) or `optimal` (t
 | `@count [optimal] n` | exactly `n` distinct (optimal) observables |
 | `@cost { c }` | the proven optimal cost vector (priority-ordered) is `c` |
 | `@optimal { L }` | sugar for `@model optimal { L }` |
-| `@assign { v=k, … }` | some answer set's theory assignment includes `v=k, …` (clingcon) |
+| `@assign [optimal] { v=k, … }` | some (optimal) answer set's theory assignment includes `v=k, …` (clingcon) |
+| `@model [optimal] { L } where { A }` | one (optimal) answer set has shown projection `L` **and** assignment ⊇ `A` (jointly, on the same model; clingcon) |
 | `@query A { Q }` | the answer to the query `Q` is `A ∈ {yes, no, unknown}` (Gelfond Def 2.2.2) |
 | `@query A { q(X̄) } = { B }` | the bindings yielding answer `A` are exactly `B` |
 | `@note …` | free prose, surfaced in the diagnostic |
@@ -188,8 +194,8 @@ that classical logic cannot name. (See the worked examples below.)
 `parse` accepts exactly the well-formed blocks and **rejects every other with a diagnostic** — it
 never silently defaults. Exactly one `@expect`; single-valued witness/scalar tags per `(mode, base)`
 cell; `@count 0 ⟺ @expect unsat`; and the precondition tags (`@cost`/`optimal` need an optimizing
-encoding, `@assign` needs clingcon, a `no`/`unknown` `@query` needs the contrary `#show`n) are
-checked at discovery against the actual encoding.
+encoding; `@assign`, `@assign optimal`, and a `where`-witness need clingcon; a `no`/`unknown`
+`@query` needs the contrary `#show`n) are checked at discovery against the actual encoding.
 
 ## The verdict
 

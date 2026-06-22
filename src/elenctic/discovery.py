@@ -284,8 +284,8 @@ def _check_preconditions(
         )
     if expectation.requires_theory and solver != "clingcon":
         raise DiscoveryError(
-            f"{where}: @assign reads the theory half of the observable, so it needs a theory "
-            f"solver (clingcon), not {solver} (spec §2.2 rule 4)"
+            f"{where}: a theory binding (@assign, @assign optimal, or a where-witness) reads the "
+            f"theory half of the observable, so it needs a theory solver (clingcon), not {solver}"
         )
     for query in expectation.queries:
         if missing := _contraries_needed(query) - shown:

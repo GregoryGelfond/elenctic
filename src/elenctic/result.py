@@ -131,13 +131,13 @@ class Consistent:
     """Marker base of the SAT family (the program has ≥1 answer set). Each concrete shape carries
     *exactly* the observations its run-mode computes; a field's absence is a type fact, not a
     sentinel, so there are no ``NotConfigured`` states and no per-field guards. Abstract: construct
-    one of the six concrete shapes, never ``Consistent`` itself."""
+    one of the eight concrete shapes, never ``Consistent`` itself."""
 
     __slots__ = ()
 
     def __new__(cls, *args: object, **kwargs: object) -> Consistent:
         if cls is Consistent:
-            raise TypeError("Consistent is abstract; construct one of the six concrete shapes")
+            raise TypeError("Consistent is abstract; construct one of the eight concrete shapes")
         return super().__new__(cls)
 
 

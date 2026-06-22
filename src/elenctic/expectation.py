@@ -48,7 +48,6 @@ class WitnessClaim:
 
     shown: frozenset[Symbol]
     assign: frozenset[tuple[Symbol, int]] = frozenset()
-    assign_optimal: frozenset[tuple[Symbol, int]] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

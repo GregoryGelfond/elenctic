@@ -12,9 +12,10 @@ run, *exactly* ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)
 to ``shape_for``/``populates`` so the construction here and the type oracle in ``run`` do not drift.
 A single ``_Collector`` dispatches on ``model.type`` (§9.1, confirmed by the §9 spikes):
 ``StableModel`` rows become observables (with cost); a final ``CautiousConsequences`` /
-``BraveConsequences`` model carries ⋂/⋃. clingo enumeration projects onto shown atoms (distinct
-observables); **clingcon never projects** — that would erase theory multiplicity (§9.3/§6.3), whose
-distinctness lives in the CSP assignment.
+``BraveConsequences`` model carries ⋂/⋃. clingo enumeration always projects onto shown atoms
+(information-preserving there, ``assign ≡ ∅``); clingcon projects only when no rider reads the full
+census — a contract-induced decision (``run.should_project``), since projecting clingcon collapses
+the CSP multiplicity that ``@count``/``@assign`` observe.
 
 Known v1 limitation (ledgered): a ``#maximize`` objective is reported by clingo in negated
 minimize-internal form (§9.1 spike), so :func:`optimum_of`'s cost is natural for ``#minimize`` (the
