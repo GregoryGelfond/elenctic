@@ -26,11 +26,12 @@ set and so are checked at **discovery** (spec §5), not here.
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
-from typing import Final, Literal, NoReturn
+from typing import Final, Literal, NoReturn, cast
 
 from clingo import Symbol, parse_term
 
 from elenctic.query import Query, parse_query
+from elenctic.registry import SOLVERS, Solver
 from elenctic.terms import parse_litset
 
 
@@ -123,21 +124,72 @@ class Sat:
 type Expectation = Unsat | Sat
 
 
-def parse(text: str, source: str | None = None) -> Expectation:
-    """Parse a ``.lp`` file's contract block(s) into an ``Expectation`` (spec §2.1, §2.2).
+@dataclass(frozen=True, slots=True)
+class Contract:
+    """A parsed contract: the behavioral ``Expectation`` and the *declared* solver (``None`` =
+    undeclared → discovery defaults to ``clingo``). The solver lives here, not in ``Expectation``,
+    because it is the case's interpretation/frame declaration, not a behavioral claim (R7)."""
 
-    Pure. Each tag is applied to a typed builder; a malformed payload (raised as ``ValueError``
-    by the term/litset layer, or as a duplicate-cell ``ValueError`` here) is surfaced as a
-    ``ContractError`` carrying the offending tag's ``source:line``. Cross-tag well-formedness
-    (rules 1 and 3 of §2.2) is checked once the builder is complete.
+    expectation: Expectation
+    solver: Solver | None = None
+
+
+def parse_contract(text: str, source: str | None = None) -> Contract:
+    """Parse a ``.lp`` file's contract into a ``Contract`` (spec §2, §4). One ``_blocks`` scan; a
+    downstream router partitions the ``@elenctic`` directive namespace from the behavioral tags
+    (R9): behavioral tags build the ``Expectation`` via ``_apply``; ``@elenctic`` blocks are
+    interpreted into the declared solver (total, loud, provenance-carrying).
+
+    Pure. A malformed behavioral payload (a ``ValueError`` from the term/litset layer, or a
+    duplicate-cell ``ValueError`` here) is surfaced as a ``ContractError`` carrying the tag's
+    ``source:line``; a malformed directive is a ``ContractError`` from the interpreter. Cross-tag
+    well-formedness (§2.2 rules 1 and 3) is checked once the builder is complete.
     """
     builder = _Builder()
+    solver_blocks: list[_Block] = []
     for block in _blocks(text, source):
+        if block.tag == "elenctic":
+            solver_blocks.append(block)  # routed to the directive interpreter, not _apply (R9)
+            continue
         try:
             _apply(block, builder)
         except (ValueError, RuntimeError) as exc:
             raise ContractError(f"{_location(source, block.line)}: {exc}") from exc
-    return _finish(builder, source)
+    solver = _interpret_directives(solver_blocks, source)
+    return Contract(expectation=_finish(builder, source), solver=solver)
+
+
+def parse(text: str, source: str | None = None) -> Expectation:
+    """Parse a ``.lp`` file's behavioral contract into an ``Expectation`` (spec §2.1, §2.2). The
+    declared solver is dropped; directive well-formedness is still validated (``parse_contract``
+    interprets ``@elenctic`` regardless)."""
+    return parse_contract(text, source).expectation
+
+
+# The one v1 sub-directive: `@elenctic solver <name>`. The keyword `solver` at a word boundary,
+# then the rest is the solver name (membership-checked against the registry, R5).
+_SOLVER_DIRECTIVE = re.compile(r"^solver\b(?P<rest>.*)$", re.S)
+
+
+def _interpret_directives(blocks: list[_Block], source: str | None) -> Solver | None:
+    """Interpret the ``@elenctic`` directive blocks into the declared solver (R10 well-formedness,
+    R5 membership). Total: every block is a known sub-directive or a loud ``ContractError`` with
+    provenance. v1 has one sub-directive, ``solver``; an unknown one errors (closed vocabulary)."""
+    solver: Solver | None = None
+    for block in blocks:
+        if (match := _SOLVER_DIRECTIVE.match(block.payload)) is None:
+            sub = block.payload.split(maxsplit=1)[0] if block.payload.strip() else "(empty)"
+            _fail_at(source, block.line, f"unknown @elenctic directive {sub!r} (known: solver)")
+        name = match.group("rest").strip()
+        if not name:
+            _fail_at(source, block.line, "@elenctic solver needs a solver name (e.g. clingo)")
+        if name not in SOLVERS:
+            known = ", ".join(sorted(SOLVERS))
+            _fail_at(source, block.line, f"unknown solver {name!r} (known: {known})")
+        if solver is not None:
+            _fail_at(source, block.line, "at most one @elenctic solver per contract")
+        solver = cast(Solver, name)  # membership-checked against SOLVERS, which is exactly Solver
+    return solver
 
 
 # --- block tokenization (brace-bounded continuation, dx#1 / spec §2.1) ---
@@ -560,6 +612,11 @@ def _location(source: str | None, line: int) -> str:
 def _fail_contract(source: str | None, message: str) -> NoReturn:
     """Raise a contract-level ``ContractError`` (whole-contract inconsistency, no single line)."""
     raise ContractError(f"{source}: {message}" if source is not None else message)
+
+
+def _fail_at(source: str | None, line: int, message: str) -> NoReturn:
+    """Raise a ``ContractError`` for a single offending directive line, with ``source:line``."""
+    raise ContractError(f"{_location(source, line)}: {message}")
 
 
 def _main() -> None:
