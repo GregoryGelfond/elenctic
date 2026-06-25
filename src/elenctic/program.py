@@ -46,22 +46,34 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
     """Inspect the resolved program (``files`` + their ``#include``s) into ``ProgramFacts``. Raises
     ``ProgramError`` with provenance on an unreadable/missing/cyclic include or a parse error."""
     statements: list[AST] = []
+    messages: list[str] = []  # clingo's own diagnostics (with file:line:col), captured not printed
     try:
-        _parse_files([str(path) for path in files], statements.append)
-    except RuntimeError as exc:
+        _parse_files(
+            [str(path) for path in files],
+            statements.append,
+            logger=lambda _code, message: messages.append(message),
+        )
+        # The traversal is inside the try too: clingo decodes some node strings *lazily*, so a
+        # non-UTF-8 source byte surfaces here (during `_descendants`/`_shown_name`), not at parse.
+        nodes = [node for statement in statements for node in _descendants(statement)]
+        return ProgramFacts(
+            has_theory_atom=any(node.ast_type is ASTType.TheoryAtom for node in nodes),
+            shown=frozenset(name for node in nodes if (name := _shown_name(node))),
+            # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes — one signal.
+            has_optimization=any(node.ast_type is ASTType.Minimize for node in nodes),
+            has_maximize=any(_is_maximize(node) for node in nodes),
+        )
+    except (RuntimeError, UnicodeDecodeError, OSError) as exc:
+        # RuntimeError: a parse / missing-or-cyclic-#include failure (clingo logged the detail to
+        # `messages`); UnicodeDecodeError: a non-UTF-8 source byte; OSError: unreadable. All are
+        # author/corpus faults → a friendly ProgramError with provenance, never a raw traceback
+        # (R11). A harness-logic bug (AttributeError/KeyError/...) is NOT caught and stays loud.
         names = ", ".join(str(path) for path in files)
+        detail = "; ".join(messages) or str(exc)
         raise ProgramError(
-            f"cannot resolve the program ({names}): {exc} — check the case's #include paths "
+            f"cannot resolve the program ({names}): {detail} — check the case's #include paths "
             "(they resolve relative to the including file)"
         ) from exc
-    nodes = [node for statement in statements for node in _descendants(statement)]
-    return ProgramFacts(
-        has_theory_atom=any(node.ast_type is ASTType.TheoryAtom for node in nodes),
-        shown=frozenset(name for node in nodes if (name := _shown_name(node))),
-        # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes (confirmed) — one signal.
-        has_optimization=any(node.ast_type is ASTType.Minimize for node in nodes),
-        has_maximize=any(_is_maximize(node) for node in nodes),
-    )
 
 
 def _descendants(node: object) -> Iterator[AST]:

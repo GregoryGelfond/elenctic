@@ -80,3 +80,18 @@ def test_missing_include_is_a_friendly_program_error(tmp_path: Path) -> None:  #
     case = _write(tmp_path, "c.lp", '#include "does-not-exist.lp".\n')
     with pytest.raises(ProgramError, match=r"does-not-exist\.lp|#include"):
         inspect((case,))
+
+
+def test_non_utf8_file_is_a_friendly_program_error(tmp_path: Path) -> None:  # review MAJOR
+    # A non-UTF-8 .lp (plausible in the literate kr-domains corpus: an accented byte in a comment)
+    # must surface as a friendly ProgramError, never a raw UnicodeDecodeError traceback.
+    case = tmp_path / "bad.lp"
+    case.write_bytes("ok. % résumé café\n".encode("latin-1"))
+    with pytest.raises(ProgramError, match=r"bad\.lp"):
+        inspect((case,))
+
+
+def test_syntactically_broken_file_is_a_friendly_program_error(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "this is not :- valid ASP %(\n")
+    with pytest.raises(ProgramError, match=r"c\.lp"):
+        inspect((case,))
