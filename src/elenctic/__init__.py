@@ -32,10 +32,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     from elenctic.checks import CheckReport
-    from elenctic.discovery import Case, DiscoveryError, Layout, Solver, discover
+    from elenctic.discovery import Case, DiscoveryError, Layout, discover
     from elenctic.expectation import ContractError, Expectation, Sat, Unsat, parse
     from elenctic.harness import case_verdict, render, run_case
     from elenctic.query import Answer, Query
+    from elenctic.registry import SOLVERS, Solver
     from elenctic.result import (
         Consistent,
         Determination,
@@ -57,10 +58,11 @@ __version__ = "0.1.0"
 # Field) are deliberately absent (dx#11).
 _EXPORTS: dict[str, tuple[str, ...]] = {
     "elenctic.checks": ("CheckReport",),
-    "elenctic.discovery": ("Case", "DiscoveryError", "Layout", "Solver", "discover"),
+    "elenctic.discovery": ("Case", "DiscoveryError", "Layout", "discover"),
     "elenctic.expectation": ("ContractError", "Expectation", "Sat", "Unsat", "parse"),
     "elenctic.harness": ("case_verdict", "render", "run_case"),
     "elenctic.query": ("Answer", "Query"),
+    "elenctic.registry": ("SOLVERS", "Solver"),
     "elenctic.result": (
         "Consistent",
         "Determination",

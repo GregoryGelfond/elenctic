@@ -30,6 +30,7 @@ from typing import Any, Final, assert_never
 from clingo import Control, Symbol
 from clingo.solving import Model, ModelType, SolveResult
 
+from elenctic.registry import SOLVERS
 from elenctic.result import (
     Consistent,
     ConsistentBrave,
@@ -316,6 +317,7 @@ def run_clingcon(
 type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool], Determination]
 
 _FACADES: Final[dict[str, _Facade]] = {"clingo": run_clingo, "clingcon": run_clingcon}
+assert frozenset(_FACADES) == SOLVERS, "solvers._FACADES drifted from registry.SOLVERS (R5)"
 
 
 def solve(

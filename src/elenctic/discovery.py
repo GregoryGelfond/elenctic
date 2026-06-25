@@ -36,6 +36,7 @@ from clingo import Symbol
 
 from elenctic.expectation import Expectation, Sat, parse
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
+from elenctic.registry import Solver
 from elenctic.terms import contrary
 
 __all__ = ["Case", "DiscoveryError", "Layout", "Solver", "discover"]
@@ -56,8 +57,6 @@ _MAXIMIZE = re.compile(r"#maximize\b")
 
 # A variant subdirectory (`variant-03`), the structural flatness signal (spec §5).
 _DEFAULT_VARIANT_DIR = re.compile(r"variant-\d+")
-
-type Solver = Literal["clingo", "clingcon"]
 
 
 class DiscoveryError(Exception):
