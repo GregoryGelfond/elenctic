@@ -352,18 +352,23 @@ def _solver_args(mode: Mode, project: bool) -> list[str]:
 
 
 def _add_program(control: Control, program: str, files: tuple[Path, ...]) -> None:
-    """Load inline ``program`` and ``files`` into clingo's ``base`` part (the load order)."""
+    """Load inline ``program`` and ``files`` into clingo's ``base`` part. ``control.load`` resolves
+    each file's ``#include`` directives relative to the including file (spike-confirmed); the inline
+    ``program`` (no file context) goes through ``control.add``."""
     if program:
         control.add("base", [], program)
     for path in files:
-        control.add("base", [], path.read_text(encoding="utf-8"))
+        control.load(str(path))
 
 
 def _rewrite_program(control: Control, theory: Any, program: str, files: tuple[Path, ...]) -> None:
     """Rewrite inline ``program`` and ``files`` through clingcon's theory rewriter into ``control``
-    (spec §6.2). ``theory`` is the untyped clingcon handle; the local clingo.ast import keeps that
-    dependency at the theory boundary."""
-    from clingo.ast import ProgramBuilder, parse_string
+    (spec §6.2). ``parse_files`` resolves ``#include`` relative to the including file AND fires the
+    theory rewrite on the *expanded* AST (spike-confirmed: a theory atom inside an ``#include``d
+    library is rewritten and propagated) — unlike ``parse_string`` over ``read_text``, which
+    resolves ``#include`` relative to CWD. ``theory`` is the untyped clingcon handle; the local
+    clingo.ast import keeps that dependency at the theory boundary."""
+    from clingo.ast import ProgramBuilder, parse_files, parse_string
 
     with ProgramBuilder(control) as builder:
 
@@ -372,8 +377,8 @@ def _rewrite_program(control: Control, theory: Any, program: str, files: tuple[P
 
         if program:
             parse_string(program, add)
-        for path in files:
-            parse_string(path.read_text(encoding="utf-8"), add)
+        if files:
+            parse_files([str(path) for path in files], add)
 
 
 def _main() -> None:

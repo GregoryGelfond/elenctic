@@ -351,3 +351,29 @@ def test_run_clingcon_rewrites_multiple_files(tmp_path: Path) -> None:
     assert isinstance(det, ConsistentEnumeration)
     (observable,) = observables_of(det)
     assert (Function("v"), 2) in observable.assign
+
+
+def test_run_clingo_resolves_include_relative_to_the_case_file(tmp_path: Path) -> None:
+    # The loader must use Control.load (resolves #include relative to the including file), not
+    # read_text+add (which never resolves the directive). A case includes a sibling library.
+    (tmp_path / "lib").mkdir()
+    _write(tmp_path / "lib", "facts.lp", "p(1). p(2).\n")
+    case = _write(tmp_path, "case.lp", '#include "lib/facts.lp".\nq :- p(1).\n#show q/0.\n')
+    det = run_clingo(Mode.ENUM_ALL, files=(case,))
+    assert isinstance(det, ConsistentEnumeration)
+    assert any("q" in names(obs.shown) for obs in observables_of(det))
+
+
+def test_run_clingcon_rewrites_theory_inside_an_include(tmp_path: Path) -> None:
+    # parse_files fires the theory rewrite on the EXPANDED AST: a theory constraint living entirely
+    # in an #include'd library is rewritten and propagated (spike b1), not merely path-resolved.
+    pytest.importorskip("clingcon")
+    from elenctic.solvers import run_clingcon
+
+    (tmp_path / "lib").mkdir()
+    _write(tmp_path / "lib", "sched.lp", "&dom { 1..3 } = x. &sum { x } >= 2.\n")  # x in {2,3}
+    case = _write(tmp_path, "case.lp", '#include "lib/sched.lp".\n#show.\n')
+    det = run_clingcon(Mode.ENUM_ALL, files=(case,))
+    assert isinstance(det, ConsistentEnumeration)
+    xs = {val for obs in observables_of(det) for sym, val in obs.assign if str(sym) == "x"}
+    assert xs == {2, 3}  # the included &dom/&sum BOTH rewrote and propagated (x=1 pruned)
