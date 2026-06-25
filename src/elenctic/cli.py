@@ -71,6 +71,10 @@ def _explain(cases: tuple[Case, ...]) -> int:
     status = 0
     for case in cases:
         print(f"{case.contract_source} [{case.solver}]")
+        # §6: the @note prose leads the narration — the author's what/why above the harness's how.
+        # Both Sat and Unsat carry notes; documentation, never a verdict.
+        for note in case.expectation.notes:
+            print(f"    note: {note}")
         try:
             for run in runs_for(case.expectation, case.solver == "clingcon"):
                 projects = "yes" if run.projects_to_shown else "no"

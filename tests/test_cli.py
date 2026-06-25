@@ -108,3 +108,38 @@ def test_cli_explain_narrates_reads_and_the_projection_decision(
     assert "projects: yes" in out  # the shown-only run projects (the issue-#1 acceleration)
     assert "reads {full census}" in out  # @count narrates the full token
     assert "projects: no" in out  # the full-census run suppresses projection
+
+
+def test_cli_explain_leads_with_the_note_gloss(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # §6: @note is the headline of the --explain narration — the author's what/why *above* the
+    # harness's how (the run plan, the reads). Multiple notes render in author order. A doc adjunct,
+    # never a verdict (no semantic change). The position asserts pin the headline property (a note
+    # loop moved below the run narration would still pass a mere substring-presence check).
+    case = write(
+        tmp_path / "c.lp",
+        "% @expect sat\n% @model { ok }\n"
+        "% @note feasible within budget\n% @note and within the deadline\n"
+        "ok.\n#show ok/0.\n",
+    )
+    status = main([str(case), "--explain"])
+    out = capsys.readouterr().out
+    assert status == 0
+    first = out.index("note: feasible within budget")
+    second = out.index("note: and within the deadline")
+    assert first < second  # author order preserved
+    assert second < out.index("(projects:")  # the notes lead, above the harness's "how"
+
+
+def test_cli_explain_glosses_an_unsat_note(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The gloss reads case.expectation.notes uniformly over the Sat | Unsat union — an @unsat case
+    # carries its note too (§6: both bases carry notes).
+    case = write(
+        tmp_path / "u.lp", "% @expect unsat\n% @note no schedule fits the budget\na :- not a.\n"
+    )
+    status = main([str(case), "--explain"])
+    assert status == 0
+    assert "no schedule fits the budget" in capsys.readouterr().out
