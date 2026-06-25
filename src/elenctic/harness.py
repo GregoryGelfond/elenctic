@@ -31,6 +31,7 @@ The pytest ``parametrize`` + assertion (and the session-level aggregation) live 
 
 from elenctic.checks import CheckReport
 from elenctic.discovery import Case
+from elenctic.registry import provides_theory
 from elenctic.result import Verdict
 from elenctic.run import runs_for
 from elenctic.solvers import TIME_BUDGET, solve
@@ -45,7 +46,7 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
     (clingcon), then flows as a property into the per-run projection decision. A misrouted plan
     raises a ``RoutingError`` (``HarnessError``) from ``runs_for`` — propagated to the runner as a
     harness error, never a verdict."""
-    theory_in_force = case.solver == "clingcon"
+    theory_in_force = provides_theory(case.solver)
     reports: list[CheckReport] = []
     for run in runs_for(case.expectation, theory_in_force):
         determination = solve(

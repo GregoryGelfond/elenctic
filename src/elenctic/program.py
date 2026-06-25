@@ -37,9 +37,9 @@ class ProgramFacts:
     ``sources`` — the resolved source files the program spans: the case file plus every file it
     transitively ``#include``s, taken from clingo's own parse (each statement's ``location``), so it
     matches clingo's include resolution exactly (block comments, every include form). The corpus
-    orphan-library backstop (spec §5) reads this rather than re-scanning text; a library that is
-    ``#include``d but contributes no statement (empty or comment-only) yields no node and so is
-    absent, which over-reports it as an orphan — the safe direction for a warn-only check.
+    orphan-library backstop (spec §5) reads this rather than re-scanning text; only a *truly empty*
+    included library (no statements — a comment-only file still yields ``Comment`` nodes) is absent
+    and so over-reported as an orphan, the safe direction for a warn-only check.
     """
 
     has_theory_atom: bool

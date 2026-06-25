@@ -17,12 +17,15 @@ the tree (filesystem reads its only effect); only ``solvers.py`` touches a solve
 
 The collection scan reads tolerantly (``errors="replace"``): the contract tags are ASCII, so a
 non-UTF-8 *library* is simply skipped, while a non-UTF-8 *case* is collected and then rejected with
-a friendly ``ProgramError`` at the resolved-program inspection, where UTF-8 is enforced once.
+a friendly, ``source:line``-carrying diagnostic — a ``ContractError`` if the bad byte falls in a
+parsed ``@``-payload, otherwise a ``ProgramError`` at the resolved-program inspection.
 
 A v1 boundary, recorded not silent: the shown vocabulary is keyed by sign-aware **name**, not
-``(name, arity)``. An arity mismatch on a queried contrary surfaces downstream as a *loud*
-``@query`` FAIL, never a silent wrong PASS; ``program.inspect`` now exposes arity, so the
-arity-aware upgrade is a cheap future refinement (ledgered).
+``(name, arity)``. An arity-mismatched contrary is usually a *loud* ``@query`` FAIL, but a ground
+``@query unknown`` whose contrary is ``#show``n at the *wrong* arity (an authoring typo) slips the
+name-keyed precondition and can be certified a **silent wrong PASS** — the one residual hole.
+``program.inspect`` exposes ``ShowSignature.arity``, so the arity-aware vocabulary that closes it is
+a cheap, ledgered refinement (deferred).
 """
 
 from dataclasses import dataclass
@@ -33,7 +36,7 @@ from clingo import Symbol
 from elenctic.expectation import Expectation, Sat, has_contract, parse_contract
 from elenctic.program import ProgramFacts, inspect
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
-from elenctic.registry import Solver
+from elenctic.registry import Solver, provides_theory
 from elenctic.terms import contrary
 
 __all__ = [
@@ -219,9 +222,10 @@ def _classify(target: Path) -> _Walk:
 def _read(path: Path) -> str:
     """Read a ``.lp`` file for the contract scan, tolerant of encoding (``errors="replace"``): the
     contract tags are ASCII, so a non-UTF-8 library is skipped and a non-UTF-8 case is rejected
-    (friendly) at the resolved-program inspection, where UTF-8 is enforced once. An unreadable entry
-    — a directory or a broken symlink named ``*.lp`` (both matched by ``rglob``), or a
-    permission-denied file — is a friendly ``DiscoveryError`` with provenance, never a raw trace."""
+    (friendly, with ``source:line``) at whichever stage first decodes the bad byte — ``parse`` for a
+    contract ``@``-payload, else the resolved-program inspection. An unreadable entry — a directory
+    or a broken symlink named ``*.lp`` (both matched by ``rglob``), or a permission-denied file — is
+    a friendly ``DiscoveryError`` with provenance, never a raw trace."""
     try:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
@@ -242,13 +246,6 @@ def _make_case(path: Path, text: str) -> tuple[Case, bool, frozenset[Path]]:
     return Case(path, solver, contract.expectation, facts.shown), declared, facts.sources
 
 
-def _solver_provides_theory(solver: Solver) -> bool:
-    """Whether ``solver`` interprets theory (``&``) atoms — the v1 conservative predicate
-    ``theory_in_force ≡ solver == 'clingcon'`` (adjudicated 2026-06-22). The presence/identity
-    boundary: presence is derived, identity (which theory) is declared."""
-    return solver == "clingcon"
-
-
 def check_program(
     expectation: Expectation, facts: ProgramFacts, solver: Solver, where: Path
 ) -> None:
@@ -258,7 +255,7 @@ def check_program(
     theory-bearing contract under a non-theory solver. R2: the optimization gate, the
     ``@cost``-over-``#maximize`` guard, the shown contrary. R1 (program-side) and R4 (contract-side)
     are complementary duals; both are required."""
-    if facts.has_theory_atom and not _solver_provides_theory(solver):
+    if facts.has_theory_atom and not provides_theory(solver):
         raise DiscoveryError(
             f"{where}: the resolved program has a theory atom (&…), but the solver is {solver}, "
             "which does not interpret it — clingo grounds theory atoms and silently ignores the "
@@ -266,7 +263,7 @@ def check_program(
         )
     if not isinstance(expectation, Sat):
         return
-    if expectation.requires_theory and not _solver_provides_theory(solver):
+    if expectation.requires_theory and not provides_theory(solver):
         raise DiscoveryError(
             f"{where}: a theory binding (@assign, @assign optimal, or a where-witness) reads the "
             f"theory half of the observable, so it needs a theory solver (clingcon), not {solver}"

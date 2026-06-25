@@ -22,6 +22,7 @@ from elenctic.discovery import Case, DiscoveryError, HygieneReport, inspect_corp
 from elenctic.expectation import ContractError
 from elenctic.harness import case_verdict, render, run_case
 from elenctic.program import ProgramError
+from elenctic.registry import provides_theory
 from elenctic.result import HarnessError, Verdict
 from elenctic.run import runs_for
 from elenctic.solvers import TIME_BUDGET
@@ -98,7 +99,7 @@ def _explain(cases: tuple[Case, ...]) -> int:
         for note in case.expectation.notes:
             print(f"    note: {note}")
         try:
-            for run in runs_for(case.expectation, case.solver == "clingcon"):
+            for run in runs_for(case.expectation, provides_theory(case.solver)):
                 projects = "yes" if run.projects_to_shown else "no"
                 print(f"    {run.mode.name} (projects: {projects}):")
                 for check in run.checks:
@@ -146,7 +147,7 @@ def _validate_plans(cases: tuple[Case, ...]) -> tuple[list[Case], list[Case]]:
     harness_errors: list[Case] = []
     for case in cases:
         try:
-            runs_for(case.expectation, case.solver == "clingcon")
+            runs_for(case.expectation, provides_theory(case.solver))
         except HarnessError as exc:
             print(f"HARNESS ERROR — {case.contract_source}: {exc}", file=sys.stderr)
             harness_errors.append(case)
