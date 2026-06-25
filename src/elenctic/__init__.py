@@ -1,11 +1,11 @@
 """elenctic — a declarative testing framework for Answer Set Programming.
 
-The reference implementation of a language-neutral ``@``-contract format over the *observable* of an
-answer-set program (shown atoms + theory assignment). A contract is parsed (:func:`parse`) into an
-:data:`Expectation`; :func:`discover` walks a corpus into :class:`Case`\\ s; :func:`runs_for`
-derives the solver runs and their checks; :func:`solve` collects a :data:`Determination`; and
-:func:`run_case` / :func:`render` run a case end-to-end and format its diagnostic. See the design
-spec for the denotational semantics of each tag.
+The reference implementation of a language-parametric ``@``-contract format over the *observable*
+of an answer-set program (shown atoms + theory assignment). A contract is parsed (:func:`parse`)
+into an :data:`Expectation`; :func:`discover` walks a corpus into :class:`Case`\\ s;
+:func:`runs_for` derives the solver runs and their checks; :func:`solve` collects a
+:data:`Determination`; and :func:`run_case` / :func:`render` run a case end-to-end and format
+its diagnostic. See the design spec for the denotational semantics of each tag.
 
 **The three-valued verdict (§7a).** A check yields a :class:`Verdict` about the *program under
 test*: ``PASS`` (the contract holds), ``FAIL`` (the program decided wrong), or ``UNDECIDED`` (the
@@ -32,7 +32,14 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     from elenctic.checks import CheckReport
-    from elenctic.discovery import Case, DiscoveryError, discover
+    from elenctic.discovery import (
+        Case,
+        Corpus,
+        DiscoveryError,
+        HygieneReport,
+        discover,
+        inspect_corpus,
+    )
     from elenctic.expectation import ContractError, Expectation, Sat, Unsat, parse
     from elenctic.harness import case_verdict, render, run_case
     from elenctic.query import Answer, Query
@@ -58,7 +65,14 @@ __version__ = "0.1.0"
 # Field) are deliberately absent (dx#11).
 _EXPORTS: dict[str, tuple[str, ...]] = {
     "elenctic.checks": ("CheckReport",),
-    "elenctic.discovery": ("Case", "DiscoveryError", "discover"),
+    "elenctic.discovery": (
+        "Case",
+        "Corpus",
+        "DiscoveryError",
+        "HygieneReport",
+        "discover",
+        "inspect_corpus",
+    ),
     "elenctic.expectation": ("ContractError", "Expectation", "Sat", "Unsat", "parse"),
     "elenctic.harness": ("case_verdict", "render", "run_case"),
     "elenctic.query": ("Answer", "Query"),

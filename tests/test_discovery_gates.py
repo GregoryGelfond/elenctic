@@ -22,7 +22,11 @@ def _facts(
     maxi: bool = False,
 ) -> ProgramFacts:
     return ProgramFacts(
-        has_theory_atom=theory, shown=shown, has_optimization=opt, has_maximize=maxi
+        has_theory_atom=theory,
+        shown=shown,
+        has_optimization=opt,
+        has_maximize=maxi,
+        sources=frozenset(),  # check_program does not read sources (hygiene-only); empty is fine
     )
 
 

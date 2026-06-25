@@ -16,9 +16,12 @@ ASP's own reasoning modes: what holds in *every* answer set (cautious) or in *so
 (yes / no / unknown, where "unknown" is a genuine third value, never a guess).
 
 You state the expected behaviour as **in-file `@`-annotations** (a contract) in the `.lp` file
-itself, and elenctic checks it. The contract language is **language-neutral**: it describes the
-program's *observable behaviour* (its shown atoms and theory output), not any solver's internals.
-This package is its **reference implementation**, over the clingo / clingcon Python API.
+itself, and elenctic checks it. The contract language is **language-parametric**: it describes the
+program's *observable behaviour* (its shown atoms and theory output) under a **declared solver**
+(default `clingo`; `clingcon` for integer-constraint theories), not any solver's internals. A
+theory-free claim carries across Potassco engines, which agree on the theory-free reduct; a
+theory-specific tag (such as `@assign`) holds only under a solver that provides that theory. This
+package is its **reference implementation**, over the clingo / clingcon Python API.
 
 ## The name
 

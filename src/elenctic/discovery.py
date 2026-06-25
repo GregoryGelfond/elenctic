@@ -36,7 +36,15 @@ from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLitera
 from elenctic.registry import Solver
 from elenctic.terms import contrary
 
-__all__ = ["Case", "DiscoveryError", "check_program", "discover"]
+__all__ = [
+    "Case",
+    "Corpus",
+    "DiscoveryError",
+    "HygieneReport",
+    "check_program",
+    "discover",
+    "inspect_corpus",
+]
 
 
 class DiscoveryError(Exception):
@@ -71,6 +79,74 @@ class Case:
         return (self.path,)
 
 
+@dataclass(frozen=True, slots=True)
+class HygieneReport:
+    """Corpus hygiene — the third strictness axis (spec §5), distinct from the always-error closed
+    vocabulary and soundness floor. These are observations, never verdicts, and the two records have
+    different default footing (the idiomatic asymmetry): an **orphan library** is a real corpus
+    smell — *warned* by default, an *error* under ``--strict`` (the CI gate). An **undeclared
+    solver** is a mere explicitness nudge — relying on the stated ``clingo`` default is legitimate,
+    so it is *silent* by default and an *error* only under ``--strict`` (the ``mypy --strict`` /
+    ``pytest --strict-markers`` posture: a default is fine until you opt into explicitness, and the
+    Unix rule of silence says do not nag about the expected case). :func:`render` applies this.
+
+    ``orphan_libraries`` — contract-free ``.lp`` files in the walked tree that no case loads (the §1
+    backstop: a forgotten case, or a dead library). ``undeclared_solvers`` — case files that did not
+    declare ``@elenctic solver`` and so defaulted to ``clingo``. Both are absolute-or-walk-relative
+    paths, in deterministic (sorted-walk) order.
+    """
+
+    orphan_libraries: tuple[Path, ...]
+    undeclared_solvers: tuple[Path, ...]
+
+    @property
+    def clean(self) -> bool:
+        """Whether the corpus carries no hygiene observations at all (no orphans, no undeclared
+        solvers) — the raw detection state, independent of the mode-aware :func:`render`."""
+        return not (self.orphan_libraries or self.undeclared_solvers)
+
+    def render(self, *, strict: bool) -> tuple[str, ...]:
+        """The hygiene lines to report in this mode (empty when there is nothing to show). Orphan
+        libraries are always reported (warned by default, error under ``--strict``); undeclared
+        solvers only under ``--strict`` (silent by default — the stated ``clingo`` default is
+        legitimate). Aggregated and reported together (spec §5)."""
+        lines = [
+            f"orphan library: {path} carries no contract and no case #includes it "
+            "(a forgotten case, or a dead library?)"
+            for path in self.orphan_libraries
+        ]
+        if strict and self.undeclared_solvers:
+            listed = ", ".join(str(path) for path in self.undeclared_solvers)
+            lines.append(
+                f"undeclared solver: {len(self.undeclared_solvers)} case(s) defaulted to clingo "
+                f"(declare @elenctic solver for reproducibility): {listed}"
+            )
+        return tuple(lines)
+
+
+@dataclass(frozen=True, slots=True)
+class Corpus:
+    """The result of hygiene-aware discovery (:func:`inspect_corpus`, spec §5): the cases to run and
+    the corpus :class:`HygieneReport`. The CLI runs ``cases`` and reports ``hygiene`` (warn-by-
+    default / error-under-``--strict``); issue #2 (``--json``) will serialize the same pair."""
+
+    cases: tuple[Case, ...]
+    hygiene: HygieneReport
+
+
+@dataclass(frozen=True, slots=True)
+class _Walk:
+    """The one-pass walk result shared by :func:`discover` (cases only) and :func:`inspect_corpus`
+    (cases + hygiene). ``used`` is the union of every case's resolved ``sources`` (the case file
+    plus its transitive ``#include``s, from clingo's own parse) — the orphan check's authoritative
+    "is this library actually loaded?" set, so the backstop never re-derives include resolution."""
+
+    cases: tuple[Case, ...]
+    undeclared: tuple[Path, ...]
+    libraries: tuple[Path, ...]
+    used: frozenset[Path]
+
+
 def discover(target: Path) -> tuple[Case, ...]:
     """Discover cases under ``target`` (spec §1, §2). A single file is one case (issue #3); a
     directory is walked (sorted, deterministic) for contract-bearing ``.lp`` files. An explicitly
@@ -78,6 +154,35 @@ def discover(target: Path) -> tuple[Case, ...]:
     directory is a library (skipped). Raises :class:`DiscoveryError` on a precondition violation,
     :class:`~elenctic.expectation.ContractError` on a malformed contract, or
     :class:`~elenctic.program.ProgramError` on a bad ``#include`` or non-UTF-8 program.
+    For the cases *and* corpus hygiene (the ``--strict`` dial), use :func:`inspect_corpus`.
+    """
+    return _classify(target).cases
+
+
+def inspect_corpus(target: Path) -> Corpus:
+    """Discover cases under ``target`` **and** report corpus hygiene (spec §5) — the CLI's
+    hygiene-aware entry. One walk yields the cases and a :class:`HygieneReport`: orphan libraries
+    (a contract-free ``.lp`` no case loads — the §1 backstop) and undeclared-solver cases (defaulted
+    to ``clingo``). A library is an orphan iff its resolved path is absent from ``used`` — the files
+    clingo actually loads across all cases (:attr:`elenctic.program.ProgramFacts.sources`), so the
+    check matches clingo's include resolution exactly rather than re-scanning text. Hygiene is
+    warn-by-default / error-under-``--strict`` at the CLI, never a verdict. Raises the same loud
+    errors as :func:`discover` on a mis-shaped corpus.
+    """
+    walk = _classify(target)
+    orphans = tuple(library for library in walk.libraries if library.resolve() not in walk.used)
+    return Corpus(
+        walk.cases, HygieneReport(orphan_libraries=orphans, undeclared_solvers=walk.undeclared)
+    )
+
+
+def _classify(target: Path) -> _Walk:
+    """Walk ``target`` once — the single traversal shared by :func:`discover` (cases only) and
+    :func:`inspect_corpus` (cases + hygiene). Returns a :class:`_Walk`: the cases, the
+    undeclared-solver case paths, the contract-free library paths (orphan candidates), and ``used``
+    (the union of every case's resolved ``sources``). Loud on a missing target or an
+    explicitly-named contract-free file (spec §1); a contract-free file under a walked directory is
+    a library, collected separately, never run.
     """
     if not target.exists():
         raise DiscoveryError(
@@ -91,12 +196,24 @@ def discover(target: Path) -> tuple[Case, ...]:
                 f"{target}: not a case — it carries no elenctic contract tag (spec §1). A "
                 "contract-free .lp is a library (an #include target), not a runnable case."
             )
-        return (_make_case(target, text),)
-    return tuple(
-        _make_case(path, text)
-        for path in sorted(target.rglob("*.lp"))
-        if has_contract(text := _read(path))
-    )
+        case, declared, sources = _make_case(target, text)
+        defaulted: tuple[Path, ...] = () if declared else (target,)
+        return _Walk((case,), defaulted, (), sources)
+    cases: list[Case] = []
+    undeclared: list[Path] = []
+    libraries: list[Path] = []
+    used: set[Path] = set()
+    for path in sorted(target.rglob("*.lp")):
+        text = _read(path)
+        if not has_contract(text):
+            libraries.append(path)
+            continue
+        case, declared, sources = _make_case(path, text)
+        cases.append(case)
+        used |= sources
+        if not declared:
+            undeclared.append(path)
+    return _Walk(tuple(cases), tuple(undeclared), tuple(libraries), frozenset(used))
 
 
 def _read(path: Path) -> str:
@@ -111,14 +228,18 @@ def _read(path: Path) -> str:
         raise DiscoveryError(f"{path}: cannot read this .lp entry — {exc}") from exc
 
 
-def _make_case(path: Path, text: str) -> Case:
+def _make_case(path: Path, text: str) -> tuple[Case, bool, frozenset[Path]]:
     """Build one case from a contract-bearing file: parse the contract (behavioral + declared
-    solver, default ``clingo``), inspect the resolved program, enforce the preconditions."""
+    solver, default ``clingo``), inspect the resolved program, enforce the preconditions. Returns
+    the case, whether its solver was *declared* (vs defaulted to clingo), and the resolved source
+    files it spans (``facts.sources``) — the two hygiene facts (§5), kept off :class:`Case`
+    (corpus-hygiene concerns, not solving ones)."""
     contract = parse_contract(text, source=str(path))
+    declared = contract.solver is not None
     solver: Solver = contract.solver or "clingo"  # the stated default (R1)
     facts = inspect((path,))
     check_program(contract.expectation, facts, solver, path)
-    return Case(path, solver, contract.expectation, facts.shown)
+    return Case(path, solver, contract.expectation, facts.shown), declared, facts.sources
 
 
 def _solver_provides_theory(solver: Solver) -> bool:

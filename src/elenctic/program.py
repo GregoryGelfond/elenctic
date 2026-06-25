@@ -34,12 +34,19 @@ class ProgramFacts:
     bare ``#show.`` (show-nothing). ``has_optimization`` — a ``#minimize``/``#maximize``/``:~`` is
     present. ``has_maximize`` — at least one objective uses ``#maximize`` (a negated-weight
     ``Minimize`` node), which v1 cannot present a natural ``@cost`` over (the guarded miscompile).
+    ``sources`` — the resolved source files the program spans: the case file plus every file it
+    transitively ``#include``s, taken from clingo's own parse (each statement's ``location``), so it
+    matches clingo's include resolution exactly (block comments, every include form). The corpus
+    orphan-library backstop (spec §5) reads this rather than re-scanning text; a library that is
+    ``#include``d but contributes no statement (empty or comment-only) yields no node and so is
+    absent, which over-reports it as an orphan — the safe direction for a warn-only check.
     """
 
     has_theory_atom: bool
     shown: frozenset[str]
     has_optimization: bool
     has_maximize: bool
+    sources: frozenset[Path]
 
 
 def inspect(files: tuple[Path, ...]) -> ProgramFacts:
@@ -56,12 +63,16 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
         # The traversal is inside the try too: clingo decodes some node strings *lazily*, so a
         # non-UTF-8 source byte surfaces here (during `_descendants`/`_shown_name`), not at parse.
         nodes = [node for statement in statements for node in _descendants(statement)]
+        # Each statement carries the file it came from (clingo's own include resolution); the
+        # distinct set, resolved once each, is the program's authoritative source-file span.
+        filenames = {statement.location.begin.filename for statement in statements}
         return ProgramFacts(
             has_theory_atom=any(node.ast_type is ASTType.TheoryAtom for node in nodes),
             shown=frozenset(name for node in nodes if (name := _shown_name(node))),
             # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes — one signal.
             has_optimization=any(node.ast_type is ASTType.Minimize for node in nodes),
             has_maximize=any(_is_maximize(node) for node in nodes),
+            sources=frozenset(Path(name).resolve() for name in filenames if name),
         )
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
         # RuntimeError: a parse / missing-or-cyclic-#include failure (clingo logged the detail to

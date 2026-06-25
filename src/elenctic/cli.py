@@ -18,7 +18,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from elenctic.discovery import Case, DiscoveryError, discover
+from elenctic.discovery import Case, DiscoveryError, HygieneReport, inspect_corpus
 from elenctic.expectation import ContractError
 from elenctic.harness import case_verdict, render, run_case
 from elenctic.program import ProgramError
@@ -44,6 +44,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="narrate the derived run plan per case, without solving (a dry-run)",
     )
     parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="fail the run on any corpus-hygiene issue (the CI gate): orphan libraries (warned by "
+        "default) become errors, and undeclared solvers (silent by default) are required explicit",
+    )
+    parser.add_argument(
         "--budget",
         type=float,
         default=TIME_BUDGET,
@@ -57,11 +63,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the ``elenctic`` CLI; return the process exit status (0 pass / 1 fail / 2 error)."""
     args = _build_parser().parse_args(argv)
     try:
-        cases = discover(args.target)
+        corpus = inspect_corpus(args.target)
     except (DiscoveryError, ContractError, ProgramError) as exc:
         print(f"corpus error: {exc}", file=sys.stderr)
         return 2
-    return _explain(cases) if args.explain else _run(cases, args.budget)
+    status = _explain(corpus.cases) if args.explain else _run(corpus.cases, args.budget)
+    return _report_hygiene(corpus.hygiene, strict=args.strict, status=status)
+
+
+def _report_hygiene(hygiene: HygieneReport, *, strict: bool, status: int) -> int:
+    """Report corpus hygiene (spec §5, the ``--strict`` dial) as an aggregated end-of-run stderr
+    summary. Orphan libraries warn by default and leave the exit ``status`` (a verdict register)
+    unchanged; under ``--strict`` they — plus the otherwise-silent undeclared solvers — become
+    errors that fail the run (exit ``2``, the CI gate, dominating the verdict register). Hygiene is
+    never a verdict; with nothing to report in this mode, the ``status`` is unchanged."""
+    records = hygiene.render(strict=strict)
+    if not records:
+        return status
+    print(f"\nhygiene {'errors (--strict)' if strict else 'warnings'}:", file=sys.stderr)
+    for line in records:
+        print(f"  {line}", file=sys.stderr)
+    return 2 if strict else status
 
 
 def _explain(cases: tuple[Case, ...]) -> int:

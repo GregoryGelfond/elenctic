@@ -49,6 +49,22 @@ def test_shown_vocabulary_is_sign_aware(tmp_path: Path) -> None:
     assert inspect((case,)).shown == frozenset({"reachable", "-reachable"})
 
 
+def test_sources_are_the_files_clingo_actually_loads(tmp_path: Path) -> None:
+    # `sources` is the authoritative loaded-file set from clingo's own parse (the case + the files
+    # it transitively #includes), resolved — what the orphan backstop reads, NOT a regex. A
+    # block-commented #include is invisible to clingo, so it is correctly absent (no false dep).
+    _write(tmp_path, "lib/facts.lp", "p(1..3).\n")
+    case = _write(
+        tmp_path,
+        "case.lp",
+        '#include "lib/facts.lp".\nq :- p(1).\n%*\n#include "orphan.lp".\n*%\n#show q/0.\n',
+    )
+    _write(tmp_path, "orphan.lp", "never(used).\n")  # only "included" inside a block comment
+    sources = inspect((case,)).sources
+    assert sources == frozenset({case.resolve(), (tmp_path / "lib" / "facts.lp").resolve()})
+    assert (tmp_path / "orphan.lp").resolve() not in sources  # block comment is not a dependency
+
+
 def test_bare_show_nothing_contributes_no_name(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "p(1).\n#show.\n")
     assert inspect((case,)).shown == frozenset()
