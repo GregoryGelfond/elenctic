@@ -35,6 +35,7 @@ from typing import Literal
 from clingo import Symbol
 
 from elenctic.expectation import Expectation, Sat, parse
+from elenctic.program import ProgramFacts
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
 from elenctic.registry import Solver
 from elenctic.terms import contrary
@@ -255,6 +256,56 @@ def _shown_predicates(encoding_code: str) -> frozenset[str]:
     bare ``#show.`` contributes none. ``encoding_code`` is comment-stripped (in :func:`_make_case`),
     so a commented-out ``#show`` does not pollute the vocabulary."""
     return frozenset(match.group("name") for match in _SHOW.finditer(encoding_code))
+
+
+def _solver_provides_theory(solver: Solver) -> bool:
+    """Whether ``solver`` interprets theory (``&``) atoms — the v1 conservative predicate
+    ``theory_in_force ≡ solver == 'clingcon'`` (adjudicated 2026-06-22). The presence/identity
+    boundary: presence is derived, identity (which theory) is declared."""
+    return solver == "clingcon"
+
+
+def check_program(
+    expectation: Expectation, facts: ProgramFacts, solver: Solver, where: Path
+) -> None:
+    """Enforce the §2.2-rule-4 preconditions + the R1 theory-presence gate over the **resolved
+    program** (``facts``), under the **declared** ``solver``. Loud (``DiscoveryError``), never a
+    verdict. R1: a theory atom under a non-theory solver (presence, never identity). R4: a
+    theory-bearing contract under a non-theory solver. R2: the optimization gate, the
+    ``@cost``-over-``#maximize`` guard, the shown contrary. R1 (program-side) and R4 (contract-side)
+    are complementary duals; both are required."""
+    if facts.has_theory_atom and not _solver_provides_theory(solver):
+        raise DiscoveryError(
+            f"{where}: the resolved program has a theory atom (&…), but the solver is {solver}, "
+            "which does not interpret it — clingo grounds theory atoms and silently ignores the "
+            "constraints (a wrong PASS). Declare @elenctic solver clingcon (spec §4, R1)"
+        )
+    if not isinstance(expectation, Sat):
+        return
+    if expectation.requires_theory and not _solver_provides_theory(solver):
+        raise DiscoveryError(
+            f"{where}: a theory binding (@assign, @assign optimal, or a where-witness) reads the "
+            f"theory half of the observable, so it needs a theory solver (clingcon), not {solver}"
+        )
+    if expectation.requires_optimization and not facts.has_optimization:
+        raise DiscoveryError(
+            f"{where}: @cost/@optimal/an optimal-base tag needs an optimizing encoding "
+            "(#minimize/#maximize/:~), but the resolved program has none (spec §2.2 rule 4)"
+        )
+    if expectation.cost is not None and facts.has_maximize:
+        raise DiscoveryError(
+            f"{where}: @cost over a #maximize objective is not supported in v1 — clingo reports a "
+            "maximize cost in negated form, and natural-value normalisation is deferred. Use "
+            "#minimize, or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
+        )
+    for query in expectation.queries:
+        if missing := _contraries_needed(query) - facts.shown:
+            names = ", ".join(sorted(missing))
+            raise DiscoveryError(
+                f"{where}: a no/unknown @query reads the contrary literal(s) {names} off the shown "
+                f"⋂/⋃, but they are absent from the shown vocabulary {sorted(facts.shown)} "
+                "(spec §2.0/§2.2 rule 4)"
+            )
 
 
 def _check_preconditions(
