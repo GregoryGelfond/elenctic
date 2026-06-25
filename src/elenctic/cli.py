@@ -1,15 +1,16 @@
 """The ``elenctic`` console entry: run a corpus of ``@``-contracts, or explain its run plan.
 
-``elenctic <encodings_root> [cases_root]`` discovers the corpus (spec §5), validates **every**
-case's run plan up front (so a misroute — a harness bug — is reported before any solving, keystone
-decision 6), then solves and checks each case, rendering any non-``PASS`` outcome. ``--explain``
-stops after the plan: it narrates the derived runs (mode + checks) per case without solving, the
-dry-run the ``reads``/``populates`` surface was made introspectable for.
+``elenctic [target]`` discovers cases under ``target`` — a single ``.lp`` case file or a directory
+walked for contract-bearing files (default ``tests/``; spec §1, §2) — validates **every** case's run
+plan up front (so a misroute — a harness bug — is reported before any solving, keystone decision 6),
+then solves and checks each case, rendering any non-``PASS`` outcome. ``--explain`` stops after the
+plan: it narrates the derived runs (mode + checks) per case without solving, the dry-run the
+``reads``/``populates`` surface was made introspectable for.
 
 Exit status separates the three outcome registers: ``0`` all cases pass; ``1`` some case FAILed or
 is UNDECIDED (a statement about a program under test); ``2`` a corpus or harness error (a bad
-contract, a mis-shaped corpus, or an elenctic bug — never a verdict). This is the standalone runner;
-the pytest-client path (per-case ``parametrize``) lives in the corpus repo (Plan 2).
+contract, a mis-shaped corpus or program, or an elenctic bug — never a verdict). This is the
+standalone runner; the pytest-client path (per-case ``parametrize``) lives in the corpus repo.
 """
 
 import argparse
@@ -17,9 +18,10 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from elenctic.discovery import Case, DiscoveryError, Layout, discover
+from elenctic.discovery import Case, DiscoveryError, discover
 from elenctic.expectation import ContractError
 from elenctic.harness import case_verdict, render, run_case
+from elenctic.program import ProgramError
 from elenctic.result import HarnessError, Verdict
 from elenctic.run import runs_for
 from elenctic.solvers import TIME_BUDGET
@@ -29,12 +31,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="elenctic", description="Run a corpus of @-contracts over Answer Set Programs."
     )
-    parser.add_argument("encodings", type=Path, help="the encodings root (encodings/<domain>/)")
     parser.add_argument(
-        "cases",
+        "target",
         type=Path,
         nargs="?",
-        help="the cases root (tests/cases/<domain>/); omit for self-contained encodings",
+        default=Path("tests"),
+        help="a case file or a directory to walk for contract-bearing cases (default: tests/)",
     )
     parser.add_argument(
         "--explain",
@@ -54,11 +56,9 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the ``elenctic`` CLI; return the process exit status (0 pass / 1 fail / 2 error)."""
     args = _build_parser().parse_args(argv)
-    cases_root = args.cases or args.encodings / "_none"  # self-contained corpus: no cases tree
-    layout = Layout(encodings_root=args.encodings, cases_root=cases_root)
     try:
-        cases = discover(layout)
-    except (DiscoveryError, ContractError) as exc:
+        cases = discover(args.target)
+    except (DiscoveryError, ContractError, ProgramError) as exc:
         print(f"corpus error: {exc}", file=sys.stderr)
         return 2
     return _explain(cases) if args.explain else _run(cases, args.budget)

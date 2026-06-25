@@ -76,3 +76,31 @@ def test_unsat_contract_skips_the_model_bearing_gates() -> None:
     # @expect unsat carries no model-bearing tag, so only R1 (program-side, theory-agnostic) fires.
     exp = parse("% @expect unsat\n")
     check_program(exp, _facts(), "clingo", WHERE)  # no raise
+
+
+# The contrary precondition per @query form (_contraries_needed): which forms read a contrary off
+# ⋂/⋃ and so require it shown. `shown=∅` here, so any required contrary is absent → loud.
+@pytest.mark.parametrize(
+    ("query_tag", "needs_contrary"),
+    [
+        pytest.param("@query no { reachable(x) }", True, id="ground-no"),
+        pytest.param("@query unknown { reachable(x) }", True, id="ground-unknown"),
+        pytest.param("@query no { reachable(X) } = { a }", True, id="binding-no-nonempty"),
+        pytest.param("@query unknown { reachable(X) } = { a }", True, id="binding-unknown"),
+        pytest.param("@query no { -reachable(x) }", True, id="ground-no-strong-neg"),
+        pytest.param("@query no { reachable(X) } = { }", False, id="empty-no-carveout"),
+        pytest.param("@query yes { reachable(x) }", False, id="yes-reads-positive"),
+    ],
+)
+def test_contrary_precondition_per_query_form(query_tag: str, needs_contrary: bool) -> None:
+    exp = parse(f"% @expect sat\n% {query_tag}\n")
+    if needs_contrary:
+        with pytest.raises(DiscoveryError, match=r"contrary|reachable"):
+            check_program(exp, _facts(), "clingo", WHERE)
+    else:
+        check_program(exp, _facts(), "clingo", WHERE)  # vacuous / positive-reading → no contrary
+
+
+def test_contrary_precondition_passes_when_the_contrary_is_shown() -> None:
+    exp = parse("% @expect sat\n% @query no { reachable(x) }\n")
+    check_program(exp, _facts(shown=frozenset({"reachable", "-reachable"})), "clingo", WHERE)

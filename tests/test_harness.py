@@ -11,9 +11,10 @@ from pathlib import Path
 import pytest
 
 from elenctic.checks import CheckReport
-from elenctic.discovery import Case, Layout, Solver, discover
+from elenctic.discovery import Case, discover
 from elenctic.expectation import Sat, Unsat
 from elenctic.harness import case_verdict, render, run_case
+from elenctic.registry import Solver
 from elenctic.result import Verdict
 from elenctic.run import RoutingError
 
@@ -25,9 +26,8 @@ def write(path: Path, text: str) -> Path:
 
 
 def self_contained(tmp_path: Path, body: str) -> Case:
-    """Discover a single self-contained encoding carrying its own contract header."""
-    write(tmp_path / "encodings/d/e.lp", body)
-    (case,) = discover(Layout(encodings_root=tmp_path / "encodings", cases_root=tmp_path / "none"))
+    """Discover a single contract-bearing case file (issue #3, single-file invocation)."""
+    (case,) = discover(write(tmp_path / "case.lp", body))
     return case
 
 
@@ -104,12 +104,12 @@ def test_run_case_projects_a_shown_only_clingcon_contract(tmp_path: Path) -> Non
     # distinctness lives in the CSP assignment, which no rider reads, so projection is safe and the
     # enumeration terminates on the small shown class. The plan is well-routed and the case passes.
     pytest.importorskip("clingcon")
-    write(
-        tmp_path / "encodings/d/e-clingcon.lp",
-        "&dom {1..3} = v(x). ok. #show ok/0.\n% @expect sat\n% @model { ok }\n",
+    case = self_contained(
+        tmp_path,
+        "&dom {1..3} = v(x). ok. #show ok/0.\n"
+        "% @expect sat\n% @model { ok }\n% @elenctic solver clingcon\n",
     )
-    (case,) = discover(Layout(encodings_root=tmp_path / "encodings", cases_root=tmp_path / "none"))
-    assert case.solver == "clingcon"
+    assert case.solver == "clingcon"  # declared, not read from a filename
     reports = run_case(case)
     assert case_verdict(reports) is Verdict.PASS
 
@@ -140,7 +140,7 @@ def test_case_verdict_folds_with_fail_dominating(
 
 
 def synthetic(expectation: Sat | Unsat, solver: Solver = "clingo") -> Case:
-    return Case(Path("tests/cases/x.lp"), None, solver, expectation, frozenset())
+    return Case(Path("tests/cases/x.lp"), solver, expectation, frozenset())
 
 
 def test_render_pass_case_is_a_terse_header() -> None:

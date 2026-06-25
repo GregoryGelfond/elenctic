@@ -50,7 +50,7 @@ def test_discovery_module_lists_cases(tmp_path: Path) -> None:
     write(tmp_path / "encodings/g/e.lp", "#show p/0.\n% @expect sat\n")
     result = run_module("discovery", str(tmp_path / "encodings"))
     assert result.returncode == 0
-    assert "self-contained" in result.stdout
+    assert "e.lp [clingo]" in result.stdout  # the discovered case file and its (default) solver
     assert result.stderr == ""
 
 

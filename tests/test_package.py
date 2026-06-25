@@ -6,7 +6,6 @@ import elenctic
 def test_public_api_exports_the_pipeline_and_outcome_surface() -> None:
     expected = {
         # the pipeline
-        "Layout",
         "Case",
         "discover",
         "parse",
@@ -32,6 +31,9 @@ def test_public_api_exports_the_pipeline_and_outcome_surface() -> None:
         "HarnessError",
         "RoutingError",
         "SeamError",
+        # the solver registry
+        "Solver",
+        "SOLVERS",
     }
     assert expected <= set(elenctic.__all__)
     for name in elenctic.__all__:

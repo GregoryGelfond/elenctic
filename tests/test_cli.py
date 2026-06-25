@@ -92,12 +92,14 @@ def test_cli_explain_narrates_reads_and_the_projection_decision(
     # surface is dogfooded. A shown-only clingcon enumeration projects (yes); a @count one does not
     # (no). The dry-run does not solve, so clingcon need not be installed.
     write(
-        tmp_path / "encodings/shown/e-clingcon.lp",
-        "&dom {1..3} = v(x). ok. #show ok/0.\n% @expect sat\n% @model { ok }\n",
+        tmp_path / "encodings/shown/e.lp",
+        "&dom {1..3} = v(x). ok. #show ok/0.\n"
+        "% @expect sat\n% @model { ok }\n% @elenctic solver clingcon\n",
     )
     write(
-        tmp_path / "encodings/full/e-clingcon.lp",
-        "&dom {1..3} = v(x). ok. #show ok/0.\n% @expect sat\n% @count 3\n",
+        tmp_path / "encodings/full/e.lp",
+        "&dom {1..3} = v(x). ok. #show ok/0.\n"
+        "% @expect sat\n% @count 3\n% @elenctic solver clingcon\n",
     )
     status = main([str(tmp_path / "encodings"), "--explain"])
     out = capsys.readouterr().out

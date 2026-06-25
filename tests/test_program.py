@@ -95,3 +95,22 @@ def test_syntactically_broken_file_is_a_friendly_program_error(tmp_path: Path) -
     case = _write(tmp_path, "c.lp", "this is not :- valid ASP %(\n")
     with pytest.raises(ProgramError, match=r"c\.lp"):
         inspect((case,))
+
+
+# --- comment robustness: a directive in prose is not a directive (clingo's parser strips comments,
+# so the AST never sees it — the AST approach makes this trivially correct, no regex stripper) ---
+
+
+def test_minimize_in_a_comment_is_not_optimization(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "% TODO: maybe add a #minimize here\np(1). #show p/1.\n")
+    assert inspect((case,)).has_optimization is False
+
+
+def test_commented_show_does_not_pollute_the_shown_vocabulary(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "% #show -reachable/1.\n#show reachable/1.\n")
+    assert inspect((case,)).shown == frozenset({"reachable"})  # the commented -reachable is prose
+
+
+def test_percent_inside_a_string_term_is_not_a_comment(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", 'label("50% done"). #show label/1.\n')
+    assert inspect((case,)).shown == frozenset({"label"})

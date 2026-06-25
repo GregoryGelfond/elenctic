@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from elenctic.checks import query_matches
-from elenctic.discovery import Case, Layout, discover
+from elenctic.discovery import Case, discover
 from elenctic.harness import case_verdict, render, run_case
 from elenctic.query import parse_query
 from elenctic.result import Verdict
@@ -28,9 +28,8 @@ _PROGRAMS = ("orphans", "tweety", "cowardly", "uncaring")
 
 
 def _cases() -> dict[str, Case]:
-    """The discovered KRBOOK cases, keyed by program name (each a self-contained encoding)."""
-    layout = Layout(encodings_root=_KRBOOK / "encodings", cases_root=_KRBOOK / "cases")
-    return {case.encoding.stem: case for case in discover(layout)}
+    """The discovered KRBOOK cases, keyed by program name (each a self-contained case file)."""
+    return {case.path.stem: case for case in discover(_KRBOOK / "encodings")}
 
 
 def test_all_four_krbook_programs_are_discovered() -> None:
