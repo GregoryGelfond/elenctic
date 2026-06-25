@@ -124,9 +124,13 @@ def test_optimal_enum_pins_the_collision_class_to_the_proven_optimum() -> None:
 
 
 def test_optimal_enum_timeout_yields_inconclusive() -> None:
-    # The two-phase optimal driver honours the budget in each phase: a hit budget in phase 1
-    # (proving the optimum) yields Inconclusive, never a fabricated or partial optimal class.
-    program = "{ p(1..28) }. #minimize { 1,p(X) : p(X) }. #show p/1."
+    # The two-phase optimal driver returns Inconclusive on a hit budget in EITHER phase, never a
+    # fabricated or partial optimal class. A constant objective makes all 2^28 p-choices co-optimal,
+    # so phase 2 (enumerating the optimal class) cannot finish at a 0.0 poll — Inconclusive holds
+    # whether or not the trivially-fast phase 1 (prove c*) wins the wait(0.0) race. (A prior
+    # `#minimize { 1,p(X) : p(X) }` made the optimum the empty model, found instantly, so the result
+    # raced on phase 1 and flaked under suite load.)
+    program = "{ p(1..28) }. c. #minimize { 1,c : c }. #show p/1."
     det = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0)
     assert isinstance(det, Inconclusive)
 
