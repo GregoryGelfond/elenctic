@@ -88,6 +88,9 @@ def test_unsat_contract_skips_the_model_bearing_gates() -> None:
         pytest.param("@query no { reachable(X) } = { a }", True, id="binding-no-nonempty"),
         pytest.param("@query unknown { reachable(X) } = { a }", True, id="binding-unknown"),
         pytest.param("@query no { -reachable(x) }", True, id="ground-no-strong-neg"),
+        # a binding goal `-reachable` reads its positive contrary `reachable` off ⋃/⋂ (the
+        # _goal_contrary_name negative-goal branch) — needs `reachable` shown.
+        pytest.param("@query no { -reachable(X) } = { a }", True, id="binding-no-strong-neg"),
         pytest.param("@query no { reachable(X) } = { }", False, id="empty-no-carveout"),
         pytest.param("@query yes { reachable(x) }", False, id="yes-reads-positive"),
     ],

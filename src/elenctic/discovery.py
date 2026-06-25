@@ -79,6 +79,11 @@ def discover(target: Path) -> tuple[Case, ...]:
     :class:`~elenctic.expectation.ContractError` on a malformed contract, or
     :class:`~elenctic.program.ProgramError` on a bad ``#include`` or non-UTF-8 program.
     """
+    if not target.exists():
+        raise DiscoveryError(
+            f"{target}: no such file or directory — a named target that does not exist tests "
+            "nothing; a silent pass would hide a typo or a moved file (loud over silent, §1)"
+        )
     if target.is_file():
         text = _read(target)
         if not has_contract(text):
@@ -97,8 +102,13 @@ def discover(target: Path) -> tuple[Case, ...]:
 def _read(path: Path) -> str:
     """Read a ``.lp`` file for the contract scan, tolerant of encoding (``errors="replace"``): the
     contract tags are ASCII, so a non-UTF-8 library is skipped and a non-UTF-8 case is rejected
-    (friendly) at the resolved-program inspection, where UTF-8 is enforced once."""
-    return path.read_text(encoding="utf-8", errors="replace")
+    (friendly) at the resolved-program inspection, where UTF-8 is enforced once. An unreadable entry
+    — a directory or a broken symlink named ``*.lp`` (both matched by ``rglob``), or a
+    permission-denied file — is a friendly ``DiscoveryError`` with provenance, never a raw trace."""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise DiscoveryError(f"{path}: cannot read this .lp entry — {exc}") from exc
 
 
 def _make_case(path: Path, text: str) -> Case:

@@ -45,6 +45,22 @@ def test_explicit_contract_free_file_is_loud(tmp_path: Path) -> None:
         discover(library)
 
 
+def test_nonexistent_target_is_loud(tmp_path: Path) -> None:  # review MAJOR-1
+    # A named target that does not exist tests nothing; a silent green would hide a typo or a moved
+    # file — the cardinal sin for a testing tool (loud over silent, §1).
+    with pytest.raises(DiscoveryError, match=r"no such file or directory"):
+        discover(tmp_path / "typo.lp")
+
+
+def test_unreadable_lp_entry_in_the_walk_is_a_friendly_error(tmp_path: Path) -> None:  # MAJOR-2
+    # rglob matches a directory (or broken symlink) named *.lp; reading it must be a friendly
+    # DiscoveryError, never a raw OSError traceback (the friendly-errors principle).
+    write(tmp_path / "real.lp", "% @expect sat\n")
+    (tmp_path / "weird.lp").mkdir()  # a DIRECTORY named *.lp, matched by rglob("*.lp")
+    with pytest.raises(DiscoveryError, match=r"cannot read"):
+        discover(tmp_path)
+
+
 def test_directory_walk_collects_cases_and_skips_libraries(tmp_path: Path) -> None:
     write(tmp_path / "lib" / "sched.lp", "task(1..3).\n")  # a library: no known tag
     write(tmp_path / "feasible.lp", "% @expect sat\n% @model { ok }\nok :- task(1).\n#show ok/0.\n")

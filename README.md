@@ -253,29 +253,31 @@ Bob, in CS, is genuinely undetermined — the **unknown** that the consequence v
 
 ## Running
 
-The standalone runner discovers a corpus and runs it:
+The standalone runner discovers cases under a target (a single `.lp` file or a directory) and runs them:
 
 ```console
-$ elenctic <encodings_root> [cases_root]    # run every contract; exit 0 pass / 1 fail-or-undecided / 2 error
-$ elenctic <encodings_root> --explain       # narrate the derived run plan, without solving
+$ elenctic [target]            # run every case under target (default: tests/); exit 0 pass, 1 fail/undecided, 2 error
+$ elenctic tests/feasible.lp   # run a single case file
+$ elenctic tests/ --explain    # narrate the derived run plan, without solving
 ```
 
 Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation <file.lp>`
 (the parsed contract), `python -m elenctic.run <file.lp>` (the derived run plan),
-`python -m elenctic.discovery <encodings> [cases]` (the discovered cases), and
+`python -m elenctic.discovery <file-or-dir>` (the discovered cases), and
 `python -m elenctic.solvers <MODE> <file.lp>` (one solve's outcome, with clingo).
 
-A corpus consumes elenctic as a library: `discover(layout)` yields cases, `run_case(case)` yields the
+A corpus consumes elenctic as a library: `discover(target)` yields cases, `run_case(case)` yields the
 per-check reports, `case_verdict(reports)` folds them, and `render(case, reports)` formats the
-diagnostic — ready to drive `pytest.mark.parametrize`.
+diagnostic, ready to drive `pytest.mark.parametrize`.
 
 ## Discovery
 
-Discovery is convention-driven and parameterized entirely by a `Layout`, so it hard-codes nothing
-about any corpus. Encodings live in `<encodings_root>/<domain>/`; instances in
-`<cases_root>/<domain>/[variant-NN/]`. A filename ending `-clingcon` is the theory variant, else the
-clingo baseline; each instance is paired with its applicable encoding(s), and a self-contained
-encoding (no instances) carries its contract in its own header.
+Discovery is **content-keyed**: a `.lp` file is a *case* iff it carries a contract (any known
+`@`-tag), otherwise it is a *library* (an `#include` target, never run directly). A directory is
+walked for contract-bearing files; a single file is run directly. The program under test is the case
+file plus its resolved `#include`s, and the solver is **declared** in the contract
+(`% @elenctic solver clingcon`, default `clingo`), never inferred from a filename. An undeclared
+theory program is a loud error: elenctic never silently mis-solves a theory program under plain clingo.
 
 ## Installation
 
