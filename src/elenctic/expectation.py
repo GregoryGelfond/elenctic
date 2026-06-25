@@ -24,8 +24,9 @@ set and so are checked at **discovery** (spec §5), not here.
 """
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
-from typing import Literal, NoReturn
+from typing import Final, Literal, NoReturn
 
 from clingo import Symbol, parse_term
 
@@ -157,6 +158,14 @@ _DANGLING_WHERE = re.compile(r"^\s*%\s*where\s*\{")
 # "join while any brace is unbalanced"): a stray '{' in @note/@expect prose stays single-line.
 _LITSET_TAGS = frozenset({"model", "optimal", "cautious", "brave", "cost", "assign", "query"})
 
+# The behavioral contract tags (each handled by `_apply`); the `@elenctic` directive namespace is
+# routed separately (the single-tokenizer router, R9). KNOWN_TAGS is the closed vocabulary and the
+# single source for: collection (R3), the closed-vocab typo check in `_apply`, and the router.
+BEHAVIORAL_TAGS: Final[frozenset[str]] = frozenset(
+    {"expect", "model", "optimal", "cautious", "brave", "count", "cost", "assign", "query", "note"}
+)
+KNOWN_TAGS: Final[frozenset[str]] = BEHAVIORAL_TAGS | {"elenctic"}
+
 
 @dataclass(frozen=True, slots=True)
 class _Block:
@@ -196,6 +205,26 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
                 "brace-continued while a brace is open)"
             )
     return blocks
+
+
+def _tag_lines(text: str) -> Iterator[_Block]:
+    """Yield one ``_Block`` per ``% @tag`` line (tag + raw rest + 1-based line), with no
+    continuation join and no raises — the lexical tag-recognition (the shared ``_TAG`` pattern)
+    that ``has_contract`` reads. Continuation / dangling-``where`` handling lives in ``_blocks``;
+    both read ``_TAG``, so there is one tag recognizer of record (R9)."""
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if (tag := _TAG.match(line)) is not None:
+            yield _Block(tag.group("tag"), tag.group("rest").strip(), line_number)
+
+
+def has_contract(text: str) -> bool:
+    """Whether ``text`` carries a contract — the collection predicate (R3): a ``.lp`` file is a
+    **case** iff it contains at least one known elenctic tag, else a **library** (an ``#include``
+    target, never run directly). Content-keyed, not filename-keyed (the "pytest-shaped" surface is
+    the *invocation*, not pytest's filename collection). An unknown ``@word`` in a tag-free file is
+    just prose (a library, no error); a known tag with a missing ``@expect`` is still a case (it
+    fails loud at ``parse``, never silently reclassified — loud over silent). Never raises."""
+    return any(block.tag in KNOWN_TAGS for block in _tag_lines(text))
 
 
 def _has_unclosed_brace(payload: str) -> bool:
@@ -306,7 +335,7 @@ def _apply(block: _Block, builder: _Builder) -> None:
         case "note":
             builder.notes.append(rest)
         case _:
-            raise ValueError(f"unknown contract tag: @{block.tag}")
+            raise ValueError(f"unknown contract tag: @{block.tag} (known: {sorted(KNOWN_TAGS)})")
 
 
 def _set_optimal_model(builder: _Builder, claim: WitnessClaim) -> None:
