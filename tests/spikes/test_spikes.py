@@ -271,3 +271,29 @@ def test_clingo_opt_mode_enum_bound_is_cost_leq_bound() -> None:
     ctl.solve(on_model=lambda m: at_optimum.append((tuple(m.cost), _names(m))))
     assert all(cost == cstar for cost, _ in at_optimum)  # exactly the optimal class
     assert {names for _, names in at_optimum} == {frozenset({"mark"})}  # the shown optimal class
+
+
+@pytest.mark.spike
+def test_clingo_silently_accepts_theory_atom_when_theory_is_defined() -> None:
+    # R1 hole (the reason the default-loud theory-presence gate exists): with a #theory block in
+    # scope, clingo grounds and SILENTLY IGNORES theory atoms — SAT, no warning — where clingcon
+    # would prune. `&sum { 1 } >= 5` is the false fact 1 >= 5; clingcon makes it UNSAT, clingo SAT.
+    messages: list[str] = []
+    program = "#theory t { lt { - : 3, unary }; &sum/0 : lt, {>=}, lt, head }. &sum { 1 } >= 5."
+    ctl = Control(["--models=0"], logger=lambda _code, message: messages.append(message))
+    ctl.add("base", [], program)
+    ctl.ground([("base", [])])
+    result = ctl.solve(on_model=lambda m: None)
+    assert result.satisfiable is True  # the >= 5 constraint silently did not prune
+    assert messages == []  # and clingo did not even warn
+
+
+@pytest.mark.spike
+def test_clingo_rejects_a_bare_theory_atom_with_no_theory_definition() -> None:
+    # The "loud in practice" baseline: a bare &-atom with NO #theory in scope errors at grounding
+    # (the usual clingcon corpus, where clingcon injects the theory), so a forgotten declaration is
+    # loud there. The dangerous case is a program carrying its OWN #theory (above).
+    ctl = Control(["--models=0"], message_limit=10)
+    ctl.add("base", [], "&sum { x } >= 5.")
+    with pytest.raises(RuntimeError):
+        ctl.ground([("base", [])])

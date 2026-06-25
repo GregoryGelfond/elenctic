@@ -1,0 +1,82 @@
+"""The resolved-program inspector: theory presence (R1), shown vocab + optimization (R2), via
+parse_files over the case + resolved #includes (the spike-confirmed realization)."""
+
+from pathlib import Path
+
+import pytest
+
+from elenctic.program import ProgramError, inspect
+
+
+def _write(tmp_path: Path, name: str, body: str) -> Path:
+    path = tmp_path / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_theory_atom_detected_in_a_head(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "&dom { 1..3 } = x.\n")
+    assert inspect((case,)).has_theory_atom is True
+
+
+def test_theory_atom_detected_in_a_body_position_robust(tmp_path: Path) -> None:
+    # The body atom is Rule -> body[i] (Literal) -> atom (TheoryAtom); detection must traverse
+    # clingo's ASTSequence (NOT a python list). A #theory def lets it ground; presence is the point.
+    case = _write(
+        tmp_path,
+        "c.lp",
+        "#theory t { lt { - : 3, unary }; &sum/0 : lt, {>=}, lt, any }.\nok :- &sum { x } >= 1.\n",
+    )
+    assert inspect((case,)).has_theory_atom is True
+
+
+def test_theory_atom_detected_through_include(tmp_path: Path) -> None:
+    _write(tmp_path, "lib/sched.lp", "&dom { 1..3 } = x. &sum { x } >= 2.\n")
+    case = _write(tmp_path, "tests/c.lp", '#include "../lib/sched.lp".\n#show.\n')
+    assert inspect((case,)).has_theory_atom is True
+
+
+def test_no_theory_atom_in_plain_asp(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "p(1). q :- p(1). #show q/0.\n")
+    facts = inspect((case,))
+    assert facts.has_theory_atom is False
+    assert facts.shown == frozenset({"q"})
+
+
+def test_shown_vocabulary_is_sign_aware(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "#show reachable/1. #show -reachable/1.\n")
+    assert inspect((case,)).shown == frozenset({"reachable", "-reachable"})
+
+
+def test_bare_show_nothing_contributes_no_name(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "p(1).\n#show.\n")
+    assert inspect((case,)).shown == frozenset()
+
+
+def test_conditional_term_show_contributes_its_function_name(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "p(1). q(1).\n#show p(X) : q(X).\n")
+    assert "p" in inspect((case,)).shown
+
+
+def test_optimization_and_maximize_by_weight_sign(tmp_path: Path) -> None:
+    # #minimize and #maximize are BOTH `Minimize` AST nodes (maximize = negated weights), so
+    # has_maximize is decided by weight sign, not node type (spike finding).
+    mini = _write(tmp_path, "min.lp", "1{a;b}1. #minimize { 1,a : a }.\n")
+    maxi = _write(tmp_path, "max.lp", "1{a;b}1. #maximize { 2,b : b }.\n")
+    assert inspect((mini,)).has_optimization is True
+    assert inspect((mini,)).has_maximize is False
+    assert inspect((maxi,)).has_optimization is True
+    assert inspect((maxi,)).has_maximize is True
+
+
+def test_weak_constraint_is_optimization(tmp_path: Path) -> None:
+    # :~ lowers to a Minimize node too, so has_optimization covers it.
+    case = _write(tmp_path, "w.lp", "p(1..3).\n:~ p(X). [X@1]\n")
+    assert inspect((case,)).has_optimization is True
+
+
+def test_missing_include_is_a_friendly_program_error(tmp_path: Path) -> None:  # R11
+    case = _write(tmp_path, "c.lp", '#include "does-not-exist.lp".\n')
+    with pytest.raises(ProgramError, match=r"does-not-exist\.lp|#include"):
+        inspect((case,))
