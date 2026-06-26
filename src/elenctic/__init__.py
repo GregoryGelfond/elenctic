@@ -5,19 +5,19 @@ of an answer-set program (shown atoms + theory assignment). A contract is parsed
 into an :data:`Expectation`; :func:`discover` walks a corpus into :class:`Case`\\ s;
 :func:`runs_for` derives the solver runs and their checks; :func:`solve` collects a
 :data:`Determination`; and :func:`run_case` / :func:`render` run a case end-to-end and format
-its diagnostic. See the design spec for the denotational semantics of each tag.
+its diagnostic.
 
-**The three-valued verdict (§7a).** A check yields a :class:`Verdict` about the *program under
+**The three-valued verdict.** A check yields a :class:`Verdict` about the *program under
 test*: ``PASS`` (the contract holds), ``FAIL`` (the program decided wrong), or ``UNDECIDED`` (the
 solve was cut off — never conflated with FAIL or UNSAT). :func:`case_verdict` folds the reports.
 
 **The error taxonomy (errors are never verdicts).** Three loud error families, distinct from the
 ``Verdict``:
 
-- :class:`ContractError` — an ill-formed ``@``-contract (``parse``, spec §2.2). The *author* wrote a
+- :class:`ContractError` — an ill-formed ``@``-contract (``parse``). The *author* wrote a
   bad contract.
 - :class:`DiscoveryError` — a corpus that violates a discovery-time precondition or matches no
-  convention (``discover``, spec §5). The *corpus* is mis-shaped.
+  convention (``discover``). The *corpus* is mis-shaped.
 - :class:`HarnessError` (and its subclasses :class:`RoutingError`, :class:`SeamError`) — an internal
   invariant elenctic itself violated: a stale route, a narrowing-seam breach. A *harness bug*, never
   a statement about the program under test, so the runner reports it under a distinct "harness
@@ -58,11 +58,11 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     from elenctic.run import Mode, RoutingError, Run, runs_for
     from elenctic.solvers import solve
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # The curated public API, grouped by home module — the single source for both __all__ and the lazy
 # resolver, so the two cannot drift. Internals (the Consistent shapes, accessors, check builders,
-# Field) are deliberately absent (dx#11).
+# Field) are deliberately absent.
 _EXPORTS: dict[str, tuple[str, ...]] = {
     "elenctic.checks": ("CheckReport",),
     "elenctic.discovery": (

@@ -1,13 +1,13 @@
-"""Case discovery — the content-keyed corpus walk (spec §1, §2, §5).
+"""Case discovery — the content-keyed corpus walk.
 
 ``discover(target)`` runs a single ``.lp`` file (issue #3) or walks a directory, collecting every
-file that carries a contract. The **collection predicate** (R3): a ``.lp`` file is a *case* iff it
+file that carries a contract. The **collection predicate**: a ``.lp`` file is a *case* iff it
 contains a known elenctic tag (:func:`~elenctic.expectation.has_contract`), else a *library* — an
 ``#include`` target, never run directly. The solver is **declared** (``@elenctic solver``, default
 ``clingo``), never read from a filename. The program under test is the case file plus its resolved
 ``#include``s; the loader/inspector resolve them, so a :class:`Case` carries just its own path.
 
-Discovery enforces the §2.2-rule-4 preconditions and the R1 theory-presence gate over the
+Discovery enforces the preconditions and the theory-presence gate over the
 **resolved program** (:func:`check_program` over :func:`elenctic.program.inspect`), not the
 case-file text — so an encoding moved into an ``#include``d library is still gated correctly. It is
 loud, never silent: a precondition violation is a :class:`DiscoveryError`, a malformed contract the
@@ -48,8 +48,8 @@ __all__ = [
 
 
 class DiscoveryError(Exception):
-    """A corpus that violates a discovery-time precondition (§2.2 rule 4 / the R1 theory gate) or an
-    explicitly-named contract-free file (spec §1). Loud by design — discovery never silently drops a
+    """A corpus that violates a discovery-time precondition or an
+    explicitly-named contract-free file. Loud by design — discovery never silently drops a
     case nor silently mis-classifies one."""
 
 
@@ -59,7 +59,7 @@ class Case:
     vocabulary. The program under test is this file plus its resolved ``#include``s — the loader
     resolves them, so ``files`` is just this path. ``shown`` is the shown predicate **signatures**
     ``(sign-aware-name, arity)`` (e.g. ``{("reachable", 1), ("-reachable", 1)}``) read from the
-    resolved program. Provenance-rich (dx#2): the parsed ``expectation`` keeps its ``notes``, and
+    resolved program. Provenance-rich: the parsed ``expectation`` keeps its ``notes``, and
     ``contract_source`` names the case file, so a renderer or docs tool reads it without re-parsing.
     """
 
@@ -70,7 +70,7 @@ class Case:
 
     @property
     def contract_source(self) -> Path:
-        """The file the contract was parsed from (dx#2 provenance) — the case file itself."""
+        """The file the contract was parsed from — the case file itself."""
         return self.path
 
     @property
@@ -81,7 +81,7 @@ class Case:
 
 @dataclass(frozen=True, slots=True)
 class HygieneReport:
-    """Corpus hygiene — the third strictness axis (spec §5), distinct from the always-error closed
+    """Corpus hygiene — the third strictness axis, distinct from the always-error closed
     vocabulary and soundness floor. These are observations, never verdicts, and the two records have
     different default footing (the idiomatic asymmetry): an **orphan library** is a real corpus
     smell — *warned* by default, an *error* under ``--strict`` (the CI gate). An **undeclared
@@ -90,7 +90,7 @@ class HygieneReport:
     ``pytest --strict-markers`` posture: a default is fine until you opt into explicitness, and the
     Unix rule of silence says do not nag about the expected case). :func:`render` applies this.
 
-    ``orphan_libraries`` — contract-free ``.lp`` files in the walked tree that no case loads (the §1
+    ``orphan_libraries`` — contract-free ``.lp`` files in the walked tree that no case loads (the
     backstop: a forgotten case, or a dead library). ``undeclared_solvers`` — case files that did not
     declare ``@elenctic solver`` and so defaulted to ``clingo``. Both are absolute-or-walk-relative
     paths, in deterministic (sorted-walk) order.
@@ -109,7 +109,7 @@ class HygieneReport:
         """The hygiene lines to report in this mode (empty when there is nothing to show). Orphan
         libraries are always reported (warned by default, error under ``--strict``); undeclared
         solvers only under ``--strict`` (silent by default — the stated ``clingo`` default is
-        legitimate). Aggregated and reported together (spec §5)."""
+        legitimate). Aggregated and reported together."""
         lines = [
             f"orphan library: {path} carries no contract and no case #includes it "
             "(a forgotten case, or a dead library?)"
@@ -126,7 +126,7 @@ class HygieneReport:
 
 @dataclass(frozen=True, slots=True)
 class Corpus:
-    """The result of hygiene-aware discovery (:func:`inspect_corpus`, spec §5): the cases to run and
+    """The result of hygiene-aware discovery (:func:`inspect_corpus`): the cases to run and
     the corpus :class:`HygieneReport`. The CLI runs ``cases`` and reports ``hygiene`` (warn-by-
     default / error-under-``--strict``); issue #2 (``--json``) will serialize the same pair."""
 
@@ -148,7 +148,7 @@ class _Walk:
 
 
 def discover(target: Path) -> tuple[Case, ...]:
-    """Discover cases under ``target`` (spec §1, §2). A single file is one case (issue #3); a
+    """Discover cases under ``target``. A single file is one case (issue #3); a
     directory is walked (sorted, deterministic) for contract-bearing ``.lp`` files. An explicitly
     named contract-free file is loud (never a silent no-op); a contract-free file in a walked
     directory is a library (skipped). Raises :class:`DiscoveryError` on a precondition violation,
@@ -160,9 +160,9 @@ def discover(target: Path) -> tuple[Case, ...]:
 
 
 def inspect_corpus(target: Path) -> Corpus:
-    """Discover cases under ``target`` **and** report corpus hygiene (spec §5) — the CLI's
+    """Discover cases under ``target`` **and** report corpus hygiene — the CLI's
     hygiene-aware entry. One walk yields the cases and a :class:`HygieneReport`: orphan libraries
-    (a contract-free ``.lp`` no case loads — the §1 backstop) and undeclared-solver cases (defaulted
+    (a contract-free ``.lp`` no case loads — the backstop) and undeclared-solver cases (defaulted
     to ``clingo``). A library is an orphan iff its resolved path is absent from ``used`` — the files
     clingo actually loads across all cases (:attr:`elenctic.program.ProgramFacts.sources`), so the
     check matches clingo's include resolution exactly rather than re-scanning text. Hygiene is
@@ -181,19 +181,19 @@ def _classify(target: Path) -> _Walk:
     :func:`inspect_corpus` (cases + hygiene). Returns a :class:`_Walk`: the cases, the
     undeclared-solver case paths, the contract-free library paths (orphan candidates), and ``used``
     (the union of every case's resolved ``sources``). Loud on a missing target or an
-    explicitly-named contract-free file (spec §1); a contract-free file under a walked directory is
+    explicitly-named contract-free file; a contract-free file under a walked directory is
     a library, collected separately, never run.
     """
     if not target.exists():
         raise DiscoveryError(
             f"{target}: no such file or directory — a named target that does not exist tests "
-            "nothing; a silent pass would hide a typo or a moved file (loud over silent, §1)"
+            "nothing; a silent pass would hide a typo or a moved file (loud over silent)"
         )
     if target.is_file():
         text = _read(target)
         if not has_contract(text):
             raise DiscoveryError(
-                f"{target}: not a case — it carries no elenctic contract tag (spec §1). A "
+                f"{target}: not a case — it carries no elenctic contract tag. A "
                 "contract-free .lp is a library (an #include target), not a runnable case."
             )
         case, declared, sources = _make_case(target, text)
@@ -233,11 +233,11 @@ def _make_case(path: Path, text: str) -> tuple[Case, bool, frozenset[Path]]:
     """Build one case from a contract-bearing file: parse the contract (behavioral + declared
     solver, default ``clingo``), inspect the resolved program, enforce the preconditions. Returns
     the case, whether its solver was *declared* (vs defaulted to clingo), and the resolved source
-    files it spans (``facts.sources``) — the two hygiene facts (§5), kept off :class:`Case`
+    files it spans (``facts.sources``) — the two hygiene facts, kept off :class:`Case`
     (corpus-hygiene concerns, not solving ones)."""
     contract = parse_contract(text, source=str(path))
     declared = contract.solver is not None
-    solver: Solver = contract.solver or "clingo"  # the stated default (R1)
+    solver: Solver = contract.solver or "clingo"  # the stated default
     facts = inspect((path,))
     check_program(contract.expectation, facts, solver, path)
     return Case(path, solver, contract.expectation, facts.shown), declared, facts.sources
@@ -246,17 +246,17 @@ def _make_case(path: Path, text: str) -> tuple[Case, bool, frozenset[Path]]:
 def check_program(
     expectation: Expectation, facts: ProgramFacts, solver: Solver, where: Path
 ) -> None:
-    """Enforce the §2.2-rule-4 preconditions + the R1 theory-presence gate over the **resolved
+    """Enforce the discovery-time preconditions + the theory-presence gate over the **resolved
     program** (``facts``), under the **declared** ``solver``. Loud (``DiscoveryError``), never a
-    verdict. R1: a theory atom under a non-theory solver (presence, never identity). R4: a
-    theory-bearing contract under a non-theory solver. R2: the optimization gate, the
-    ``@cost``-over-``#maximize`` guard, the shown contrary. R1 (program-side) and R4 (contract-side)
-    are complementary duals; both are required."""
+    verdict. The gates: a theory atom under a non-theory solver (presence, never identity); a
+    theory-bearing contract under a non-theory solver; the optimization gate, the
+    ``@cost``-over-``#maximize`` guard, and the shown contrary. The program-side and contract-side
+    theory gates are complementary duals; both are required."""
     if facts.has_theory_atom and not provides_theory(solver):
         raise DiscoveryError(
             f"{where}: the resolved program has a theory atom (&…), but the solver is {solver}, "
             "which does not interpret it — clingo grounds theory atoms and silently ignores the "
-            "constraints (a wrong PASS). Declare @elenctic solver clingcon (spec §4, R1)"
+            "constraints (a wrong PASS). Declare @elenctic solver clingcon"
         )
     if not isinstance(expectation, Sat):
         return
@@ -268,7 +268,7 @@ def check_program(
     if expectation.requires_optimization and not facts.has_optimization:
         raise DiscoveryError(
             f"{where}: @cost/@optimal/an optimal-base tag needs an optimizing encoding "
-            "(#minimize/#maximize/:~), but the resolved program has none (spec §2.2 rule 4)"
+            "(#minimize/#maximize/:~), but the resolved program has none"
         )
     if expectation.cost is not None and facts.has_maximize:
         raise DiscoveryError(
@@ -282,26 +282,24 @@ def check_program(
             have = ", ".join(f"{name}/{arity}" for name, arity in sorted(facts.shown))
             raise DiscoveryError(
                 f"{where}: a no/unknown @query reads the contrary literal(s) {needed} off the "
-                f"shown ⋂/⋃, but they are absent from the shown vocabulary {{{have}}} "
-                "(spec §2.0/§2.2 rule 4)"
+                f"shown ⋂/⋃, but they are absent from the shown vocabulary {{{have}}}"
             )
 
 
 def _contraries_needed(query: Query) -> frozenset[tuple[str, int]]:
     """The shown predicate *signatures* ``(sign-aware-name, arity)`` a query reads as *contraries*
-    off ⋂/⋃, which must therefore be shown (§2.2 rule 4):
+    off ⋂/⋃, which must therefore be shown:
 
     - a ground ``no``/``unknown`` query needs **every** conjunct's contrary. Under the corrected ∀∃
-      "no" (each model may falsify a *different* conjunct, §2.1), any conjunct's contrary may be the
+      "no" (each model may falsify a *different* conjunct), any conjunct's contrary may be the
       witness, so requiring all of them is the conservative *sound* reading (it can over-require,
       but never silently passes an unsound case);
     - a binding query needs the goal's contrary when ``unknown`` (its unknown-set reads ``-q`` off
-      ⋃/⋂, so an unshown ``-q`` would under-compute it — sounder than the spec's letter, which omits
-      the unknown-binding form; reconciliation ledgered), or ``no`` with a **non-empty** set (an
-      empty ``no`` set is vacuously satisfiable without ``-q``: rule 4's "non-empty" carve-out).
+      ⋃/⋂, so an unshown ``-q`` would under-compute it), or ``no`` with a **non-empty** set (an
+      empty ``no`` set is vacuously satisfiable without ``-q``: the "non-empty" carve-out).
 
-    A ``yes`` query reads only the positive literal, covered by the §2.0/RR9 shown-vocabulary
-    precondition (deferred), not this rule. Keyed by full ``(name, arity)`` signature, so a contrary
+    A ``yes`` query reads only the positive literal, covered by the (deferred) shown-vocabulary
+    precondition, not this rule. Keyed by full ``(name, arity)`` signature, so a contrary
     ``#show``n at the wrong arity is caught loud rather than silently unobservable."""
     match query:
         case GroundQuery(answer, conjuncts) if answer in {Answer.no, Answer.unknown}:
@@ -315,14 +313,14 @@ def _contraries_needed(query: Query) -> frozenset[tuple[str, int]]:
 
 
 def _signed_signature(literal: Symbol) -> tuple[str, int]:
-    """The ``(sign-aware-name, arity)`` signature of a ground literal, matching ``#show`` vocabulary
-    (§2.0)."""
+    """The ``(sign-aware-name, arity)`` signature of a ground literal, matching ``#show``
+    vocabulary."""
     name = literal.name if literal.positive else f"-{literal.name}"
     return (name, len(literal.arguments))
 
 
 def _goal_contrary_signature(goal: QueryLiteral) -> tuple[str, int]:
-    """The ``(sign-aware-name, arity)`` of a binding goal's *contrary* literal (§2.2 rule 4):
+    """The ``(sign-aware-name, arity)`` of a binding goal's *contrary* literal:
     ``-q`` for ``q``, ``q`` for ``-q`` — the dual of :func:`_signed_signature` for a (non-ground)
     goal, carrying the goal's arity."""
     name = f"-{goal.name}" if goal.positive else goal.name

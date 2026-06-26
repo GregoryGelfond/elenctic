@@ -295,23 +295,42 @@ theory program is a loud error: elenctic never silently mis-solves a theory prog
 
 ## Installation
 
-elenctic runs on **Python ≥ 3.14** (a deliberate floor — the implementation uses modern Python
+elenctic runs on **Python ≥ 3.14** (a deliberate floor: the implementation uses modern Python
 idioms) and needs **clingo**, plus **clingcon** for the theory fragment (`@assign` and CSP `@count`).
 Both solvers are on conda-forge *and* on PyPI.
 
-The development setup uses [pixi](https://pixi.sh), which also pins the solvers and runs the gate:
+### In a [pixi](https://pixi.sh) project (recommended)
+
+Take the solvers from conda-forge and elenctic from its repo. clingo (and clingcon) satisfy
+elenctic's runtime imports, so the `[theory]` extra is not needed:
+
+```toml
+[dependencies]
+clingo = "5.8.*"
+clingcon = "5.2.1.*"   # only for the theory fragment
+
+[pypi-dependencies]
+elenctic = { git = "https://github.com/GregoryGelfond/elenctic.git" }
+# pin a release for reproducibility, e.g. { git = "...", tag = "v0.1.1" }
+```
+
+Then `pixi run elenctic <path>` runs a corpus of contracts.
+
+### With pip
+
+clingo ships 3.14 wheels; clingcon may build from source on 3.14.
+
+```console
+$ pip install "git+https://github.com/GregoryGelfond/elenctic.git"                    # answer-set fragment
+$ pip install "elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic.git" # + clingcon
+```
+
+### Working on elenctic
 
 ```console
 $ git clone https://github.com/GregoryGelfond/elenctic
 $ cd elenctic && pixi install
 $ pixi run check        # ruff + mypy --strict + pytest
-```
-
-Or install with pip (clingo ships 3.14 wheels; clingcon may build from source on 3.14):
-
-```console
-$ pip install "git+https://github.com/GregoryGelfond/elenctic.git"                    # answer-set fragment
-$ pip install "elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic.git" # + clingcon
 ```
 
 ## License

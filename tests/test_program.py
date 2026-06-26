@@ -1,5 +1,5 @@
-"""The resolved-program inspector: theory presence (R1), shown vocab + optimization (R2), via
-parse_files over the case + resolved #includes (the spike-confirmed realization)."""
+"""The resolved-program inspector: theory presence, shown vocab + optimization, via
+parse_files over the case + resolved #includes."""
 
 from pathlib import Path
 
@@ -77,7 +77,7 @@ def test_conditional_term_show_contributes_its_function_name(tmp_path: Path) -> 
 
 def test_optimization_and_maximize_by_weight_sign(tmp_path: Path) -> None:
     # #minimize and #maximize are BOTH `Minimize` AST nodes (maximize = negated weights), so
-    # has_maximize is decided by weight sign, not node type (spike finding).
+    # has_maximize is decided by weight sign, not node type.
     mini = _write(tmp_path, "min.lp", "1{a;b}1. #minimize { 1,a : a }.\n")
     maxi = _write(tmp_path, "max.lp", "1{a;b}1. #maximize { 2,b : b }.\n")
     assert inspect((mini,)).has_optimization is True
@@ -92,13 +92,13 @@ def test_weak_constraint_is_optimization(tmp_path: Path) -> None:
     assert inspect((case,)).has_optimization is True
 
 
-def test_missing_include_is_a_friendly_program_error(tmp_path: Path) -> None:  # R11
+def test_missing_include_is_a_friendly_program_error(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", '#include "does-not-exist.lp".\n')
     with pytest.raises(ProgramError, match=r"does-not-exist\.lp|#include"):
         inspect((case,))
 
 
-def test_non_utf8_file_is_a_friendly_program_error(tmp_path: Path) -> None:  # review MAJOR
+def test_non_utf8_file_is_a_friendly_program_error(tmp_path: Path) -> None:
     # A non-UTF-8 .lp (plausible in the literate kr-domains corpus: an accented byte in a comment)
     # must surface as a friendly ProgramError, never a raw UnicodeDecodeError traceback.
     case = tmp_path / "bad.lp"

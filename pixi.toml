@@ -1,5 +1,5 @@
 # Toolchain for elenctic, pinned. Baseline: `pixi run <cmd>` / `pixi shell`.
-# clingo + clingcon are conda-forge-only (the payoff of dropping clintest, spec §7);
+# clingo + clingcon are conda-forge-only (the payoff of dropping clintest);
 # clingcon is pinned to 5.2.1 to match the estate reference toolchain (krml, krml-poc, kr-domains).
 # Python 3.14 matches kr-domains' resolved env (the client #1) and unlocks PEP 695 / PEP 649.
 [workspace]

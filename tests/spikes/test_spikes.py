@@ -1,6 +1,5 @@
-"""§9 spikes: confirm — not discover — the clingo/clingcon behaviours the facade
-relies on (spec §9). Findings + doc citations live in the dev-diaries notes; the
-assertions here are a living regression guard. Marked ``spike`` for selection.
+"""Spikes: confirm — not discover — the clingo/clingcon behaviours the facade
+relies on. The assertions here are a living regression guard. Marked ``spike`` for selection.
 
 This module is excluded from ``mypy`` (it exercises the dynamic clingcon theory API
 and the ``Union[SolveHandle, SolveResult]`` return of ``solve``); it stays ruff-clean.
@@ -17,7 +16,7 @@ def _names(model: Model) -> frozenset[str]:
 
 @pytest.mark.spike
 def test_cautious_reports_intersection_as_final_model() -> None:
-    # §9.1/§9.4: `-e cautious` reports ⋂ as a final CautiousConsequences model.
+    # `-e cautious` reports ⋂ as a final CautiousConsequences model.
     # 1{a;b}1. c.  →  AS = {a,c},{b,c}; ⋂ = {c}.
     ctl = Control(["--models=0", "--enum-mode=cautious"])
     ctl.add("base", [], "1 {a; b} 1. c.")
@@ -30,7 +29,7 @@ def test_cautious_reports_intersection_as_final_model() -> None:
 
 @pytest.mark.spike
 def test_brave_reports_union_as_final_model() -> None:
-    # §9.1/§9.4: `-e brave` reports ⋃ as a final BraveConsequences model.
+    # `-e brave` reports ⋃ as a final BraveConsequences model.
     ctl = Control(["--models=0", "--enum-mode=brave"])
     ctl.add("base", [], "1 {a; b} 1. c.")
     ctl.ground([("base", [])])
@@ -50,7 +49,7 @@ def test_brave_reports_union_as_final_model() -> None:
     ],
 )
 def test_modes_on_unsat_emit_no_model_and_report_unsatisfiable(mode_args: list[str]) -> None:
-    # Keystone anchor (the `Inconsistent` arm of the result `Determination`). On an UNSAT
+    # The `Inconsistent` arm of the result `Determination`. On an UNSAT
     # program clingo emits ZERO models under every mode — no empty CautiousConsequences /
     # BraveConsequences final model — and reports `unsatisfiable` as a single whole-result
     # discriminant. So the facade decides Consistent/Inconsistent ONCE from
@@ -82,7 +81,7 @@ def test_default_enumeration_reports_distinct_stable_models() -> None:
 
 @pytest.mark.spike
 def test_optN_models0_enumerates_whole_optimal_class_with_ties() -> None:
-    # §9.2/TR7: --opt-mode=optN --models 0 enumerates ALL optimal models.
+    # --opt-mode=optN --models 0 enumerates ALL optimal models.
     # 1{a;b}1 each cost 1 → two co-optimal models, optimum cost (1,).
     ctl = Control(["--opt-mode=optN", "--models=0"])
     ctl.add("base", [], "1 {a; b} 1. #minimize {1,a:a; 1,b:b}.")
@@ -97,7 +96,7 @@ def test_optN_models0_enumerates_whole_optimal_class_with_ties() -> None:
 
 @pytest.mark.spike
 def test_minimize_cost_is_natural() -> None:
-    # §9.1 / spec §2.0: for #minimize, model.cost is the natural value (no sign flip).
+    # for #minimize, model.cost is the natural value (no sign flip).
     ctl = Control(["--opt-mode=opt"])
     ctl.add("base", [], "1 {a; b} 1. #minimize {3,a:a; 1,b:b}.")
     ctl.ground([("base", [])])
@@ -108,7 +107,7 @@ def test_minimize_cost_is_natural() -> None:
 
 @pytest.mark.spike
 def test_maximize_cost_is_negated_internally() -> None:
-    # spec §2.0 caveat: clingo reports #maximize in minimize-internal (negated) form,
+    # clingo reports #maximize in minimize-internal (negated) form,
     # so the facade must normalise if any encoding uses #maximize.
     ctl = Control(["--opt-mode=opt"])
     ctl.add("base", [], "1 {a; b} 1. #maximize {3,a:a; 1,b:b}.")
@@ -120,7 +119,7 @@ def test_maximize_cost_is_negated_internally() -> None:
 
 @pytest.mark.spike
 def test_timeout_path_yields_incomplete() -> None:
-    # §9.5: async solve + wait(budget) + cancel composes; a zero-poll is "not finished".
+    # async solve + wait(budget) + cancel composes; a zero-poll is "not finished".
     ctl = Control(["--models=0"])
     ctl.add("base", [], "{ p(1..28) }.")  # 2^28 models: not finished at a zero-poll
     ctl.ground([("base", [])])
@@ -133,7 +132,7 @@ def test_timeout_path_yields_incomplete() -> None:
 
 @pytest.mark.spike
 def test_clingcon_csp_assignment_recoverable_and_multiplicity_observed() -> None:
-    # §9.3/TR4 GATE: is a CSP variable's assignment recoverable, and are distinct CSP
+    # is a CSP variable's assignment recoverable, and are distinct CSP
     # solutions surfaced as distinct models under --models 0? The answer selects the
     # @count/@assign denotation: full multiplicity, or the pinned existence fallback.
     pytest.importorskip("clingcon")
@@ -154,10 +153,10 @@ def test_clingcon_csp_assignment_recoverable_and_multiplicity_observed() -> None
         assignments.append({str(sym): val for sym, val in thy.assignment(model.thread_id)})
 
     ctl.solve(on_model=on_model)
-    # CONFIRMED 2026-06-18 (clingcon 5.2.1): distinct CSP solutions ARE distinct models
+    # With clingcon 5.2.1, distinct CSP solutions ARE distinct models
     # under --models 0 (no --project) → @count/@assign over theory output denote
     # MULTIPLICITY, not the existence fallback. --project collapses this (3 → 1), so the
-    # clingcon facade must never project (spec §3/§6.3).
+    # clingcon facade must never project.
     assert all("x" in a for a in assignments), "CSP variable x not recoverable"
     assert {a["x"] for a in assignments} == {1, 2, 3}
     assert len(assignments) == 3
@@ -187,9 +186,9 @@ def _clingcon_rows(program: str, args: list[str]) -> list[tuple[tuple[int, ...],
 
 @pytest.mark.spike
 def test_clingcon_compound_term_assignment_is_recoverable() -> None:
-    # §9 strengthening (BLOCKER): the §9.3 spike probed only a 0-ary `&dom = x`; the send-money
+    # the earlier spike probed only a 0-ary `&dom = x`; the send-money
     # case needs a COMPOUND term `digit(s)`. Confirm a compound CSP variable's assignment is
-    # recovered, and that with `#show.` the answer lives entirely in the assignment (§6.3).
+    # recovered, and that with `#show.` the answer lives entirely in the assignment.
     pytest.importorskip("clingcon")
     rows = _clingcon_rows("&dom {0..9} = digit(s). &sum { digit(s) } = 9. #show.", ["--models=0"])
     assert len(rows) == 1
@@ -199,9 +198,9 @@ def test_clingcon_compound_term_assignment_is_recoverable() -> None:
 
 @pytest.mark.spike
 def test_clingcon_supports_clingo_minimize_optimization() -> None:
-    # §9 strengthening (BLOCKER): clingcon × optimization was unconfirmed. Confirm clingo's
+    # clingcon × optimization was unconfirmed. Confirm clingo's
     # #minimize over regular ASP atoms works UNDER clingcon (the facade reads model.cost the same
-    # way for both backends). Theory-native &minimize stays out of v1 scope (RR6b), unrelated.
+    # way for both backends). Theory-native &minimize stays out of v1 scope, unrelated.
     pytest.importorskip("clingcon")
     program = "1 {a; b} 1. #minimize { 2,a : a; 1,b : b }. #show a/0."
     rows = _clingcon_rows(program, ["--opt-mode=opt"])
@@ -275,7 +274,7 @@ def test_clingo_opt_mode_enum_bound_is_cost_leq_bound() -> None:
 
 @pytest.mark.spike
 def test_clingo_silently_accepts_theory_atom_when_theory_is_defined() -> None:
-    # R1 hole (the reason the default-loud theory-presence gate exists): with a #theory block in
+    # The hole the default-loud theory-presence gate exists for: with a #theory block in
     # scope, clingo grounds and SILENTLY IGNORES theory atoms — SAT, no warning — where clingcon
     # would prune. `&sum { 1 } >= 5` is the false fact 1 >= 5; clingcon makes it UNSAT, clingo SAT.
     messages: list[str] = []

@@ -1,8 +1,8 @@
-"""``solvers`` — the clingo facade and the Mode→``Determination`` lowering (spec §3, §6, §9).
+"""``solvers`` — the clingo facade and the Mode→``Determination`` lowering.
 
 These run real clingo (fast; tiny programs). They confirm the facade produces the three-arm
 ``Determination``: a per-mode ``Consistent`` shape on SAT, ``Inconsistent`` on the whole-result
-``unsatisfiable`` bit (§9.7), ``Inconclusive`` on a hit time budget (§7a). The keystone's **GATING**
+``unsatisfiable`` bit, ``Inconclusive`` on a hit time budget. The **GATING**
 property — ``type(solve(mode)) is shape_for(mode)`` and its readable fields are exactly
 ``populates(mode)`` — closes the accessor seam's second premise empirically (the postcondition).
 """
@@ -101,7 +101,7 @@ def test_optimal_yields_only_the_proven_optimum_cost() -> None:
 
 
 def test_optimum_cost_vector_is_priority_ordered_highest_first() -> None:
-    # Multi-level: level 2 (higher priority) before level 1 in the vector (spec §2.0).
+    # Multi-level: level 2 (higher priority) before level 1 in the vector.
     det = run_clingo(Mode.OPTIMAL, "a. b. #minimize { 2@2,a : a; 3@1,b : b }.")
     assert isinstance(det, ConsistentOptimum)
     assert optimum_of(det).cost == (2, 3)
@@ -148,7 +148,7 @@ def test_clingcon_optimal_enum_two_phase_yields_the_optimal_class() -> None:
     assert shown_names(optimal_observables_of(det)) == {frozenset({"b"})}
 
 
-# --- the Inconsistent arm: the whole-result bit, never an empty field (§9.7) ---
+# --- the Inconsistent arm: the whole-result bit, never an empty field ---
 
 
 @pytest.mark.parametrize("mode", list(Mode), ids=lambda mode: mode.name)
@@ -170,7 +170,7 @@ def test_unsat_program_is_inconsistent_under_clingcon() -> None:
 
 
 def test_maximize_cost_is_negated_at_the_facade_the_deferred_normalisation_canary() -> None:
-    # spec §2.0 wants @cost's NATURAL value; clingo reports a #maximize cost negated (§9.1 spike).
+    # @cost wants the NATURAL value; clingo reports a #maximize cost negated.
     # v1 rejects @cost-over-#maximize at discovery, so this only pins the raw facade behaviour —
     # the canary that fails the day sign-normalisation lands.
     det = run_clingo(Mode.OPTIMAL, "1 {a; b} 1. #maximize { 3,a : a; 1,b : b }. #show a/0.")
@@ -185,7 +185,7 @@ def test_optimization_mode_on_a_nonoptimizing_program_raises_harness_error() -> 
         run_clingo(Mode.OPTIMAL, "a. #show a/0.")
 
 
-# --- the Inconclusive arm: a hit budget is UNDECIDED, never FAIL/UNSAT (§7a) ---
+# --- the Inconclusive arm: a hit budget is UNDECIDED, never FAIL/UNSAT ---
 
 
 def test_timeout_yields_inconclusive() -> None:
@@ -284,11 +284,11 @@ def test_clingcon_stays_full_when_project_is_off() -> None:
     assert len(observables_of(det)) == 3
 
 
-# --- the clingcon facade: the theory half of the observable (§6.3) and registry dispatch ---
+# --- the clingcon facade: the theory half of the observable and registry dispatch ---
 
 
 def test_clingcon_recovers_a_compound_csp_assignment() -> None:
-    # send-money style: `#show.` so the answer lives entirely in the CSP assignment (§6.3).
+    # send-money style: `#show.` so the answer lives entirely in the CSP assignment.
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 
@@ -300,7 +300,7 @@ def test_clingcon_recovers_a_compound_csp_assignment() -> None:
 
 
 def test_clingcon_surfaces_distinct_csp_solutions_as_distinct_observables() -> None:
-    # §9.3: distinct CSP assignments are distinct observables — the facade must never --project.
+    # distinct CSP assignments are distinct observables — the facade must never --project.
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 
@@ -326,7 +326,7 @@ def test_solve_rejects_an_unknown_solver() -> None:
 
 
 def test_clingcon_timeout_yields_inconclusive() -> None:
-    # The §9.5 "both backends" obligation: clingcon shares the _drive timeout path with clingo.
+    # The "both backends" obligation: clingcon shares the _drive timeout path with clingo.
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 
@@ -334,7 +334,7 @@ def test_clingcon_timeout_yields_inconclusive() -> None:
     assert isinstance(det, Inconclusive)
 
 
-# --- multi-file loading (the corpus loads encoding + instance; clingcon rewrites each, §6.2) ---
+# --- multi-file loading (the corpus loads encoding + instance; clingcon rewrites each) ---
 
 
 def test_run_clingo_loads_multiple_files_in_order(tmp_path: Path) -> None:

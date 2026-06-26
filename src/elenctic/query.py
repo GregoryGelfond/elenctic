@@ -1,4 +1,4 @@
-"""The ``@query`` machinery (spec §2.1, §2.4, §3): a query-formula parser (a
+"""The ``@query`` machinery: a query-formula parser (a
 conjunction of literals, or the variable-binding ``q(X̄)`` form), a most-general-
 unification literal-unifier, and a three-valued evaluator reading yes/no/unknown
 and the binding partition off the consequence sets ⋂/⋃. It interprets no rules
@@ -10,7 +10,7 @@ is a sequence of ground terms ``t1, …, tn`` such that ``Π |= q(t1, …, tn)``
 to the definition strictly: binding goals are **all-variable** (every argument is a
 variable). The binding-tuple arity is the number of **distinct** variables, so a
 repeated-variable goal ``q(X, X)`` has one binding column. Partially-ground goals and
-the conjunctive non-ground join are reserved (§11).
+the conjunctive non-ground join are reserved.
 """
 
 import re
@@ -28,7 +28,7 @@ _CONSTANT = re.compile(r"[a-z][A-Za-z0-9_']*")
 
 
 class Answer(Enum):
-    """The three-valued query answer (Def 2.2.2, spec §2.1)."""
+    """The three-valued query answer (Def 2.2.2)."""
 
     yes = "yes"
     no = "no"
@@ -36,7 +36,7 @@ class Answer(Enum):
 
 
 class QueryForm(Enum):
-    """The four query forms that route and read differently (spec §2.1). See :func:`classify` — the
+    """The four query forms that route and read differently. See :func:`classify` — the
     single classifier ``run._query_mode`` and ``checks.query_matches`` share."""
 
     SINGLETON_GROUND = "singleton-ground"
@@ -56,7 +56,7 @@ class Var:
 class QueryLiteral:
     """A query literal: functor, strong-negation sign, and per-position arguments. The type
     admits ground arguments (the unifier is general), but the v1 parser produces all-variable
-    goals (Def 2.2.2); partially-ground goals are reserved (§11)."""
+    goals (Def 2.2.2); partially-ground goals are reserved."""
 
     name: str
     positive: bool
@@ -80,7 +80,7 @@ class QueryLiteral:
 
 @dataclass(frozen=True, slots=True)
 class GroundQuery:
-    """A ground conjunctive query ``A { l1, …, ln }`` (v1 is conjunctive-only, §2.1). The conjuncts
+    """A ground conjunctive query ``A { l1, …, ln }`` (v1 is conjunctive-only). The conjuncts
     are literals (atoms or strong-negation ``-atoms``), enforced at construction so the evaluators
     and ``contrary`` never face a non-literal term, and so an empty (vacuously-true) conjunction is
     unrepresentable — mirroring ``terms.parse_litset`` at the type boundary."""
@@ -99,7 +99,7 @@ class GroundQuery:
 
 @dataclass(frozen=True, slots=True)
 class BindingQuery:
-    """A variable-binding query ``A { q(X̄) } = { B }`` (spec §2.1). ``bindings`` are
+    """A variable-binding query ``A { q(X̄) } = { B }``. ``bindings`` are
     variable-binding tuples (arity = number of distinct variables, Def 2.2.2)."""
 
     answer: Answer
@@ -111,7 +111,7 @@ type Query = GroundQuery | BindingQuery
 
 
 def parse_query(answer: str, payload: str) -> Query:
-    """Parse a ``@query`` payload into a :class:`GroundQuery` or :class:`BindingQuery` (§2.1).
+    """Parse a ``@query`` payload into a :class:`GroundQuery` or :class:`BindingQuery`.
 
     Routes on the first ``=`` (the binding separator); a v1 all-variable goal and its
     binding tuples contain no ``=``, so the partition is unambiguous.
@@ -146,7 +146,7 @@ def _unbrace(text: str) -> str:
 
 def _parse_goal(text: str) -> QueryLiteral:
     """Parse an all-variable binding-query goal ``q(X̄)`` / ``-q(X̄)`` (Def 2.2.2). Every
-    argument must be a variable; partially-ground goals are reserved (§11)."""
+    argument must be a variable; partially-ground goals are reserved."""
     positive = not text.startswith("-")
     body = text if positive else text[1:].strip()
     name: str
@@ -166,20 +166,20 @@ def _parse_goal(text: str) -> QueryLiteral:
 
 def _parse_goal_arg(token: str) -> Var:
     """A v1 binding-goal argument must be a variable (Def 2.2.2 all-variable query); a
-    ground argument (a partially-ground goal) is reserved (§11)."""
+    ground argument (a partially-ground goal) is reserved."""
     if not _VARIABLE.fullmatch(token):
         raise ValueError(
             f"v1 binding-query goals are all-variable (Def 2.2.2); {token!r} is not a variable "
-            "(partially-ground goals are reserved, §11)"
+            "(partially-ground goals are reserved)"
         )
     return Var(token)
 
 
-# --- evaluation (against the entailed atoms the modes compute; no SLDNF, spec §3) ---
+# --- evaluation (against the entailed atoms the modes compute; no SLDNF) ---
 
 
 def contrary_literal(goal: QueryLiteral) -> QueryLiteral:
-    """The contrary of a query literal: flip its strong-negation sign (spec §2.1)."""
+    """The contrary of a query literal: flip its strong-negation sign."""
     return QueryLiteral(goal.name, not goal.positive, goal.args)
 
 
@@ -188,7 +188,7 @@ def unify(goal: QueryLiteral, atom: Symbol) -> dict[str, Symbol] | None:
 
     Returns the variable substitution if the atom matches functor, sign, arity, every ground
     position, and repeated-variable consistency; otherwise ``None``. The unifier is general (it
-    handles ground argument positions for the §11 power-up); the v1 parser only feeds it
+    handles ground argument positions for a future power-up); the v1 parser only feeds it
     all-variable goals (Def 2.2.2).
     """
     if (
@@ -269,7 +269,7 @@ def binding_set(
     cautious: frozenset[Symbol],
     brave: frozenset[Symbol] | None,
 ) -> set[tuple[Symbol, ...]]:
-    """The binding tuples yielding ``answer`` for ``goal`` (spec §2.1). yes/no read the cautious
+    """The binding tuples yielding ``answer`` for ``goal``. yes/no read the cautious
     consequences ⋂; unknown additionally needs the brave consequences ⋃ (the entertained-but-
     unsettled middle)."""
     match answer:
@@ -294,7 +294,7 @@ def binding_set(
 
 
 def classify(query: Query) -> QueryForm:
-    """The query's form (spec §2.1) — the single classifier that ``run._query_mode`` (which run it
+    """The query's form — the single classifier that ``run._query_mode`` (which run it
     rides) and ``checks.query_matches`` (which fields it reads, and how it decides) both consume, so
     route and read can never disagree on what a query is. The ``n == 1`` singleton boundary and the
     ``unknown``-binding split live here, once."""

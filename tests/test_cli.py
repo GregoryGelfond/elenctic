@@ -66,7 +66,7 @@ def test_cli_runs_the_krbook_dogfood_corpus(capsys: pytest.CaptureFixture[str]) 
 def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Keystone decision 6: a misroute is a harness error (exit 2), reported distinctly, while the
+    # A misroute is a harness error (exit 2), reported distinctly, while the
     # other cases still run. runs_for is correct-by-construction, so inject the failure on one case.
     write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
     write(tmp_path / "encodings/bad/e.lp", "a. #show a/0.\n% @expect sat\n% @note BOOM\n")
@@ -113,7 +113,7 @@ def test_cli_explain_narrates_reads_and_the_projection_decision(
 def test_cli_explain_leads_with_the_note_gloss(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # §6: @note is the headline of the --explain narration — the author's what/why *above* the
+    # @note is the headline of the --explain narration — the author's what/why *above* the
     # harness's how (the run plan, the reads). Multiple notes render in author order. A doc adjunct,
     # never a verdict (no semantic change). The position asserts pin the headline property (a note
     # loop moved below the run narration would still pass a mere substring-presence check).
@@ -136,7 +136,7 @@ def test_cli_explain_glosses_an_unsat_note(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # The gloss reads case.expectation.notes uniformly over the Sat | Unsat union — an @unsat case
-    # carries its note too (§6: both bases carry notes).
+    # carries its note too (both bases carry notes).
     case = write(
         tmp_path / "u.lp", "% @expect unsat\n% @note no schedule fits the budget\na :- not a.\n"
     )

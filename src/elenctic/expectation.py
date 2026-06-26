@@ -1,26 +1,26 @@
-"""The contract: in-file ``@``-annotations parsed into an ``Expectation`` (spec §2.1, §2.2).
+"""The contract: in-file ``@``-annotations parsed into an ``Expectation``.
 
 ``Expectation`` is a sum of two well-formed shapes (``Unsat`` | ``Sat``) so illegal states
-are unrepresentable (RR3): a parsed contract is structurally a valid one. ``parse(text)`` is
+are unrepresentable: a parsed contract is structurally a valid one. ``parse(text)`` is
 pure and total in the sense that every input either yields an ``Expectation`` or raises a
 ``ContractError`` naming what is wrong (and, given a ``source``, where) — it never silently
-defaults or discards (spec §2.2).
+defaults or discards.
 
-Three responsibilities the spec calls out:
+Three responsibilities:
 
-- **Brace-bounded continuation (§2.1).** A litset may span continuation ``%`` lines *while a
+- **Brace-bounded continuation.** A litset may span continuation ``%`` lines *while a
   brace remains unclosed*; once the brace closes, a following ``%`` line is prose (e.g. a
   ``% Run: …`` header), not part of the litset. ``_blocks`` tracks the open brace so a
   continuation absorbs only the unfinished litset.
-- **Provenance (dx#2).** ``parse(text, source=None)`` carries ``source:line`` (or ``line N``)
-  into every diagnostic; discovery passes the file path as ``source`` (spec §5).
-- **Single source of truth via a typed builder (dx#18).** Tags accumulate into a typed
+- **Provenance.** ``parse(text, source=None)`` carries ``source:line`` (or ``line N``)
+  into every diagnostic; discovery passes the file path as ``source``.
+- **Single source of truth via a typed builder.** Tags accumulate into a typed
   ``_Builder`` rather than an untyped state dict, so the construction of ``Sat`` needs no casts.
 
-Litset tokenization delegates to clingo's term parser via ``terms`` (Knuth). The §2.2 rule-4
+Litset tokenization delegates to clingo's term parser via ``terms``. The
 *preconditions* (``optimal``/``@cost`` need an optimizing encoding; ``@assign`` needs clingcon;
 a ``no``/``unknown`` ``@query`` needs the contrary literal shown) require the encoding/``#show``
-set and so are checked at **discovery** (spec §5), not here.
+set and so are checked at **discovery**, not here.
 """
 
 import re
@@ -36,7 +36,7 @@ from elenctic.terms import parse_litset
 
 
 class ContractError(Exception):
-    """An ill-formed or inconsistent contract block (spec §2.2). Carries source:line provenance."""
+    """An ill-formed or inconsistent contract block. Carries source:line provenance."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,18 +54,18 @@ class WitnessClaim:
 
 @dataclass(frozen=True, slots=True)
 class Unsat:
-    """``@expect unsat``: ``AS(P) = ∅`` (spec §2.1); excludes every model-bearing tag (§2.2)."""
+    """``@expect unsat``: ``AS(P) = ∅``; excludes every model-bearing tag."""
 
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
 
 
 @dataclass(frozen=True, slots=True)
 class Sat:
-    """``@expect sat`` with its base-tagged claims (spec §2.1).
+    """``@expect sat`` with its base-tagged claims.
 
     ``None`` scalars and empty consequence sets mean "no such claim" — no run is derived and no
-    check emitted for them (spec §3, §4). The ``all`` and ``optimal`` bases occupy distinct fields
-    (the ``(mode, base)`` cells of §2.2 rule 2), so ``@model`` and ``@model optimal`` coexist.
+    check emitted for them. The ``all`` and ``optimal`` bases occupy distinct fields
+    (the ``(mode, base)`` cells), so ``@model`` and ``@model optimal`` coexist.
     """
 
     model: WitnessClaim | None = None
@@ -86,9 +86,9 @@ class Sat:
     def has_optimal_base(self) -> bool:
         """Whether any *optimal*-base tag is present — ``@optimal`` (= ``@model optimal``),
         ``@cautious optimal``, ``@brave optimal``, ``@count optimal`` — the modes that share the one
-        ``OPTIMAL_ENUM`` enumeration of ``Opt(P)`` (spec §3). The single home for optimal-base
+        ``OPTIMAL_ENUM`` enumeration of ``Opt(P)``. The single home for optimal-base
         membership: ``run`` routes ``@cost``'s shared solve on it, and :attr:`requires_optimization`
-        reads it (the keystone amendment — lift the relation into the visible language, not two
+        reads it (the relation lifted into the visible language, not two
         copy-pasted disjunctions)."""
         return (
             self.optimal_model is not None
@@ -100,8 +100,8 @@ class Sat:
 
     @property
     def requires_optimization(self) -> bool:
-        """Whether this contract presupposes an optimizing encoding (§2.2 rule 4): any optimal-base
-        tag (:attr:`has_optimal_base`) or bare ``@cost``. Discovery (§5) checks it against
+        """Whether this contract presupposes an optimizing encoding: any optimal-base
+        tag (:attr:`has_optimal_base`) or bare ``@cost``. Discovery checks it against
         ``#minimize``/``#maximize``/``:~``. Wider than :attr:`has_optimal_base` by exactly bare
         ``@cost`` — which presupposes optimization but rides the cheap ``OPTIMAL`` solve, not the
         shared ``OPTIMAL_ENUM``, so ``run`` routes on ``has_optimal_base`` while discovery gates on
@@ -128,28 +128,28 @@ type Expectation = Unsat | Sat
 class Contract:
     """A parsed contract: the behavioral ``Expectation`` and the *declared* solver (``None`` =
     undeclared → discovery defaults to ``clingo``). The solver lives here, not in ``Expectation``,
-    because it is the case's interpretation/frame declaration, not a behavioral claim (R7)."""
+    because it is the case's interpretation/frame declaration, not a behavioral claim."""
 
     expectation: Expectation
     solver: Solver | None = None
 
 
 def parse_contract(text: str, source: str | None = None) -> Contract:
-    """Parse a ``.lp`` file's contract into a ``Contract`` (spec §2, §4). One ``_blocks`` scan; a
-    downstream router partitions the ``@elenctic`` directive namespace from the behavioral tags
-    (R9): behavioral tags build the ``Expectation`` via ``_apply``; ``@elenctic`` blocks are
+    """Parse a ``.lp`` file's contract into a ``Contract``. One ``_blocks`` scan; a
+    downstream router partitions the ``@elenctic`` directive namespace from the behavioral tags:
+    behavioral tags build the ``Expectation`` via ``_apply``; ``@elenctic`` blocks are
     interpreted into the declared solver (total, loud, provenance-carrying).
 
     Pure. A malformed behavioral payload (a ``ValueError`` from the term/litset layer, or a
     duplicate-cell ``ValueError`` here) is surfaced as a ``ContractError`` carrying the tag's
     ``source:line``; a malformed directive is a ``ContractError`` from the interpreter. Cross-tag
-    well-formedness (§2.2 rules 1 and 3) is checked once the builder is complete.
+    well-formedness is checked once the builder is complete.
     """
     builder = _Builder()
     solver_blocks: list[_Block] = []
     for block in _blocks(text, source):
         if block.tag == "elenctic":
-            solver_blocks.append(block)  # routed to the directive interpreter, not _apply (R9)
+            solver_blocks.append(block)  # routed to the directive interpreter, not _apply
             continue
         try:
             _apply(block, builder)
@@ -160,20 +160,20 @@ def parse_contract(text: str, source: str | None = None) -> Contract:
 
 
 def parse(text: str, source: str | None = None) -> Expectation:
-    """Parse a ``.lp`` file's behavioral contract into an ``Expectation`` (spec §2.1, §2.2). The
+    """Parse a ``.lp`` file's behavioral contract into an ``Expectation``. The
     declared solver is dropped; directive well-formedness is still validated (``parse_contract``
     interprets ``@elenctic`` regardless)."""
     return parse_contract(text, source).expectation
 
 
 # The one v1 sub-directive: `@elenctic solver <name>`. The keyword `solver` at a word boundary,
-# then the rest is the solver name (membership-checked against the registry, R5).
+# then the rest is the solver name (membership-checked against the registry).
 _SOLVER_DIRECTIVE = re.compile(r"^solver\b(?P<rest>.*)$", re.S)
 
 
 def _interpret_directives(blocks: list[_Block], source: str | None) -> Solver | None:
-    """Interpret the ``@elenctic`` directive blocks into the declared solver (R10 well-formedness,
-    R5 membership). Total: every block is a known sub-directive or a loud ``ContractError`` with
+    """Interpret the ``@elenctic`` directive blocks into the declared solver. Total: every block
+    is a known sub-directive or a loud ``ContractError`` with
     provenance. v1 has one sub-directive, ``solver``; an unknown one errors (closed vocabulary)."""
     solver: Solver | None = None
     for block in blocks:
@@ -192,7 +192,7 @@ def _interpret_directives(blocks: list[_Block], source: str | None) -> Solver | 
     return solver
 
 
-# --- block tokenization (brace-bounded continuation, dx#1 / spec §2.1) ---
+# --- block tokenization (brace-bounded continuation) ---
 
 # A contract line is `% @<tag> <payload>`; a continuation is any later `%` line absorbed while the
 # preceding tag's litset brace is still open. A tag line is tried first, so a continuation never
@@ -211,8 +211,8 @@ _DANGLING_WHERE = re.compile(r"^\s*%\s*where\s*\{")
 _LITSET_TAGS = frozenset({"model", "optimal", "cautious", "brave", "cost", "assign", "query"})
 
 # The behavioral contract tags (each handled by `_apply`); the `@elenctic` directive namespace is
-# routed separately (the single-tokenizer router, R9). KNOWN_TAGS is the closed vocabulary and the
-# single source for: collection (R3), the closed-vocab typo check in `_apply`, and the router.
+# routed separately (the single-tokenizer router). KNOWN_TAGS is the closed vocabulary and the
+# single source for: collection, the closed-vocab typo check in `_apply`, and the router.
 BEHAVIORAL_TAGS: Final[frozenset[str]] = frozenset(
     {"expect", "model", "optimal", "cautious", "brave", "count", "cost", "assign", "query", "note"}
 )
@@ -263,14 +263,14 @@ def _tag_lines(text: str) -> Iterator[_Block]:
     """Yield one ``_Block`` per ``% @tag`` line (tag + raw rest + 1-based line), with no
     continuation join and no raises — the lexical tag-recognition (the shared ``_TAG`` pattern)
     that ``has_contract`` reads. Continuation / dangling-``where`` handling lives in ``_blocks``;
-    both read ``_TAG``, so there is one tag recognizer of record (R9)."""
+    both read ``_TAG``, so there is one tag recognizer of record."""
     for line_number, line in enumerate(text.splitlines(), start=1):
         if (tag := _TAG.match(line)) is not None:
             yield _Block(tag.group("tag"), tag.group("rest").strip(), line_number)
 
 
 def has_contract(text: str) -> bool:
-    """Whether ``text`` carries a contract — the collection predicate (R3): a ``.lp`` file is a
+    """Whether ``text`` carries a contract — the collection predicate: a ``.lp`` file is a
     **case** iff it contains at least one known elenctic tag, else a **library** (an ``#include``
     target, never run directly). Content-keyed, not filename-keyed (the "pytest-shaped" surface is
     the *invocation*, not pytest's filename collection). An unknown ``@word`` in a tag-free file is
@@ -281,7 +281,7 @@ def has_contract(text: str) -> bool:
 
 def _has_unclosed_brace(payload: str) -> bool:
     """Whether ``payload`` has a ``{`` with no matching ``}`` — a litset continued on the next
-    ``%`` line (spec §2.1). Brace counting ignores braces inside double-quoted string terms."""
+    ``%`` line. Brace counting ignores braces inside double-quoted string terms."""
     depth = 0
     in_quote = False
     for char in payload:
@@ -292,14 +292,14 @@ def _has_unclosed_brace(payload: str) -> bool:
     return depth > 0
 
 
-# --- the typed builder (dx#18) and per-tag dispatch ---
+# --- the typed builder and per-tag dispatch ---
 
 
 @dataclass(slots=True)
 class _Builder:
     """Mutable accumulator for one contract's tags; ``_finish`` freezes it into an ``Expectation``.
 
-    A single-valued ``(mode, base)`` cell (§2.2 rule 2) is realized as a field that starts ``None``
+    A single-valued ``(mode, base)`` cell is realized as a field that starts ``None``
     (or empty) and whose second assignment is the violation — the field *is* the record of whether
     the cell is occupied, so no separate bookkeeping is needed. Consequence/query/prose tags
     accumulate.
@@ -322,7 +322,7 @@ class _Builder:
 
 
 def _apply(block: _Block, builder: _Builder) -> None:
-    """Apply one contract block to the builder, enforcing per-cell single-valuedness (§2.2 rule 2).
+    """Apply one contract block to the builder, enforcing per-cell single-valuedness.
 
     Raises ``ValueError`` on a malformed payload or a duplicated single-valued cell; ``parse``
     attaches ``source:line`` provenance.
@@ -391,7 +391,7 @@ def _apply(block: _Block, builder: _Builder) -> None:
 
 
 def _set_optimal_model(builder: _Builder, claim: WitnessClaim) -> None:
-    """Set the optimal-witness cell, shared by ``@optimal`` and ``@model optimal`` (§2.2)."""
+    """Set the optimal-witness cell, shared by ``@optimal`` and ``@model optimal``."""
     if builder.optimal_model is not None:
         raise ValueError("at most one @optimal / @model optimal per contract (the same cell)")
     builder.optimal_model = claim
@@ -420,7 +420,7 @@ def _expect_value(rest: str) -> Literal["sat", "unsat"]:
 
 
 def _base_litset(rest: str) -> tuple[bool, frozenset[Symbol]]:
-    """Parse ``[optimal] { litset }`` into ``(is_optimal, literals)`` (spec §2.1)."""
+    """Parse ``[optimal] { litset }`` into ``(is_optimal, literals)``."""
     if (match := _BASE_LITSET.match(rest.strip())) is None:
         raise ValueError(f"expected [optimal] {{ litset }}, got: {rest!r}")
     return bool(match.group("base")), frozenset(parse_litset(match.group("body").strip()))
@@ -434,14 +434,14 @@ def _litset(rest: str) -> frozenset[Symbol]:
 
 
 def _base_int(rest: str) -> tuple[bool, int]:
-    """Parse ``[optimal] n`` (``n ≥ 0``) into ``(is_optimal, n)`` for ``@count`` (spec §2.1)."""
+    """Parse ``[optimal] n`` (``n ≥ 0``) into ``(is_optimal, n)`` for ``@count``."""
     if (match := _BASE_INT.match(rest.strip())) is None:
         raise ValueError(f"@count expects [optimal] <non-negative int>, got: {rest!r}")
     return bool(match.group("base")), int(match.group("n"))
 
 
 def _cost_vector(rest: str) -> tuple[int, ...]:
-    """Parse ``{ c1 c2 … }`` into the priority-ordered cost vector (``@cost``, spec §2.0)."""
+    """Parse ``{ c1 c2 … }`` into the priority-ordered cost vector (``@cost``)."""
     if (match := _COST.match(rest.strip())) is None:
         raise ValueError(f"@cost expects {{ <int> … }}, got: {rest!r}")
     return tuple(int(component) for component in match.group("ints").split())
@@ -469,7 +469,7 @@ def _split_where(rest: str) -> tuple[str, frozenset[tuple[Symbol, int]]]:
 
 
 def _assign_body(rest: str) -> frozenset[tuple[Symbol, int]]:
-    """Parse ``{ term=int, … }`` into theory bindings for ``@assign`` (spec §2.0/§2.1).
+    """Parse ``{ term=int, … }`` into theory bindings for ``@assign``.
 
     Rejects an empty set: the grammar requires ≥1 binding, and an empty ``@assign`` would be a
     silent vacuous claim (``frozenset() ⊆ assign`` holds for every model) — the empty-litset
@@ -488,7 +488,7 @@ def _one_bind(piece: str) -> tuple[Symbol, int]:
 
 
 def _query(rest: str) -> Query:
-    """Split ``<answer> <payload>`` and delegate to ``query.parse_query`` (spec §2.1, §2.4)."""
+    """Split ``<answer> <payload>`` and delegate to ``query.parse_query``."""
     answer, _, payload = rest.strip().partition(" ")
     if not payload.strip():
         raise ValueError(f"@query needs an answer and a payload: {rest!r}")
@@ -519,11 +519,11 @@ def _split_top(body: str) -> list[str]:
     return pieces
 
 
-# --- cross-tag well-formedness (§2.2 rules 1 & 3) and the freeze ---
+# --- cross-tag well-formedness and the freeze ---
 
 
 def _finish(builder: _Builder, source: str | None) -> Expectation:
-    """Validate the cross-tag rules and freeze the builder into an ``Expectation`` (spec §2.2)."""
+    """Validate the cross-tag rules and freeze the builder into an ``Expectation``."""
     if _validate(builder, source) == "unsat":
         return Unsat(notes=tuple(builder.notes))
     return Sat(
@@ -544,9 +544,9 @@ def _finish(builder: _Builder, source: str | None) -> Expectation:
 
 
 def _validate(builder: _Builder, source: str | None) -> Literal["sat", "unsat"]:
-    """The cross-tag static semantics of §2.2 (rules 1 and 3), returning the validated ``@expect``.
-    Per-cell single-valuedness (rule 2) is enforced during parsing; the precondition rules (rule 4:
-    optimization, clingcon, contrary-shown) need the encoding and are checked at discovery (§5)."""
+    """The cross-tag static semantics, returning the validated ``@expect``.
+    Per-cell single-valuedness is enforced during parsing; the precondition rules
+    (optimization, clingcon, contrary-shown) need the encoding and are checked at discovery."""
     expect = builder.expect
     if expect is None:  # rule 1
         _fail_contract(source, "a contract must declare exactly one @expect (sat|unsat)")
@@ -575,7 +575,7 @@ def _validate(builder: _Builder, source: str | None) -> Literal["sat", "unsat"]:
 
 
 def _model_bearing_tags(builder: _Builder) -> list[str]:
-    """The model-bearing tags actually present (§2.2): each asserts something requiring an answer
+    """The model-bearing tags actually present: each asserts something requiring an answer
     set. Returned in surface order so the unsat diagnostic can point at the specific offenders."""
     present: list[str] = []
     if builder.model is not None:

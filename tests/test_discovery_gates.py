@@ -1,7 +1,7 @@
-"""The §2.2-rule-4 preconditions + the R1 theory-presence gate, over ProgramFacts (R1/R2/R4).
+"""The preconditions + the theory-presence gate, over ProgramFacts.
 
 These check the gates in isolation against constructed ProgramFacts — the pure precondition layer,
-independent of the discovery walk (which wires them in B1)."""
+independent of the discovery walk that wires them in."""
 
 from pathlib import Path
 
@@ -77,7 +77,7 @@ def test_a_clean_program_passes_all_gates() -> None:
 
 
 def test_unsat_contract_skips_the_model_bearing_gates() -> None:
-    # @expect unsat carries no model-bearing tag, so only R1 (program-side, theory-agnostic) fires.
+    # @expect unsat carries no model-bearing tag, so only the program-side theory gate fires.
     exp = parse("% @expect unsat\n")
     check_program(exp, _facts(), "clingo", WHERE)  # no raise
 

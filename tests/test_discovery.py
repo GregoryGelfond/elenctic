@@ -1,10 +1,10 @@
-"""``discovery.discover`` — the content-keyed corpus walk (spec §1, §2, §5; v2 model).
+"""``discovery.discover`` — the content-keyed corpus walk.
 
-A ``.lp`` file is a **case** iff it carries a known elenctic tag (the collection predicate, R3),
+A ``.lp`` file is a **case** iff it carries a known elenctic tag (the collection predicate),
 else a **library** (an ``#include`` target). ``discover(target)`` runs a single file (issue #3) or
 walks a directory. The solver is **declared** (``@elenctic solver``, default ``clingo``), never read
 from a filename. The program under test is the case file + its resolved ``#include``s, and the
-§2.2-rule-4 preconditions + the R1 theory-presence gate are enforced over that **resolved program**
+preconditions + the theory-presence gate are enforced over that **resolved program**
 (``check_program``), not the case-file text. Deterministic; loud on a precondition violation
 (``DiscoveryError``), a malformed contract (``ContractError``), or a bad ``#include``
 (``ProgramError``).
@@ -26,33 +26,33 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
-# --- entry points: a single file (issue #3) and a directory walk (§2) ---
+# --- entry points: a single file (issue #3) and a directory walk ---
 
 
 def test_single_file_with_a_contract_is_one_case(tmp_path: Path) -> None:
     case_file = write(tmp_path / "feasible.lp", "% @expect sat\n% @model { a }\na. #show a/0.\n")
     (case,) = discover(case_file)
     assert case.path == case_file
-    assert case.solver == "clingo"  # undeclared → the default (R1)
+    assert case.solver == "clingo"  # undeclared → the default
     assert isinstance(case.expectation, Sat)
     assert case.files == (case_file,)  # the loader resolves any #include; files is just the case
 
 
 def test_explicit_contract_free_file_is_loud(tmp_path: Path) -> None:
-    # A named target the user asked to run is never a silent no-op (§1).
+    # A named target the user asked to run is never a silent no-op.
     library = write(tmp_path / "lib.lp", "task(1..3).\n")
     with pytest.raises(DiscoveryError, match=r"not a case|no .*contract"):
         discover(library)
 
 
-def test_nonexistent_target_is_loud(tmp_path: Path) -> None:  # review MAJOR-1
+def test_nonexistent_target_is_loud(tmp_path: Path) -> None:
     # A named target that does not exist tests nothing; a silent green would hide a typo or a moved
-    # file — the cardinal sin for a testing tool (loud over silent, §1).
+    # file — the cardinal sin for a testing tool (loud over silent).
     with pytest.raises(DiscoveryError, match=r"no such file or directory"):
         discover(tmp_path / "typo.lp")
 
 
-def test_unreadable_lp_entry_in_the_walk_is_a_friendly_error(tmp_path: Path) -> None:  # MAJOR-2
+def test_unreadable_lp_entry_in_the_walk_is_a_friendly_error(tmp_path: Path) -> None:
     # rglob matches a directory (or broken symlink) named *.lp; reading it must be a friendly
     # DiscoveryError, never a raw OSError traceback (the friendly-errors principle).
     write(tmp_path / "real.lp", "% @expect sat\n")
@@ -84,7 +84,7 @@ def test_discovery_is_deterministic_and_sorted(tmp_path: Path) -> None:
     assert paths == [c.path for c in discover(tmp_path)]  # idempotent across calls
 
 
-# --- the declared solver (§4) ---
+# --- the declared solver ---
 
 
 def test_declared_solver_is_used(tmp_path: Path) -> None:
@@ -95,7 +95,7 @@ def test_declared_solver_is_used(tmp_path: Path) -> None:
     assert discover(case)[0].solver == "clingcon"
 
 
-# --- dependencies via #include, and the gates over the RESOLVED program (§3) ---
+# --- dependencies via #include, and the gates over the RESOLVED program ---
 
 
 def test_include_is_resolved_by_the_loader_not_enumerated(tmp_path: Path) -> None:
@@ -108,7 +108,7 @@ def test_include_is_resolved_by_the_loader_not_enumerated(tmp_path: Path) -> Non
 
 
 def test_r1_theory_in_an_included_library_under_clingo_is_loud(tmp_path: Path) -> None:
-    # The R1 gate reads the RESOLVED program: a theory atom hidden in a library + a forgotten
+    # The theory gate reads the RESOLVED program: a theory atom hidden in a library + a forgotten
     # declaration → loud, no verdict (the silent-mis-solve the gate exists to prevent).
     write(tmp_path / "lib" / "thy.lp", "&dom { 1..3 } = x.\n")
     case = write(tmp_path / "c.lp", '% @expect sat\n#include "lib/thy.lp".\n#show.\n')
@@ -158,7 +158,7 @@ def test_contrary_precondition_reads_the_resolved_shown_vocabulary(tmp_path: Pat
         discover(case)
 
 
-def test_a_bad_include_is_a_friendly_program_error(tmp_path: Path) -> None:  # A2-review carry
+def test_a_bad_include_is_a_friendly_program_error(tmp_path: Path) -> None:
     # inspect() runs at discovery (before any solve), so a missing #include surfaces as a friendly
     # ProgramError with provenance, never a raw clingo traceback at solve time.
     case = write(tmp_path / "c.lp", '% @expect sat\n#include "nope.lp".\n')
@@ -183,7 +183,7 @@ def test_notes_survive_discovery(tmp_path: Path) -> None:
 
 
 def test_malformed_contract_propagates_a_sourced_error(tmp_path: Path) -> None:
-    case = write(tmp_path / "bad.lp", "% @model { a }\n")  # no @expect — §2.2 rule 1
+    case = write(tmp_path / "bad.lp", "% @model { a }\n")  # no @expect
     with pytest.raises(ContractError, match=r"bad\.lp"):
         discover(case)
 

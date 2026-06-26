@@ -1,4 +1,4 @@
-"""Run a discovered case end-to-end and render its outcome — the top of the module DAG (dx#9).
+"""Run a discovered case end-to-end and render its outcome — the top of the module DAG.
 
 Three responsibilities, layered by purity:
 
@@ -8,14 +8,13 @@ Three responsibilities, layered by purity:
   pure plan against the impure facade.
 - :func:`case_verdict` — **pure**: fold the per-check reports to one case verdict. A definite
   failure sinks the case, so **FAIL dominates UNDECIDED dominates PASS** (a case passes iff every
-  check does, spec §3; an UNDECIDED check is "could not decide", a FAIL is "decided wrong", §7a —
+  check does; an UNDECIDED check is "could not decide", a FAIL is "decided wrong" —
   both red, but a decisive FAIL is the more informative label).
-- :func:`render` — **pure**: the human diagnostic. FAIL and UNDECIDED stay **distinct** (§7a, never
+- :func:`render` — **pure**: the human diagnostic. FAIL and UNDECIDED stay **distinct** (never
   collapsed into one red), and the case's ``@note`` prose and its ``contract_source`` (file-level
-  provenance; per-tag line precision is deferred — ledger) are read from the *case* (Model A — the
+  provenance; per-tag line precision is deferred) are read from the *case* (Model A — the
   renderer's concern, not the check's; the reports carry no note). ``@note`` surfaces on **any**
-  non-PASS (FAIL or UNDECIDED — a "known-slow" note explains a timeout), slightly wider than §2.1's
-  "failure diagnostic" letter; the spec-text reconciliation is ledgered for Gregory.
+  non-PASS (FAIL or UNDECIDED — a "known-slow" note explains a timeout).
 
 A **misrouted run-plan** is a :class:`~elenctic.result.HarnessError` (``RoutingError``) raised by
 ``runs_for`` at plan construction — a harness bug, never a verdict. ``run_case`` lets it
@@ -26,7 +25,8 @@ pre-validate every case's plan (call ``runs_for`` for all cases) *before* any so
 all wiring errors at once; ``run_case`` bundles build-then-solve for the per-case path.
 
 The pytest ``parametrize`` + assertion (and the session-level aggregation) live in the **client**
-(Plan 2 / the CLI); elenctic **ships the diagnostic value** rather than pushing it to consumers.
+(the pytest client or the CLI); elenctic **ships the diagnostic value** rather than pushing it to
+consumers.
 """
 
 from elenctic.checks import CheckReport
@@ -58,7 +58,7 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
 
 def case_verdict(reports: tuple[CheckReport, ...]) -> Verdict:
     """The case verdict: ``PASS`` iff every check passes, else ``FAIL`` if any check decided wrong,
-    else ``UNDECIDED`` (some check could not decide). FAIL dominates UNDECIDED (§3, §7a)."""
+    else ``UNDECIDED`` (some check could not decide). FAIL dominates UNDECIDED."""
     verdicts = {report.verdict for report in reports}
     if Verdict.FAIL in verdicts:
         return Verdict.FAIL
@@ -70,7 +70,7 @@ def case_verdict(reports: tuple[CheckReport, ...]) -> Verdict:
 def render(case: Case, reports: tuple[CheckReport, ...]) -> str:
     """Render the case outcome as a human diagnostic (pure). The header names the contract source,
     the solver, and the case verdict; each non-``PASS`` check contributes a line tagged with its own
-    verdict (FAIL vs UNDECIDED kept distinct, §7a); and on any non-``PASS`` outcome the case's
+    verdict (FAIL vs UNDECIDED kept distinct); and on any non-``PASS`` outcome the case's
     ``@note`` prose is surfaced (Model A — read from the case). A passing case is a terse header."""
     verdict = case_verdict(reports)
     lines = [f"{case.contract_source} [{case.solver}] — {verdict.name}"]

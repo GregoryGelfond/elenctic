@@ -1,24 +1,24 @@
-"""Solver facades over the clingo/clingcon Python API — the **only impure module** (spec §4, §6).
+"""Solver facades over the clingo/clingcon Python API — the **only impure module**.
 
-A facade runs one configured solve and returns a :data:`~elenctic.result.Determination` (the
-keystone surface): :class:`~elenctic.result.Inconclusive` if the budget was hit (§7a — a timeout
+A facade runs one configured solve and returns a :data:`~elenctic.result.Determination`:
+:class:`~elenctic.result.Inconclusive` if the budget was hit (a timeout
 is ``UNDECIDED``, never FAIL/UNSAT), :class:`~elenctic.result.Inconsistent` if the whole-result
-``unsatisfiable`` bit is set (§9.7 — decided once, never inferred from an empty field), else the
+``unsatisfiable`` bit is set (decided once, never inferred from an empty field), else the
 :class:`~elenctic.result.Consistent` shape the mode produces.
 
 **The lowering contract (the accessor seam's second premise).** ``solve(mode)`` produces, for a SAT
 run, *exactly* ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)``. The match in
 :func:`_consistent_shape` is that Mode→shape arrow; the gating lowering-postcondition test ties it
 to ``shape_for``/``populates`` so the construction here and the type oracle in ``run`` do not drift.
-A single ``_Collector`` dispatches on ``model.type`` (§9.1, confirmed by the §9 spikes):
+A single ``_Collector`` dispatches on ``model.type``:
 ``StableModel`` rows become observables (with cost); a final ``CautiousConsequences`` /
 ``BraveConsequences`` model carries ⋂/⋃. clingo enumeration always projects onto shown atoms
 (information-preserving there, ``assign ≡ ∅``); clingcon projects only when no rider reads the full
 census — a contract-induced decision (``run.should_project``), since projecting clingcon collapses
 the CSP multiplicity that ``@count``/``@assign`` observe.
 
-Known v1 limitation (ledgered): a ``#maximize`` objective is reported by clingo in negated
-minimize-internal form (§9.1 spike), so :func:`optimum_of`'s cost is natural for ``#minimize`` (the
+Known v1 limitation: a ``#maximize`` objective is reported by clingo in negated
+minimize-internal form, so :func:`optimum_of`'s cost is natural for ``#minimize`` (the
 minimize-dominated v1 corpus) but negated for ``#maximize``; sign-normalisation is deferred until a
 maximize-using corpus arrives (it needs per-priority-level sign tracking).
 """
@@ -56,7 +56,7 @@ TIME_BUDGET: float = 30.0  # seconds; the hang-protection default (a hit budget 
 
 
 class _Collector:
-    """Accumulates a solve's observations, dispatching on ``model.type`` (§9.1).
+    """Accumulates a solve's observations, dispatching on ``model.type``.
 
     ``StableModel`` rows become observables paired with their cost; the single final
     ``CautiousConsequences`` / ``BraveConsequences`` model (under cautious/brave ``--enum-mode``)
@@ -115,16 +115,16 @@ class _Collector:
                 "an optimization mode produced no cost vector — the encoding has no "
                 "#minimize/#maximize (a discovery precondition should have caught this)"
             )
-        return min(costs)  # lexicographic, priority-ordered highest-first (spec §2.0)
+        return min(costs)  # lexicographic, priority-ordered highest-first
 
 
 def _require_consequence(value: frozenset[Symbol] | None, register: str) -> frozenset[Symbol]:
-    """Narrow a consequence field to non-``None`` — the §9.1 reliance made loud. A SAT
+    """Narrow a consequence field to non-``None`` — the clingo-contract reliance made loud. A SAT
     ``--enum-mode`` run reports its ⋂/⋃ as a final consequence model, so the field is set on this
     call path; ``None`` here is a violated clingo contract (a harness bug), never a verdict."""
     if value is None:
         raise HarnessError(
-            f"a satisfiable {register} run produced no consequence model (clingo §9.1 assumption "
+            f"a satisfiable {register} run produced no consequence model (clingo assumption "
             "violated)"
         )
     return value
@@ -324,7 +324,7 @@ def run_clingcon(
 type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool], Determination]
 
 _FACADES: Final[dict[str, _Facade]] = {"clingo": run_clingo, "clingcon": run_clingcon}
-assert frozenset(_FACADES) == SOLVERS, "solvers._FACADES drifted from registry.SOLVERS (R5)"
+assert frozenset(_FACADES) == SOLVERS, "solvers._FACADES drifted from registry.SOLVERS"
 
 
 def solve(
@@ -360,7 +360,7 @@ def _solver_args(mode: Mode, project: bool) -> list[str]:
 
 def _add_program(control: Control, program: str, files: tuple[Path, ...]) -> None:
     """Load inline ``program`` and ``files`` into clingo's ``base`` part. ``control.load`` resolves
-    each file's ``#include`` directives relative to the including file (spike-confirmed); the inline
+    each file's ``#include`` directives relative to the including file; the inline
     ``program`` (no file context) goes through ``control.add``."""
     if program:
         control.add("base", [], program)
@@ -369,9 +369,9 @@ def _add_program(control: Control, program: str, files: tuple[Path, ...]) -> Non
 
 
 def _rewrite_program(control: Control, theory: Any, program: str, files: tuple[Path, ...]) -> None:
-    """Rewrite inline ``program`` and ``files`` through clingcon's theory rewriter into ``control``
-    (spec §6.2). ``parse_files`` resolves ``#include`` relative to the including file AND fires the
-    theory rewrite on the *expanded* AST (spike-confirmed: a theory atom inside an ``#include``d
+    """Rewrite inline ``program`` and ``files`` through clingcon's theory rewriter into ``control``.
+    ``parse_files`` resolves ``#include`` relative to the including file AND fires the
+    theory rewrite on the *expanded* AST (a theory atom inside an ``#include``d
     library is rewritten and propagated) — unlike ``parse_string`` over ``read_text``, which
     resolves ``#include`` relative to CWD. ``theory`` is the untyped clingcon handle; the local
     clingo.ast import keeps that dependency at the theory boundary."""

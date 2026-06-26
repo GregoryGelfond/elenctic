@@ -1,4 +1,4 @@
-"""Dual-use: each inspectable pipeline-stage module runs under ``python -m`` (keystone #2).
+"""Dual-use: each inspectable pipeline-stage module runs under ``python -m``.
 
 The contract-parsing, discovery, run-derivation, and solve stages are each runnable standalone as a
 debugging aid (``python -m elenctic.<stage> …``), in addition to being importable. The sub-component

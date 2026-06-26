@@ -1,4 +1,4 @@
-"""The three strictness axes (spec §5): closed vocabulary and the soundness floor are *always*
+"""The three strictness axes: closed vocabulary and the soundness floor are *always*
 errors (independent of ``--strict``); hygiene is the ``--strict`` dial — warn with an end-of-run
 summary by default (no exit-code effect), escalated to errors that fail the run under ``--strict``
 (the CI gate). All hygiene issues are aggregated and reported together."""
@@ -122,7 +122,7 @@ def test_closed_vocabulary_is_always_an_error(tmp_path: Path) -> None:
 
 
 def test_soundness_floor_is_always_an_error(tmp_path: Path) -> None:
-    # R1: a theory atom under default clingo → DiscoveryError → exit 2, with or without --strict.
+    # a theory atom under default clingo → DiscoveryError → exit 2, with or without --strict.
     write(tmp_path / "case.lp", "% @expect sat\n&dom { 1..3 } = x.\n#show.\n")
     assert main([str(tmp_path)]) == 2
     assert main([str(tmp_path), "--strict"]) == 2

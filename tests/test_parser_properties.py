@@ -2,7 +2,7 @@
 
 Example-based tests pin specific shapes; these pin *invariants* over generated inputs — the
 paren-aware splitter must agree with clingo's own parse (oracle), the brace tracker must agree
-with a structural balance, and the dx#1 continuation must be invariant to how a litset is
+with a structural balance, and the continuation must be invariant to how a litset is
 line-wrapped or what prose surrounds it. A failing property is a real defect, not a flaky test.
 """
 
@@ -68,7 +68,7 @@ def test_has_unclosed_brace_ignores_braces_inside_quoted_strings() -> None:
 
 @given(st.lists(atoms(), min_size=1, max_size=5))
 def test_continuation_is_invariant_to_litset_line_wrapping(atom_texts: list[str]) -> None:
-    # dx#1: breaking a litset across continuation '%' lines at its commas must not change the parse.
+    # breaking a litset across continuation '%' lines at its commas must not change the parse.
     body = ", ".join(atom_texts)
     single = parse(f"% @expect sat\n% @model {{ {body} }}\n")
     wrapped = parse("% @expect sat\n% @model { " + ",\n%   ".join(atom_texts) + " }\n")
@@ -85,7 +85,7 @@ _PROSE = st.from_regex(r"[A-Za-z0-9 .:/_-]{0,30}", fullmatch=True)
 def test_parse_is_robust_to_prose_around_a_closed_litset(
     atom_texts: list[str], prose: list[str]
 ) -> None:
-    # dx#1: once a litset's brace closes, surrounding prose '%' lines are inert.
+    # once a litset's brace closes, surrounding prose '%' lines are inert.
     body = ", ".join(atom_texts)
     base = f"% @expect sat\n% @model {{ {body} }}\n"
     with_prose = base + "".join(f"% {line}\n" for line in prose)
@@ -96,7 +96,7 @@ def test_parse_is_robust_to_prose_around_a_closed_litset(
 
 @given(st.lists(atoms(), min_size=1, max_size=5))
 def test_cautious_accumulation_is_order_independent(atom_texts: list[str]) -> None:
-    # Accumulating tags (spec §2.2 rule 2) form the union of their litsets, independent of order.
+    # Accumulating tags form the union of their litsets, independent of order.
     lines = [f"% @cautious {{ {text} }}\n" for text in atom_texts]
     forward = parse("% @expect sat\n" + "".join(lines))
     backward = parse("% @expect sat\n" + "".join(reversed(lines)))
@@ -110,8 +110,8 @@ def test_cautious_accumulation_is_order_independent(atom_texts: list[str]) -> No
 )
 def test_parsed_assign_is_never_empty(bindings: list[tuple[str, int]]) -> None:
     # The check layer assumes a parsed @assign is non-empty: an empty expected assignment would
-    # PASS vacuously (∅ ⊆ any). parse must never yield an empty Sat.assign — the Task-3 @assign{}
-    # BLOCKER fix, pinned here as the standing cross-layer invariant (checks-task carry-forward).
+    # PASS vacuously (∅ ⊆ any). parse must never yield an empty Sat.assign, pinned here as the
+    # standing cross-layer invariant.
     body = ", ".join(f"{atom}={value}" for atom, value in bindings)
     exp = parse(f"% @expect sat\n% @assign {{ {body} }}\n")
     assert isinstance(exp, Sat)

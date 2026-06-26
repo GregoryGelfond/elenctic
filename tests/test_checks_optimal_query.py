@@ -1,10 +1,10 @@
-"""Unit tests for the optimal-base checks and the ``@query`` check (spec §3, dx#9).
+"""Unit tests for the optimal-base checks and the ``@query`` check.
 
 The optimal-base modes aggregate over ``ConsistentOptimalEnumeration``'s ``optimal_observables``
-(the ``--opt-mode=optN`` solve, §3). The ``@query`` check is errata-corrected (Def 2.2.2): a
+(the ``--opt-mode=optN`` solve). The ``@query`` check is errata-corrected (Def 2.2.2): a
 singleton ground query reads the cautious consequences ⋂; a *conjunctive* (n≥2) ground query reads
 the model census; a yes/no binding reads ⋂; an unknown binding reads ⋂ and ⋃. Every arm short-
-circuits: ``Inconsistent`` (AS(P)=∅) → FAIL (every query is vacuously yes-and-no, §2.2 FR#9). A
+circuits: ``Inconsistent`` (AS(P)=∅) → FAIL (every query is vacuously yes-and-no). A
 misroute is a ``SeamError``, never a costumed verdict. Pure over a ``Determination``.
 """
 
@@ -71,7 +71,7 @@ def enum(*observables: Observable) -> ConsistentEnumeration:
 )
 def test_undecided_when_inconclusive(check: Check, label: str) -> None:
     report = check(Inconclusive())
-    assert report.verdict is Verdict.UNDECIDED  # a timeout is never FAIL (§7a)
+    assert report.verdict is Verdict.UNDECIDED  # a timeout is never FAIL
     assert report.label == label
 
 
@@ -123,7 +123,7 @@ def test_query_ground_conjunctive_reads_the_census_and_localizes() -> None:
     missed = asked(enum(obs("start(s)")))  # end(t) not in the census → computed unknown ≠ yes
     assert missed.verdict is Verdict.FAIL
     assert "yes" in missed.message and "unknown" in missed.message  # expected yes, computed unknown
-    assert "end(t)" in missed.message  # dx#9: localizes the not-entailed conjunct
+    assert "end(t)" in missed.message  # localizes the not-entailed conjunct
 
 
 def test_query_ground_conjunctive_no_localizes_from_the_census() -> None:
@@ -140,7 +140,7 @@ def test_query_ground_conjunctive_no_localizes_from_the_census() -> None:
 
 def test_query_ground_singleton_no_via_strong_negation() -> None:
     asked = query_matches(GroundQuery(Answer.no, (parse_term("reachable(x)"),)))
-    # contrary -reachable(x) entailed ⇒ computed no (Def 2.2.2, §2.1)
+    # contrary -reachable(x) entailed ⇒ computed no (Def 2.2.2)
     assert asked(ConsistentCautious(lits("-reachable(x)"))).verdict is Verdict.PASS
     # mere absence is not falsity ⇒ computed unknown ≠ no ⇒ FAIL
     assert asked(ConsistentCautious(lits("other"))).verdict is Verdict.FAIL
@@ -149,7 +149,7 @@ def test_query_ground_singleton_no_via_strong_negation() -> None:
 def test_query_short_circuits_to_fail_on_unsat() -> None:
     asked = query_matches(GroundQuery(Answer.yes, (parse_term("start(s)"),)))
     short = asked(Inconsistent())
-    assert short.verdict is Verdict.FAIL  # AS(P) = ∅: every query vacuously yes-and-no (§2.2)
+    assert short.verdict is Verdict.FAIL  # AS(P) = ∅: every query vacuously yes-and-no
     assert "∅" in short.message
 
 
@@ -196,7 +196,7 @@ def test_query_binding_unknown_reads_brave_from_the_enumeration() -> None:
 
 def test_query_binding_unknown_off_a_cautious_only_shape_raises_seam_error() -> None:
     # the wiring rule routes an unknown binding to a brave-bearing run; handing it a cautious-only
-    # shape is an elenctic bug — a SeamError, never a costumed verdict (the keystone's seam).
+    # shape is an elenctic bug — a SeamError, never a costumed verdict (the accessor seam).
     asked = query_matches(
         BindingQuery(
             Answer.unknown,

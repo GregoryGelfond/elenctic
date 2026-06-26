@@ -7,9 +7,17 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # First-class on both platforms the Potassco toolchain (clingo 5.8) ships for through pixi:
+    # Linux and modern (arm64) macOS. macOS is the primary development platform, so gating it keeps
+    # the pinned environment honest there too. `fail-fast: false` so one platform's failure does not
+    # mask the other's result.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: prefix-dev/setup-pixi@v0.9.6
         with:
           cache: true

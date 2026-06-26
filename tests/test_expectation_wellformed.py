@@ -1,7 +1,7 @@
-"""``expectation.parse`` — the well-formedness gate (spec §2.2). Every ill-formed block is
+"""``expectation.parse`` — the well-formedness gate. Every ill-formed block is
 rejected with a ``ContractError`` that names what is wrong (and, with a ``source``, where).
-The precondition rules of §2.2 rule 4 (optimization/clingcon/contrary-shown) need the
-encoding and are checked at discovery (spec §5), not here."""
+The precondition rules (optimization/clingcon/contrary-shown) need the
+encoding and are checked at discovery, not here."""
 
 import pytest
 
@@ -72,11 +72,11 @@ from elenctic.expectation import ContractError, Sat, Unsat, parse
         pytest.param("% @expect sat\n% @cost { a }\n", r"@cost", id="non-int-cost"),
         pytest.param("% @expect sat\n% @count x\n", r"@count", id="non-int-count"),
         pytest.param("% @expect sat\n% @assign { v }\n", r"binding", id="assign-without-equals"),
-        # an unknown tag is a loud error, never silently ignored (§2.2).
+        # an unknown tag is a loud error, never silently ignored.
         pytest.param(
             "% @expect sat\n% @frobnicate { a }\n", r"unknown contract tag", id="unknown-tag"
         ),
-        # empty / unclosed / non-ground brace bodies — never a silent empty claim (§2.1 grammar).
+        # empty / unclosed / non-ground brace bodies — never a silent empty claim.
         pytest.param("% @expect sat\n% @assign { }\n", r"@assign", id="empty-assign"),
         pytest.param("% @expect sat\n% @assign {}\n", r"@assign", id="empty-assign-no-space"),
         pytest.param("% @expect sat\n% @model { a, b\n", r"litset", id="litset-never-closes"),
@@ -124,7 +124,7 @@ def test_parse_accepts_well_formed(text: str) -> None:
 
 
 def test_contract_error_carries_source_and_line() -> None:
-    # dx#2: a payload error names the file and the offending tag's line (here, line 2).
+    # a payload error names the file and the offending tag's line (here, line 2).
     with pytest.raises(ContractError, match=r"cases/x\.lp:2"):
         parse("% @expect sat\n% @model { }\n", source="cases/x.lp")
 
@@ -146,9 +146,9 @@ def test_unsat_error_names_the_offending_model_bearing_tags() -> None:
         parse("% @expect unsat\n% @model { a }\n% @brave { b }\n")
 
 
-# --- §2.2 rule-4 precondition classification (Sat.requires_optimization / requires_theory) ---
+# --- precondition classification (Sat.requires_optimization / requires_theory) ---
 # Which encoding capability a contract presupposes. The contract states its precondition here;
-# discovery (§5) checks it against the encoding (`#minimize`/`#maximize`, clingcon). A different
+# discovery checks it against the encoding (`#minimize`/`#maximize`, clingcon). A different
 # predicate from run._has_optimal_base, which excludes bare @cost (it routes @cost's shared solve).
 
 

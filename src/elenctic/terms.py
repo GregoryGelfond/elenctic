@@ -1,9 +1,9 @@
 """clingo term-parsing helpers shared by ``expectation.py`` and ``query.py``.
 
-Litsets/tuplesets are delegated to clingo's term parser (spec §4): the brace body
+Litsets/tuplesets are delegated to clingo's term parser: the brace body
 is wrapped in parentheses and parsed as one term, so commas inside atoms
 (``included(s,a,2,1)``) and quotes are handled by the grounder's own parser rather
-than a hand-rolled splitter (Knuth). A strong-negation literal ``-a`` parses to a
+than a hand-rolled splitter. A strong-negation literal ``-a`` parses to a
 ``Symbol`` with ``positive == False``.
 """
 
@@ -16,7 +16,7 @@ def _is_tuple_symbol(s: Symbol) -> bool:
 
 
 def parse_litset(body: str) -> tuple[Symbol, ...]:
-    """Parse a brace body ``l1, …, ln`` into its literal Symbols, paren-aware (spec §2.1).
+    """Parse a brace body ``l1, …, ln`` into its literal Symbols, paren-aware.
 
     Wrapping in parens and parsing one term: a multi-element body yields an anonymous
     tuple Symbol whose ``.arguments`` are the literals; a single element yields that
@@ -42,13 +42,13 @@ def parse_litset(body: str) -> tuple[Symbol, ...]:
 
 
 def parse_tupleset(body: str, arity: int) -> tuple[tuple[Symbol, ...], ...]:
-    """Parse a binding set body into argument tuples of the given ``arity`` (spec §2.1).
+    """Parse a binding set body into argument tuples of the given ``arity``.
 
     A 1-argument query lists bare terms (``s, a, t``); an n-argument query lists
     ``(t1, …, tn)`` tuples. The lone n-tuple case (``(s,1)``) collapses under the
     grouping parens, so it is disambiguated by ``arity``. Binding components are
     expected to be non-tuple terms (constants/numbers/functions); a tuple-valued
-    component would be ambiguous with the several-tuples reading (reserved, §11).
+    component would be ambiguous with the several-tuples reading (reserved).
     """
     if not body.strip():
         return ()
@@ -64,7 +64,7 @@ def parse_tupleset(body: str, arity: int) -> tuple[tuple[Symbol, ...], ...]:
 
 
 def contrary(literal: Symbol) -> Symbol:
-    """The contrary ``l̄`` of a literal: flip strong negation (spec §2.1). ``a`` ↔ ``-a``."""
+    """The contrary ``l̄`` of a literal: flip strong negation. ``a`` ↔ ``-a``."""
     if literal.type is not SymbolType.Function:
         raise ValueError(f"not a literal (no contrary): {literal}")
     return Function(literal.name, list(literal.arguments), not literal.positive)

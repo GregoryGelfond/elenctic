@@ -1,8 +1,8 @@
 """The ``elenctic`` console entry: run a corpus of ``@``-contracts, or explain its run plan.
 
 ``elenctic [target]`` discovers cases under ``target`` — a single ``.lp`` case file or a directory
-walked for contract-bearing files (default ``tests/``; spec §1, §2) — validates **every** case's run
-plan up front (so a misroute — a harness bug — is reported before any solving, keystone decision 6),
+walked for contract-bearing files (default ``tests/``) — validates **every** case's run
+plan up front (so a misroute — a harness bug — is reported before any solving),
 then solves and checks each case, rendering any non-``PASS`` outcome. ``--explain`` stops after the
 plan: it narrates the derived runs (mode + checks) per case without solving, the dry-run the
 ``reads``/``populates`` surface was made introspectable for.
@@ -10,7 +10,7 @@ plan: it narrates the derived runs (mode + checks) per case without solving, the
 Exit status separates the three outcome registers: ``0`` all cases pass; ``1`` some case FAILed or
 is UNDECIDED (a statement about a program under test); ``2`` a corpus or harness error (a bad
 contract, a mis-shaped corpus or program, or an elenctic bug — never a verdict). This is the
-standalone runner; the pytest-client path (per-case ``parametrize``) lives in the corpus repo.
+standalone runner; the pytest-client path (per-case ``parametrize``) is a separate consumer.
 """
 
 import argparse
@@ -73,7 +73,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _report_hygiene(hygiene: HygieneReport, *, strict: bool, status: int) -> int:
-    """Report corpus hygiene (spec §5, the ``--strict`` dial) as an aggregated end-of-run stderr
+    """Report corpus hygiene (the ``--strict`` dial) as an aggregated end-of-run stderr
     summary. Orphan libraries warn by default and leave the exit ``status`` (a verdict register)
     unchanged; under ``--strict`` they — plus the otherwise-silent undeclared solvers — become
     errors that fail the run (exit ``2``, the CI gate, dominating the verdict register). Hygiene is
@@ -94,7 +94,7 @@ def _explain(cases: tuple[Case, ...]) -> int:
     status = 0
     for case in cases:
         print(f"{case.contract_source} [{case.solver}]")
-        # §6: the @note prose leads the narration — the author's what/why above the harness's how.
+        # The @note prose leads the narration — the author's what/why above the harness's how.
         # Both Sat and Unsat carry notes; documentation, never a verdict.
         for note in case.expectation.notes:
             print(f"    note: {note}")
@@ -141,7 +141,7 @@ def _run(cases: tuple[Case, ...], budget: float) -> int:
 
 def _validate_plans(cases: tuple[Case, ...]) -> tuple[list[Case], list[Case]]:
     """Build every case's run plan up front (pure ``runs_for``), so all wiring errors surface before
-    any solving (keystone decision 6). Returns the well-routed cases and the misrouted ones (each
+    any solving. Returns the well-routed cases and the misrouted ones (each
     reported as a harness error — never a verdict)."""
     valid: list[Case] = []
     harness_errors: list[Case] = []

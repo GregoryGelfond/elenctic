@@ -1,8 +1,8 @@
 """Resolved-program inspection — the program-level facts read from the *resolved* AST (the case file
-plus its ``#include``s), the shared fix vector for R1 (theory presence) and R2 (preconditions over
-the resolved program, spec §3).
+plus its ``#include``s), the shared fix vector for theory-presence detection and the
+preconditions over the resolved program.
 
-One ``clingo.ast.parse_files`` pass (spike-confirmed 2026-06-25): ``parse_files`` resolves
+One ``clingo.ast.parse_files`` pass: ``parse_files`` resolves
 ``#include`` relative to the including file and exposes the included nodes in the AST, so the
 case-file-text regex scan (which the migration of ``#show``/``#minimize`` into libraries would
 defeat) is retired. Theory **presence** only — never identity (the gate is theory-agnostic).
@@ -21,15 +21,15 @@ from elenctic.result import HarnessError
 
 class ProgramError(HarnessError):
     """A resolved program elenctic cannot load — a missing/cyclic ``#include`` or a parse error.
-    Surfaced as a friendly diagnostic naming the offending file, never a raw clingo stack trace
-    (R11). A ``HarnessError`` (never a verdict)."""
+    Surfaced as a friendly diagnostic naming the offending file, never a raw clingo stack trace.
+    A ``HarnessError`` (never a verdict)."""
 
 
 @dataclass(frozen=True, slots=True)
 class ProgramFacts:
-    """The program-level facts the §2.2-rule-4 preconditions and the R1 theory gate read.
+    """The program-level facts the preconditions and the theory gate read.
 
-    ``has_theory_atom`` — any ``&``-atom in the resolved program (R1: presence, not identity).
+    ``has_theory_atom`` — any ``&``-atom in the resolved program (presence, not identity).
     ``shown`` — the shown predicate **signatures** ``(sign-aware-name, arity)`` (e.g.
     ``{("reachable", 1), ("-reachable", 1)}``); empty for a bare ``#show.`` (show-nothing). Keyed by
     full signature, not name, so a ``@query`` contrary ``#show``n at the wrong arity is a *loud*
@@ -39,7 +39,7 @@ class ProgramFacts:
     ``sources`` — the resolved source files the program spans: the case file plus every file it
     transitively ``#include``s, taken from clingo's own parse (each statement's ``location``), so it
     matches clingo's include resolution exactly (block comments, every include form). The corpus
-    orphan-library backstop (spec §5) reads this rather than re-scanning text; only a *truly empty*
+    orphan-library backstop reads this rather than re-scanning text; only a *truly empty*
     included library (no statements — a comment-only file still yields ``Comment`` nodes) is absent
     and so over-reported as an orphan, the safe direction for a warn-only check.
     """
@@ -63,7 +63,8 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
             logger=lambda _code, message: messages.append(message),
         )
         # The traversal is inside the try too: clingo decodes some node strings *lazily*, so a
-        # non-UTF-8 source byte surfaces here (during `_descendants`/`_shown_name`), not at parse.
+        # non-UTF-8 source byte surfaces here (during `_descendants`/`_shown_signature`), not at
+        # parse.
         nodes = [node for statement in statements for node in _descendants(statement)]
         # Each statement carries the file it came from (clingo's own include resolution); the
         # distinct set, resolved once each, is the program's authoritative source-file span.
@@ -79,8 +80,8 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
         # RuntimeError: a parse / missing-or-cyclic-#include failure (clingo logged the detail to
         # `messages`); UnicodeDecodeError: a non-UTF-8 source byte; OSError: unreadable. All are
-        # author/corpus faults → a friendly ProgramError with provenance, never a raw traceback
-        # (R11). A harness-logic bug (AttributeError/KeyError/...) is NOT caught and stays loud.
+        # author/corpus faults → a friendly ProgramError with provenance, never a raw traceback.
+        # A harness-logic bug (AttributeError/KeyError/...) is NOT caught and stays loud.
         names = ", ".join(str(path) for path in files)
         detail = "; ".join(messages) or str(exc)
         raise ProgramError(
@@ -92,7 +93,7 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
 def _descendants(node: object) -> Iterator[AST]:
     """Every ``AST`` node reachable from ``node`` — traversing child attributes AND clingo's
     ``ASTSequence`` (iterable, but **not** a python ``list``; a naive ``isinstance(_, list)`` walk
-    misses body literals — the spike's walker bug, now load-bearing for position-robustness)."""
+    misses body literals)."""
     if isinstance(node, AST):
         yield node
         for key in node.keys():  # noqa: SIM118 - keys() is the AST child-field API, not a dict
@@ -105,14 +106,14 @@ def _descendants(node: object) -> Iterator[AST]:
 def _is_maximize(node: AST) -> bool:
     """A ``#maximize`` objective: clingo lowers it to a ``Minimize`` node whose ``weight`` is a
     negated term (``UnaryOperation`` with ``UnaryOperator.Minus``); ``#minimize`` carries a plain
-    ``SymbolicTerm`` weight (confirmed). v1 cannot present a natural ``@cost`` over a negated
+    ``SymbolicTerm`` weight. v1 cannot present a natural ``@cost`` over a negated
     weight, so this is the guard signal. (A ``#minimize`` with an explicitly-negated literal weight
     is structurally identical post-parse and also trips this — correct, and loud-not-silent; full
-    sign-tracking lands with the aspis ASP-AST layer.)"""
+    sign-tracking is deferred.)"""
     return (
         node.ast_type is ASTType.Minimize
         and node.weight.ast_type is ASTType.UnaryOperation
-        # `operator_type` is a plain int (0); IntEnum `==` matches, `is` does NOT (confirmed).
+        # `operator_type` is a plain int (0); IntEnum `==` matches, `is` does NOT.
         and node.weight.operator_type == UnaryOperator.Minus
     )
 
@@ -123,7 +124,7 @@ def _shown_signature(node: AST) -> tuple[str, int] | None:
     signature form (``#show p/1.`` → ``ShowSignature`` with ``name``/``positive``/``arity``) and the
     conditional-term form (``#show p(X) : body.`` → ``ShowTerm`` whose ``term`` carries name +
     arity). Keyed by full signature, so a ``@query`` contrary ``#show``n at the wrong arity is a
-    loud precondition failure rather than a silent miss (§2.0)."""
+    loud precondition failure rather than a silent miss."""
     if node.ast_type is ASTType.ShowSignature:
         if not node.name:
             return None

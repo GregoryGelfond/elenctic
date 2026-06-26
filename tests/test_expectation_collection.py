@@ -1,4 +1,4 @@
-"""The collection predicate (R3 = known-tag membership): a contract makes a file a case."""
+"""The collection predicate (known-tag membership): a contract makes a file a case."""
 
 from elenctic.expectation import KNOWN_TAGS, has_contract
 

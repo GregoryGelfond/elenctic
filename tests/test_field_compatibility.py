@@ -1,6 +1,6 @@
-"""Cross-cutting verification families for the field-compatibility keystone (spec §3, §5, §7a).
+"""Cross-cutting verification families for the field-compatibility wiring rule.
 
-The per-module suites pin each layer; these tie the keystone together at the seam between layers:
+The per-module suites pin each layer; these tie the wiring rule together at the seam between layers:
 
 - **populates ↔ shape (seam soundness).** For each mode, ``populates(mode)`` equals exactly the
   fields its ``Consistent`` shape makes readable through the accessor seam — an accessor returns iff

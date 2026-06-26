@@ -1,4 +1,4 @@
-"""Hypothesis property tests for the check layer's load-bearing invariants (spec §3, §7a).
+"""Hypothesis property tests for the check layer's load-bearing invariants.
 
 These pin the structural guarantees the example tests only sample: consequence-soundness (an
 incomplete solve is *always* UNDECIDED, never FAIL/raise — the ``Inconclusive`` arm), the variadic
@@ -46,12 +46,12 @@ from elenctic.result import (
 
 _atoms = st.builds(Function, st.sampled_from(["a", "b", "c", "d", "e"]))
 _atom_sets = st.frozensets(_atoms, max_size=5)
-_litsets = st.frozensets(_atoms, min_size=1, max_size=5)  # a litset is non-empty (§2.1)
+_litsets = st.frozensets(_atoms, min_size=1, max_size=5)  # a litset is non-empty
 
 
 def _every_check(litset: frozenset[Symbol]) -> list[Check]:
     """One instance of each public check, built from ``litset`` (non-empty) where one is needed —
-    every tag and every ``@query`` form, so §7a holds across the whole check surface."""
+    every tag and every ``@query`` form, so the timeout→UNDECIDED invariant holds surface-wide."""
     goal = QueryLiteral("p", True, (Var("X"),))
     return [
         expect_sat(),
@@ -76,7 +76,7 @@ def _every_check(litset: frozenset[Symbol]) -> list[Check]:
 @given(_litsets)
 def test_every_check_is_undecided_on_inconclusive(litset: frozenset[Symbol]) -> None:
     for check in _every_check(litset):
-        assert check(Inconclusive()).verdict is Verdict.UNDECIDED  # §7a — never FAIL, never raises
+        assert check(Inconclusive()).verdict is Verdict.UNDECIDED  # never FAIL, never raises
 
 
 @given(st.lists(_atom_sets, min_size=1, max_size=4))
@@ -94,7 +94,7 @@ def test_optimal_aggregation_equals_the_pairwise_fold(family: list[frozenset[Sym
 
 @given(_litsets)
 def test_static_label_equals_reported_label(litset: frozenset[Symbol]) -> None:
-    # option C / single source: every check carries its label statically, and it is the SAME label
+    # single source: every check carries its label statically, and it is the SAME label
     # its CheckReport carries on every (field-free) arm — one source, no divergence.
     for check in _every_check(litset):
         assert check.label  # statically readable, non-empty
@@ -120,7 +120,7 @@ def test_brave_passes_iff_subset(litset: frozenset[Symbol], aggregate: frozenset
 
 def test_query_check_subject_discriminates_instances() -> None:
     # the repeatable @query tag: label groups, subject (the surface) discriminates instances, so a
-    # consumer/explain can tell two @query checks apart before any solve (Pass B MAJOR).
+    # consumer/explain can tell two @query checks apart before any solve.
     goal = QueryLiteral("p", True, (Var("X"),))
     singleton = query_matches(GroundQuery(Answer.yes, (Function("a"),)))
     conjunctive = query_matches(GroundQuery(Answer.no, (Function("a"), Function("b"))))
@@ -134,7 +134,7 @@ def test_query_check_subject_discriminates_instances() -> None:
 
 
 def test_containment_builders_reject_an_empty_litset() -> None:
-    # the empty-litset false-PASS (∅ ⊆ A) is rejected at construction, mirroring the parser (§2.1).
+    # the empty-litset false-PASS (∅ ⊆ A) is rejected at construction, mirroring the parser.
     for build in (
         cautious_contains,
         brave_contains,

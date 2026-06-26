@@ -1,8 +1,8 @@
-"""``harness`` — run a discovered case end-to-end and render its outcome (dx#9).
+"""``harness`` — run a discovered case end-to-end and render its outcome.
 
 ``run_case(case)`` is the impure orchestrator (derive runs → solve → check), ``case_verdict`` folds
 the per-check reports to a case verdict (FAIL dominates UNDECIDED dominates PASS), and ``render`` is
-the pure human diagnostic that keeps FAIL and UNDECIDED distinct (§7a) and surfaces the case's
+the pure human diagnostic that keeps FAIL and UNDECIDED distinct and surfaces the case's
 ``@note`` prose and its ``contract_source`` provenance (Model A — from the case, not the reports).
 """
 
@@ -66,7 +66,7 @@ def test_run_case_passes_expected_unsat(tmp_path: Path) -> None:
 
 
 def test_run_case_is_undecided_on_a_hit_budget(tmp_path: Path) -> None:
-    # a huge enumeration with a zero budget times out → UNDECIDED, never FAIL/UNSAT (§7a).
+    # a huge enumeration with a zero budget times out → UNDECIDED, never FAIL/UNSAT.
     case = self_contained(tmp_path, "{ p(1..30) }. #show p/1.\n% @expect sat\n% @count 5\n")
     reports = run_case(case, budget=0.0)
     assert case_verdict(reports) is Verdict.UNDECIDED
@@ -87,7 +87,7 @@ def test_run_case_runs_multiple_coalesced_checks_in_deterministic_order(tmp_path
 def test_run_case_propagates_a_misrouted_plan_as_a_harness_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Keystone decision 6: a misroute is a HarnessError, never a verdict — run_case re-raises it
+    # a misroute is a HarnessError, never a verdict — run_case re-raises it
     # (it does NOT swallow it as a CheckReport). runs_for is correct-by-construction, so inject it.
     case = self_contained(tmp_path, "a. #show a/0.\n% @expect sat\n")
 

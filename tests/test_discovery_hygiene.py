@@ -1,4 +1,4 @@
-"""Corpus hygiene (spec §5): orphan libraries (the §1 backstop) and undeclared-solver cases,
+"""Corpus hygiene: orphan libraries (the backstop) and undeclared-solver cases,
 computed over the resolved ``#include`` closure. This is the pure detection (``inspect_corpus``);
 the ``--strict`` warn/error dial lives at the CLI (``test_cli_strict``)."""
 

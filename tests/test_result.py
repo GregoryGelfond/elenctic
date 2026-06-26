@@ -50,7 +50,7 @@ def test_observable_distinct_by_assignment() -> None:
     a = Function("a")
     o1 = Observable(frozenset({a}), frozenset({(Function("x"), 1)}))
     o2 = Observable(frozenset({a}), frozenset({(Function("x"), 2)}))
-    assert o1 != o2  # spec §2.0: equal shown, different assign ⇒ distinct observables
+    assert o1 != o2  # equal shown, different assign ⇒ distinct observables
 
 
 def test_verdict_three_valued() -> None:
@@ -78,7 +78,7 @@ def test_consistent_base_is_abstract() -> None:
 
 
 def test_determination_three_arm_match_is_total() -> None:
-    # the mandatory trichotomy (aspis §5.1): match the arm before reading any field. That this
+    # the mandatory trichotomy: match the arm before reading any field. That this
     # function type-checks with no fall-through is the proof the 3-arm dispatch is exhaustive.
     def classify(determination: Determination) -> str:
         match determination:

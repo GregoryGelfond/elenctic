@@ -1,9 +1,9 @@
-"""Pure per-tag checks (spec §3, dx#9): each is a :class:`Check`, a labelled callable.
+"""Pure per-tag checks: each is a :class:`Check`, a labelled callable.
 
 A check reads one :class:`~elenctic.result.Determination` and returns a :class:`CheckReport` — a
-three-valued :class:`~elenctic.result.Verdict` *plus the diagnostic* (dx#9): the contract ``label``
+three-valued :class:`~elenctic.result.Verdict` *plus the diagnostic*: the contract ``label``
 and an expected-vs-actual ``message``. A check **dispatches on the arm**: ``Inconclusive`` →
-``UNDECIDED`` (§7a — a timeout is never FAIL); ``Inconsistent`` (AS(P)=∅) → the tag's static
+``UNDECIDED`` (a timeout is never FAIL); ``Inconsistent`` (AS(P)=∅) → the tag's static
 verdict (``@expect unsat`` PASSes, every other tag FAILs); ``Consistent`` → the per-tag decision,
 reading the fields it declared via the accessor seam (``result.*_of``).
 
@@ -12,7 +12,7 @@ run whose mode populates those fields (a misroute is a ``RoutingError`` at plan 
 any solve; the ``SeamError`` at the accessor seam is the should-never-fire backstop). So a
 ``Consistent``-arm read never misses, and there is no per-field ``is None`` guard. The
 containment checks (⊆) reject an empty litset at construction — mirroring ``terms.parse_litset``
-(§2.1) at the type boundary — so no vacuous ``∅ ⊆ A`` PASS arises.
+at the type boundary — so no vacuous ``∅ ⊆ A`` PASS arises.
 
 Checks are pure over a ``Determination``; only ``solvers.py`` touches clingo/clingcon.
 """
@@ -62,10 +62,10 @@ from elenctic.terms import contrary, intersect_all
 
 @dataclass(frozen=True, slots=True)
 class CheckReport:
-    """The outcome of one check: a three-valued verdict plus the diagnostic to surface (dx#9, §3).
+    """The outcome of one check: a three-valued verdict plus the diagnostic to surface.
 
     ``label`` is the contract tag (e.g. ``@cautious optimal``); ``message`` is the diagnostic the
-    user sees on a non-``PASS`` (the expected-vs-actual reading, dx#9). The report is exactly the
+    user sees on a non-``PASS`` (the expected-vs-actual reading). The report is exactly the
     *check's* output — the case's ``@note`` and its source provenance are the renderer's concern,
     read from the case (Model A), not carried here.
     """
@@ -82,11 +82,11 @@ _UNDECIDED_MESSAGE = "the solve did not complete within the budget — UNDECIDED
 class Check:
     """A pure per-tag check carrying its contract-tag ``label``, an optional ``subject`` (the
     instance discriminator for a repeatable tag), and the ``reads`` it declares — all first-class
-    and statically inspectable (dx#9 / option C / the wiring rule's LHS), so a consumer can group,
+    and statically inspectable (the wiring rule's LHS), so a consumer can group,
     identify, route, or *explain* a check before any solve.
 
-    Calling it dispatches on the ``Determination`` arm: ``Inconclusive`` → ``UNDECIDED`` (§7a,
-    before any decision logic); ``Inconsistent`` → the static ``_inconsistent`` verdict (AS(P)=∅
+    Calling it dispatches on the ``Determination`` arm: ``Inconclusive`` → ``UNDECIDED`` (before
+    any decision logic); ``Inconsistent`` → the static ``_inconsistent`` verdict (AS(P)=∅
     needs no field); ``Consistent`` → ``_decide`` over the shape, reading fields through the seam.
     ``_inconsistent`` and ``_decide`` are private and omitted from ``repr`` so the arm dispatch
     cannot be bypassed. ``label`` is the contract tag (it groups checks); ``subject`` discriminates
@@ -141,7 +141,7 @@ def _unsat_fail(reason: str) -> tuple[Verdict, str]:
 
 def _require_nonempty(items: frozenset[Symbol] | frozenset[tuple[Symbol, int]], tag: str) -> None:
     """Reject an empty litset/assignment at construction: ``∅ ⊆ A`` would be a vacuous PASS (the
-    empty-litset false-PASS), mirroring ``terms.parse_litset``'s §2.1 rejection at the boundary."""
+    empty-litset false-PASS), mirroring ``terms.parse_litset``'s rejection at the boundary."""
     if not items:
         raise ValueError(f"{tag} needs a non-empty set — an empty set is a vacuous claim")
 
@@ -234,7 +234,7 @@ def _containment(
     litset: frozenset[Symbol], aggregate: frozenset[Symbol], glyph: str
 ) -> tuple[Verdict, str]:
     """``L ⊆ aggregate`` where ``aggregate`` is ⋂ or ⋃ (``glyph``), surfacing the missing atoms on a
-    failure (§3)."""
+    failure."""
     if litset <= aggregate:
         return Verdict.PASS, f"{_show_set(litset)} ⊆ {glyph} = {_show_set(aggregate)}"
     return (
@@ -245,7 +245,7 @@ def _containment(
 
 
 def _count(expected: int, actual: int, noun: str) -> tuple[Verdict, str]:
-    """``len(base) == n`` — total at both ends (``@count 0`` over ∅ is ``PASS``, §3)."""
+    """``len(base) == n`` — total at both ends (``@count 0`` over ∅ is ``PASS``)."""
     if actual == expected:
         return Verdict.PASS, f"|{noun}| = {expected}"
     return Verdict.FAIL, f"expected {expected} {noun}, got {actual}"
@@ -255,7 +255,7 @@ def _count(expected: int, actual: int, noun: str) -> tuple[Verdict, str]:
 
 
 def expect_sat() -> Check:
-    """``@expect sat``: ``AS(P) ≠ ∅`` — a model exists (spec §2.1). Reads only the arm."""
+    """``@expect sat``: ``AS(P) ≠ ∅`` — a model exists. Reads only the arm."""
     return _check(
         "@expect sat",
         frozenset(),
@@ -265,7 +265,7 @@ def expect_sat() -> Check:
 
 
 def expect_unsat() -> Check:
-    """``@expect unsat``: ``AS(P) = ∅`` — no model (spec §2.1). PASSes on the ``Inconsistent`` arm;
+    """``@expect unsat``: ``AS(P) = ∅`` — no model. PASSes on the ``Inconsistent`` arm;
     on a ``Consistent`` run it FAILs with the witnessing model (the DEFAULT witness)."""
 
     def decide(shape: Consistent) -> tuple[Verdict, str]:
@@ -318,7 +318,7 @@ def count_is(n: int) -> Check:
 
 
 def cautious_contains(litset: frozenset[Symbol]) -> Check:
-    """``@cautious { L }``: ``L ⊆ ⋂`` (the cautious consequences, §3)."""
+    """``@cautious { L }``: ``L ⊆ ⋂`` (the cautious consequences)."""
     _require_nonempty(litset, "@cautious")
     return _check(
         "@cautious",
@@ -329,7 +329,7 @@ def cautious_contains(litset: frozenset[Symbol]) -> Check:
 
 
 def brave_contains(litset: frozenset[Symbol]) -> Check:
-    """``@brave { L }``: ``L ⊆ ⋃`` (the brave consequences, §3)."""
+    """``@brave { L }``: ``L ⊆ ⋃`` (the brave consequences)."""
     _require_nonempty(litset, "@brave")
     return _check(
         "@brave",
@@ -340,7 +340,7 @@ def brave_contains(litset: frozenset[Symbol]) -> Check:
 
 
 def cost_is(cost: tuple[int, ...]) -> Check:
-    """``@cost { c }``: the proven optimum cost vector equals ``c`` by value (§3, §2.0)."""
+    """``@cost { c }``: the proven optimum cost vector equals ``c`` by value."""
 
     def decide(shape: Consistent) -> tuple[Verdict, str]:
         actual = optimum_of(shape).cost
@@ -480,7 +480,7 @@ def assign_optimal_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
 def _cautious_localization(
     conjuncts: tuple[Symbol, ...], cautious: frozenset[Symbol], computed: Answer
 ) -> str:
-    """Localize a failing *singleton* ground query off ⋂ (§2.4)."""
+    """Localize a failing *singleton* ground query off ⋂."""
     if computed is Answer.unknown:
         return f" (not entailed: {_show_set(c for c in conjuncts if c not in cautious)})"
     if computed is Answer.no:
@@ -506,7 +506,7 @@ def _census_localization(
 def _ground_verdict(
     answer: Answer, conjuncts: tuple[Symbol, ...], computed: Answer, localization: str
 ) -> tuple[Verdict, str]:
-    """The program's computed answer vs the contract's, for a ground query (§3)."""
+    """The program's computed answer vs the contract's, for a ground query."""
     if computed is answer:
         return Verdict.PASS, f"{_show_set(conjuncts)}: computed {answer.value}"
     return (
@@ -521,7 +521,7 @@ def _binding_verdict(
     expected: frozenset[tuple[Symbol, ...]],
     found: set[tuple[Symbol, ...]],
 ) -> tuple[Verdict, str]:
-    """The program's computed binding set vs the contract's, for a binding query (§3)."""
+    """The program's computed binding set vs the contract's, for a binding query."""
     if found == expected:
         return Verdict.PASS, f"{_show_goal(goal)}: computed {answer.value} {_show_tuples(found)}"
     return (
@@ -532,12 +532,11 @@ def _binding_verdict(
 
 
 def query_matches(query: Query) -> Check:
-    """The ``@query`` check (Gelfond–Kahl Def 2.2.2, corrected per the errata; spec §3): the
+    """The ``@query`` check (Gelfond–Kahl Def 2.2.2, corrected per the errata): the
     program's computed answer matches the contract's. A *singleton* ground query reads the cautious
     consequences ⋂; a *conjunctive* (n≥2) ground query reads the model census (its "no"/"unknown" is
     a per-model property ⋂ cannot express); a yes/no binding reads ⋂; an unknown binding reads ⋂ and
-    ⋃. On the ``Inconsistent`` arm (AS(P)=∅) every query FAILs — each is vacuously yes-and-no (§2.2,
-    FR#9).
+    ⋃. On the ``Inconsistent`` arm (AS(P)=∅) every query FAILs — each is vacuously yes-and-no.
 
     The form comes from the shared ``query.classify`` (so route and read never disagree); the shape
     match supplies the typed pattern bindings. Each arm builds its decide closure and returns

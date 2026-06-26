@@ -1,7 +1,7 @@
-"""Outcome data types: ``Observable``, ``Verdict``, and the ``Determination`` (spec §3, §5).
+"""Outcome data types: ``Observable``, ``Verdict``, and the ``Determination``.
 
-A solved program yields a :data:`Determination` — aspis's three-arm outcome surface
-(``~/Projects/aspis/docs/spec.md §5``): :class:`Inconsistent` (AS(P)=∅), :class:`Inconclusive`
+A solved program yields a :data:`Determination` — a three-arm outcome surface:
+:class:`Inconsistent` (AS(P)=∅), :class:`Inconclusive`
 (the solve was cut off), or one of the :class:`Consistent` family. Each ``Consistent`` shape carries
 *exactly* the observations its run-mode computes, so a field's absence is a type fact, not a
 sentinel — there is no ``NotConfigured`` and no per-field guard.
@@ -56,15 +56,15 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class Observable:
-    """One answer set as the program makes it observable (spec §2.0).
+    """One answer set as the program makes it observable.
 
     ``shown`` is the projection onto ``#show``-declared predicates; ``assign`` is the theory (CSP)
     assignment, empty for pure clingo. Two answer sets with equal ``shown`` but different ``assign``
-    are distinct observables (spec §2.0, TR4), which the value equality of this frozen dataclass
+    are distinct observables, which the value equality of this frozen dataclass
     realises directly.
 
     Invariant (single-valued, not enforced by the type): ``assign`` holds at most one ``(v, k)`` per
-    CSP variable ``v`` — the hashable realisation of the spec's ``Mapping[Symbol, int]`` (§3); the
+    CSP variable ``v`` — the hashable realisation of a ``Mapping[Symbol, int]``; the
     solver facade constructs it so.
     """
 
@@ -73,7 +73,7 @@ class Observable:
 
 
 class Verdict(Enum):
-    """Three-valued check outcome (spec §3). ``UNDECIDED`` is never ``FAIL`` (spec §7a)."""
+    """Three-valued check outcome. ``UNDECIDED`` is never ``FAIL``."""
 
     PASS = "pass"
     FAIL = "fail"
@@ -99,12 +99,12 @@ class Field(Enum):
 
 @dataclass(frozen=True, slots=True)
 class Optimum:
-    """The proven optimum of an optimisation run (aspis register, §5). ``cost`` is the
-    priority-ordered (lexicographic) cost vector, compared positionally (spec §2.0), never a scalar.
+    """The proven optimum of an optimisation run. ``cost`` is the
+    priority-ordered (lexicographic) cost vector, compared positionally, never a scalar.
 
     Read it as a proof-token of *proven* optimality: by construction convention only ``solvers.py``
     builds one, and only once the optimum is proven, so a best-so-far never reaches a check. Python
-    has no private constructor (as aspis's Rust does), so this is a construction convention, not a
+    has no private constructor, so this is a construction convention, not a
     type guarantee — sound because checks are pure readers that never mint a result.
     """
 
@@ -117,13 +117,13 @@ class Optimum:
 
 @dataclass(frozen=True, slots=True)
 class Inconsistent:
-    """AS(P) = ∅: the program has no answer set, exhaustively determined (spec §5). A check reads
+    """AS(P) = ∅: the program has no answer set, exhaustively determined. A check reads
     the arm, not a field — ``@expect unsat`` PASSes here, every other tag FAILs."""
 
 
 @dataclass(frozen=True, slots=True)
 class Inconclusive:
-    """The solve was cut off before deciding (timeout). §7a: every check → ``UNDECIDED``. Carries no
+    """The solve was cut off before deciding (timeout). Every check → ``UNDECIDED``. Carries no
     fields, so reading an answer off a timed-out solve is inexpressible."""
 
 

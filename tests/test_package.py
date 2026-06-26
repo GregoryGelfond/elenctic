@@ -41,7 +41,7 @@ def test_public_api_exports_the_pipeline_and_outcome_surface() -> None:
 
 
 def test_public_api_is_curated_not_dumped() -> None:
-    # __all__ is explicitly sorted (a curated surface, dx#11 — not a dump of every importable name).
+    # __all__ is explicitly sorted (a curated surface — not a dump of every importable name).
     assert elenctic.__all__ == sorted(elenctic.__all__)
     # internals stay internal: the Consistent shapes, accessors, check builders are not exported.
     for internal in ("ConsistentWitness", "witness_of", "has_model", "Field", "_Collector"):

@@ -1,12 +1,12 @@
-"""``runs_for``: derive the solver runs (and their checks) a contract requires (spec §3, §4).
+"""``runs_for``: derive the solver runs (and their checks) a contract requires.
 
-A :class:`Run` is one solve configuration (:class:`Mode`) plus the self-describing checks (dx#9 /
-option C) that read its result; tags that can share a configuration coalesce onto one run, while the
+A :class:`Run` is one solve configuration (:class:`Mode`) plus the self-describing checks that read
+its result; tags that can share a configuration coalesce onto one run, while the
 genuinely different searches (brave vs cautious vs optimisation vs full enumeration) stay separate.
 ``runs_for`` is **pure**: it reads the :class:`~elenctic.expectation.Expectation` and constructs
 runs; only ``solvers.py`` ever touches a solver.
 
-The wiring rule (the field-compatibility keystone): a check declares ``reads`` and a mode
+The wiring rule (the field-compatibility invariant): a check declares ``reads`` and a mode
 ``populates`` a field-set; ``Run.__post_init__`` asserts ``reads ⊆ populates(mode)`` per check, so a
 stale route fails loud at plan construction (a :class:`~elenctic.result.HarnessError`), before any
 solve — never as a costumed verdict.
@@ -36,9 +36,9 @@ from elenctic.result import (
 
 
 class Mode(Enum):
-    """One solve configuration of the fixed run-configuration taxonomy (spec §3). The taxonomy is
+    """One solve configuration of the fixed run-configuration taxonomy. The taxonomy is
     solver-agnostic; ``args`` is its **clingo** lowering (the search-config flags this mode runs
-    as). The facade adds output flags such as ``--project`` (§6.1); the explain surface names the
+    as). The facade adds output flags such as ``--project``; the explain surface names the
     mode itself, which another backend would lower differently."""
 
     DEFAULT = "default"
@@ -50,7 +50,7 @@ class Mode(Enum):
 
     @property
     def args(self) -> tuple[str, ...]:
-        """The clingo arg tuple this mode lowers to — its search-config flags (spec §3); another
+        """The clingo arg tuple this mode lowers to — its search-config flags; another
         backend would lower the same mode differently."""
         return _ARGS[self]
 
@@ -251,7 +251,7 @@ def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
         add(Mode.OPTIMAL_ENUM, checks.assign_optimal_contains(exp.assign_optimal))
     if exp.cost is not None:
         # @cost rides the shared Opt(P) enumeration when an optimal-base mode is present, else a
-        # cheap single-optimum solve (spec §3). Optimal-base membership lives on Sat (one home).
+        # cheap single-optimum solve. Optimal-base membership lives on Sat (one home).
         add(Mode.OPTIMAL_ENUM if exp.has_optimal_base else Mode.OPTIMAL, checks.cost_is(exp.cost))
 
     for query in exp.queries:
@@ -260,7 +260,7 @@ def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
     # @expect sat reads ∅ (the arm is the answer), so it could ride any run; it rides an existing
     # full enumeration when one exists, else a cheap DEFAULT 1-model solve — deliberately not an
     # expensive cautious/brave/opt run, which is likelier to time out and report UNDECIDED where the
-    # cheap solve would decide satisfiability. (Existential-aware §7a is deferred — ledger.)
+    # cheap solve would decide satisfiability. (A more refined UNDECIDED treatment is deferred.)
     add(Mode.ENUM_ALL if Mode.ENUM_ALL in bucket else Mode.DEFAULT, checks.expect_sat())
 
     return tuple(
@@ -279,7 +279,7 @@ def _query_mode(query: Query) -> Mode:
     route and read never disagree. A *singleton* ground query and a yes/no binding read ⋂
     (``CAUTIOUS_ALL``); a *conjunctive* ground query needs the census (its "no" is ``∀M ∃i: l̄i∈M``,
     not a ⋂ property), and an ``unknown`` binding needs ⋃ too, so both ride a full enumeration
-    (``ENUM_ALL``, which carries both ⋂ and ⋃; spec §3 / §2.4)."""
+    (``ENUM_ALL``, which carries both ⋂ and ⋃)."""
     form = classify(query)
     match form:
         case QueryForm.SINGLETON_GROUND | QueryForm.BINDING_SETTLED:

@@ -1,6 +1,6 @@
 """``expectation.parse`` — the positive cases: every tag parses to the right cell of
 the ``Expectation`` sum, continuation lines join an unclosed litset (and *only* that),
-and a source label threads file:line provenance into diagnostics (spec §2.1)."""
+and a source label threads file:line provenance into diagnostics."""
 
 from clingo import Symbol, parse_term
 
@@ -9,7 +9,7 @@ from elenctic.query import Answer, GroundQuery
 
 
 def L(*names: str) -> frozenset[Symbol]:
-    """A litset built from clingo ground terms — the structural-equality currency (spec §2.0)."""
+    """A litset built from clingo ground terms — the structural-equality currency."""
     return frozenset(parse_term(name) for name in names)
 
 
@@ -106,7 +106,7 @@ def test_model_optimal_populates_the_optimal_cell() -> None:
 
 
 def test_optimal_is_sugar_for_model_optimal_and_coexists_with_model() -> None:
-    # @optimal ≡ @model optimal (spec §2.1); the all-base @model is a distinct cell (§2.2 rule 2).
+    # @optimal ≡ @model optimal; the all-base @model is a distinct cell.
     exp = parse("% @expect sat\n% @model { a }\n% @optimal { b }\n")
     assert isinstance(exp, Sat)
     assert exp.model == WL("a")
@@ -153,7 +153,7 @@ def test_continuation_joins_an_unclosed_litset() -> None:
 
 
 def test_continuation_does_not_absorb_prose_after_a_closed_litset() -> None:
-    # dx#1 / spec §2.1: a continuation absorbs only the unfinished litset, never a later
+    # a continuation absorbs only the unfinished litset, never a later
     # prose '%' line (e.g. a '% Run: …' header). Were the prose absorbed, @model's payload
     # would not end in '}' and _base_litset would reject it.
     exp = parse(
@@ -180,7 +180,7 @@ def test_ignores_non_contract_comments_and_program_code() -> None:
 
 
 def test_parse_accepts_a_source_label() -> None:
-    # dx#2: a source label is accepted (and threaded into diagnostics — see the well-formed suite).
+    # a source label is accepted (and threaded into diagnostics — see the well-formed suite).
     exp = parse("% @expect sat\n% @model { a }\n", source="cases/x.lp")
     assert isinstance(exp, Sat)
     assert exp.model == WL("a")
@@ -214,15 +214,15 @@ def test_assign_term_with_internal_comma_is_one_binding() -> None:
 
 
 def test_cost_accepts_a_negative_component() -> None:
-    # A cost component is a clingo integer (a #minimize weight may be negative); §2.0 reads the
-    # natural objective value. The regex accepts -?\d+ deliberately (beyond the plan's \d+ sketch).
+    # A cost component is a clingo integer (a #minimize weight may be negative); the contract reads
+    # the natural objective value. The regex accepts -?\d+ deliberately.
     exp = parse("% @expect sat\n% @cost { -4 2 }\n")
     assert isinstance(exp, Sat)
     assert exp.cost == (-4, 2)
 
 
 def test_note_with_brace_does_not_absorb_a_following_prose_line() -> None:
-    # A @note is free prose to end of line (spec §2.1 EBNF), not a litset: a stray '{' in note
+    # A @note is free prose to end of line, not a litset: a stray '{' in note
     # prose must NOT turn the following '%' line into a continuation. Only litset-bearing tags
     # span continuations.
     exp = parse(

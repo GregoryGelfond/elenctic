@@ -1,4 +1,4 @@
-"""The solver registry is the single source of truth for valid solver names (R5)."""
+"""The solver registry is the single source of truth for valid solver names."""
 
 from typing import get_args
 
@@ -10,7 +10,7 @@ def test_solvers_are_clingo_and_clingcon() -> None:
 
 
 def test_facades_cover_exactly_the_registry() -> None:
-    # solvers._FACADES must implement exactly the registered names — no drift (R5).
+    # solvers._FACADES must implement exactly the registered names — no drift.
     from elenctic.solvers import _FACADES
 
     assert frozenset(_FACADES) == SOLVERS

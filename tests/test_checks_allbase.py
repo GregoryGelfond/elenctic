@@ -1,9 +1,9 @@
-"""Unit tests for the all-base and scalar checks (spec §3, dx#9).
+"""Unit tests for the all-base and scalar checks.
 
 Each check is a pure ``Check`` mapping a ``Determination`` to a ``CheckReport`` (a three-valued
-``Verdict`` plus the dx#9 diagnostic). A check dispatches on the arm — ``Inconclusive`` → UNDECIDED
-(§7a), ``Inconsistent`` → the AS(P)=∅ verdict, ``Consistent`` → the per-tag decision read through
-the accessor seam. Pure over a ``Determination``; tested with no solver (spec §4).
+``Verdict`` plus the diagnostic). A check dispatches on the arm — ``Inconclusive`` → UNDECIDED,
+``Inconsistent`` → the AS(P)=∅ verdict, ``Consistent`` → the per-tag decision read through
+the accessor seam. Pure over a ``Determination``; tested with no solver.
 """
 
 import pytest
@@ -75,12 +75,12 @@ def test_check_returns_checkreport_with_verdict_and_label() -> None:
 )
 def test_undecided_when_inconclusive(check: Check, label: str) -> None:
     report = check(Inconclusive())
-    assert report.verdict is Verdict.UNDECIDED  # a timeout is never FAIL (§7a)
+    assert report.verdict is Verdict.UNDECIDED  # a timeout is never FAIL
     assert report.label == label
 
 
 def test_check_label_is_readable_without_solving() -> None:
-    # dx#9 / option C: the contract-tag label is a first-class attribute, readable before any solve.
+    # the contract-tag label is a first-class attribute, readable before any solve.
     assert expect_sat().label == "@expect sat"
     assert has_model(wm("a")).label == "@model"
     assert cautious_contains(lits("a")).label == "@cautious"
