@@ -254,6 +254,16 @@ relevant strong-negation literals, so a "no" means *known* false, not merely und
 John (English) is afraid of math by default; Mary is a stated strong exception (known *not* afraid);
 Bob, in CS, is genuinely undetermined — the **unknown** that the consequence vocabulary cannot name.
 
+## A worked corpus
+
+[kr-domains](https://github.com/GregoryGelfond/kr-domains) puts elenctic to work on a broad set of
+real encodings: shortest paths, the travelling salesman, task allocation, the equality-generalized
+TSP, n-queens, send-more-money, and task scheduling, with **118 contract-checked cases** across
+clingo and clingcon. It is a literate ASP corpus written to be read, and elenctic's client #1: each
+scenario `#include`s its domain encoding and declares its solver, and the whole corpus runs directly
+under `elenctic`. It is the place to see the `@`-tags, the declared-solver model, and the
+clingo / clingcon pairings used at scale.
+
 ## Running
 
 The standalone runner discovers cases under a target (a single `.lp` file or a directory) and runs them:
@@ -269,9 +279,10 @@ Each pipeline stage is also runnable for inspection: `python -m elenctic.expecta
 `python -m elenctic.discovery <file-or-dir>` (the discovered cases), and
 `python -m elenctic.solvers <MODE> <file.lp>` (one solve's outcome, with clingo).
 
-A corpus consumes elenctic as a library: `discover(target)` yields cases, `run_case(case)` yields the
-per-check reports, `case_verdict(reports)` folds them, and `render(case, reports)` formats the
-diagnostic, ready to drive `pytest.mark.parametrize`.
+Beyond the CLI, elenctic is also a **library**: `discover(target)` yields cases, `run_case(case)`
+yields the per-check reports, `case_verdict(reports)` folds them, and `render(case, reports)` formats
+the diagnostic — ready to drive `pytest.mark.parametrize` when you want elenctic's results inside
+another test runner.
 
 ## Discovery
 
