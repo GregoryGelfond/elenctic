@@ -30,9 +30,11 @@ class ProgramFacts:
     """The program-level facts the §2.2-rule-4 preconditions and the R1 theory gate read.
 
     ``has_theory_atom`` — any ``&``-atom in the resolved program (R1: presence, not identity).
-    ``shown`` — the sign-aware shown predicate names (``{"reachable", "-reachable"}``); empty for a
-    bare ``#show.`` (show-nothing). ``has_optimization`` — a ``#minimize``/``#maximize``/``:~`` is
-    present. ``has_maximize`` — at least one objective uses ``#maximize`` (a negated-weight
+    ``shown`` — the shown predicate **signatures** ``(sign-aware-name, arity)`` (e.g.
+    ``{("reachable", 1), ("-reachable", 1)}``); empty for a bare ``#show.`` (show-nothing). Keyed by
+    full signature, not name, so a ``@query`` contrary ``#show``n at the wrong arity is a *loud*
+    precondition failure, not a silent miss. ``has_optimization`` — a ``#minimize``, ``#maximize``,
+    or ``:~`` is present. ``has_maximize`` — an objective uses ``#maximize`` (a negated-weight
     ``Minimize`` node), which v1 cannot present a natural ``@cost`` over (the guarded miscompile).
     ``sources`` — the resolved source files the program spans: the case file plus every file it
     transitively ``#include``s, taken from clingo's own parse (each statement's ``location``), so it
@@ -43,7 +45,7 @@ class ProgramFacts:
     """
 
     has_theory_atom: bool
-    shown: frozenset[str]
+    shown: frozenset[tuple[str, int]]
     has_optimization: bool
     has_maximize: bool
     sources: frozenset[Path]
@@ -68,7 +70,7 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
         filenames = {statement.location.begin.filename for statement in statements}
         return ProgramFacts(
             has_theory_atom=any(node.ast_type is ASTType.TheoryAtom for node in nodes),
-            shown=frozenset(name for node in nodes if (name := _shown_name(node))),
+            shown=frozenset(sig for node in nodes if (sig := _shown_signature(node))),
             # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes — one signal.
             has_optimization=any(node.ast_type is ASTType.Minimize for node in nodes),
             has_maximize=any(_is_maximize(node) for node in nodes),
@@ -115,30 +117,32 @@ def _is_maximize(node: AST) -> bool:
     )
 
 
-def _shown_name(node: AST) -> str | None:
-    """The sign-aware shown predicate name a ``#show`` node declares, or ``None`` if it declares no
-    predicate (a bare ``#show.`` restricts shown output to nothing). Handles the signature form
-    (``#show p/1.`` → ``ShowSignature`` with ``name``/``positive``) and the conditional-term form
-    (``#show p(X) : body.`` → ``ShowTerm`` whose ``term`` carries the name). Arity-blind (keyed by
-    name only), matching the current contrary logic; ``ShowSignature.arity`` is now available at
-    the AST level, so the deferred arity-aware upgrade is cheap (a ledger note, not this scope)."""
+def _shown_signature(node: AST) -> tuple[str, int] | None:
+    """The ``(sign-aware-name, arity)`` signature a ``#show`` node declares, or ``None`` if it
+    declares no predicate (a bare ``#show.`` restricts shown output to nothing). Handles the
+    signature form (``#show p/1.`` → ``ShowSignature`` with ``name``/``positive``/``arity``) and the
+    conditional-term form (``#show p(X) : body.`` → ``ShowTerm`` whose ``term`` carries name +
+    arity). Keyed by full signature, so a ``@query`` contrary ``#show``n at the wrong arity is a
+    loud precondition failure rather than a silent miss (§2.0)."""
     if node.ast_type is ASTType.ShowSignature:
         if not node.name:
             return None
-        return node.name if node.positive else f"-{node.name}"
+        name = node.name if node.positive else f"-{node.name}"
+        return (name, node.arity)
     if node.ast_type is ASTType.ShowTerm:
-        return _predicate_name(node.term)
+        return _predicate_signature(node.term)
     return None
 
 
-def _predicate_name(term: AST) -> str | None:
-    """The sign-aware predicate name of a shown term: ``p`` / ``-p`` for a (possibly negated)
-    function or constant; ``None`` for anything else (a non-predicate term has no name)."""
+def _predicate_signature(term: AST) -> tuple[str, int] | None:
+    """The ``(sign-aware-name, arity)`` of a shown term: ``(p, n)`` / ``(-p, n)`` for a (possibly
+    negated) function or constant; ``None`` for anything else (a non-predicate term has no name)."""
     if term.ast_type is ASTType.UnaryOperation and term.operator_type == UnaryOperator.Minus:
-        inner = _predicate_name(term.argument)
-        return f"-{inner}" if inner else None
+        inner = _predicate_signature(term.argument)
+        return (f"-{inner[0]}", inner[1]) if inner else None
     if term.ast_type is ASTType.Function:
-        return term.name or None
+        return (term.name, len(term.arguments)) if term.name else None
     if term.ast_type is ASTType.SymbolicTerm:
-        return getattr(term.symbol, "name", None) or None
+        name = getattr(term.symbol, "name", None)
+        return (name, len(term.symbol.arguments)) if name else None
     return None

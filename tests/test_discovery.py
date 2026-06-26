@@ -188,11 +188,24 @@ def test_malformed_contract_propagates_a_sourced_error(tmp_path: Path) -> None:
         discover(case)
 
 
-def test_shown_vocabulary_is_sign_aware(tmp_path: Path) -> None:
+def test_shown_vocabulary_is_sign_and_arity_aware(tmp_path: Path) -> None:
     case = write(tmp_path / "c.lp", "% @expect sat\n#show reachable/1.\n#show -reachable/1.\n")
-    assert discover(case)[0].shown == frozenset({"reachable", "-reachable"})
+    assert discover(case)[0].shown == frozenset({("reachable", 1), ("-reachable", 1)})
 
 
 def test_bare_show_shows_nothing(tmp_path: Path) -> None:
     case = write(tmp_path / "c.lp", "% @expect sat\n#show.\n")
     assert discover(case)[0].shown == frozenset()
+
+
+def test_query_unknown_with_a_wrong_arity_contrary_is_loud(tmp_path: Path) -> None:
+    # The arity-blind silent-wrong-PASS closure: a ground @query unknown whose contrary is #shown
+    # at the WRONG arity (a typo) is unobservable, so it must be LOUD, never certified PASS by
+    # defaulting to unknown. The shown vocabulary is keyed by (name, arity).
+    case = write(
+        tmp_path / "typo.lp",
+        "% @expect sat\n% @query unknown { reachable(c) }\n"
+        "reachable(a). -reachable(c).\n#show reachable/1.\n#show -reachable/2.\n",
+    )
+    with pytest.raises(DiscoveryError, match=r"-reachable/1"):
+        discover(case)

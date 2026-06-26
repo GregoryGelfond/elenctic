@@ -41,12 +41,12 @@ def test_no_theory_atom_in_plain_asp(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "p(1). q :- p(1). #show q/0.\n")
     facts = inspect((case,))
     assert facts.has_theory_atom is False
-    assert facts.shown == frozenset({"q"})
+    assert facts.shown == frozenset({("q", 0)})
 
 
 def test_shown_vocabulary_is_sign_aware(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "#show reachable/1. #show -reachable/1.\n")
-    assert inspect((case,)).shown == frozenset({"reachable", "-reachable"})
+    assert inspect((case,)).shown == frozenset({("reachable", 1), ("-reachable", 1)})
 
 
 def test_sources_are_the_files_clingo_actually_loads(tmp_path: Path) -> None:
@@ -72,7 +72,7 @@ def test_bare_show_nothing_contributes_no_name(tmp_path: Path) -> None:
 
 def test_conditional_term_show_contributes_its_function_name(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "p(1). q(1).\n#show p(X) : q(X).\n")
-    assert "p" in inspect((case,)).shown
+    assert ("p", 1) in inspect((case,)).shown
 
 
 def test_optimization_and_maximize_by_weight_sign(tmp_path: Path) -> None:
@@ -124,9 +124,9 @@ def test_minimize_in_a_comment_is_not_optimization(tmp_path: Path) -> None:
 
 def test_commented_show_does_not_pollute_the_shown_vocabulary(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "% #show -reachable/1.\n#show reachable/1.\n")
-    assert inspect((case,)).shown == frozenset({"reachable"})  # the commented -reachable is prose
+    assert inspect((case,)).shown == frozenset({("reachable", 1)})  # commented -reachable is prose
 
 
 def test_percent_inside_a_string_term_is_not_a_comment(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", 'label("50% done"). #show label/1.\n')
-    assert inspect((case,)).shown == frozenset({"label"})
+    assert inspect((case,)).shown == frozenset({("label", 1)})

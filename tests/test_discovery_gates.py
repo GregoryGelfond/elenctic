@@ -17,7 +17,7 @@ WHERE = Path("case.lp")
 def _facts(
     *,
     theory: bool = False,
-    shown: frozenset[str] = frozenset(),
+    shown: frozenset[tuple[str, int]] = frozenset(),
     opt: bool = False,
     maxi: bool = False,
 ) -> ProgramFacts:
@@ -67,7 +67,7 @@ def test_r2_cost_over_maximize_is_loud_the_silent_miscompile_guard() -> None:
 def test_r2_no_query_needs_the_contrary_shown() -> None:
     exp = parse("% @expect sat\n% @query no { reachable(a) }\n")
     with pytest.raises(DiscoveryError, match=r"contrary literal.*-reachable"):
-        check_program(exp, _facts(shown=frozenset({"reachable"})), "clingo", WHERE)
+        check_program(exp, _facts(shown=frozenset({("reachable", 1)})), "clingo", WHERE)
 
 
 def test_a_clean_program_passes_all_gates() -> None:
@@ -110,4 +110,15 @@ def test_contrary_precondition_per_query_form(query_tag: str, needs_contrary: bo
 
 def test_contrary_precondition_passes_when_the_contrary_is_shown() -> None:
     exp = parse("% @expect sat\n% @query no { reachable(x) }\n")
-    check_program(exp, _facts(shown=frozenset({"reachable", "-reachable"})), "clingo", WHERE)
+    shown = frozenset({("reachable", 1), ("-reachable", 1)})
+    check_program(exp, _facts(shown=shown), "clingo", WHERE)
+
+
+def test_binding_query_with_a_wrong_arity_contrary_is_loud() -> None:
+    # The arity-aware closure on the highest-risk path (binding @query, via goal.arity): a goal
+    # whose contrary is shown at the WRONG arity is unobservable, so it must be loud. reachable(X)
+    # needs -reachable/1; a -reachable/2 (a typo) does not satisfy it.
+    exp = parse("% @expect sat\n% @query unknown { reachable(X) } = { a }\n")
+    shown = frozenset({("reachable", 1), ("-reachable", 2)})
+    with pytest.raises(DiscoveryError, match=r"-reachable/1"):
+        check_program(exp, _facts(shown=shown), "clingo", WHERE)

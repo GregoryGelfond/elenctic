@@ -20,12 +20,9 @@ non-UTF-8 *library* is simply skipped, while a non-UTF-8 *case* is collected and
 a friendly, ``source:line``-carrying diagnostic — a ``ContractError`` if the bad byte falls in a
 parsed ``@``-payload, otherwise a ``ProgramError`` at the resolved-program inspection.
 
-A v1 boundary, recorded not silent: the shown vocabulary is keyed by sign-aware **name**, not
-``(name, arity)``. An arity-mismatched contrary is usually a *loud* ``@query`` FAIL, but a ground
-``@query unknown`` whose contrary is ``#show``n at the *wrong* arity (an authoring typo) slips the
-name-keyed precondition and can be certified a **silent wrong PASS** — the one residual hole.
-``program.inspect`` exposes ``ShowSignature.arity``, so the arity-aware vocabulary that closes it is
-a cheap, ledgered refinement (deferred).
+The shown vocabulary is keyed by sign-aware predicate **signature** ``(name, arity)`` (from
+``program.inspect``), so a ``@query`` contrary ``#show``n at the wrong arity (an authoring typo) is
+a *loud* precondition failure, not a silent wrong PASS — the former name-only boundary is closed.
 """
 
 from dataclasses import dataclass
@@ -60,16 +57,16 @@ class DiscoveryError(Exception):
 class Case:
     """One case: a contract-bearing ``.lp`` file, its declared solver, parsed contract, and shown
     vocabulary. The program under test is this file plus its resolved ``#include``s — the loader
-    resolves them, so ``files`` is just this path. ``shown`` is the sign-aware shown predicate
-    vocabulary (e.g. ``{"reachable", "-reachable"}``) read from the resolved program.
-    Provenance-rich (dx#2): the parsed ``expectation`` keeps its ``notes``, and
+    resolves them, so ``files`` is just this path. ``shown`` is the shown predicate **signatures**
+    ``(sign-aware-name, arity)`` (e.g. ``{("reachable", 1), ("-reachable", 1)}``) read from the
+    resolved program. Provenance-rich (dx#2): the parsed ``expectation`` keeps its ``notes``, and
     ``contract_source`` names the case file, so a renderer or docs tool reads it without re-parsing.
     """
 
     path: Path
     solver: Solver
     expectation: Expectation
-    shown: frozenset[str]
+    shown: frozenset[tuple[str, int]]
 
     @property
     def contract_source(self) -> Path:
@@ -281,17 +278,18 @@ def check_program(
         )
     for query in expectation.queries:
         if missing := _contraries_needed(query) - facts.shown:
-            names = ", ".join(sorted(missing))
+            needed = ", ".join(f"{name}/{arity}" for name, arity in sorted(missing))
+            have = ", ".join(f"{name}/{arity}" for name, arity in sorted(facts.shown))
             raise DiscoveryError(
-                f"{where}: a no/unknown @query reads the contrary literal(s) {names} off the shown "
-                f"⋂/⋃, but they are absent from the shown vocabulary {sorted(facts.shown)} "
+                f"{where}: a no/unknown @query reads the contrary literal(s) {needed} off the "
+                f"shown ⋂/⋃, but they are absent from the shown vocabulary {{{have}}} "
                 "(spec §2.0/§2.2 rule 4)"
             )
 
 
-def _contraries_needed(query: Query) -> frozenset[str]:
-    """The sign-aware shown names a query reads as *contraries* off ⋂/⋃, which must therefore be
-    shown (§2.2 rule 4):
+def _contraries_needed(query: Query) -> frozenset[tuple[str, int]]:
+    """The shown predicate *signatures* ``(sign-aware-name, arity)`` a query reads as *contraries*
+    off ⋂/⋃, which must therefore be shown (§2.2 rule 4):
 
     - a ground ``no``/``unknown`` query needs **every** conjunct's contrary. Under the corrected ∀∃
       "no" (each model may falsify a *different* conjunct, §2.1), any conjunct's contrary may be the
@@ -303,27 +301,32 @@ def _contraries_needed(query: Query) -> frozenset[str]:
       empty ``no`` set is vacuously satisfiable without ``-q``: rule 4's "non-empty" carve-out).
 
     A ``yes`` query reads only the positive literal, covered by the §2.0/RR9 shown-vocabulary
-    precondition (deferred), not this rule. Names are arity-blind (see the module docstring)."""
+    precondition (deferred), not this rule. Keyed by full ``(name, arity)`` signature, so a contrary
+    ``#show``n at the wrong arity is caught loud rather than silently unobservable."""
     match query:
         case GroundQuery(answer, conjuncts) if answer in {Answer.no, Answer.unknown}:
-            return frozenset(_signed_name(contrary(conjunct)) for conjunct in conjuncts)
+            return frozenset(_signed_signature(contrary(conjunct)) for conjunct in conjuncts)
         case BindingQuery(Answer.unknown, goal, _):
-            return frozenset({_goal_contrary_name(goal)})
+            return frozenset({_goal_contrary_signature(goal)})
         case BindingQuery(Answer.no, goal, bindings) if bindings:
-            return frozenset({_goal_contrary_name(goal)})
+            return frozenset({_goal_contrary_signature(goal)})
         case _:
             return frozenset()
 
 
-def _signed_name(literal: Symbol) -> str:
-    """The sign-aware predicate name of a ground literal, matching ``#show`` vocabulary (§2.0)."""
-    return literal.name if literal.positive else f"-{literal.name}"
+def _signed_signature(literal: Symbol) -> tuple[str, int]:
+    """The ``(sign-aware-name, arity)`` signature of a ground literal, matching ``#show`` vocabulary
+    (§2.0)."""
+    name = literal.name if literal.positive else f"-{literal.name}"
+    return (name, len(literal.arguments))
 
 
-def _goal_contrary_name(goal: QueryLiteral) -> str:
-    """The sign-aware name of a binding goal's *contrary* literal (§2.2 rule 4): ``-q`` for ``q``,
-    ``q`` for ``-q`` — the dual of :func:`_signed_name` for a (non-ground) goal."""
-    return f"-{goal.name}" if goal.positive else goal.name
+def _goal_contrary_signature(goal: QueryLiteral) -> tuple[str, int]:
+    """The ``(sign-aware-name, arity)`` of a binding goal's *contrary* literal (§2.2 rule 4):
+    ``-q`` for ``q``, ``q`` for ``-q`` — the dual of :func:`_signed_signature` for a (non-ground)
+    goal, carrying the goal's arity."""
+    name = f"-{goal.name}" if goal.positive else goal.name
+    return (name, goal.arity)
 
 
 def _main() -> None:
