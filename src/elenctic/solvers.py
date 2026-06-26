@@ -249,6 +249,13 @@ def _optimal_enum_two_phase(
 _CLINGO_ENUM_MODES: Final = frozenset({Mode.ENUM_ALL, Mode.OPTIMAL_ENUM})
 
 
+def _quiet(_code: object, _message: str) -> None:
+    """Swallow clingo's own ground/solve diagnostics ("atom does not occur in any rule head", the
+    projection caveat, …) instead of letting them leak to stderr: elenctic owns its diagnostics, the
+    program has already cleared ``program.inspect``'s parse, and a real ground/solve failure raises
+    regardless. Mirrors the captured logger ``program.inspect`` already uses (friendly output)."""
+
+
 def run_clingo(
     mode: Mode,
     program: str = "",
@@ -260,7 +267,7 @@ def run_clingo(
     enumeration modes always project (information-preserving on clingo: ``assign ≡ ∅``), a pure
     performance win; a projecting clingo run still yields the full shape (``projects_to_shown`` is
     always ``False`` for a non-theory solver)."""
-    control = Control(_solver_args(mode, project or mode in _CLINGO_ENUM_MODES))
+    control = Control(_solver_args(mode, project or mode in _CLINGO_ENUM_MODES), logger=_quiet)
     _add_program(control, program, files)
     control.ground([("base", [])])
     if mode is Mode.OPTIMAL_ENUM:
@@ -290,7 +297,7 @@ def run_clingcon(
     # clingcon is untyped; isolate the dynamic boundary to this one Any (the theory handle), so the
     # downstream register/rewrite/prepare/on_model/assignment calls need no scattered ignores.
     theory: Any = clingcon.ClingconTheory()  # type: ignore[no-untyped-call]
-    control = Control(_solver_args(mode, project))
+    control = Control(_solver_args(mode, project), logger=_quiet)
     theory.register(control)
     _rewrite_program(control, theory, program, files)
     control.ground([("base", [])])

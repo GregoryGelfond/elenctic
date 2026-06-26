@@ -381,3 +381,23 @@ def test_run_clingcon_rewrites_theory_inside_an_include(tmp_path: Path) -> None:
     assert isinstance(det, ConsistentEnumeration)
     xs = {val for obs in observables_of(det) for sym, val in obs.assign if str(sym) == "x"}
     assert xs == {2, 3}  # the included &dom/&sum BOTH rewrote and propagated (x=1 pruned)
+
+
+def test_run_clingo_suppresses_clingo_diagnostics_on_stderr(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    # clingo logs "atom does not occur in any rule head" for a body-only atom; the solve facade
+    # captures clingo's logger (as program.inspect does) so it never leaks to stderr. elenctic owns
+    # its diagnostics; a genuine ground/solve error still raises, unaffected by the logger.
+    run_clingo(Mode.ENUM_ALL, program="p :- q. #show p/0.")
+    assert "does not occur" not in capfd.readouterr().err
+
+
+def test_run_clingcon_suppresses_solver_diagnostics_on_stderr(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    pytest.importorskip("clingcon")
+    from elenctic.solvers import run_clingcon
+
+    run_clingcon(Mode.ENUM_ALL, program="p :- q. #show p/0.")
+    assert "does not occur" not in capfd.readouterr().err
