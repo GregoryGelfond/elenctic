@@ -15,6 +15,8 @@ unknown binding rides ``ENUM_ALL``; and ``@cost`` rides ``OPTIMAL_ENUM`` with an
 ``OPTIMAL``.
 """
 
+from typing import assert_never
+
 import pytest
 from clingo import Function
 from hypothesis import given
@@ -30,6 +32,7 @@ from elenctic.result import (
     Field,
 )
 from elenctic.run import (
+    Collection,
     Mode,
     RoutingError,
     Run,
@@ -62,11 +65,44 @@ def run_at(contract: str, mode: Mode) -> Run:
 
 def test_mode_lowers_to_its_solver_args() -> None:
     assert Mode.DEFAULT.args == ()
-    assert Mode.ENUM_ALL.args == ("--models=0",)
-    assert Mode.CAUTIOUS_ALL.args == ("--enum-mode=cautious", "--models=0")
-    assert Mode.BRAVE_ALL.args == ("--enum-mode=brave", "--models=0")
+    assert Mode.ENUM_ALL.args == ("--models=0", "--opt-mode=ignore")
+    assert Mode.CAUTIOUS_ALL.args == ("--enum-mode=cautious", "--models=0", "--opt-mode=ignore")
+    assert Mode.BRAVE_ALL.args == ("--enum-mode=brave", "--models=0", "--opt-mode=ignore")
     assert Mode.OPTIMAL_ENUM.args == ("--opt-mode=optN", "--models=0")
     assert Mode.OPTIMAL.args == ("--opt-mode=opt",)
+
+
+def test_every_mode_states_the_optimization_its_collection_requires() -> None:
+    # The invariant the lowering table exists to keep: a mode's optimization flag is fixed by the
+    # collection its reading ranges over, and no mode may leave it to clingo's default. clingo
+    # defaults to --opt-mode=opt, which prunes an enumerating solve to the branch-and-bound
+    # improving sequence -- neither AS(P) nor Opt(P), and dependent on the search heuristic. Pinning
+    # the arg tuples (above) records what each mode lowers to; this pins *why*, so a mode added
+    # without an opt-mode fails here rather than answering a question nobody asked.
+    for mode in Mode:
+        stated = tuple(arg for arg in mode.args if arg.startswith("--opt-mode="))
+        match mode.asks:
+            case Collection.ALL:
+                assert stated == ("--opt-mode=ignore",), (
+                    f"{mode.name} reads AS(P), so it must switch the objective off"
+                )
+            case Collection.OPTIMAL:
+                assert stated in (("--opt-mode=opt",), ("--opt-mode=optN",)), (
+                    f"{mode.name} reads Opt(P), so it must switch the objective on"
+                )
+            case Collection.WITNESS:
+                assert stated == (), (
+                    f"{mode.name} reads satisfiability and one arbitrary witness, both invariant "
+                    "under an objective, so it states no opt-mode"
+                )
+            case _:
+                assert_never(mode.asks)
+
+
+def test_every_mode_declares_the_collection_it_reads() -> None:
+    # Totality: a Mode added without an `asks` entry KeyErrors here, before it can reach a solver.
+    for mode in Mode:
+        assert isinstance(mode.asks, Collection)
 
 
 def test_mode_keyed_structures_agree_over_both_projection_coordinates() -> None:

@@ -55,7 +55,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         SeamError,
         Verdict,
     )
-    from elenctic.run import Mode, RoutingError, Run, runs_for
+    from elenctic.run import Collection, Mode, RoutingError, Run, runs_for
     from elenctic.solvers import solve
 
 __version__ = "0.1.1"
@@ -88,7 +88,9 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "SeamError",
         "Verdict",
     ),
-    "elenctic.run": ("Mode", "RoutingError", "Run", "runs_for"),
+    # Collection is curated in because it is reachable through Mode.asks: a type a caller can
+    # obtain from the public API should be nameable from it.
+    "elenctic.run": ("Collection", "Mode", "RoutingError", "Run", "runs_for"),
     "elenctic.solvers": ("solve",),
 }
 

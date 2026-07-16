@@ -10,6 +10,12 @@ The wiring rule (the field-compatibility invariant): a check declares ``reads`` 
 ``populates`` a field-set; ``Run.__post_init__`` asserts ``reads ⊆ populates(mode)`` per check, so a
 stale route fails loud at plan construction (a :class:`~elenctic.result.HarnessError`), before any
 solve — never as a costumed verdict.
+
+The optimization rule (the collection invariant): a mode declares, as :class:`Collection`, which
+answer-set collection its reading ranges over, and its ``args`` must state the optimization that
+collection requires rather than inherit the solver's default. A gating test holds every mode to it,
+because the two are silently separable — a mode reading AS(P) under an active objective still
+returns *an* answer, just to a question nobody asked.
 """
 
 from dataclasses import dataclass
@@ -35,11 +41,40 @@ from elenctic.result import (
 )
 
 
+class Collection(Enum):
+    """The answer-set collection a mode's reading ranges over — the structural fact that fixes how
+    that mode must treat an objective.
+
+    An objective (``#minimize``/``#maximize``/``:~``) *ranks* answer sets; it never removes any, so
+    AS(P) is the same set with or without one. A solver need not enumerate it that way, though:
+    clingo optimizes by default, and an enumerating solve under an active objective reports only the
+    branch-and-bound **improving sequence** — the models the search passed through on its way to the
+    optimum. That sequence is neither AS(P) nor Opt(P), it varies with the search heuristic, and
+    clingo says so where consequences are involved ("Consequences may depend on enumeration order").
+
+    So the collection a mode reads determines its optimization lowering, and every mode must state
+    that lowering rather than inherit clingo's default:
+
+    - ``ALL`` — the reading ranges over AS(P), so the objective must be switched **off**.
+    - ``OPTIMAL`` — the reading ranges over Opt(P), so the objective must be switched **on**.
+    - ``WITNESS`` — the reading ranges over neither: satisfiability, and the identity of a single
+      witnessing model, are both invariant under an objective, so no setting can change the answer.
+    """
+
+    ALL = "AS(P)"
+    OPTIMAL = "Opt(P)"
+    WITNESS = "one answer set"
+
+
 class Mode(Enum):
     """One solve configuration of the fixed run-configuration taxonomy. The taxonomy is
     solver-agnostic; ``args`` is its **clingo** lowering (the search-config flags this mode runs
     as). The facade adds output flags such as ``--project``; the explain surface names the
-    mode itself, which another backend would lower differently."""
+    mode itself, which another backend would lower differently.
+
+    ``asks`` names the collection the mode's reading ranges over; it is what makes the mode's
+    optimization flag derivable by a reader rather than a fact about clingo's defaults, and a
+    gating test holds ``args`` to it."""
 
     DEFAULT = "default"
     ENUM_ALL = "enum-all"
@@ -54,12 +89,33 @@ class Mode(Enum):
         backend would lower the same mode differently."""
         return _ARGS[self]
 
+    @property
+    def asks(self) -> Collection:
+        """The answer-set collection this mode's reading ranges over — the fact its optimization
+        lowering follows from. Solver-agnostic: another backend reads the same collection and
+        lowers it to whatever switches its own optimization off or on."""
+        return _ASKS[self]
 
+
+_ASKS: Final[dict[Mode, Collection]] = {
+    Mode.DEFAULT: Collection.WITNESS,
+    Mode.ENUM_ALL: Collection.ALL,
+    Mode.BRAVE_ALL: Collection.ALL,
+    Mode.CAUTIOUS_ALL: Collection.ALL,
+    Mode.OPTIMAL_ENUM: Collection.OPTIMAL,
+    Mode.OPTIMAL: Collection.OPTIMAL,
+}
+
+# Every entry states its own optimization: an AS(P) reading switches the objective off
+# (``--opt-mode=ignore``), an Opt(P) reading switches it on, and DEFAULT reads only what an
+# objective cannot change. None inherits clingo's optimize-by-default, which would confine an
+# enumerating solve to the improving sequence — see ``Collection``. A gating test holds each tuple
+# to the collection its mode declares, so a mode added here cannot quietly omit the flag.
 _ARGS: Final[dict[Mode, tuple[str, ...]]] = {
     Mode.DEFAULT: (),
-    Mode.ENUM_ALL: ("--models=0",),
-    Mode.BRAVE_ALL: ("--enum-mode=brave", "--models=0"),
-    Mode.CAUTIOUS_ALL: ("--enum-mode=cautious", "--models=0"),
+    Mode.ENUM_ALL: ("--models=0", "--opt-mode=ignore"),
+    Mode.BRAVE_ALL: ("--enum-mode=brave", "--models=0", "--opt-mode=ignore"),
+    Mode.CAUTIOUS_ALL: ("--enum-mode=cautious", "--models=0", "--opt-mode=ignore"),
     Mode.OPTIMAL_ENUM: ("--opt-mode=optN", "--models=0"),
     Mode.OPTIMAL: ("--opt-mode=opt",),
 }
