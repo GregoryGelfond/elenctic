@@ -30,12 +30,14 @@ from elenctic.result import (
     ConsistentShownCensus,
     ConsistentShownOptimalCensus,
     Field,
+    HarnessError,
 )
 from elenctic.run import (
     Collection,
     Mode,
     RoutingError,
     Run,
+    collection_of,
     populates,
     reads_full_census,
     runs_for,
@@ -99,10 +101,35 @@ def test_every_mode_states_the_optimization_its_collection_requires() -> None:
                 assert_never(mode.asks)
 
 
-def test_every_mode_declares_the_collection_it_reads() -> None:
-    # Totality: a Mode added without an `asks` entry KeyErrors here, before it can reach a solver.
+def test_every_field_is_a_reading_of_exactly_one_collection() -> None:
+    # Totality over Field: a Field added without an entry KeyErrors here. This partition is the
+    # structure a mode's collection derives from, so a gap would silently mis-derive a lowering.
+    for field in Field:
+        assert isinstance(collection_of(frozenset({field})), Collection)
+
+
+def test_a_modes_collection_is_derived_from_the_fields_it_populates() -> None:
+    # `asks` is not declared per mode, it follows from the fields the mode populates. So a mode
+    # cannot claim to read one collection while populating another's fields: the claim and the
+    # evidence for it are the same object, and there is nothing to keep in sync.
     for mode in Mode:
-        assert isinstance(mode.asks, Collection)
+        assert mode.asks is collection_of(populates(mode))
+
+
+def test_a_modes_collection_survives_projection() -> None:
+    # Projecting sheds the full-census token (multiplicity/assignment). It must not change WHICH
+    # collection the run reads, or a projecting run would need a different optimization lowering
+    # from the same mode.
+    for mode in Mode:
+        assert collection_of(populates(mode, projects_to_shown=True)) is mode.asks
+
+
+def test_fields_of_two_collections_in_one_run_are_a_loud_contradiction() -> None:
+    # The derivation is sound only because a mode's fields agree on one collection. A run reading
+    # both AS(P) and Opt(P) cannot be lowered to a single opt-mode, so it fails loud rather than
+    # silently picking one and answering half the question.
+    with pytest.raises(HarnessError, match=r"CAUTIOUS_ALL|disagree|one collection"):
+        collection_of(frozenset({Field.CAUTIOUS, Field.OPTIMUM}))
 
 
 def test_mode_keyed_structures_agree_over_both_projection_coordinates() -> None:

@@ -42,8 +42,8 @@ from elenctic.result import (
 
 
 class Collection(Enum):
-    """The answer-set collection a mode's reading ranges over — the structural fact that fixes how
-    that mode must treat an objective.
+    """What a reading ranges over — the structural fact that fixes how a run must treat an
+    objective.
 
     An objective (``#minimize``/``#maximize``/``:~``) *ranks* answer sets; it never removes any, so
     AS(P) is the same set with or without one. A solver need not enumerate it that way, though:
@@ -52,18 +52,50 @@ class Collection(Enum):
     optimum. That sequence is neither AS(P) nor Opt(P), it varies with the search heuristic, and
     clingo says so where consequences are involved ("Consequences may depend on enumeration order").
 
-    So the collection a mode reads determines its optimization lowering, and every mode must state
-    that lowering rather than inherit clingo's default:
+    So what a reading ranges over settles the optimization it needs:
 
-    - ``ALL`` — the reading ranges over AS(P), so the objective must be switched **off**.
-    - ``OPTIMAL`` — the reading ranges over Opt(P), so the objective must be switched **on**.
-    - ``WITNESS`` — the reading ranges over neither: satisfiability, and the identity of a single
-      witnessing model, are both invariant under an objective, so no setting can change the answer.
+    - ``ALL`` — all of AS(P), so the objective must be switched **off** or the search prunes it.
+    - ``OPTIMAL`` — all of Opt(P), which only an active objective identifies, so **on**.
+    - ``WITNESS`` — a single answer set, and only its existence and contents. An objective changes
+      neither whether one exists nor whether a given model qualifies, so the setting cannot move
+      the answer and the reading states none.
     """
 
     ALL = "AS(P)"
     OPTIMAL = "Opt(P)"
     WITNESS = "one answer set"
+
+
+# Which collection each field is a reading of. This is the partition the mode-level collection
+# derives from: a field IS a question about a collection (⋂/⋃/a census are questions about AS(P);
+# a cost or an optimal census about Opt(P); a witness about one model), so a mode's collection is
+# whatever its fields agree on rather than a second thing to declare and keep in step.
+_READS: Final[dict[Field, Collection]] = {
+    Field.WITNESS: Collection.WITNESS,
+    Field.SHOWN_CENSUS: Collection.ALL,
+    Field.FULL_CENSUS: Collection.ALL,
+    Field.CAUTIOUS: Collection.ALL,
+    Field.BRAVE: Collection.ALL,
+    Field.SHOWN_OPTIMAL_CENSUS: Collection.OPTIMAL,
+    Field.FULL_OPTIMAL_CENSUS: Collection.OPTIMAL,
+    Field.OPTIMUM: Collection.OPTIMAL,
+}
+
+
+def collection_of(fields: frozenset[Field]) -> Collection:
+    """The collection a run populating ``fields`` reads. Total over the field vocabulary (an
+    unmapped field raises ``KeyError`` at import, before any solve), and defined only where the
+    fields agree: a run reading both AS(P) and Opt(P) has no single optimization to lower to, so it
+    is a contradiction, reported loudly rather than resolved by picking one."""
+    collections = {_READS[field] for field in fields}
+    if len(collections) != 1:
+        named = ", ".join(sorted(collection.value for collection in collections)) or "nothing"
+        raise HarnessError(
+            f"a run reading {{{', '.join(sorted(field.value for field in fields))}}} would read "
+            f"{named}, but a run reads exactly one collection — it lowers to one optimization "
+            "setting, and no setting answers for two (an elenctic bug, not a verdict)"
+        )
+    return collections.pop()
 
 
 class Mode(Enum):
@@ -97,20 +129,11 @@ class Mode(Enum):
         return _ASKS[self]
 
 
-_ASKS: Final[dict[Mode, Collection]] = {
-    Mode.DEFAULT: Collection.WITNESS,
-    Mode.ENUM_ALL: Collection.ALL,
-    Mode.BRAVE_ALL: Collection.ALL,
-    Mode.CAUTIOUS_ALL: Collection.ALL,
-    Mode.OPTIMAL_ENUM: Collection.OPTIMAL,
-    Mode.OPTIMAL: Collection.OPTIMAL,
-}
-
 # Every entry states its own optimization: an AS(P) reading switches the objective off
 # (``--opt-mode=ignore``), an Opt(P) reading switches it on, and DEFAULT reads only what an
 # objective cannot change. None inherits clingo's optimize-by-default, which would confine an
 # enumerating solve to the improving sequence — see ``Collection``. A gating test holds each tuple
-# to the collection its mode declares, so a mode added here cannot quietly omit the flag.
+# to the collection its mode reads, so a mode added here cannot quietly omit the flag.
 _ARGS: Final[dict[Mode, tuple[str, ...]]] = {
     Mode.DEFAULT: (),
     Mode.ENUM_ALL: ("--models=0", "--opt-mode=ignore"),
@@ -129,6 +152,14 @@ _POPULATES: Final[dict[Mode, frozenset[Field]]] = {
         {Field.SHOWN_OPTIMAL_CENSUS, Field.FULL_OPTIMAL_CENSUS, Field.OPTIMUM}
     ),
     Mode.OPTIMAL: frozenset({Field.OPTIMUM}),
+}
+
+# Derived, never declared: a mode reads whatever its fields read, so it cannot claim one collection
+# while populating another's. Built at import, so a mode whose fields disagree — or a field absent
+# from _READS — fails before any solve rather than mis-lowering one. Projection is a no-op here: it
+# sheds a full-census token whose collection its siblings already carry, which a test pins.
+_ASKS: Final[dict[Mode, Collection]] = {
+    mode: collection_of(fields) for mode, fields in _POPULATES.items()
 }
 
 # The projection-sensitive (full-census) token each projecting mode SHEDS when it projects to shown:
