@@ -270,6 +270,15 @@ def check_program(
             f"{where}: @cost/@optimal/an optimal-base tag needs an optimizing encoding "
             "(#minimize/#maximize/:~), but the resolved program has none"
         )
+    if expectation.reads_all_answer_sets and facts.has_theory_optimization:
+        raise DiscoveryError(
+            f"{where}: @model/@count/@assign/@cautious/@brave/@query read AS(P), the whole "
+            "answer-set collection, which elenctic cannot compute over a theory-native objective "
+            "(&minimize/&maximize): the theory's propagator drives the search to the optimum, and "
+            "no clingo setting switches that off, so the enumeration would silently cover only "
+            "part of AS(P). Move the objective into ASP (#minimize/#maximize/:~), which the AS(P) "
+            "modes do switch off, or drop to @expect sat / an optimal-base tag"
+        )
     if expectation.cost is not None and facts.has_maximize:
         raise DiscoveryError(
             f"{where}: @cost over a #maximize objective is not supported in v1 — clingo reports a "

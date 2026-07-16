@@ -12,6 +12,7 @@ Principle: *contract-level facts read the case file; program-level facts read th
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 from clingo.ast import AST, ASTType, UnaryOperator
 from clingo.ast import parse_files as _parse_files
@@ -36,6 +37,10 @@ class ProgramFacts:
     precondition failure, not a silent miss. ``has_optimization`` — a ``#minimize``, ``#maximize``,
     or ``:~`` is present. ``has_maximize`` — an objective uses ``#maximize`` (a negated-weight
     ``Minimize`` node), which v1 cannot present a natural ``@cost`` over (the guarded miscompile).
+    ``has_theory_optimization`` — a *theory-native* objective (``&minimize``/``&maximize``) is
+    present. It is tracked apart from ``has_optimization`` because it is a different object: the
+    theory's own propagator drives it, so clingo's optimization switches do not reach it, and a
+    reading of AS(P) cannot be made honest by turning them off.
     ``sources`` — the resolved source files the program spans: the case file plus every file it
     transitively ``#include``s, taken from clingo's own parse (each statement's ``location``), so it
     matches clingo's include resolution exactly (block comments, every include form). The corpus
@@ -48,6 +53,7 @@ class ProgramFacts:
     shown: frozenset[tuple[str, int]]
     has_optimization: bool
     has_maximize: bool
+    has_theory_optimization: bool
     sources: frozenset[Path]
 
 
@@ -75,6 +81,7 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
             # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes — one signal.
             has_optimization=any(node.ast_type is ASTType.Minimize for node in nodes),
             has_maximize=any(_is_maximize(node) for node in nodes),
+            has_theory_optimization=any(_is_theory_objective(node) for node in nodes),
             sources=frozenset(Path(name).resolve() for name in filenames if name),
         )
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
@@ -101,6 +108,22 @@ def _descendants(node: object) -> Iterator[AST]:
     elif not isinstance(node, (str, bytes)) and hasattr(node, "__iter__"):
         for item in node:
             yield from _descendants(item)
+
+
+# The theory-native objective directives. clingcon spells its objective `&minimize`/`&maximize`,
+# which parse as a TheoryAtom whose term is a plain function of that name — no `Minimize` node, so
+# the clingo-native signal never sees them.
+_THEORY_OBJECTIVES: Final = frozenset({"minimize", "maximize"})
+
+
+def _is_theory_objective(node: AST) -> bool:
+    """A theory-native objective (``&minimize { … }`` / ``&maximize { … }``): a ``TheoryAtom``
+    whose term names one of them. Read by name, since the objective belongs to the theory rather
+    than to clingo: no ``Minimize`` node is produced and no clingo optimization flag reaches it."""
+    return (
+        node.ast_type is ASTType.TheoryAtom
+        and getattr(node.term, "name", None) in _THEORY_OBJECTIVES
+    )
 
 
 def _is_maximize(node: AST) -> bool:

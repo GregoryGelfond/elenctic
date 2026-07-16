@@ -20,12 +20,14 @@ def _facts(
     shown: frozenset[tuple[str, int]] = frozenset(),
     opt: bool = False,
     maxi: bool = False,
+    theory_opt: bool = False,
 ) -> ProgramFacts:
     return ProgramFacts(
         has_theory_atom=theory,
         shown=shown,
         has_optimization=opt,
         has_maximize=maxi,
+        has_theory_optimization=theory_opt,
         sources=frozenset(),  # check_program does not read sources (hygiene-only); empty is fine
     )
 
@@ -55,6 +57,45 @@ def test_r2_optimal_base_needs_an_optimizing_encoding() -> None:
     exp = parse("% @expect sat\n% @optimal { a }\n")
     with pytest.raises(DiscoveryError, match=r"optimizing encoding"):
         check_program(exp, _facts(opt=False), "clingo", WHERE)
+
+
+def test_a_bare_as_p_tag_over_a_theory_objective_is_loud() -> None:
+    # The converse of the optimizing-encoding gate, and the reason it needs one: clingo's
+    # --opt-mode=ignore switches off *clingo's* optimize statements, but a clingcon &minimize is a
+    # theory atom its own propagator drives, so the AS(P) modes cannot switch it off. They would
+    # read a pruned model stream and answer a different question, silently. Refuse instead.
+    exp = parse("% @expect sat\n% @cautious { a }\n")
+    with pytest.raises(DiscoveryError, match=r"&minimize.*AS\(P\)|theory objective"):
+        check_program(exp, _facts(theory=True, theory_opt=True), "clingcon", WHERE)
+
+
+def test_every_bare_as_p_tag_is_caught_over_a_theory_objective() -> None:
+    # The gate keys on the contract reading AS(P), not on one tag: every tag that rides an AS(P)
+    # run is refused, including @query, which reaches AS(P) by two different routes.
+    for contract in (
+        "% @expect sat\n% @count 2\n",
+        "% @expect sat\n% @model { a }\n",
+        "% @expect sat\n% @cautious { a }\n",
+        "% @expect sat\n% @brave { a }\n",
+        "% @expect sat\n% @query yes { a }\n",
+        "% @expect sat\n% @query yes { a, b }\n",
+    ):
+        with pytest.raises(DiscoveryError, match=r"&minimize"):
+            check_program(parse(contract), _facts(theory=True, theory_opt=True), "clingcon", WHERE)
+
+
+def test_expect_sat_alone_over_a_theory_objective_is_allowed() -> None:
+    # @expect sat reads only whether an answer set exists. A theory objective ranks answer sets
+    # without removing any, so it cannot change that: there is nothing to refuse.
+    exp = parse("% @expect sat\n")
+    check_program(exp, _facts(theory=True, theory_opt=True), "clingcon", WHERE)
+
+
+def test_a_bare_as_p_tag_without_a_theory_objective_is_allowed() -> None:
+    # The gate is scoped to the theory objective. A bare AS(P) tag over a clingo #minimize is fine:
+    # --opt-mode=ignore does switch that off, which is the whole point of stating it.
+    exp = parse("% @expect sat\n% @cautious { a }\n")
+    check_program(exp, _facts(theory=True, opt=True), "clingcon", WHERE)
 
 
 def test_r2_cost_over_maximize_is_loud_the_silent_miscompile_guard() -> None:

@@ -132,6 +132,35 @@ def test_fields_of_two_collections_in_one_run_are_a_loud_contradiction() -> None
         collection_of(frozenset({Field.CAUTIOUS, Field.OPTIMUM}))
 
 
+@pytest.mark.parametrize(
+    "contract",
+    [
+        "% @expect sat\n",
+        "% @expect sat\n% @count 2\n",
+        "% @expect sat\n% @model { a }\n",
+        "% @expect sat\n% @cautious { a }\n",
+        "% @expect sat\n% @brave { a }\n",
+        "% @expect sat\n% @query yes { a }\n",
+        "% @expect sat\n% @query yes { a, b }\n",
+        "% @expect sat\n% @optimal { a }\n",
+        "% @expect sat\n% @count optimal 2\n",
+        "% @expect sat\n% @cost { 3 }\n",
+        "% @expect sat\n% @cautious optimal { a }\n",
+        "% @expect sat\n% @count 2\n% @optimal { a }\n",
+        "% @expect unsat\n",
+    ],
+)
+def test_reads_all_answer_sets_agrees_with_the_runs_derived(contract: str) -> None:
+    # Discovery gates on `reads_all_answer_sets` where AS(P) is not computable, while `runs_for`
+    # decides which runs actually read it. The two are written separately, so pin them together:
+    # the contract claims to read AS(P) exactly when an AS(P) run is derived for it. A tag added to
+    # one and not the other shows up here rather than as a gate that silently stops firing.
+    expectation = parse(contract)
+    derived = any(run.mode.asks is Collection.ALL for run in runs_for(expectation))
+    claimed = isinstance(expectation, Sat) and expectation.reads_all_answer_sets
+    assert claimed == derived
+
+
 def test_mode_keyed_structures_agree_over_both_projection_coordinates() -> None:
     # The Mode-keyed structures (.args, populates, shape_for) stay total over Mode × the projection
     # coordinate: a Mode added without an entry KeyErrors here.
