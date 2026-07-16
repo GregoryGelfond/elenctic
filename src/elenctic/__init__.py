@@ -58,7 +58,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     from elenctic.run import Collection, Mode, RoutingError, Run, runs_for
     from elenctic.solvers import solve
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 # The curated public API, grouped by home module — the single source for both __all__ and the lazy
 # resolver, so the two cannot drift. Internals (the Consistent shapes, accessors, check builders,
