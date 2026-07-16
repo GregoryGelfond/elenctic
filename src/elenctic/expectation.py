@@ -109,6 +109,26 @@ class Sat:
         return self.cost is not None or self.has_optimal_base
 
     @property
+    def reads_all_answer_sets(self) -> bool:
+        """Whether any tag here reads AS(P) *as a whole*: the bare-base census and consequence tags
+        (``@model``, ``@count``, ``@assign``, ``@cautious``, ``@brave``) and every ``@query``, whose
+        three-valued answer reads ⋂ (and ⋃) however it routes. The complement is deliberate:
+        ``@expect sat`` reads only that *an* answer set exists, and the ``optimal`` base reads
+        Opt(P), so neither is included.
+
+        Discovery gates on this where AS(P) is not computable. The single home for AS(P)-reading
+        membership, as :attr:`has_optimal_base` is for the optimal base; a test holds it to the runs
+        ``run.runs_for`` actually derives, so the two cannot drift."""
+        return (
+            self.model is not None
+            or self.count is not None
+            or bool(self.assign)
+            or bool(self.cautious)
+            or bool(self.brave)
+            or bool(self.queries)
+        )
+
+    @property
     def requires_theory(self) -> bool:
         """Whether this contract presupposes a *theory* solver: ``@assign`` / ``@assign optimal``
         read the theory half of the observable, and a ``where``-qualified witness binds it jointly —
