@@ -20,7 +20,13 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from elenctic.discovery import Case, DiscoveryError, HygieneReport, inspect_corpus
+from elenctic.discovery import (
+    Case,
+    DiscoveryError,
+    HygieneReport,
+    check_solver_available,
+    inspect_corpus,
+)
 from elenctic.expectation import ContractError
 from elenctic.harness import case_verdict, render, run_case
 from elenctic.program import ProgramError
@@ -119,16 +125,25 @@ def _run(cases: tuple[Case, ...], budget: float) -> int:
     """Validate every plan up front, then solve + check each case; render non-PASS outcomes."""
     valid, harness_errors = _validate_plans(cases)
     nonpassing = 0
-    program_errors: list[Case] = []
+    case_errors: list[Case] = []
     for case in valid:
         try:
+            # The declared solver is checked here, per case, so an absent optional backend costs
+            # only the cases that declare it rather than the whole run.
+            check_solver_available(case.solver, case.contract_source)
             reports = run_case(case, budget=budget)  # plan validated above
+        except DiscoveryError as exc:
+            # the environment cannot run this case (its declared solver is not installed). The
+            # message carries its own provenance, as every discovery diagnostic does.
+            print(f"SOLVER ERROR — {exc}", file=sys.stderr)
+            case_errors.append(case)
+            continue
         except ProgramError as exc:
             # the program under test cannot be run (it will not ground, an #include is unresolvable)
             # — its author fixes the .lp. Not a verdict, and not elenctic's fault either, so it is
             # reported apart from both and the remaining cases still run.
             print(f"PROGRAM ERROR — {case.contract_source}: {exc}", file=sys.stderr)
-            program_errors.append(case)
+            case_errors.append(case)
             continue
         except HarnessError as exc:
             # a solve-time invariant breach (a seam, a missing cost) is a harness bug too, never a
@@ -139,14 +154,14 @@ def _run(cases: tuple[Case, ...], budget: float) -> int:
         if case_verdict(reports) is not Verdict.PASS:
             print(render(case, reports))
             nonpassing += 1
-    passed = len(cases) - nonpassing - len(harness_errors) - len(program_errors)
+    passed = len(cases) - nonpassing - len(harness_errors) - len(case_errors)
     summary = f"{passed}/{len(cases)} passed"
-    if program_errors:
-        summary += f", {len(program_errors)} program error(s)"
+    if case_errors:
+        summary += f", {len(case_errors)} could not be run"
     if harness_errors:
         summary += f", {len(harness_errors)} harness error(s)"
     print(f"\n{summary}")
-    if harness_errors or program_errors:
+    if harness_errors or case_errors:
         return 2
     return 1 if nonpassing else 0
 

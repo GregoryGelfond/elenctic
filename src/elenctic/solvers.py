@@ -400,7 +400,16 @@ def run_clingcon(
     reads the full census), and a projecting run builds the shown-only shape
     (``projects_to_shown = project``). Theory atoms are rewritten through a ``ProgramBuilder``
     (``Control.load`` does not rewrite theory atoms)."""
-    import clingcon
+    try:
+        import clingcon
+    except ImportError as exc:
+        # A direct facade call bypasses the corpus walk, where an absent declared solver is
+        # otherwise reported per case. Raised as an ImportError rather than one of the outcome
+        # registers because that is what it is — an optional dependency is missing — and because
+        # nothing here is a statement about the program under test.
+        raise ImportError(
+            'clingcon is not installed — install the theory extra: pip install "elenctic[theory]"'
+        ) from exc
 
     # clingcon is untyped; isolate the dynamic boundary to this one Any (the theory handle), so the
     # downstream register/rewrite/prepare/on_model/assignment calls need no scattered ignores.

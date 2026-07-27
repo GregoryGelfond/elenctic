@@ -240,7 +240,6 @@ def _make_case(path: Path, text: str) -> tuple[Case, bool, frozenset[Path]]:
     contract = parse_contract(text, source=str(path))
     declared = contract.solver is not None
     solver: Solver = contract.solver or "clingo"  # the stated default
-    check_solver_available(solver, path)
     facts = inspect((path,))
     check_program(contract.expectation, facts, solver, path)
     return Case(path, solver, contract.expectation, facts.shown), declared, facts.sources
@@ -256,11 +255,15 @@ def _installed(module: str) -> bool:
 
 
 def check_solver_available(solver: Solver, where: Path) -> None:
-    """Check the declared ``solver`` is installed, before any run reaches its facade. Loud
+    """Check the declared ``solver`` is installed, before a run reaches its facade. Loud
     (``DiscoveryError``), never a verdict: a case whose solver is absent cannot be run at all, so
     there is no answer to report about it, and an import failure raised from inside a solver facade
-    names none of what the reader needs. Discovery is all-or-nothing, so an absent solver fails the
-    corpus rather than the single case — the same contract as every other precondition here."""
+    names none of what the reader needs.
+
+    Checked **per case, at run time** rather than during the corpus walk. An absent optional backend
+    then costs only the cases that declare it — the rest of the corpus still runs and still reports,
+    instead of one missing package zeroing the whole run — and a dry run, which never reaches a
+    solver, does not require one to be installed."""
     module = BACKING_MODULES[solver]
     if _installed(module):
         return
