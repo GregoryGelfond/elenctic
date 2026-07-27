@@ -7,10 +7,12 @@ then solves and checks each case, rendering any non-``PASS`` outcome. ``--explai
 plan: it narrates the derived runs (mode + checks) per case without solving, the dry-run the
 ``reads``/``populates`` surface was made introspectable for.
 
-Exit status separates the three outcome registers: ``0`` all cases pass; ``1`` some case FAILed or
-is UNDECIDED (a statement about a program under test); ``2`` a corpus or harness error (a bad
-contract, a mis-shaped corpus or program, or an elenctic bug — never a verdict). This is the
-standalone runner; the pytest-client path (per-case ``parametrize``) is a separate consumer.
+Exit status separates the outcome registers: ``0`` all cases pass; ``1`` some case FAILed or
+is UNDECIDED (a statement about a program under test); ``2`` a corpus, program or harness error (a
+bad contract, a mis-shaped corpus, a program that cannot be run, or an elenctic bug — never a
+verdict). A case that cannot be run does not stop the others: it is reported in its own register
+and the run continues, so one broken encoding never costs the run every other case's result. This
+is the standalone runner; the pytest-client path (per-case ``parametrize``) is a separate consumer.
 """
 
 import argparse
@@ -117,9 +119,17 @@ def _run(cases: tuple[Case, ...], budget: float) -> int:
     """Validate every plan up front, then solve + check each case; render non-PASS outcomes."""
     valid, harness_errors = _validate_plans(cases)
     nonpassing = 0
+    program_errors: list[Case] = []
     for case in valid:
         try:
             reports = run_case(case, budget=budget)  # plan validated above
+        except ProgramError as exc:
+            # the program under test cannot be run (it will not ground, an #include is unresolvable)
+            # — its author fixes the .lp. Not a verdict, and not elenctic's fault either, so it is
+            # reported apart from both and the remaining cases still run.
+            print(f"PROGRAM ERROR — {case.contract_source}: {exc}", file=sys.stderr)
+            program_errors.append(case)
+            continue
         except HarnessError as exc:
             # a solve-time invariant breach (a seam, a missing cost) is a harness bug too, never a
             # verdict — report it like a misroute (exit 2) and keep testing the other cases.
@@ -129,12 +139,14 @@ def _run(cases: tuple[Case, ...], budget: float) -> int:
         if case_verdict(reports) is not Verdict.PASS:
             print(render(case, reports))
             nonpassing += 1
-    passed = len(cases) - nonpassing - len(harness_errors)
+    passed = len(cases) - nonpassing - len(harness_errors) - len(program_errors)
     summary = f"{passed}/{len(cases)} passed"
+    if program_errors:
+        summary += f", {len(program_errors)} program error(s)"
     if harness_errors:
         summary += f", {len(harness_errors)} harness error(s)"
     print(f"\n{summary}")
-    if harness_errors:
+    if harness_errors or program_errors:
         return 2
     return 1 if nonpassing else 0
 
