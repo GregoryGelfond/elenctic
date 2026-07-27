@@ -164,14 +164,21 @@ def _consistent_shape(
 
 
 def _undecided_or_unsat(completed: bool, result: SolveResult) -> Inconclusive | Inconsistent | None:
-    """Reduce one solve's outcome to the arm it settles, or ``None`` if it decided satisfiable.
+    """Reduce one solve's satisfiability outcome to the arm it settles, or ``None`` if it decided
+    satisfiable.
 
     clingo's solve result is three-valued — satisfiable, unsatisfiable, or unknown — and the third
     value is a real outcome rather than an absent one: the search stopped without deciding. It is
     reported exactly as a hit time budget is, because they are the same fact about knowledge
     (nothing was determined), and reading either as satisfiable would build an answer out of a
-    search that produced none. Every solve in this module reduces its result here, so the
+    search that produced none. Every solve in this module reduces its result here, so this
     three-valued read happens in one place.
+
+    **Limit.** This settles *whether a model exists*, not whether the search that ran was
+    exhaustive. A solve that decides satisfiable but stops early — the solver's own search limits
+    do this, though nothing here sets one — yields a partial census that the enumerating modes
+    would present as complete. Distinguishing that needs the exhaustion bit and is mode-dependent
+    (a single-model solve is not expected to exhaust), so it is deliberately not decided here.
     """
     if not completed or result.unknown:
         return Inconclusive()
@@ -345,7 +352,11 @@ def _program_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[No
         raise
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
         names = ", ".join(str(path) for path in files) or "<inline program>"
-        detail = "; ".join(messages) or str(exc)
+        # Both, never one or the other: the logger holds the provenance (file, line, cause) but
+        # accumulates routine notices too, so a fault raised after a clean ground would otherwise
+        # be reported as whichever harmless notice happened to be logged first, with the real
+        # cause dropped.
+        detail = "; ".join([*messages, str(exc)])
         raise ProgramError(f"cannot run the program ({names}): {detail}") from exc
 
 
