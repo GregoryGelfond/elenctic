@@ -26,6 +26,7 @@ a *loud* precondition failure, not a silent wrong PASS — the former name-only 
 """
 
 from dataclasses import dataclass
+from importlib.util import find_spec
 from pathlib import Path
 
 from clingo import Symbol
@@ -33,7 +34,7 @@ from clingo import Symbol
 from elenctic.expectation import Expectation, Sat, has_contract, parse_contract
 from elenctic.program import ProgramFacts, inspect
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
-from elenctic.registry import Solver, provides_theory
+from elenctic.registry import BACKING_MODULES, Solver, provides_theory
 from elenctic.terms import contrary
 
 __all__ = [
@@ -42,6 +43,7 @@ __all__ = [
     "DiscoveryError",
     "HygieneReport",
     "check_program",
+    "check_solver_available",
     "discover",
     "inspect_corpus",
 ]
@@ -238,9 +240,39 @@ def _make_case(path: Path, text: str) -> tuple[Case, bool, frozenset[Path]]:
     contract = parse_contract(text, source=str(path))
     declared = contract.solver is not None
     solver: Solver = contract.solver or "clingo"  # the stated default
+    check_solver_available(solver, path)
     facts = inspect((path,))
     check_program(contract.expectation, facts, solver, path)
     return Case(path, solver, contract.expectation, facts.shown), declared, facts.sources
+
+
+def _installed(module: str) -> bool:
+    """Whether ``module`` can be imported, determined without importing it. ``find_spec`` raises
+    rather than returning ``None`` for some broken installations, which counts as absent here."""
+    try:
+        return find_spec(module) is not None
+    except ImportError, ValueError:
+        return False
+
+
+def check_solver_available(solver: Solver, where: Path) -> None:
+    """Check the declared ``solver`` is installed, before any run reaches its facade. Loud
+    (``DiscoveryError``), never a verdict: a case whose solver is absent cannot be run at all, so
+    there is no answer to report about it, and an import failure raised from inside a solver facade
+    names none of what the reader needs. Discovery is all-or-nothing, so an absent solver fails the
+    corpus rather than the single case — the same contract as every other precondition here."""
+    module = BACKING_MODULES[solver]
+    if _installed(module):
+        return
+    remedy = (
+        'install the theory extra: pip install "elenctic[theory]"'
+        if provides_theory(solver)
+        else f"add {module} to your environment"
+    )
+    raise DiscoveryError(
+        f"{where}: this case declares @elenctic solver {solver}, but {module} is not installed "
+        f"— {remedy}"
+    )
 
 
 def check_program(

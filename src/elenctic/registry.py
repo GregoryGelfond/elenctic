@@ -24,6 +24,13 @@ SOLVERS: Final[frozenset[str]] = frozenset({"clingo", "clingcon"})
 THEORY_SOLVERS: Final[frozenset[str]] = frozenset({"clingcon"})
 assert THEORY_SOLVERS <= SOLVERS, "every theory solver must be a registered solver"
 
+# The Python module each registered solver is provided by — what has to be importable for a case to
+# run under it. clingo is a hard dependency; a theory solver may be an optional extra, so discovery
+# checks that a declared solver is actually present before a run reaches its facade. Adding a
+# Potassco theory-solver = one entry here as well.
+BACKING_MODULES: Final[dict[str, str]] = {"clingo": "clingo", "clingcon": "clingcon"}
+assert frozenset(BACKING_MODULES) == SOLVERS, "every registered solver names a backing module"
+
 
 def provides_theory(solver: str) -> bool:
     """Whether ``solver`` interprets theory (``&``) atoms — the v1 ``clingcon``-only predicate
