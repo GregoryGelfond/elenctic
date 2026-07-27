@@ -17,13 +17,16 @@ from typing import Final
 from clingo.ast import AST, ASTType, UnaryOperator
 from clingo.ast import parse_files as _parse_files
 
-from elenctic.result import HarnessError
 
+class ProgramError(Exception):
+    """A program under test that elenctic cannot run — a missing or cyclic ``#include``, a parse
+    error, or a program that will not ground. Surfaced as a friendly diagnostic naming the offending
+    file, never a raw clingo stack trace.
 
-class ProgramError(HarnessError):
-    """A resolved program elenctic cannot load — a missing/cyclic ``#include`` or a parse error.
-    Surfaced as a friendly diagnostic naming the offending file, never a raw clingo stack trace.
-    A ``HarnessError`` (never a verdict)."""
+    A fault in the program, so its author fixes the ``.lp``; deliberately **not** a
+    ``HarnessError``, which claims elenctic violated one of its own invariants and should be
+    reported. The two are disjoint roots so that neither can be caught as the other, and neither is
+    ever a verdict about the program's answer-set behaviour."""
 
 
 @dataclass(frozen=True, slots=True)

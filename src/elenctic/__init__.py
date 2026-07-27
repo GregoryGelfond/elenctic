@@ -11,17 +11,23 @@ its diagnostic.
 test*: ``PASS`` (the contract holds), ``FAIL`` (the program decided wrong), or ``UNDECIDED`` (the
 solve was cut off — never conflated with FAIL or UNSAT). :func:`case_verdict` folds the reports.
 
-**The error taxonomy (errors are never verdicts).** Three loud error families, distinct from the
-``Verdict``:
+**The error taxonomy (errors are never verdicts).** Four loud error families, distinct from the
+``Verdict`` and disjoint from one another:
 
 - :class:`ContractError` — an ill-formed ``@``-contract (``parse``). The *author* wrote a
   bad contract.
 - :class:`DiscoveryError` — a corpus that violates a discovery-time precondition or matches no
   convention (``discover``). The *corpus* is mis-shaped.
+- :class:`ProgramError` — a program elenctic cannot run: an unresolvable ``#include``, a parse
+  error, or a program that will not ground. The *program under test* is broken, so its author fixes
+  the ``.lp``.
 - :class:`HarnessError` (and its subclasses :class:`RoutingError`, :class:`SeamError`) — an internal
   invariant elenctic itself violated: a stale route, a narrowing-seam breach. A *harness bug*, never
   a statement about the program under test, so the runner reports it under a distinct "harness
   error" status, never as a costumed verdict.
+
+The first three are the author's to fix; the last is elenctic's. That cut is why ``ProgramError``
+is not a ``HarnessError``: a broken program under test is not evidence of a broken harness.
 
 The curated surface is resolved **lazily** (PEP 562): importing ``elenctic`` does not eagerly load
 every submodule, so ``import elenctic`` stays cheap (clingo loads only when a solver is actually
@@ -42,6 +48,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     )
     from elenctic.expectation import ContractError, Expectation, Sat, Unsat, parse
     from elenctic.harness import case_verdict, render, run_case
+    from elenctic.program import ProgramError
     from elenctic.query import Answer, Query
     from elenctic.registry import SOLVERS, Solver
     from elenctic.result import (
@@ -75,6 +82,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
     ),
     "elenctic.expectation": ("ContractError", "Expectation", "Sat", "Unsat", "parse"),
     "elenctic.harness": ("case_verdict", "render", "run_case"),
+    "elenctic.program": ("ProgramError",),
     "elenctic.query": ("Answer", "Query"),
     "elenctic.registry": ("SOLVERS", "Solver"),
     "elenctic.result": (
