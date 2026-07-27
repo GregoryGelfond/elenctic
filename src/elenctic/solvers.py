@@ -23,13 +23,15 @@ minimize-dominated v1 corpus) but negated for ``#maximize``; sign-normalisation 
 maximize-using corpus arrives (it needs per-priority-level sign tracking).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Final, assert_never
 
 from clingo import Control, Symbol
 from clingo.solving import Model, ModelType, SolveResult
 
+from elenctic.program import ProgramError
 from elenctic.registry import SOLVERS
 from elenctic.result import (
     Consistent,
@@ -194,16 +196,52 @@ def _determination(
     return _consistent_shape(mode, collector, projects_to_shown)
 
 
+class _CallbackGuard:
+    """Preserve the type of an exception raised inside elenctic's own model callback.
+
+    An asynchronous ``Control.solve`` does not re-raise a callback exception unchanged: it surfaces
+    at ``SolveHandle.get`` rewrapped as a plain ``RuntimeError``, keeping only the message. Since
+    the surrounding boundary reads a ``RuntimeError`` as a fault in the program under test, an
+    unguarded failure in elenctic's callback would be reported as its author's fault. Recording the
+    original here lets it be re-raised with its type intact, which leaves ``RuntimeError`` meaning
+    what the translation assumes: a fault originating in the solver."""
+
+    __slots__ = ("_on_model", "failure")
+
+    def __init__(self, on_model: Callable[[Model], None]) -> None:
+        self._on_model = on_model
+        self.failure: BaseException | None = None
+
+    def __call__(self, model: Model) -> None:
+        try:
+            self._on_model(model)
+        except BaseException as exc:
+            self.failure = exc
+            raise
+
+    def reraise_if_failed(self) -> None:
+        """Re-raise the recorded callback exception, if there was one, with its type intact."""
+        if self.failure is not None:
+            raise self.failure
+
+
 def _solve_under_budget(
     control: Control, on_model: Callable[[Model], None], budget: float
 ) -> tuple[bool, SolveResult]:
     """One async solve under ``budget`` reduced to ``(completed, result)``: ``wait(budget)`` then
-    ``cancel`` on a miss; the handle closes via the context manager."""
-    with control.solve(on_model=on_model, async_=True) as handle:
+    ``cancel`` on a miss; the handle closes via the context manager. A failure raised inside
+    ``on_model`` reaches ``get()`` with its type erased, so it is restored from the guard before it
+    can be mistaken for a fault originating in the solver."""
+    guard = _CallbackGuard(on_model)
+    with control.solve(on_model=guard, async_=True) as handle:
         completed = handle.wait(budget)
         if not completed:
             handle.cancel()
-        return completed, handle.get()
+        try:
+            return completed, handle.get()
+        except RuntimeError:
+            guard.reraise_if_failed()
+            raise
 
 
 def _drive(
@@ -266,11 +304,41 @@ def _optimal_enum_two_phase(
 _CLINGO_ENUM_MODES: Final = frozenset({Mode.ENUM_ALL, Mode.OPTIMAL_ENUM})
 
 
-def _quiet(_code: object, _message: str) -> None:
-    """Swallow clingo's own ground/solve diagnostics ("atom does not occur in any rule head", the
-    projection caveat, …) instead of letting them leak to stderr: elenctic owns its diagnostics, the
-    program has already cleared ``program.inspect``'s parse, and a real ground/solve failure raises
-    regardless. Mirrors the captured logger ``program.inspect`` already uses (friendly output)."""
+def _capture(messages: list[str]) -> Callable[[object, str], None]:
+    """A clingo logger that records diagnostics into ``messages`` rather than letting them reach
+    stderr — elenctic owns its own output, and the routine ones ("atom does not occur in any rule
+    head", the projection caveat) are noise here.
+
+    Capturing rather than discarding them is load-bearing. When grounding fails, clingo reports the
+    offending file, line and cause through this channel, while the exception it raises carries only
+    a generic summary; without the captured text a program fault cannot be reported with the
+    provenance its author needs. Mirrors the captured logger ``program.inspect`` already uses."""
+
+    def logger(_code: object, message: str) -> None:
+        messages.append(message)
+
+    return logger
+
+
+@contextmanager
+def _program_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[None]:
+    """Translate a solver-origin ground or solve failure into a ``ProgramError`` naming the program
+    and carrying clingo's own captured diagnostic.
+
+    A program that will not ground has no answer sets *defined*, which is not the same as having
+    none, so this must never produce ``Inconsistent`` — that would silently pass an ``@expect
+    unsat`` contract written against a broken program. The catch is by exception type and
+    deliberately narrow: elenctic's own errors are not in it and stay loud, and ``RecursionError``
+    is re-raised because it is a ``RuntimeError`` subclass that never means the program under test
+    is at fault."""
+    try:
+        yield
+    except RecursionError:
+        raise
+    except (RuntimeError, UnicodeDecodeError, OSError) as exc:
+        names = ", ".join(str(path) for path in files) or "<inline program>"
+        detail = "; ".join(messages) or str(exc)
+        raise ProgramError(f"cannot run the program ({names}): {detail}") from exc
 
 
 def run_clingo(
@@ -284,15 +352,19 @@ def run_clingo(
     enumeration modes always project (information-preserving on clingo: ``assign ≡ ∅``), a pure
     performance win; a projecting clingo run still yields the full shape (``projects_to_shown`` is
     always ``False`` for a non-theory solver)."""
-    control = Control(_solver_args(mode, project or mode in _CLINGO_ENUM_MODES), logger=_quiet)
-    _add_program(control, program, files)
-    control.ground([("base", [])])
-    if mode is Mode.OPTIMAL_ENUM:
-        return _optimal_enum_two_phase(
-            control, lambda c: c.on_model, budget, projects_to_shown=False
-        )
-    collector = _Collector()
-    return _drive(control, mode, collector, collector.on_model, budget, projects_to_shown=False)
+    messages: list[str] = []
+    control = Control(
+        _solver_args(mode, project or mode in _CLINGO_ENUM_MODES), logger=_capture(messages)
+    )
+    with _program_faults(files, messages):
+        _add_program(control, program, files)
+        control.ground([("base", [])])
+        if mode is Mode.OPTIMAL_ENUM:
+            return _optimal_enum_two_phase(
+                control, lambda c: c.on_model, budget, projects_to_shown=False
+            )
+        collector = _Collector()
+        return _drive(control, mode, collector, collector.on_model, budget, projects_to_shown=False)
 
 
 def run_clingcon(
@@ -314,28 +386,33 @@ def run_clingcon(
     # clingcon is untyped; isolate the dynamic boundary to this one Any (the theory handle), so the
     # downstream register/rewrite/prepare/on_model/assignment calls need no scattered ignores.
     theory: Any = clingcon.ClingconTheory()  # type: ignore[no-untyped-call]
-    control = Control(_solver_args(mode, project), logger=_quiet)
-    theory.register(control)
-    _rewrite_program(control, theory, program, files)
-    control.ground([("base", [])])
-    theory.prepare(control)
+    messages: list[str] = []
+    control = Control(_solver_args(mode, project), logger=_capture(messages))
+    with _program_faults(files, messages):
+        theory.register(control)
+        _rewrite_program(control, theory, program, files)
+        control.ground([("base", [])])
+        theory.prepare(control)
 
-    def make_on_model(collector: _Collector) -> Callable[[Model], None]:
-        def on_model(model: Model) -> None:
-            theory.on_model(model)  # populate the theory assignment before reading it
-            # clingcon is a linear-integer CSP solver, so assignment() yields (Symbol, int) pairs:
-            # `Observable.assign`'s `int` is exact here, not a narrowing of the untyped boundary.
-            assign = frozenset((sym, val) for sym, val in theory.assignment(model.thread_id))
-            collector.on_model(model, assign)
+        def make_on_model(collector: _Collector) -> Callable[[Model], None]:
+            def on_model(model: Model) -> None:
+                theory.on_model(model)  # populate the theory assignment before reading it
+                # clingcon is a linear-integer CSP solver, so assignment() yields (Symbol, int)
+                # pairs: `Observable.assign`'s `int` is exact here, not a narrowing of the untyped
+                # boundary.
+                assign = frozenset((sym, val) for sym, val in theory.assignment(model.thread_id))
+                collector.on_model(model, assign)
 
-        return on_model
+            return on_model
 
-    if mode is Mode.OPTIMAL_ENUM:
-        return _optimal_enum_two_phase(control, make_on_model, budget, projects_to_shown=project)
-    collector = _Collector()
-    return _drive(
-        control, mode, collector, make_on_model(collector), budget, projects_to_shown=project
-    )
+        if mode is Mode.OPTIMAL_ENUM:
+            return _optimal_enum_two_phase(
+                control, make_on_model, budget, projects_to_shown=project
+            )
+        collector = _Collector()
+        return _drive(
+            control, mode, collector, make_on_model(collector), budget, projects_to_shown=project
+        )
 
 
 type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool], Determination]
