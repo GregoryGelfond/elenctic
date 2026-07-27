@@ -238,10 +238,18 @@ def _solve_under_budget(
         if not completed:
             handle.cancel()
         try:
-            return completed, handle.get()
+            result = handle.get()
         except RuntimeError:
+            # A callback failure arrives here with its type erased; restore the original.
             guard.reraise_if_failed()
             raise
+        # And on the path where nothing was raised at all: a cancelled solve can absorb the
+        # callback's exception entirely, returning as though only the budget had been missed. The
+        # recorded failure is re-raised here too, because reporting an elenctic fault as a budget
+        # miss would present an internal bug as the verdict UNDECIDED — a statement about the
+        # program under test that was never made.
+        guard.reraise_if_failed()
+        return completed, result
 
 
 def _drive(
