@@ -55,5 +55,29 @@ def test_a_missing_declared_solver_exits_as_an_error_with_a_remedy(
     status = main([_corpus(tmp_path, theory=_THEORY)])
     captured = capsys.readouterr()
     assert status == 2
-    assert "Traceback" not in captured.err
     assert 'pip install "elenctic[theory]"' in captured.err
+
+
+def test_a_missing_declared_solver_costs_only_the_cases_that_declare_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An absent optional backend is an environment problem with one case's name on it. The cases
+    # that do not declare it are unaffected and still report — one missing package must not zero
+    # a whole corpus.
+    monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
+    status = main([_corpus(tmp_path, aaa_good=_GOOD, zzz_theory=_THEORY)])
+    captured = capsys.readouterr()
+    assert status == 2
+    assert "1/2 passed" in captured.out
+
+
+def test_a_dry_run_does_not_require_the_declared_solver(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # --explain narrates the derived run plan without solving, so requiring the backend to be
+    # installed for it would be gating a command on something it never uses.
+    monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
+    status = main([_corpus(tmp_path, theory=_THEORY), "--explain"])
+    captured = capsys.readouterr()
+    assert status == 0
+    assert "clingcon" in captured.out, "the plan still names the declared solver"

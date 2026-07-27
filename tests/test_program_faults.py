@@ -18,7 +18,7 @@ from clingo.solving import Model
 from elenctic.program import ProgramError
 from elenctic.result import HarnessError
 from elenctic.run import Mode
-from elenctic.solvers import _CallbackGuard, _solve_under_budget, run_clingo
+from elenctic.solvers import _CallbackGuard, _solve_under_budget, run_clingcon, run_clingo
 
 _UNSAFE = "q(1).\np(X) :- q(Y).\n"  # parses, but X never binds, so it will not ground
 _CHOICE = "1 {a; b} 1. #show a/0. #show b/0."
@@ -89,6 +89,18 @@ def test_an_async_solve_erases_the_type_of_a_callback_exception() -> None:
         handle.get()
     assert type(caught.value) is RuntimeError, "the original type is expected to be erased here"
     assert "seam breach" in str(caught.value), "only the message survives the rewrap"
+
+
+def test_an_ungroundable_theory_program_is_a_program_fault(tmp_path: Path) -> None:
+    # The clingcon wrap is the wider one — it encloses the theory registration, the rewrite, the
+    # ground and the theory's own prepare — so the translation is exercised through it too, not
+    # only through the plain clingo path.
+    source = tmp_path / "unsafe-theory.lp"
+    source.write_text("&sum { x } = 1.\n" + _UNSAFE, encoding="utf-8")
+    with pytest.raises(ProgramError) as caught:
+        run_clingcon(Mode.ENUM_ALL, files=(source,))
+    assert "unsafe" in str(caught.value)
+    assert "unsafe-theory.lp" in str(caught.value)
 
 
 def test_a_harness_fault_inside_the_callback_stays_a_harness_fault() -> None:
