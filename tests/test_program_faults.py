@@ -6,7 +6,10 @@ reports. The two are disjoint roots, so neither can be caught as the other, and 
 verdict about the program's answer-set behaviour.
 """
 
+from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
+from typing import cast
 
 import pytest
 from clingo import Control
@@ -94,6 +97,53 @@ def test_a_harness_fault_inside_the_callback_stays_a_harness_fault() -> None:
     # failure raised during a solve would be reported as its author's fault.
     with pytest.raises(HarnessError, match="seam breach"):
         _solve_under_budget(_grounded_choice(), _exploding, 30.0)
+
+
+class _CancellingHandle:
+    """A solve handle that fires the callback and then reports the budget as missed.
+
+    This is the shape a cancelled solve takes: the cancellation absorbs the callback's exception,
+    so ``get()`` returns normally and nothing re-raises on the way out. Faked rather than provoked
+    from a real solve, because reaching it for real is a race between the callback firing and the
+    budget poll returning — a test built on that would be flaky, and this path is worth pinning
+    exactly."""
+
+    def __init__(self, on_model: Callable[[Model], None]) -> None:
+        self._on_model = on_model
+
+    def __enter__(self) -> _CancellingHandle:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+    def wait(self, _budget: float) -> bool:
+        with suppress(Exception):  # the solver absorbs it; the guard has already recorded it
+            self._on_model(cast(Model, None))
+        return False  # the budget was missed
+
+    def cancel(self) -> None:
+        return None
+
+    def get(self) -> None:
+        return None  # a cancelled solve returns without raising
+
+
+class _CancellingControl:
+    """A control whose solve always takes the cancelled path above."""
+
+    def solve(self, on_model: Callable[[Model], None], async_: bool) -> _CancellingHandle:
+        assert async_, "the facade always solves asynchronously"
+        return _CancellingHandle(on_model)
+
+
+def test_a_recorded_callback_fault_survives_a_missed_budget() -> None:
+    # The failure this guards: a cancelled solve raises nothing, so an elenctic fault recorded by
+    # the callback would be dropped and the run would report `completed=False` — which reduces to
+    # UNDECIDED. That presents an internal bug as a verdict about the program under test, a
+    # sharper version of the miscostuming this module exists to prevent.
+    with pytest.raises(HarnessError, match="seam breach"):
+        _solve_under_budget(cast(Control, _CancellingControl()), _exploding, 0.0)
 
 
 def test_the_callback_guard_records_the_original_exception() -> None:
