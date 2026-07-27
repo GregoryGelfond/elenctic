@@ -1,8 +1,8 @@
 """Outcome data types: ``Observable``, ``Verdict``, and the ``Determination``.
 
 A solved program yields a :data:`Determination` — a three-arm outcome surface:
-:class:`Inconsistent` (AS(P)=∅), :class:`Inconclusive`
-(the solve was cut off), or one of the :class:`Consistent` family. Each ``Consistent`` shape carries
+:class:`Inconsistent` (AS(P)=∅), :class:`Inconclusive` (the solve did not decide), or one of the
+:class:`Consistent` family. Each ``Consistent`` shape carries
 *exactly* the observations its run-mode computes, so a field's absence is a type fact, not a
 sentinel — there is no ``NotConfigured`` and no per-field guard.
 
@@ -123,8 +123,9 @@ class Inconsistent:
 
 @dataclass(frozen=True, slots=True)
 class Inconclusive:
-    """The solve was cut off before deciding (timeout). Every check → ``UNDECIDED``. Carries no
-    fields, so reading an answer off a timed-out solve is inexpressible."""
+    """The solve did not decide — the time budget was hit, or the solver gave up without an answer.
+    Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an undecided solve is
+    inexpressible."""
 
 
 class Consistent:
