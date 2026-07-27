@@ -60,28 +60,46 @@ def test_an_ungroundable_program_is_never_unsatisfiable(tmp_path: Path) -> None:
         run_clingo(Mode.DEFAULT, files=(source,))
 
 
-def test_a_harness_fault_inside_the_callback_stays_a_harness_fault() -> None:
-    # The miscostuming an asynchronous solve makes possible: clingo rewraps an exception raised in
-    # a model callback as a plain RuntimeError, and the surrounding boundary reads RuntimeError as
-    # a fault in the program under test. elenctic's own failure has to survive that intact.
+def _exploding(_model: Model) -> None:
+    """A model callback standing in for an elenctic-internal fault during a solve."""
+    raise HarnessError("seam breach")
+
+
+def _grounded_choice() -> Control:
     control = Control(["--models=0"], logger=_quiet)
     control.add("base", [], _CHOICE)
     control.ground([("base", [])])
+    return control
 
-    def explode(_model: Model) -> None:
-        raise HarnessError("seam breach")
 
+def test_an_async_solve_erases_the_type_of_a_callback_exception() -> None:
+    # The premise the guard exists for, pinned against the solver rather than assumed: driving the
+    # solve asynchronously, clingo does not re-raise a callback exception unchanged — it surfaces
+    # at get() as a plain RuntimeError carrying only the message. If a future clingo stops doing
+    # this, this test fails loudly and the guard can be reconsidered.
+    control = _grounded_choice()  # bound to a local: the control must outlive the solve handle
+    with (
+        pytest.raises(RuntimeError) as caught,
+        control.solve(on_model=_exploding, async_=True) as handle,
+    ):
+        handle.wait(30.0)
+        handle.get()
+    assert type(caught.value) is RuntimeError, "the original type is expected to be erased here"
+    assert "seam breach" in str(caught.value), "only the message survives the rewrap"
+
+
+def test_a_harness_fault_inside_the_callback_stays_a_harness_fault() -> None:
+    # What the guard buys, over the erasure pinned above: the surrounding boundary reads a
+    # RuntimeError as a fault in the program under test, so without this an elenctic-internal
+    # failure raised during a solve would be reported as its author's fault.
     with pytest.raises(HarnessError, match="seam breach"):
-        _solve_under_budget(control, explode, 30.0)
+        _solve_under_budget(_grounded_choice(), _exploding, 30.0)
 
 
 def test_the_callback_guard_records_the_original_exception() -> None:
-    # Pinning the mechanism directly. A test written against a *synchronous* solve would pass
-    # without exercising any of this, because clingo preserves the exception type there.
-    def explode(_model: Model) -> None:
-        raise HarnessError("seam breach")
-
-    guard = _CallbackGuard(explode)
+    # The guard's own contract, exercised without a solver: it re-raises on the way out (so the
+    # solve still aborts) and keeps the original, which is what the driver reads back afterwards.
+    guard = _CallbackGuard(_exploding)
     with pytest.raises(HarnessError):
         guard(None)  # type: ignore[arg-type]
     assert isinstance(guard.failure, HarnessError)
