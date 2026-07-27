@@ -258,7 +258,7 @@ Bob, in CS, is genuinely undetermined — the **unknown** that the consequence v
 
 [kr-domains](https://github.com/GregoryGelfond/kr-domains) puts elenctic to work on a broad set of
 real encodings: shortest paths, the travelling salesman, task allocation, the equality-generalized
-TSP, n-queens, send-more-money, and task scheduling, with **118 contract-checked cases** across
+TSP, n-queens, send-more-money, and task scheduling, with **135 contract-checked cases** across
 clingo and clingcon. It is a literate ASP corpus written to be read, and elenctic's client #1: each
 scenario `#include`s its domain encoding and declares its solver, and the whole corpus runs directly
 under `elenctic`. It is the place to see the `@`-tags, the declared-solver model, and the
