@@ -42,6 +42,7 @@ __all__ = [
     "Corpus",
     "DiscoveryError",
     "HygieneReport",
+    "SolverUnavailableError",
     "check_program",
     "check_solver_available",
     "discover",
@@ -53,6 +54,19 @@ class DiscoveryError(Exception):
     """A corpus that violates a discovery-time precondition or an
     explicitly-named contract-free file. Loud by design — discovery never silently drops a
     case nor silently mis-classifies one."""
+
+
+class SolverUnavailableError(DiscoveryError, ImportError):
+    """A case's declared solver is not installed in this environment.
+
+    Deliberately both: a ``DiscoveryError``, because a corpus naming a solver this environment
+    lacks is a corpus that cannot be run, and an ``ImportError``, because a missing optional
+    dependency is exactly what this is and is what a caller reaching for one expects to catch.
+    Either idiom works, so neither a reader following elenctic's error families nor one following
+    Python's convention is caught out.
+
+    Raised from the per-case check and from the solver facade alike, so one condition has one type
+    wherever a caller meets it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,7 +286,7 @@ def check_solver_available(solver: Solver, where: Path) -> None:
         if provides_theory(solver)
         else f"add {module} to your environment"
     )
-    raise DiscoveryError(
+    raise SolverUnavailableError(
         f"{where}: this case declares @elenctic solver {solver}, but {module} is not installed "
         f"— {remedy}"
     )
