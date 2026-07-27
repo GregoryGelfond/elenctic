@@ -31,6 +31,7 @@ from typing import Any, Final, assert_never
 from clingo import Control, Symbol
 from clingo.solving import Model, ModelType, SolveResult
 
+from elenctic.discovery import SolverUnavailableError
 from elenctic.program import ProgramError
 from elenctic.registry import SOLVERS
 from elenctic.result import (
@@ -403,11 +404,10 @@ def run_clingcon(
     try:
         import clingcon
     except ImportError as exc:
-        # A direct facade call bypasses the corpus walk, where an absent declared solver is
-        # otherwise reported per case. Raised as an ImportError rather than one of the outcome
-        # registers because that is what it is — an optional dependency is missing — and because
-        # nothing here is a statement about the program under test.
-        raise ImportError(
+        # A direct facade call bypasses the per-case check, so the same condition is reported here
+        # with the same type and the same remedy — catchable either as an ImportError, which is
+        # what a missing optional dependency is, or by name.
+        raise SolverUnavailableError(
             'clingcon is not installed — install the theory extra: pip install "elenctic[theory]"'
         ) from exc
 
