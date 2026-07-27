@@ -28,6 +28,7 @@ def test_public_api_exports_the_pipeline_and_outcome_surface() -> None:
         # the error taxonomy
         "ContractError",
         "DiscoveryError",
+        "SolverUnavailableError",
         "ProgramError",
         "HarnessError",
         "RoutingError",

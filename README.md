@@ -206,13 +206,18 @@ Each check yields a three-valued **Verdict** about the program under test:
 
 - **PASS** — the contract holds.
 - **FAIL** — the program decided *wrong* (the contract is violated by a completed solve).
-- **UNDECIDED** — the solve was cut off by the time budget before deciding. A timeout is **never**
-  `FAIL` and **never** `UNSAT`: "could not decide" and "decided wrong" are different facts. (This is
-  also consequence-soundness: an interrupted brave/cautious run carries a one-sided error.)
+- **UNDECIDED** — the solve did not decide: the time budget was hit, or the solver gave up without
+  an answer. Neither is **ever** `FAIL` and neither is **ever** `UNSAT`: "could not decide" and
+  "decided wrong" are different facts. (This is also consequence-soundness: an interrupted
+  brave/cautious run carries a one-sided error.)
 
-A case passes iff every check passes. Errors are a separate register, never verdicts: a bad contract
-(`ContractError`), a mis-shaped corpus (`DiscoveryError`), or an elenctic bug (`HarnessError`) is
-reported loudly and distinctly, never as a costumed `FAIL`.
+A case passes iff every check passes. Errors are a separate register, never verdicts, and they are
+reported loudly and distinctly rather than as a costumed `FAIL`. They divide by whose fault they
+are: a bad contract (`ContractError`), a mis-shaped corpus or a missing declared solver
+(`DiscoveryError`), or a program that cannot be run at all — one that will not ground, or whose
+`#include` does not resolve (`ProgramError`) — are yours to fix; an `elenctic` bug
+(`HarnessError`) is ours. A case that cannot be run does not stop the others: it is reported on its
+own and the rest of the corpus still runs.
 
 ## Worked examples
 

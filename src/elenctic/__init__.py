@@ -9,7 +9,7 @@ its diagnostic.
 
 **The three-valued verdict.** A check yields a :class:`Verdict` about the *program under
 test*: ``PASS`` (the contract holds), ``FAIL`` (the program decided wrong), or ``UNDECIDED`` (the
-solve was cut off — never conflated with FAIL or UNSAT). :func:`case_verdict` folds the reports.
+solve did not decide — never conflated with FAIL or UNSAT). :func:`case_verdict` folds the reports.
 
 **The error taxonomy (errors are never verdicts).** Four loud error families, distinct from the
 ``Verdict`` and disjoint from one another:
@@ -17,7 +17,9 @@ solve was cut off — never conflated with FAIL or UNSAT). :func:`case_verdict` 
 - :class:`ContractError` — an ill-formed ``@``-contract (``parse``). The *author* wrote a
   bad contract.
 - :class:`DiscoveryError` — a corpus that violates a discovery-time precondition or matches no
-  convention (``discover``). The *corpus* is mis-shaped.
+  convention (``discover``). The *corpus* is mis-shaped. Its subclass
+  :class:`SolverUnavailableError` reports a declared solver this environment does not have, and is
+  also an :class:`ImportError`, so either idiom catches it.
 - :class:`ProgramError` — a program elenctic cannot run: an unresolvable ``#include``, a parse
   error, or a program that will not ground. The *program under test* is broken, so its author fixes
   the ``.lp``.
@@ -43,6 +45,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         Corpus,
         DiscoveryError,
         HygieneReport,
+        SolverUnavailableError,
         discover,
         inspect_corpus,
     )
@@ -65,7 +68,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     from elenctic.run import Collection, Mode, RoutingError, Run, runs_for
     from elenctic.solvers import solve
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 # The curated public API, grouped by home module — the single source for both __all__ and the lazy
 # resolver, so the two cannot drift. Internals (the Consistent shapes, accessors, check builders,
@@ -77,6 +80,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "Corpus",
         "DiscoveryError",
         "HygieneReport",
+        "SolverUnavailableError",
         "discover",
         "inspect_corpus",
     ),
