@@ -1,10 +1,10 @@
 """Solver facades over the clingo/clingcon Python API — the **only impure module**.
 
 A facade runs one configured solve and returns a :data:`~elenctic.result.Determination`:
-:class:`~elenctic.result.Inconclusive` if the budget was hit (a timeout
-is ``UNDECIDED``, never FAIL/UNSAT), :class:`~elenctic.result.Inconsistent` if the whole-result
-``unsatisfiable`` bit is set (decided once, never inferred from an empty field), else the
-:class:`~elenctic.result.Consistent` shape the mode produces.
+:class:`~elenctic.result.Inconclusive` if the solve did not decide — the budget was hit, or the
+solver gave up (either way ``UNDECIDED``, never FAIL/UNSAT), :class:`~elenctic.result.Inconsistent`
+if the whole-result ``unsatisfiable`` bit is set (decided once, never inferred from an empty field),
+else the :class:`~elenctic.result.Consistent` shape the mode produces.
 
 **The lowering contract (the accessor seam's second premise).** ``solve(mode)`` produces, for a SAT
 run, *exactly* ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)``. The match in
@@ -161,6 +161,23 @@ def _consistent_shape(
             assert_never(mode)
 
 
+def _undecided_or_unsat(completed: bool, result: SolveResult) -> Inconclusive | Inconsistent | None:
+    """Reduce one solve's outcome to the arm it settles, or ``None`` if it decided satisfiable.
+
+    clingo's solve result is three-valued — satisfiable, unsatisfiable, or unknown — and the third
+    value is a real outcome rather than an absent one: the search stopped without deciding. It is
+    reported exactly as a hit time budget is, because they are the same fact about knowledge
+    (nothing was determined), and reading either as satisfiable would build an answer out of a
+    search that produced none. Every solve in this module reduces its result here, so the
+    three-valued read happens in one place.
+    """
+    if not completed or result.unknown:
+        return Inconclusive()
+    if result.unsatisfiable:
+        return Inconsistent()
+    return None
+
+
 def _determination(
     mode: Mode,
     collector: _Collector,
@@ -168,12 +185,12 @@ def _determination(
     result: SolveResult,
     projects_to_shown: bool = False,
 ) -> Determination:
-    """The three-arm decision: timeout → ``Inconclusive``; the whole-result ``unsatisfiable`` bit →
-    ``Inconsistent``; else the mode's ``Consistent`` shape (shown-only when projecting)."""
-    if not completed:
-        return Inconclusive()
-    if result.unsatisfiable:
-        return Inconsistent()
+    """The three-arm decision: a solve that did not decide → ``Inconclusive``; the whole-result
+    ``unsatisfiable`` bit → ``Inconsistent``; else the mode's ``Consistent`` shape (shown-only when
+    projecting)."""
+    settled = _undecided_or_unsat(completed, result)
+    if settled is not None:
+        return settled
     return _consistent_shape(mode, collector, projects_to_shown)
 
 
@@ -224,22 +241,22 @@ def _optimal_enum_two_phase(
        control when projecting) — a single optimization level, so every emitted model has cost c*
        and is optimal (no post-filter needed) and no model below the optimum is enumerable.
 
-    Each phase honours ``budget`` (a per-solve hang cap): a miss in either phase yields
-    ``Inconclusive``; UNSAT in phase 1 yields ``Inconsistent``. Setting ``opt_mode`` overrides the
-    construction ``--opt-mode=optN``."""
+    Each phase honours ``budget`` (a per-solve hang cap). A phase that does not decide — the budget
+    was hit, or the search gave up — yields ``Inconclusive``; UNSAT in phase 1 yields
+    ``Inconsistent``. Setting ``opt_mode`` overrides the construction ``--opt-mode=optN``."""
     _set_opt_mode(control, "opt")
     prover = _Collector()
     completed, result = _solve_under_budget(control, make_on_model(prover), budget)
-    if not completed:
-        return Inconclusive()
-    if result.unsatisfiable:
-        return Inconsistent()
+    settled = _undecided_or_unsat(completed, result)
+    if settled is not None:
+        return settled
     optimum = prover.optimum()  # the proven optimum cost vector — the phase-2 bound
     _set_opt_mode(control, "enum," + ",".join(str(c) for c in optimum.cost))
     enumerator = _Collector()
-    completed, _ = _solve_under_budget(control, make_on_model(enumerator), budget)
-    if not completed:
-        return Inconclusive()
+    completed, result = _solve_under_budget(control, make_on_model(enumerator), budget)
+    settled = _undecided_or_unsat(completed, result)
+    if settled is not None:
+        return settled
     return _consistent_shape(Mode.OPTIMAL_ENUM, enumerator, projects_to_shown)
 
 
