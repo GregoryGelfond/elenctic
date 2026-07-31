@@ -1,9 +1,11 @@
 """Solver facades over the clingo/clingcon Python API — the **only impure module**.
 
 A facade runs one configured solve and returns a :data:`~elenctic.result.Determination`:
-:class:`~elenctic.result.Inconclusive` if the solve did not decide — the budget was hit, or the
-solver gave up (either way ``UNDECIDED``, never FAIL/UNSAT), :class:`~elenctic.result.Inconsistent`
-if the whole-result ``unsatisfiable`` bit is set (decided once, never inferred from an empty field),
+:class:`~elenctic.result.Inconclusive` if the solve did not settle the question — the budget was
+hit, the solver gave up, or the search stopped before covering the collection the mode's reading
+ranges over (any of the three ``UNDECIDED``, never FAIL/UNSAT),
+:class:`~elenctic.result.Inconsistent` if the whole-result ``unsatisfiable`` bit is set (decided
+once, never inferred from an empty field),
 else the :class:`~elenctic.result.Consistent` shape the mode produces.
 
 **The lowering contract (the accessor seam's second premise).** ``solve(mode)`` produces, for a SAT
@@ -175,17 +177,36 @@ def _undecided_or_unsat(completed: bool, result: SolveResult) -> Inconclusive | 
     search that produced none. Every solve in this module reduces its result here, so this
     three-valued read happens in one place.
 
-    **Limit.** This settles *whether a model exists*, not whether the search that ran was
-    exhaustive. A solve that decides satisfiable but stops early — the solver's own search limits
-    do this, though nothing here sets one — yields a partial census that the enumerating modes
-    would present as complete. Distinguishing that needs the exhaustion bit and is mode-dependent
-    (a single-model solve is not expected to exhaust), so it is deliberately not decided here.
-    """
+    This settles *whether a model exists*. Whether the search that ran covered what the mode's
+    reading ranges over is the separate question :func:`_exhaustion_satisfied` asks, because the
+    two are independent and only the second is mode-dependent."""
     if not completed or result.unknown:
         return Inconclusive()
     if result.unsatisfiable:
         return Inconsistent()
     return None
+
+
+def _exhaustion_satisfied(mode: Mode, result: SolveResult) -> bool:
+    """Whether ``result``'s search covered what ``mode``'s reading requires of it.
+
+    A solve reports exhaustiveness separately from satisfiability, and the two are independent: a
+    search can decide satisfiable and still stop before covering the collection. A reading that
+    ranges over a whole collection is a claim about every member, so over such a search it becomes a
+    claim about an arbitrary prefix — the same absence of knowledge an undecided solve reports, and
+    reported the same way. A reading of a single witness carries no such claim, so it is exempt.
+
+    ``exhausted`` is necessary here, not sufficient. It certifies that the search space was covered
+    *under the configuration the run was given*, so it says nothing about whether that configuration
+    was the right one — an enumeration under an active objective exhausts while having visited only
+    the improving sequence. That second requirement is carried by each mode's ``args`` and gated
+    separately. What the bit entails also varies by enumeration mode: a census is complete, a
+    consequence run reached its fixpoint so the reported ⋂/⋃ is the true one, and an optimizing run
+    has *proven* its optimum rather than reporting a best-so-far.
+
+    An unsatisfiable result never reaches here: a proof that no answer set exists is already a
+    complete answer about the collection."""
+    return result.exhausted or not mode.asks.needs_exhausted_search
 
 
 def _determination(
@@ -197,11 +218,19 @@ def _determination(
 ) -> Determination:
     """The three-arm decision: a solve that did not decide → ``Inconclusive``; the whole-result
     ``unsatisfiable`` bit → ``Inconsistent``; else the mode's ``Consistent`` shape (shown-only when
-    projecting)."""
+    projecting), reported only if the search behind it finished.
+
+    The shape is formed before the exhaustion question is asked, so that a mode whose requirements
+    the solve did not meet still fails loudly. ``OPTIMAL`` on a program carrying no objective is
+    that case: clingo has nothing to optimize, so it stops at the first model and reports a search
+    that did not finish — the same bit a truncated search sets. Reducing that to ``UNDECIDED`` would
+    report an elenctic fault as a statement about the program under test, and would swallow the
+    diagnostic saying the encoding has no ``#minimize``/``#maximize``."""
     settled = _undecided_or_unsat(completed, result)
     if settled is not None:
         return settled
-    return _consistent_shape(mode, collector, projects_to_shown)
+    shape = _consistent_shape(mode, collector, projects_to_shown)
+    return shape if _exhaustion_satisfied(mode, result) else Inconclusive()
 
 
 class _CallbackGuard:
@@ -296,8 +325,10 @@ def _optimal_enum_two_phase(
        and is optimal (no post-filter needed) and no model below the optimum is enumerable.
 
     Each phase honours ``budget`` (a per-solve hang cap). A phase that does not decide — the budget
-    was hit, or the search gave up — yields ``Inconclusive``; UNSAT in phase 1 yields
-    ``Inconsistent``. Setting ``opt_mode`` overrides the construction ``--opt-mode=optN``."""
+    was hit, or the search gave up — yields ``Inconclusive``, as does one that decides but stops
+    before finishing: phase 1 would then not have *proven* the optimum, and phase 2 would hold part
+    of the optimal class rather than the class. UNSAT in phase 1 yields ``Inconsistent``. Setting
+    ``opt_mode`` overrides the construction ``--opt-mode=optN``."""
     _set_opt_mode(control, "opt")
     prover = _Collector()
     completed, result = _solve_under_budget(control, make_on_model(prover), budget)
@@ -305,13 +336,16 @@ def _optimal_enum_two_phase(
     if settled is not None:
         return settled
     optimum = prover.optimum()  # the proven optimum cost vector — the phase-2 bound
+    if not _exhaustion_satisfied(Mode.OPTIMAL_ENUM, result):
+        return Inconclusive()  # the bound was not proven, so there is nothing to enumerate at
     _set_opt_mode(control, "enum," + ",".join(str(c) for c in optimum.cost))
     enumerator = _Collector()
     completed, result = _solve_under_budget(control, make_on_model(enumerator), budget)
     settled = _undecided_or_unsat(completed, result)
     if settled is not None:
         return settled
-    return _consistent_shape(Mode.OPTIMAL_ENUM, enumerator, projects_to_shown)
+    shape = _consistent_shape(Mode.OPTIMAL_ENUM, enumerator, projects_to_shown)
+    return shape if _exhaustion_satisfied(Mode.OPTIMAL_ENUM, result) else Inconclusive()
 
 
 # clingo's enumeration modes always project: ``--project`` is information-preserving here (the

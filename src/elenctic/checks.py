@@ -75,7 +75,7 @@ class CheckReport:
     message: str
 
 
-_UNDECIDED_MESSAGE = "the solve did not complete within the budget — UNDECIDED, never FAIL"
+_UNDECIDED_MESSAGE = "the solve did not settle the question — UNDECIDED, never FAIL"
 
 
 @dataclass(frozen=True, slots=True, eq=False)

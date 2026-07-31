@@ -206,10 +206,12 @@ Each check yields a three-valued **Verdict** about the program under test:
 
 - **PASS** — the contract holds.
 - **FAIL** — the program decided *wrong* (the contract is violated by a completed solve).
-- **UNDECIDED** — the solve did not decide: the time budget was hit, or the solver gave up without
-  an answer. Neither is **ever** `FAIL` and neither is **ever** `UNSAT`: "could not decide" and
-  "decided wrong" are different facts. (This is also consequence-soundness: an interrupted
-  brave/cautious run carries a one-sided error.)
+- **UNDECIDED** — the solve did not settle the question: the time budget was hit, the solver gave
+  up without an answer, or it answered over a search that stopped before covering what the check
+  reads. None of the three is **ever** `FAIL` and none is **ever** `UNSAT`: "could not decide" and
+  "decided wrong" are different facts. The third case is why a partial search is not reported at
+  all: `@cautious` over part of the answer-set collection yields a *superset* of the true
+  intersection, so a false claim would be satisfied by it.
 
 A case passes iff every check passes. Errors are a separate register, never verdicts, and they are
 reported loudly and distinctly rather than as a costumed `FAIL`. They divide by whose fault they

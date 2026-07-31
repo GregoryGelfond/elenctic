@@ -65,6 +65,27 @@ class Collection(Enum):
     OPTIMAL = "Opt(P)"
     WITNESS = "one answer set"
 
+    @property
+    def needs_exhausted_search(self) -> bool:
+        """Whether a reading over this collection requires the search that produced it to have
+        finished.
+
+        A solver settles two separate things: whether a model exists, and whether the search that
+        found one covered everything it was asked to. ``ALL`` and ``OPTIMAL`` are readings of a
+        whole collection — a census, an intersection, a union, a proven optimum — and each is a
+        claim about every member, so a search that stopped early leaves an arbitrary prefix that
+        answers a different question.
+
+        ``WITNESS`` asks only whether some answer set exists and what is in it, which one model
+        settles whatever the rest of the search would have found. The exemption is not merely
+        permitted but necessary: with nothing else driving it a witness search stops at the first
+        answer set and reports a search that did not finish, so requiring exhaustion would report
+        satisfiable programs as undecided. It is *not* that such a search never finishes — an
+        objective puts the solver's own optimization in force and proving an optimum does exhaust —
+        which is why this is a statement about what the reading requires, not about what the search
+        happens to do."""
+        return self is not Collection.WITNESS
+
 
 # Which collection each field is a reading of. This is the partition the mode-level collection
 # derives from: a field IS a question about a collection (⋂/⋃/a census are questions about AS(P);
