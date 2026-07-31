@@ -255,18 +255,40 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
     open brace is a *dangling witness* — a loud ``ContractError`` with provenance, never silently
     dropped."""
     blocks: list[_Block] = []
-    for line_number, line in enumerate(text.splitlines(), start=1):
+    fragments: list[str] = []  # the open litset's payload, kept unjoined until its brace closes
+    depth = 0
+    in_quote = False
+
+    def close() -> None:
+        """Join the open litset's fragments into its block and forget the open state."""
+        nonlocal fragments, depth, in_quote
+        if fragments:
+            blocks[-1] = replace(blocks[-1], payload=" ".join(fragments).strip())
+        fragments, depth, in_quote = [], 0, False
+
+    # `split("\n")`, not `splitlines()`: a clingo `%` comment runs to a newline, and splitlines
+    # also breaks on \v, \f, the file/group/record separators, NEL and the Unicode line/paragraph
+    # separators. Ending a line anywhere clingo does not would let a file carry a tag that is one
+    # physical line to clingo, to a diff, and to a reviewer — a contract nobody reviewing it sees.
+    for line_number, line in enumerate(text.split("\n"), start=1):
         if (tag := _TAG.match(line)) is not None:
-            blocks.append(_Block(tag.group("tag"), tag.group("rest").strip(), line_number))
-        elif (
-            blocks
-            and blocks[-1].tag in _LITSET_TAGS
-            and _has_unclosed_brace(blocks[-1].payload)
-            and (cont := _CONT.match(line)) is not None
-        ):
-            last = blocks[-1]
-            joined = f"{last.payload} {cont.group('rest').strip()}".strip()
-            blocks[-1] = replace(last, payload=joined)
+            close()
+            payload = tag.group("rest").strip()
+            blocks.append(_Block(tag.group("tag"), payload, line_number))
+            if tag.group("tag") in _LITSET_TAGS:
+                depth, in_quote = _scan_braces(payload, 0, False)
+                if depth > 0:
+                    fragments = [payload]
+        elif depth > 0 and (cont := _CONT.match(line)) is not None:
+            # The open brace is tracked as the payload grows rather than re-derived from the whole
+            # payload per line, and the pieces are joined once at the end rather than copied per
+            # line. Both were quadratic in the continued region, and this scan runs before clingo
+            # is invoked and before any budget exists, so nothing else would have stopped it.
+            piece = cont.group("rest").strip()
+            fragments.append(piece)
+            depth, in_quote = _scan_braces(piece, depth, in_quote)
+            if depth <= 0:
+                close()
         elif blocks and blocks[-1].tag in {"model", "optimal"} and _DANGLING_WHERE.match(line):
             # only `where {` directly after a witness tag (its litset brace already closed, else the
             # continuation branch absorbed it) is a dangling witness; `where {` elsewhere (e.g.
@@ -276,6 +298,7 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
                 "brace-closing line (a `where` clause must ride the litset's closing brace, or be "
                 "brace-continued while a brace is open)"
             )
+    close()  # a brace still open at end of input keeps whatever was gathered under it
     return blocks
 
 
@@ -284,7 +307,7 @@ def _tag_lines(text: str) -> Iterator[_Block]:
     continuation join and no raises — the lexical tag-recognition (the shared ``_TAG`` pattern)
     that ``has_contract`` reads. Continuation / dangling-``where`` handling lives in ``_blocks``;
     both read ``_TAG``, so there is one tag recognizer of record."""
-    for line_number, line in enumerate(text.splitlines(), start=1):
+    for line_number, line in enumerate(text.split("\n"), start=1):
         if (tag := _TAG.match(line)) is not None:
             yield _Block(tag.group("tag"), tag.group("rest").strip(), line_number)
 
@@ -299,16 +322,24 @@ def has_contract(text: str) -> bool:
     return any(block.tag in KNOWN_TAGS for block in _tag_lines(text))
 
 
-def _has_unclosed_brace(payload: str) -> bool:
-    """Whether ``payload`` has a ``{`` with no matching ``}`` — a litset continued on the next
-    ``%`` line. Brace counting ignores braces inside double-quoted string terms."""
-    depth = 0
-    in_quote = False
-    for char in payload:
+def _scan_braces(fragment: str, depth: int, in_quote: bool) -> tuple[int, bool]:
+    """Carry brace depth and quote state across ``fragment``, continuing from where the previous
+    one left off. Braces inside double-quoted string terms do not count.
+
+    Taking the state in and handing it back is what lets a payload gathered over many lines be
+    scanned once in total rather than once per line."""
+    for char in fragment:
         if char == '"':
             in_quote = not in_quote
         elif not in_quote:
             depth += (char == "{") - (char == "}")
+    return depth, in_quote
+
+
+def _has_unclosed_brace(payload: str) -> bool:
+    """Whether ``payload`` has a ``{`` with no matching ``}`` — a litset continued on the next
+    ``%`` line. Brace counting ignores braces inside double-quoted string terms."""
+    depth, _in_quote = _scan_braces(payload, 0, False)
     return depth > 0
 
 
