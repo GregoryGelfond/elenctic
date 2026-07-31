@@ -279,7 +279,26 @@ The standalone runner discovers cases under a target (a single `.lp` file or a d
 $ elenctic [target]            # run every case under target (default: tests/); exit 0 pass, 1 fail/undecided, 2 error
 $ elenctic tests/feasible.lp   # run a single case file
 $ elenctic tests/ --explain    # narrate the derived run plan, without solving
+$ elenctic tests/ --strict     # fail the run on any corpus-hygiene issue (the CI gate)
+$ elenctic tests/ --deadline 600   # stop after 10 minutes; cases not reached are reported as not run
 ```
+
+### The corpus is trusted input
+
+elenctic runs the programs it is given, so a corpus is as trusted as code you would run. It is
+built to be well-behaved about that — a case may only `#include` files from inside the corpus it
+belongs to; text from a case cannot rewrite the report it appears in; and one unusable file costs
+its own result and no other's — but two limits are worth stating plainly rather than leaving to be
+discovered.
+
+**`--budget` bounds a solve, not a run.** It is per solve, and a case can route to several. Use
+`--deadline` to bound the whole run.
+
+**Grounding is not bounded at all.** A program can be small and still ground to something enormous,
+and clingo offers no way to cap that — it is not a limit elenctic can lift. Running an untrusted
+corpus therefore belongs inside whatever your platform already gives you: a container with a memory
+limit and a job timeout. Exhausting memory is reported rather than dumped as a traceback, but it
+cannot be prevented from here.
 
 Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation <file.lp>`
 (the parsed contract), `python -m elenctic.run <file.lp>` (the derived run plan),
