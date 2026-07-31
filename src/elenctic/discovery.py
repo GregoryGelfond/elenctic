@@ -223,11 +223,14 @@ def _classify(target: Path) -> _Walk:
                 f"{target}: not a case — it carries no elenctic contract tag. A "
                 "contract-free .lp is a library (an #include target), not a runnable case."
             )
-        case, declared, sources = _make_case(target, text)
+        # A named file gives no directory to take as the corpus, so its own is the boundary: a
+        # sibling library is reachable, the tree above it is not.
+        case, declared, sources = _make_case(target, text, target.parent.resolve())
         defaulted: tuple[Path, ...] = () if declared else (target,)
         # An explicitly named file is not walked, so it keeps the loud contract: the one thing the
         # user asked about must not be reported as a corpus that happened to contain nothing.
         return _Walk((case,), defaulted, (), sources, ())
+    root = target.resolve()  # the containment boundary every case's sources must stay under
     cases: list[Case] = []
     undeclared: list[Path] = []
     libraries: list[Path] = []
@@ -243,7 +246,7 @@ def _classify(target: Path) -> _Walk:
             if not has_contract(text):
                 libraries.append(path)
                 continue
-            case, declared, sources = _make_case(path, text)
+            case, declared, sources = _make_case(path, text, root)
         except (ContractError, DiscoveryError, ProgramError) as exc:
             unrunnable.append((path, exc))
             continue
@@ -269,7 +272,30 @@ def _read(path: Path) -> str:
         raise DiscoveryError(f"{path}: cannot read this .lp entry — {exc}") from exc
 
 
-def _make_case(path: Path, text: str) -> tuple[Case, bool, frozenset[Path]]:
+def _within_root(sources: frozenset[Path], root: Path, path: Path) -> None:
+    """Refuse a case that loads a file from outside ``root`` — the corpus containment rule.
+
+    ``#include`` resolution belongs to clingo, which opens whatever path it is handed, so a corpus
+    can otherwise name any file the process can read. That matters because a corpus is untrusted
+    input: it is cloned, or it arrives in a pull request. What is read does not stay read, either —
+    a contract that fails renders the model it was judged against, so an unconstrained include is a
+    way to publish another file's content through elenctic's own diagnostics.
+
+    The boundary is the root the run was pointed at, not the case's own directory: reaching upward
+    and across to a shared encoding is the ordinary shape of a corpus, and a rule that cost that
+    would buy nothing anyone would keep. ``sources`` is already resolved, so a symlink is judged by
+    where it lands rather than where it sits. The diagnostic names the escaping path and nothing
+    from inside it, since disclosure is the thing being prevented."""
+    escaped = sorted(str(source) for source in sources if not source.is_relative_to(root))
+    if escaped:
+        raise DiscoveryError(
+            f"{path}: this case loads {', '.join(escaped)}, which is outside the corpus at {root}. "
+            "A case may only include files from the corpus it belongs to — a corpus is run as "
+            "given, so an include reaching past it would read a file the run was never pointed at."
+        )
+
+
+def _make_case(path: Path, text: str, root: Path) -> tuple[Case, bool, frozenset[Path]]:
     """Build one case from a contract-bearing file: parse the contract (behavioral + declared
     solver, default ``clingo``), inspect the resolved program, enforce the preconditions. Returns
     the case, whether its solver was *declared* (vs defaulted to clingo), and the resolved source
@@ -279,6 +305,7 @@ def _make_case(path: Path, text: str) -> tuple[Case, bool, frozenset[Path]]:
     declared = contract.solver is not None
     solver: Solver = contract.solver or "clingo"  # the stated default
     facts = inspect((path,))
+    _within_root(facts.sources, root, path)
     check_program(contract.expectation, facts, solver, path)
     return Case(path, solver, contract.expectation, facts.shown), declared, facts.sources
 

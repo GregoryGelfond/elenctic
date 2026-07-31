@@ -76,11 +76,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (DiscoveryError, ContractError, ProgramError) as exc:
         print(f"corpus error: {exc}", file=sys.stderr)
         return 2
-    for path, fault in corpus.unrunnable:
+    for _path, fault in corpus.unrunnable:
         # Discovered but unusable — an unresolvable #include, an undecodable byte, a malformed
         # contract. Reported against the file it belongs to, in the same register as a case the
         # runner could not run, so one bad file never costs the corpus its other results.
-        print(f"CASE ERROR — {path}: {fault}", file=sys.stderr)
+        # Every discovery diagnostic carries its own provenance, so the path is not repeated here.
+        print(f"CASE ERROR — {fault}", file=sys.stderr)
     status = (
         _explain(corpus.cases)
         if args.explain
