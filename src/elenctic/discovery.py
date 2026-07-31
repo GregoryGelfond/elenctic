@@ -31,8 +31,8 @@ from pathlib import Path
 
 from clingo import Symbol
 
-from elenctic.expectation import Expectation, Sat, has_contract, parse_contract
-from elenctic.program import ProgramFacts, inspect
+from elenctic.expectation import ContractError, Expectation, Sat, has_contract, parse_contract
+from elenctic.program import ProgramError, ProgramFacts, inspect
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
 from elenctic.registry import BACKING_MODULES, Solver, provides_theory
 from elenctic.terms import contrary
@@ -148,6 +148,7 @@ class Corpus:
 
     cases: tuple[Case, ...]
     hygiene: HygieneReport
+    unrunnable: tuple[tuple[Path, Exception], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +162,7 @@ class _Walk:
     undeclared: tuple[Path, ...]
     libraries: tuple[Path, ...]
     used: frozenset[Path]
+    unrunnable: tuple[tuple[Path, Exception], ...]
 
 
 def discover(target: Path) -> tuple[Case, ...]:
@@ -171,8 +173,15 @@ def discover(target: Path) -> tuple[Case, ...]:
     :class:`~elenctic.expectation.ContractError` on a malformed contract, or
     :class:`~elenctic.program.ProgramError` on a bad ``#include`` or non-UTF-8 program.
     For the cases *and* corpus hygiene (the ``--strict`` dial), use :func:`inspect_corpus`.
+
+    A walked file that cannot be turned into a case raises here, because this signature has nowhere
+    to report it and a silently smaller tuple would be a wrong answer. :func:`inspect_corpus`
+    carries those files instead, which is what lets the CLI run the rest of the corpus.
     """
-    return _classify(target).cases
+    walk = _classify(target)
+    for _path, exc in walk.unrunnable:
+        raise exc
+    return walk.cases
 
 
 def inspect_corpus(target: Path) -> Corpus:
@@ -188,7 +197,9 @@ def inspect_corpus(target: Path) -> Corpus:
     walk = _classify(target)
     orphans = tuple(library for library in walk.libraries if library.resolve() not in walk.used)
     return Corpus(
-        walk.cases, HygieneReport(orphan_libraries=orphans, undeclared_solvers=walk.undeclared)
+        walk.cases,
+        HygieneReport(orphan_libraries=orphans, undeclared_solvers=walk.undeclared),
+        walk.unrunnable,
     )
 
 
@@ -214,22 +225,35 @@ def _classify(target: Path) -> _Walk:
             )
         case, declared, sources = _make_case(target, text)
         defaulted: tuple[Path, ...] = () if declared else (target,)
-        return _Walk((case,), defaulted, (), sources)
+        # An explicitly named file is not walked, so it keeps the loud contract: the one thing the
+        # user asked about must not be reported as a corpus that happened to contain nothing.
+        return _Walk((case,), defaulted, (), sources, ())
     cases: list[Case] = []
     undeclared: list[Path] = []
     libraries: list[Path] = []
     used: set[Path] = set()
+    unrunnable: list[tuple[Path, Exception]] = []
     for path in sorted(target.rglob("*.lp")):
-        text = _read(path)
-        if not has_contract(text):
-            libraries.append(path)
+        # Whether a file can be run is a fact about that file. A walked file that cannot be read,
+        # parsed, or resolved is recorded against itself and the walk continues, so one unusable
+        # file costs its own result and no other's — the same guarantee the runner gives a case
+        # that will not ground, at the stage before it.
+        try:
+            text = _read(path)
+            if not has_contract(text):
+                libraries.append(path)
+                continue
+            case, declared, sources = _make_case(path, text)
+        except (ContractError, DiscoveryError, ProgramError) as exc:
+            unrunnable.append((path, exc))
             continue
-        case, declared, sources = _make_case(path, text)
         cases.append(case)
         used |= sources
         if not declared:
             undeclared.append(path)
-    return _Walk(tuple(cases), tuple(undeclared), tuple(libraries), frozenset(used))
+    return _Walk(
+        tuple(cases), tuple(undeclared), tuple(libraries), frozenset(used), tuple(unrunnable)
+    )
 
 
 def _read(path: Path) -> str:

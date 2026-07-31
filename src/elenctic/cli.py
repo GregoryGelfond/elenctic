@@ -76,7 +76,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (DiscoveryError, ContractError, ProgramError) as exc:
         print(f"corpus error: {exc}", file=sys.stderr)
         return 2
-    status = _explain(corpus.cases) if args.explain else _run(corpus.cases, args.budget)
+    for path, fault in corpus.unrunnable:
+        # Discovered but unusable — an unresolvable #include, an undecodable byte, a malformed
+        # contract. Reported against the file it belongs to, in the same register as a case the
+        # runner could not run, so one bad file never costs the corpus its other results.
+        print(f"CASE ERROR — {path}: {fault}", file=sys.stderr)
+    status = (
+        _explain(corpus.cases)
+        if args.explain
+        else _run(corpus.cases, args.budget, undiscoverable=len(corpus.unrunnable))
+    )
+    if corpus.unrunnable:
+        status = 2
     return _report_hygiene(corpus.hygiene, strict=args.strict, status=status)
 
 
@@ -121,8 +132,12 @@ def _explain(cases: tuple[Case, ...]) -> int:
     return status
 
 
-def _run(cases: tuple[Case, ...], budget: float) -> int:
-    """Validate every plan up front, then solve + check each case; render non-PASS outcomes."""
+def _run(cases: tuple[Case, ...], budget: float, undiscoverable: int = 0) -> int:
+    """Validate every plan up front, then solve + check each case; render non-PASS outcomes.
+
+    ``undiscoverable`` counts the contract-bearing files discovery could not turn into cases. They
+    are counted into the corpus total and the not-run register here rather than omitted, so the
+    summary never accounts for a file by leaving it out."""
     valid, harness_errors = _validate_plans(cases)
     nonpassing = 0
     case_errors: list[Case] = []
@@ -154,10 +169,12 @@ def _run(cases: tuple[Case, ...], budget: float) -> int:
         if case_verdict(reports) is not Verdict.PASS:
             print(render(case, reports))
             nonpassing += 1
+    total = len(cases) + undiscoverable
+    not_run = len(case_errors) + undiscoverable
     passed = len(cases) - nonpassing - len(harness_errors) - len(case_errors)
-    summary = f"{passed}/{len(cases)} passed"
-    if case_errors:
-        summary += f", {len(case_errors)} could not be run"
+    summary = f"{passed}/{total} passed"
+    if not_run:
+        summary += f", {not_run} could not be run"
     if harness_errors:
         summary += f", {len(harness_errors)} harness error(s)"
     print(f"\n{summary}")

@@ -35,11 +35,25 @@ def test_cli_fails_a_violated_corpus(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert "FAIL" in capsys.readouterr().out
 
 
+def test_cli_reports_a_malformed_contract_against_its_own_file_with_exit_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A walked file that cannot be turned into a case is that file's problem, not the corpus's:
+    # it is named and the other cases still run. Still the error register (2), never a verdict.
+    write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @model { a }\n")  # no @expect
+    status = main([str(tmp_path / "encodings")])
+    assert status == 2
+    err = capsys.readouterr().err
+    assert "CASE ERROR" in err
+    assert "e.lp" in err
+
+
 def test_cli_reports_a_corpus_error_with_exit_2(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @model { a }\n")  # no @expect
-    status = main([str(tmp_path / "encodings")])
+    # The register above is per file; this one is genuinely about the corpus. A named target that
+    # does not exist tests nothing, and there is no file to attribute it to.
+    status = main([str(tmp_path / "no_such_directory")])
     assert status == 2
     assert "corpus error" in capsys.readouterr().err
 
