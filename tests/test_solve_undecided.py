@@ -52,7 +52,7 @@ def _limited(mode: Mode, program: str = _HARD) -> Control:
     return control
 
 
-def _on_model_for(collector: _Collector) -> Callable[[Model], None]:
+def _on_model_for(collector: _Collector) -> Callable[[Model], bool]:
     """The plain (non-theory) callback factory the optimal driver takes."""
     return collector.on_model
 
@@ -96,7 +96,7 @@ def test_an_undecided_second_phase_of_the_optimal_driver_is_inconclusive(
     calls = 0
 
     def one_good_then_undecided(
-        control: Control, on_model: Callable[[Model], None], budget: float
+        control: Control, on_model: Callable[[Model], bool], budget: float
     ) -> tuple[bool, SolveResult]:
         nonlocal calls
         calls += 1
