@@ -13,6 +13,9 @@ from elenctic.cli import main
 
 _GOOD = "% @expect sat\n% @count  2\n\n1 { tea; coffee } 1.\n#show tea/0.\n#show coffee/0.\n"
 _UNSAFE = "% @expect sat\n% @count  1\n\nq(1).\np(X) :- q(Y).\n"
+# Fails while the corpus is being *discovered* rather than while it is being solved: clingo cannot
+# resolve the include, so the case never gets built.
+_BAD_INCLUDE = '% @expect sat\n% @count  1\n\n#include "no_such_library.lp".\n'
 _THEORY = "% @elenctic solver clingcon\n% @expect sat\n% @assign { x=1 }\n\n&sum { x } = 1.\n"
 
 
@@ -46,6 +49,35 @@ def test_an_ungroundable_case_does_not_cost_the_other_cases_their_results(
     assert status == 2
     assert "passed" in captured.out, "the summary of the cases that ran must survive"
     assert "1/2 passed" in captured.out
+
+
+def test_an_undiscoverable_case_does_not_cost_the_other_cases_their_results(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The same guarantee one stage earlier. The runner isolates a case that fails to *ground*, but a
+    # case that fails while the corpus is being *walked* — an unresolvable #include, an undecodable
+    # byte, a malformed contract — aborted discovery itself, so no case ran at all and every other
+    # result was lost. Whether a case can be run is a fact about that case, at either stage.
+    status = main([_corpus(tmp_path, aaa_good=_GOOD, zzz_bad=_BAD_INCLUDE)])
+    captured = capsys.readouterr()
+    assert status == 2
+    assert "Traceback" not in captured.err
+    assert "1/2 passed" in captured.out, "the healthy case's result must survive the bad one"
+    assert "could not be run" in captured.out
+    assert "zzz_bad.lp" in captured.err, "the offending file must be named"
+
+
+def test_an_explicitly_named_undiscoverable_file_is_still_loud(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Tolerance belongs to the walk, not to a file the user pointed at. Naming one file and getting
+    # a summary saying nothing ran would bury the only thing that was asked about.
+    (tmp_path / "named.lp").write_text(_BAD_INCLUDE, encoding="utf-8")
+    status = main([str(tmp_path / "named.lp")])
+    captured = capsys.readouterr()
+    assert status == 2
+    assert "Traceback" not in captured.err
+    assert "no_such_library.lp" in captured.err
 
 
 def test_a_missing_declared_solver_exits_as_an_error_with_a_remedy(
