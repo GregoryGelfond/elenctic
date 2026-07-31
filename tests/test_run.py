@@ -101,6 +101,41 @@ def test_every_mode_states_the_optimization_its_collection_requires() -> None:
                 assert_never(mode.asks)
 
 
+def test_every_collection_states_the_search_its_reading_requires() -> None:
+    # The sibling invariant to the one above, and the one that fails open rather than loud: the
+    # exemption from needing an exhausted search is keyed on Collection, so a collection added
+    # here — or a field remapped onto WITNESS — would inherit it silently, and a reading that is
+    # unsound over a prefix would be reported as if it were the whole. The exhaustive match makes
+    # granting the exemption a deliberate act that has to be written down.
+    for collection in Collection:
+        match collection:
+            case Collection.ALL | Collection.OPTIMAL:
+                assert collection.needs_exhausted_search, (
+                    f"a reading over {collection.value} is a claim about every member, so it is "
+                    "sound only over a search that finished"
+                )
+            case Collection.WITNESS:
+                assert not collection.needs_exhausted_search, (
+                    "one model settles whether an answer set exists, and a witness search stops "
+                    "there, so requiring exhaustion would report satisfiable programs as undecided"
+                )
+            case _:
+                assert_never(collection)
+
+
+def test_only_a_witness_reading_is_exempt_from_an_exhausted_search() -> None:
+    # The exemption is granted per collection but inherited per field, so widening which fields
+    # read WITNESS widens it silently. Pinning the set makes that a deliberate act: a field moved
+    # onto WITNESS must be one that a single model genuinely settles.
+    exempt = {
+        field for field in Field if not collection_of(frozenset({field})).needs_exhausted_search
+    }
+    assert exempt == {Field.WITNESS}, (
+        "only the witness reading is settled by one model; every other field is a reading of a "
+        "collection and needs the search that produced it to have finished"
+    )
+
+
 def test_every_field_is_a_reading_of_exactly_one_collection() -> None:
     # Totality over Field: a Field added without an entry KeyErrors here. This partition is the
     # structure a mode's collection derives from, so a gap would silently mis-derive a lowering.
