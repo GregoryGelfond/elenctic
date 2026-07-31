@@ -28,11 +28,11 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from typing import Final, Literal, NoReturn, cast
 
-from clingo import Symbol, parse_term
+from clingo import Symbol
 
 from elenctic.query import Query, parse_query
 from elenctic.registry import SOLVERS, Solver
-from elenctic.terms import parse_litset
+from elenctic.terms import parse_litset, parse_term
 
 
 class ContractError(Exception):

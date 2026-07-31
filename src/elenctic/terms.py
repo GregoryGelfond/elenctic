@@ -7,7 +7,25 @@ than a hand-rolled splitter. A strong-negation literal ``-a`` parses to a
 ``Symbol`` with ``positive == False``.
 """
 
-from clingo import Function, Symbol, SymbolType, parse_term
+from clingo import Function, Symbol, SymbolType
+from clingo import parse_term as _clingo_parse_term
+
+
+def parse_term(text: str) -> Symbol:
+    """clingo's term parser, with its diagnostics captured instead of written to stderr.
+
+    Given no logger, clingo reports a parse failure on standard error itself — text elenctic did
+    not frame, arriving on a stream it did not choose, interleaved with whatever else is there.
+    The contract being parsed comes from a ``.lp`` file, so that text is influenced by the file.
+    Capturing it and folding it into the raised error keeps every diagnostic on one channel, with
+    the provenance the caller adds; the failure type is unchanged, so the callers that already
+    translate it keep working.
+    """
+    messages: list[str] = []
+    try:
+        return _clingo_parse_term(text, logger=lambda _code, message: messages.append(message))
+    except RuntimeError as exc:
+        raise RuntimeError("; ".join(messages) or str(exc)) from exc
 
 
 def _is_tuple_symbol(s: Symbol) -> bool:

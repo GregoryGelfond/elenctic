@@ -20,7 +20,7 @@ Checks are pure over a ``Determination``; only ``solvers.py`` touches clingo/cli
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from dataclasses import field as dc_field
-from typing import assert_never
+from typing import Final, assert_never
 
 from clingo import Symbol
 
@@ -149,9 +149,26 @@ def _require_nonempty(items: frozenset[Symbol] | frozenset[tuple[Symbol, int]], 
 # --- diagnostic rendering (deterministic: sorted by text, so messages are stable) ---
 
 
+# How many members of a set a diagnostic shows before it summarizes the rest. Every set a check
+# renders passes through `_braces`, and the sets a program can produce are as large as the program
+# makes them — a cautious reading over a big fact base is the whole fact base. A line nobody can
+# read is not a better diagnostic than a line that says how much it left out, and a consumer on the
+# other end of a pipe has to hold whatever is written.
+_SHOWN_MEMBERS: Final = 32
+
+
 def _braces(parts: list[str]) -> str:
-    """Wrap already-rendered parts as a set literal ``{ a, b }`` (``{ }`` when empty)."""
-    return "{ " + ", ".join(parts) + " }" if parts else "{ }"
+    """Wrap already-rendered parts as a set literal ``{ a, b }`` (``{ }`` when empty), showing at
+    most :data:`_SHOWN_MEMBERS` of them and counting the remainder.
+
+    Parts arrive sorted, so what is shown is the same across runs rather than whichever members the
+    search happened to reach first."""
+    if not parts:
+        return "{ }"
+    if len(parts) <= _SHOWN_MEMBERS:
+        return "{ " + ", ".join(parts) + " }"
+    shown = ", ".join(parts[:_SHOWN_MEMBERS])
+    return f"{{ {shown}, … (+{len(parts) - _SHOWN_MEMBERS} more) }}"
 
 
 def _show_set(symbols: Iterable[Symbol]) -> str:
