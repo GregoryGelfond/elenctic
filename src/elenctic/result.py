@@ -123,9 +123,10 @@ class Inconsistent:
 
 @dataclass(frozen=True, slots=True)
 class Inconclusive:
-    """The solve did not decide — the time budget was hit, or the solver gave up without an answer.
-    Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an undecided solve is
-    inexpressible."""
+    """The solve did not settle the question — the time budget was hit, the solver gave up without
+    an answer, or it answered over a search that stopped before covering what the reading ranges
+    over. Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an undecided
+    solve is inexpressible — including which of the three it was."""
 
 
 class Consistent:
