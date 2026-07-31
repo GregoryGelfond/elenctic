@@ -31,6 +31,7 @@ consumers.
 
 from elenctic.checks import CheckReport
 from elenctic.discovery import Case
+from elenctic.display import legible
 from elenctic.registry import provides_theory
 from elenctic.result import Verdict
 from elenctic.run import runs_for
@@ -71,14 +72,18 @@ def render(case: Case, reports: tuple[CheckReport, ...]) -> str:
     """Render the case outcome as a human diagnostic (pure). The header names the contract source,
     the solver, and the case verdict; each non-``PASS`` check contributes a line tagged with its own
     verdict (FAIL vs UNDECIDED kept distinct); and on any non-``PASS`` outcome the case's
-    ``@note`` prose is surfaced (Model A — read from the case). A passing case is a terse header."""
+    ``@note`` prose is surfaced (Model A — read from the case). A passing case is a terse header.
+
+    The path, the note prose and each check's message all come from the corpus, so each is made
+    :func:`~elenctic.display.legible` first: this string is the verdict a reader acts on, and text
+    that could rewrite it would undo the point of producing it."""
     verdict = case_verdict(reports)
-    lines = [f"{case.contract_source} [{case.solver}] — {verdict.name}"]
+    lines = [f"{legible(str(case.contract_source))} [{case.solver}] — {verdict.name}"]
     lines.extend(
-        f"  [{report.verdict.name}] {report.label}: {report.message}"
+        f"  [{report.verdict.name}] {report.label}: {legible(report.message)}"
         for report in reports
         if report.verdict is not Verdict.PASS
     )
     if verdict is not Verdict.PASS:
-        lines.extend(f"  note: {note}" for note in case.expectation.notes)
+        lines.extend(f"  note: {legible(note)}" for note in case.expectation.notes)
     return "\n".join(lines)

@@ -27,6 +27,7 @@ from elenctic.discovery import (
     check_solver_available,
     inspect_corpus,
 )
+from elenctic.display import legible
 from elenctic.expectation import ContractError
 from elenctic.harness import case_verdict, render, run_case
 from elenctic.program import ProgramError
@@ -74,14 +75,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         corpus = inspect_corpus(args.target)
     except (DiscoveryError, ContractError, ProgramError) as exc:
-        print(f"corpus error: {exc}", file=sys.stderr)
+        print(f"corpus error: {legible(str(exc))}", file=sys.stderr)
         return 2
     for _path, fault in corpus.unrunnable:
         # Discovered but unusable — an unresolvable #include, an undecodable byte, a malformed
         # contract. Reported against the file it belongs to, in the same register as a case the
         # runner could not run, so one bad file never costs the corpus its other results.
         # Every discovery diagnostic carries its own provenance, so the path is not repeated here.
-        print(f"CASE ERROR — {fault}", file=sys.stderr)
+        print(f"CASE ERROR — {legible(str(fault))}", file=sys.stderr)
     status = (
         _explain(corpus.cases)
         if args.explain
@@ -113,11 +114,11 @@ def _explain(cases: tuple[Case, ...]) -> int:
     reads. 0, or 2 on a misroute."""
     status = 0
     for case in cases:
-        print(f"{case.contract_source} [{case.solver}]")
+        print(f"{legible(str(case.contract_source))} [{case.solver}]")
         # The @note prose leads the narration — the author's what/why above the harness's how.
         # Both Sat and Unsat carry notes; documentation, never a verdict.
         for note in case.expectation.notes:
-            print(f"    note: {note}")
+            print(f"    note: {legible(note)}")
         try:
             for run in runs_for(case.expectation, provides_theory(case.solver)):
                 projects = "yes" if run.projects_to_shown else "no"
@@ -128,7 +129,7 @@ def _explain(cases: tuple[Case, ...]) -> int:
                     reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
                     print(f"        {name} — reads {{{reads}}}")
         except HarnessError as exc:
-            print(f"    HARNESS ERROR: {exc}", file=sys.stderr)
+            print(f"    HARNESS ERROR: {legible(str(exc))}", file=sys.stderr)
             status = 2
     return status
 
@@ -151,20 +152,26 @@ def _run(cases: tuple[Case, ...], budget: float, undiscoverable: int = 0) -> int
         except DiscoveryError as exc:
             # the environment cannot run this case (its declared solver is not installed). The
             # message carries its own provenance, as every discovery diagnostic does.
-            print(f"SOLVER ERROR — {exc}", file=sys.stderr)
+            print(f"SOLVER ERROR — {legible(str(exc))}", file=sys.stderr)
             case_errors.append(case)
             continue
         except ProgramError as exc:
             # the program under test cannot be run (it will not ground, an #include is unresolvable)
             # — its author fixes the .lp. Not a verdict, and not elenctic's fault either, so it is
             # reported apart from both and the remaining cases still run.
-            print(f"PROGRAM ERROR — {case.contract_source}: {exc}", file=sys.stderr)
+            print(
+                f"PROGRAM ERROR — {legible(str(case.contract_source))}: {legible(str(exc))}",
+                file=sys.stderr,
+            )
             case_errors.append(case)
             continue
         except HarnessError as exc:
             # a solve-time invariant breach (a seam, a missing cost) is a harness bug too, never a
             # verdict — report it like a misroute (exit 2) and keep testing the other cases.
-            print(f"HARNESS ERROR — {case.contract_source}: {exc}", file=sys.stderr)
+            print(
+                f"HARNESS ERROR — {legible(str(case.contract_source))}: {legible(str(exc))}",
+                file=sys.stderr,
+            )
             harness_errors.append(case)
             continue
         if case_verdict(reports) is not Verdict.PASS:
@@ -194,7 +201,10 @@ def _validate_plans(cases: tuple[Case, ...]) -> tuple[list[Case], list[Case]]:
         try:
             runs_for(case.expectation, provides_theory(case.solver))
         except HarnessError as exc:
-            print(f"HARNESS ERROR — {case.contract_source}: {exc}", file=sys.stderr)
+            print(
+                f"HARNESS ERROR — {legible(str(case.contract_source))}: {legible(str(exc))}",
+                file=sys.stderr,
+            )
             harness_errors.append(case)
         else:
             valid.append(case)

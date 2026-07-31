@@ -31,6 +31,7 @@ from pathlib import Path
 
 from clingo import Symbol
 
+from elenctic.display import legible
 from elenctic.expectation import ContractError, Expectation, Sat, has_contract, parse_contract
 from elenctic.program import ProgramError, ProgramFacts, inspect
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
@@ -127,12 +128,12 @@ class HygieneReport:
         solvers only under ``--strict`` (silent by default — the stated ``clingo`` default is
         legitimate). Aggregated and reported together."""
         lines = [
-            f"orphan library: {path} carries no contract and no case #includes it "
+            f"orphan library: {legible(str(path))} carries no contract and no case #includes it "
             "(a forgotten case, or a dead library?)"
             for path in self.orphan_libraries
         ]
         if strict and self.undeclared_solvers:
-            listed = ", ".join(str(path) for path in self.undeclared_solvers)
+            listed = ", ".join(legible(str(path)) for path in self.undeclared_solvers)
             lines.append(
                 f"undeclared solver: {len(self.undeclared_solvers)} case(s) defaulted to clingo "
                 f"(declare @elenctic solver for reproducibility): {listed}"
