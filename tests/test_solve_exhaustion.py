@@ -99,7 +99,7 @@ def _control(
     return control
 
 
-def _on_model_for(collector: _Collector) -> Callable[[Model], None]:
+def _on_model_for(collector: _Collector) -> Callable[[Model], bool]:
     """The plain (non-theory) callback factory the optimal driver takes."""
     return collector.on_model
 
@@ -136,7 +136,7 @@ def test_a_partial_search_over_a_collection_is_inconclusive(
     seen: list[tuple[bool, SolveResult]] = []
 
     def spy(
-        control: Control, on_model: Callable[[Model], None], budget: float
+        control: Control, on_model: Callable[[Model], bool], budget: float
     ) -> tuple[bool, SolveResult]:
         outcome = real(control, on_model, budget)
         seen.append(outcome)
@@ -211,7 +211,7 @@ def test_a_partial_second_phase_of_the_optimal_driver_is_inconclusive(
     calls = 0
 
     def one_good_then_partial(
-        control: Control, on_model: Callable[[Model], None], budget: float
+        control: Control, on_model: Callable[[Model], bool], budget: float
     ) -> tuple[bool, SolveResult]:
         nonlocal calls
         calls += 1

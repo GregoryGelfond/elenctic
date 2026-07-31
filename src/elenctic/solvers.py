@@ -59,6 +59,13 @@ __all__ = ["TIME_BUDGET", "run_clingcon", "run_clingo", "solve"]
 
 TIME_BUDGET: float = 30.0  # seconds; the hang-protection default (a hit budget is UNDECIDED)
 
+# The companion bound to TIME_BUDGET, over the other exhaustible resource. A solve holds every
+# model it is shown, and a time budget says nothing about how fast they arrive — a program decides
+# that — so a budget that never expires can still end in exhausted memory. High enough that no
+# corpus reading a collection anyone means to read will meet it, and a run that does meet it is
+# reported as not having finished, which is what it is.
+MODEL_CAP: int = 1_000_000
+
 
 class _Collector:
     """Accumulates a solve's observations, dispatching on ``model.type``.
@@ -68,13 +75,22 @@ class _Collector:
     carries the shown ⋂/⋃. The per-mode accessors read exactly what that mode's shape needs.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, cap: int = MODEL_CAP) -> None:
+        self._cap = cap
+        self.models_seen = 0
         self._observables: list[Observable] = []
         self._costs: list[tuple[int, ...]] = []
         self._cautious: frozenset[Symbol] | None = None
         self._brave: frozenset[Symbol] | None = None
 
-    def on_model(self, model: Model, assign: frozenset[tuple[Symbol, int]] = frozenset()) -> None:
+    def on_model(self, model: Model, assign: frozenset[tuple[Symbol, int]] = frozenset()) -> bool:
+        """Take one model; return whether the search should continue.
+
+        Returning ``False`` at the cap is clingo's own way to stop a search, and stopping is what
+        keeps the accumulation below it. A stopped search reports itself as not exhausted, so a
+        reading over a whole collection is already routed to ``Inconclusive`` — the cap needs no
+        verdict vocabulary of its own, because running out of room and running out of time are the
+        same fact about knowledge."""
         # The lists stay index-aligned because the StableModel branch is the only writer of both.
         shown = frozenset(model.symbols(shown=True))
         match model.type:
@@ -83,10 +99,12 @@ class _Collector:
             case ModelType.BraveConsequences:
                 self._brave = shown
             case ModelType.StableModel:
+                self.models_seen += 1
                 self._observables.append(Observable(shown, assign))
                 self._costs.append(tuple(model.cost))
             case _:
                 assert_never(model.type)  # a future ModelType fails loud, never silently counted
+        return self.models_seen < self._cap
 
     def witness(self) -> Observable:
         """The single satisfiability witness (``DEFAULT``): SAT ⟹ the ≤1-model solve found one."""
@@ -245,13 +263,15 @@ class _CallbackGuard:
 
     __slots__ = ("_on_model", "failure")
 
-    def __init__(self, on_model: Callable[[Model], None]) -> None:
+    def __init__(self, on_model: Callable[[Model], bool]) -> None:
         self._on_model = on_model
         self.failure: BaseException | None = None
 
-    def __call__(self, model: Model) -> None:
+    def __call__(self, model: Model) -> bool:
+        # The callback's answer is passed through, not discarded: returning False is how clingo is
+        # told to stop, so swallowing it would leave the collector's cap unreachable.
         try:
-            self._on_model(model)
+            return self._on_model(model)
         except BaseException as exc:
             self.failure = exc
             raise
@@ -263,7 +283,7 @@ class _CallbackGuard:
 
 
 def _solve_under_budget(
-    control: Control, on_model: Callable[[Model], None], budget: float
+    control: Control, on_model: Callable[[Model], bool], budget: float
 ) -> tuple[bool, SolveResult]:
     """One async solve under ``budget`` reduced to ``(completed, result)``: ``wait(budget)`` then
     ``cancel`` on a miss; the handle closes via the context manager. A failure raised inside
@@ -293,7 +313,7 @@ def _drive(
     control: Control,
     mode: Mode,
     collector: _Collector,
-    on_model: Callable[[Model], None],
+    on_model: Callable[[Model], bool],
     budget: float,
     projects_to_shown: bool = False,
 ) -> Determination:
@@ -312,7 +332,7 @@ def _set_opt_mode(control: Control, opt_mode: str) -> None:
 
 def _optimal_enum_two_phase(
     control: Control,
-    make_on_model: Callable[[_Collector], Callable[[Model], None]],
+    make_on_model: Callable[[_Collector], Callable[[Model], bool]],
     budget: float,
     projects_to_shown: bool,
 ) -> Determination:
@@ -456,14 +476,16 @@ def run_clingcon(
         control.ground([("base", [])])
         theory.prepare(control)
 
-        def make_on_model(collector: _Collector) -> Callable[[Model], None]:
-            def on_model(model: Model) -> None:
+        def make_on_model(collector: _Collector) -> Callable[[Model], bool]:
+            def on_model(model: Model) -> bool:
                 theory.on_model(model)  # populate the theory assignment before reading it
                 # clingcon is a linear-integer CSP solver, so assignment() yields (Symbol, int)
                 # pairs: `Observable.assign`'s `int` is exact here, not a narrowing of the untyped
                 # boundary.
                 assign = frozenset((sym, val) for sym, val in theory.assignment(model.thread_id))
-                collector.on_model(model, assign)
+                # The collector's answer is returned, not dropped: the theory path is bounded by
+                # the same cap as the plain one.
+                return collector.on_model(model, assign)
 
             return on_model
 

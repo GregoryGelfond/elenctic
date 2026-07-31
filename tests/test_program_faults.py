@@ -63,7 +63,7 @@ def test_an_ungroundable_program_is_never_unsatisfiable(tmp_path: Path) -> None:
         run_clingo(Mode.DEFAULT, files=(source,))
 
 
-def _exploding(_model: Model) -> None:
+def _exploding(_model: Model) -> bool:
     """A model callback standing in for an elenctic-internal fault during a solve."""
     raise HarnessError("seam breach")
 
@@ -120,7 +120,7 @@ class _CancellingHandle:
     budget poll returning — a test built on that would be flaky, and this path is worth pinning
     exactly."""
 
-    def __init__(self, on_model: Callable[[Model], None]) -> None:
+    def __init__(self, on_model: Callable[[Model], bool]) -> None:
         self._on_model = on_model
 
     def __enter__(self) -> _CancellingHandle:
@@ -144,7 +144,7 @@ class _CancellingHandle:
 class _CancellingControl:
     """A control whose solve always takes the cancelled path above."""
 
-    def solve(self, on_model: Callable[[Model], None], async_: bool) -> _CancellingHandle:
+    def solve(self, on_model: Callable[[Model], bool], async_: bool) -> _CancellingHandle:
         assert async_, "the facade always solves asynchronously"
         return _CancellingHandle(on_model)
 
