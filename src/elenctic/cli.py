@@ -20,6 +20,7 @@ import sys
 import traceback
 from collections.abc import Sequence
 from pathlib import Path
+from time import monotonic
 
 from elenctic.discovery import (
     Case,
@@ -66,6 +67,14 @@ def _build_parser() -> argparse.ArgumentParser:
         default=TIME_BUDGET,
         metavar="SECONDS",
         help=f"per-solve budget; a hit budget is UNDECIDED, not FAIL (default {TIME_BUDGET}s)",
+    )
+    parser.add_argument(
+        "--deadline",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="stop the run once it has taken this long; cases not reached are reported as not run "
+        "(off by default — --budget bounds one solve, this bounds the whole corpus)",
     )
     return parser
 
@@ -119,7 +128,12 @@ def _dispatch(argv: Sequence[str] | None) -> int:
     status = (
         _explain(corpus.cases)
         if args.explain
-        else _run(corpus.cases, args.budget, undiscoverable=len(corpus.unrunnable))
+        else _run(
+            corpus.cases,
+            args.budget,
+            undiscoverable=len(corpus.unrunnable),
+            deadline=args.deadline,
+        )
     )
     if corpus.unrunnable:
         status = 2
@@ -167,16 +181,39 @@ def _explain(cases: tuple[Case, ...]) -> int:
     return status
 
 
-def _run(cases: tuple[Case, ...], budget: float, undiscoverable: int = 0) -> int:
+def _run(
+    cases: tuple[Case, ...],
+    budget: float,
+    undiscoverable: int = 0,
+    deadline: float | None = None,
+) -> int:
     """Validate every plan up front, then solve + check each case; render non-PASS outcomes.
 
     ``undiscoverable`` counts the contract-bearing files discovery could not turn into cases. They
     are counted into the corpus total and the not-run register here rather than omitted, so the
-    summary never accounts for a file by leaving it out."""
+    summary never accounts for a file by leaving it out.
+
+    ``deadline`` bounds the run rather than a solve. ``budget`` bounds one solve, and a case can
+    route to several, so a corpus costs a product of three numbers of which only one was bounded.
+    It is off unless asked for: unlike a model cap there is no run duration obviously beyond
+    legitimate use, and a default low enough to bound a hostile corpus would turn a large honest
+    one into cases that could not be run — a worse failure than the one it prevents."""
     valid, harness_errors = _validate_plans(cases)
+    started = monotonic()
     nonpassing = 0
     case_errors: list[Case] = []
-    for case in valid:
+    for reached, case in enumerate(valid):
+        if deadline is not None and monotonic() - started >= deadline:
+            # Stop dispatching, and account for every case that will not run. Reporting them one
+            # by one would bury the reason under its own consequences, so they are counted once.
+            unreached = valid[reached:]
+            print(
+                f"DEADLINE — the run passed its {deadline}s deadline; "
+                f"{len(unreached)} case(s) were not reached",
+                file=sys.stderr,
+            )
+            case_errors.extend(unreached)
+            break
         try:
             # The declared solver is checked here, per case, so an absent optional backend costs
             # only the cases that declare it rather than the whole run.
