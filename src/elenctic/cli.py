@@ -17,6 +17,7 @@ is the standalone runner; the pytest-client path (per-case ``parametrize``) is a
 
 import argparse
 import sys
+import traceback
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -70,7 +71,39 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the ``elenctic`` CLI; return the process exit status (0 pass / 1 fail / 2 error)."""
+    """Run the ``elenctic`` CLI; return the process exit status (0 pass / 1 fail / 2 error).
+
+    The last two registers are here, because a fault that reaches this frame is by definition one
+    no inner register anticipated, and the user still has to be told something they can act on."""
+    try:
+        return _dispatch(argv)
+    except MemoryError:
+        # Grounding has no bound available to it — clingo's API offers neither a clock nor a size
+        # limit on it — so a small program can exhaust memory, and clingo reports that as a
+        # MemoryError rather than the RuntimeError the fault paths are written against. Being
+        # unable to *bound* the resource is not a reason to be unable to *report* it.
+        print(
+            "resource error: elenctic ran out of memory running this corpus. A program can be "
+            "small and still ground to something enormous, and grounding has no size limit to "
+            "hold it under — run this corpus with a memory limit, or reduce what it grounds. No "
+            "verdict was produced.",
+            file=sys.stderr,
+        )
+        return 2
+    except Exception:
+        # Whatever this is, the user did not cause it and cannot fix it. Say so first, then show
+        # the traceback: it is the report, not a failure to produce one.
+        print(
+            "internal error: this is an elenctic bug, not a fault in your corpus. Please report "
+            "it with the traceback below.",
+            file=sys.stderr,
+        )
+        traceback.print_exc()
+        return 2
+
+
+def _dispatch(argv: Sequence[str] | None) -> int:
+    """Parse the invocation, discover the corpus, and run or explain it."""
     args = _build_parser().parse_args(argv)
     try:
         corpus = inspect_corpus(args.target)
