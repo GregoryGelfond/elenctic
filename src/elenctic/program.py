@@ -10,10 +10,12 @@ Principle: *contract-level facts read the case file; program-level facts read th
 """
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from clingo import SymbolType
 from clingo.ast import AST, ASTType, UnaryOperator
 from clingo.ast import parse_files as _parse_files
 
@@ -62,40 +64,55 @@ class ProgramFacts:
 
 def inspect(files: tuple[Path, ...]) -> ProgramFacts:
     """Inspect the resolved program (``files`` + their ``#include``s) into ``ProgramFacts``. Raises
-    ``ProgramError`` with provenance on an unreadable/missing/cyclic include or a parse error."""
+    ``ProgramError`` with provenance on an unreadable/missing/cyclic include, a parse error, or a
+    source byte that is not UTF-8.
+
+    Three phases, because they have three different owners and a region can only name one. The
+    parse is clingo's over the corpus author's text, so its failures are the program's. The walk
+    over what clingo returned is elenctic's own code — with one exception, since clingo decodes
+    node strings *lazily*, so a non-UTF-8 source byte surfaces here rather than at parse. Resolving
+    the source names needs no clingo state at all and comes last, outside both regions."""
     statements: list[AST] = []
     messages: list[str] = []  # clingo's own diagnostics (with file:line:col), captured not printed
-    try:
+    with _parse_faults(files, messages):
         _parse_files(
             [str(path) for path in files],
             statements.append,
             logger=lambda _code, message: messages.append(message),
         )
-        # The traversal is inside the try too: clingo decodes some node strings *lazily*, so a
-        # non-UTF-8 source byte surfaces here (during `_descendants`/`_shown_signature`), not at
-        # parse.
+    with _walk_faults(files):
         nodes = [node for statement in statements for node in _descendants(statement)]
-        # Each statement carries the file it came from (clingo's own include resolution); the
-        # distinct set, resolved once each, is the program's authoritative source-file span.
+        has_theory_atom = any(node.ast_type is ASTType.TheoryAtom for node in nodes)
+        shown = frozenset(sig for node in nodes if (sig := _shown_signature(node)))
+        # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes — one signal.
+        has_optimization = any(node.ast_type is ASTType.Minimize for node in nodes)
+        has_maximize = any(_is_maximize(node) for node in nodes)
+        has_theory_optimization = any(_is_theory_objective(node) for node in nodes)
+        # Each statement carries the file it came from (clingo's own include resolution); reading
+        # that name is a decode, so it belongs here, while resolving it is a question for the
+        # filesystem and belongs below.
         filenames = {statement.location.begin.filename for statement in statements}
-        return ProgramFacts(
-            has_theory_atom=any(node.ast_type is ASTType.TheoryAtom for node in nodes),
-            shown=frozenset(sig for node in nodes if (sig := _shown_signature(node))),
-            # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes — one signal.
-            has_optimization=any(node.ast_type is ASTType.Minimize for node in nodes),
-            has_maximize=any(_is_maximize(node) for node in nodes),
-            has_theory_optimization=any(_is_theory_objective(node) for node in nodes),
-            sources=frozenset(Path(name).resolve() for name in filenames if name),
-        )
-    except RecursionError as exc:
-        # elenctic's own AST walk, not the program's structure, is what ran out of room. The author
-        # is still the one who can act, so this stays a ProgramError — but the remedy is to flatten
-        # the term, and the include advice below would send them to read a line that is not there.
-        names = ", ".join(str(path) for path in files)
-        raise ProgramError(
-            f"cannot read the program ({names}): a term is nested more deeply than elenctic's "
-            "walk over the program can follow — flatten the term, or split the rule that builds it"
-        ) from exc
+    return ProgramFacts(
+        has_theory_atom=has_theory_atom,
+        shown=shown,
+        has_optimization=has_optimization,
+        has_maximize=has_maximize,
+        has_theory_optimization=has_theory_optimization,
+        # The distinct set, resolved once each, is the program's authoritative source-file span.
+        sources=frozenset(Path(name).resolve() for name in filenames if name),
+    )
+
+
+@contextmanager
+def _parse_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[None]:
+    """Translate a failure raised by the parse into a ``ProgramError`` naming the program and
+    carrying clingo's own captured diagnostic.
+
+    Everything under this region is clingo reading the corpus author's text, so every failure it
+    reports is that author's to fix. A harness-logic bug (``AttributeError``/``KeyError``/...) is
+    not caught and stays loud."""
+    try:
+        yield
     except UnicodeEncodeError as exc:
         # The file *name*, not its contents: clingo encodes the path strictly, so a name carrying a
         # byte that is not UTF-8 fails before the file is opened. A sibling of UnicodeDecodeError
@@ -107,9 +124,8 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
         ) from exc
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
         # RuntimeError: a parse / missing-or-cyclic-#include failure (clingo logged the detail to
-        # `messages`); UnicodeDecodeError: a non-UTF-8 source byte; OSError: unreadable. All are
-        # author/corpus faults → a friendly ProgramError with provenance, never a raw traceback.
-        # A harness-logic bug (AttributeError/KeyError/...) is NOT caught and stays loud.
+        # `messages`); UnicodeDecodeError: a source byte reaching Python through a diagnostic;
+        # OSError: unreadable.
         names = ", ".join(str(path) for path in files)
         # Both, never one or the other: the logger holds the provenance but accumulates routine
         # notices too, so a fault raised after a clean parse would otherwise be reported as
@@ -123,6 +139,37 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
             else ""
         )
         raise ProgramError(f"cannot resolve the program ({names}): {detail}{hint}") from exc
+
+
+@contextmanager
+def _walk_faults(files: tuple[Path, ...]) -> Iterator[None]:
+    """Translate the one failure of elenctic's own walk that belongs to the program: a source byte
+    that is not valid UTF-8, which clingo decodes lazily and so raises here rather than at parse.
+
+    Anything else raised under this region comes from elenctic's traversal of an AST clingo already
+    accepted, and it is elenctic's — so it is left to propagate with its own type, and is reported
+    as the defect it is instead of sending a corpus author to fix a file that parsed. The parse's
+    captured diagnostics are deliberately not spliced into these messages: they describe the text,
+    and a notice about an atom occurring in no rule head explains nothing about a byte that will
+    not decode."""
+    try:
+        yield
+    except UnicodeDecodeError as exc:
+        names = ", ".join(str(path) for path in files)
+        raise ProgramError(
+            f"cannot read the program ({names}): a byte in the source is not valid UTF-8, which "
+            f"the solver requires — re-encode the file as UTF-8 ({exc})"
+        ) from exc
+    except RecursionError as exc:
+        # elenctic's own AST walk, not the program's structure, is what ran out of room. The author
+        # is still the one who can act, so this stays a ProgramError — but the remedy is to flatten
+        # the term, and the include advice on the parse region would send them to read a line that
+        # is not there.
+        names = ", ".join(str(path) for path in files)
+        raise ProgramError(
+            f"cannot read the program ({names}): a term is nested more deeply than elenctic's "
+            "walk over the program can follow — flatten the term, or split the rule that builds it"
+        ) from exc
 
 
 def _descendants(node: object) -> Iterator[AST]:
@@ -195,6 +242,12 @@ def _predicate_signature(term: AST) -> tuple[str, int] | None:
     if term.ast_type is ASTType.Function:
         return (term.name, len(term.arguments)) if term.name else None
     if term.ast_type is ASTType.SymbolicTerm:
-        name = getattr(term.symbol, "name", None)
-        return (name, len(term.symbol.arguments)) if name else None
+        # The type is asked before the name, because a symbol's name is defined only for a function
+        # symbol: reading one off a string or a number raises rather than reporting that there is
+        # none, so a default cannot stand in for it. `#show "text" : p.` and `#show 42 : p.` are
+        # both programs clingo runs, and neither declares a predicate.
+        symbol = term.symbol
+        if symbol.type is not SymbolType.Function:
+            return None
+        return (symbol.name, len(symbol.arguments)) if symbol.name else None
     return None
