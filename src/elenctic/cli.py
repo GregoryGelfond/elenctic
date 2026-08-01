@@ -8,11 +8,12 @@ plan: it narrates the derived runs (mode + checks) per case without solving, the
 ``reads``/``populates`` surface was made introspectable for.
 
 Exit status separates the outcome registers: ``0`` all cases pass; ``1`` some case FAILed or
-is UNDECIDED (a statement about a program under test); ``2`` a corpus, program or harness error (a
-bad contract, a mis-shaped corpus, a program that cannot be run, or an elenctic bug — never a
-verdict). A case that cannot be run does not stop the others: it is reported in its own register
-and the run continues, so one broken encoding never costs the run every other case's result. This
-is the standalone runner; the pytest-client path (per-case ``parametrize``) is a separate consumer.
+is UNDECIDED (a statement about a program under test); ``2`` a corpus, program, resource or harness
+error (a bad contract, a mis-shaped corpus, a program that cannot be run, a case that exhausted
+memory, or an elenctic bug — never a verdict). A case that cannot be run does not stop the others:
+it is reported in its own register and the run continues, so one broken encoding never costs the
+run every other case's result. This is the standalone runner; the pytest-client path (per-case
+``parametrize``) is a separate consumer.
 """
 
 import argparse
@@ -87,15 +88,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return _dispatch(argv)
     except MemoryError:
-        # Grounding has no bound available to it — clingo's API offers neither a clock nor a size
-        # limit on it — so a small program can exhaust memory, and clingo reports that as a
-        # MemoryError rather than the RuntimeError the fault paths are written against. Being
-        # unable to *bound* the resource is not a reason to be unable to *report* it.
+        # The backstop, for an allocation that fails where no case owns it. A case that exhausts
+        # memory is caught in the run loop and costs only its own result; reaching this frame means
+        # there was no case to report it against. Being unable to *bound* the resource — clingo's
+        # API offers neither a clock nor a size limit on grounding — is not a reason to be unable
+        # to *report* it. What consumed the memory is not knowable from here, so it is not claimed.
         print(
-            "resource error: elenctic ran out of memory running this corpus. A program can be "
-            "small and still ground to something enormous, and grounding has no size limit to "
-            "hold it under — run this corpus with a memory limit, or reduce what it grounds. No "
-            "verdict was produced.",
+            "resource error: elenctic ran out of memory running this corpus. Grounding has no size "
+            "limit available to it, and a solve holds every model it is shown — run this corpus "
+            "with a memory limit, or reduce what it grounds and enumerates. No verdict was "
+            "produced.",
             file=sys.stderr,
         )
         return 2
@@ -231,6 +233,25 @@ def _run(
             # reported apart from both and the remaining cases still run.
             print(
                 f"PROGRAM ERROR — {legible(str(case.contract_source))}: {legible(str(exc))}",
+                file=sys.stderr,
+            )
+            case_errors.append(case)
+            continue
+        except MemoryError:
+            # Reported against the case that exhausted it, and counted with the other cases that
+            # could not be run, so the corpus keeps every result it had already earned. Nothing is
+            # bounded by this — the grounder offers no size limit and so neither can elenctic —
+            # but what it costs is one case's result rather than the whole run's.
+            #
+            # Where the memory went is not something this frame can know: grounding is the usual
+            # answer, and a solve holds every model it is shown, so the message names both rather
+            # than asserting the likelier one.
+            print(
+                f"RESOURCE ERROR — {legible(str(case.contract_source))}: elenctic ran out of "
+                "memory running this case. Grounding has no size limit available to it, and a "
+                "solve holds every model it is shown — reduce what this case grounds or "
+                "enumerates, or run the corpus under a memory limit. No verdict was produced "
+                "for it.",
                 file=sys.stderr,
             )
             case_errors.append(case)
