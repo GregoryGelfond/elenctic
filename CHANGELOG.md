@@ -4,6 +4,149 @@ Notable changes to elenctic. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project aims at
 [Semantic Versioning](https://semver.org/).
 
+Changes are recorded under **Unreleased** as they merge; cutting a release renames that section to
+the version and dates it. Entries describe what changed for someone using elenctic, and what it
+means for them — a reader deciding whether to upgrade should not have to read the commits.
+
+## [Unreleased]
+
+### Security
+
+- **A case may only load files from the corpus it belongs to.** `#include` resolution belongs to
+  clingo, which opens whatever path it is handed, and nothing constrained what a case could hand
+  it — so a corpus could name any file the process can read, absolutely, by climbing out with
+  `../`, or through a symlink. What is read does not stay read, either: a contract that fails
+  renders the model it was judged against, so a case that includes a file and then asserts
+  something false about it publishes that file's contents through elenctic's own diagnostic.
+  Containment is rooted at the directory the run was pointed at, not at the case's own, because
+  reaching across to a shared encoding is the ordinary shape of a corpus.
+
+- **Corpus-controlled text can no longer rewrite the report it appears in.** A case's path, its
+  `@note` prose, the atoms in its answer sets and the solver's diagnostics about it all reached the
+  terminal verbatim, and a terminal acts on some of that text rather than showing it — so a corpus
+  could clear the screen, move the cursor, or overwrite a line just printed. Such text now passes
+  through an escaping step: printable characters, spaces and newlines survive, anything else
+  becomes a visible `\xNN`. Newlines are deliberately kept, since a solver diagnostic is
+  legitimately multi-line; a newline can add a line but cannot conceal or overwrite one.
+
+- **A solve is now bounded in memory as well as in time.** A solve holds every model it is shown,
+  and the time budget says nothing about how fast they arrive — so a corpus could exhaust memory
+  inside a budget that never expired, which made the advertised hang protection a bound on one
+  resource presented as the bound. A model cap stops the search, on both the clingo and clingcon
+  paths. It needs no verdict vocabulary of its own: a stopped search reports itself as not
+  exhausted, and running out of room and running out of time are the same fact about knowledge.
+
+- **The contract scanner finishes, and its lines are clingo's lines.** While a braced payload was
+  open, every following line re-read the whole accumulated text and every continuation rebuilt it —
+  two quadratics, the first running for each line in the file, all of it during the corpus walk and
+  so upstream of every budget. A tag carrying ~24 KB followed by 40 000 ordinary lines took half a
+  minute; it now takes a tenth of a second. Separately, the scan split on Python's notion of a line
+  boundary — which includes `\v`, `\f`, the file/group/record separators, NEL, and the Unicode line
+  and paragraph separators — while a clingo `%` comment runs to a newline. A single physical line
+  could therefore carry a second contract tag that elenctic acted on and no reviewer could see.
+
+### Fixed
+
+- **A search that stopped early is no longer reported as a complete collection.** A solve settles
+  two independent things — whether a model exists, and whether the search covered what was asked of
+  it — and only the first was read. A truncated search still answers "satisfiable", so its partial
+  census, intersection, union or optimum was reported as the whole collection. Measured on 8-queens
+  under a conflict limit, an enumeration reported 17 of the program's 92 answer sets and a
+  consequence run 20 of its 23 brave consequences — figures that move with the search rather than
+  being properties of the program, which is itself the defect. The worst case is silent: an
+  intersection taken over a prefix is a
+  *superset* of the true one, so a `@cautious` contract naming a surplus atom **passed a false
+  claim**. A reading that ranges over a whole collection now requires the search to have finished;
+  a witness reading does not, and that exemption is necessary rather than merely permitted.
+
+- **A fault names its true owner, and a remedy is offered only where it is the remedy.** elenctic
+  divides faults by whose they are, and carries that division on the exception type — but clingo
+  reports nearly everything through one channel, so the division was only as good as what each
+  guarded region did with what it caught. Guarded regions now span code with a single owner rather
+  than asserting one owner over several. Among what that fixed or exposed: a file name that is not
+  UTF-8 was reported as an elenctic bug rather than as the corpus's; `#include` advice was appended
+  to faults that had nothing to do with includes, sending authors to inspect paths that were fine;
+  an objective that grounds away accused elenctic of a broken precondition; and a failure inside
+  elenctic's own AST walk or solve reduction was reported as a program that cannot be run.
+
+- **Programs that show a non-predicate term are no longer refused.** `#show "text" : p.` and
+  `#show 42 : p.` are valid — clingo runs both — but elenctic rejected them as faults in the
+  program. A symbol's name is defined only for a function symbol, and clingo raises when one is
+  read off a string or a number rather than reporting that there is none, so the guard meant to
+  cover that case could never fire.
+
+- **The walk over a program no longer has a depth of its own to run out of.** The AST walk
+  recursed once per level, so how deeply elenctic could read was bounded by the interpreter's
+  stack while the depth is chosen by the program under test. A term nested past it was refused,
+  though clingo grounds and solves such programs without complaint. Measured: the walk gave out on
+  a left-nested arithmetic chain of 1 000 terms, a strong-negation chain of 1 000, and a list
+  written as `cons(a, cons(b, …))` of **500** elements — nothing adversarial about the last, which
+  nests one level per element. Both the node walk and the signature reader are iterative now.
+
+- **Exhausting memory costs one case's result instead of the whole run's.** It was caught only at
+  the outermost frame, so the run stopped there: no summary, no results for the cases that had
+  already passed, and no indication of which case did it — while every other way a case can fail to
+  run is reported against its own file and leaves the rest of the corpus running. There is now a
+  per-case register for it, with the outermost handler kept as the backstop for an allocation that
+  fails where no case owns it. Neither message asserts a cause it cannot know: grounding is the
+  usual explanation, but a solve holds every model it is shown, so the memory may have gone there.
+
+- **One unusable file costs only its own result at discovery, too.** The runner already isolated a
+  case that failed to ground, but the walk that builds those cases had no such guard, so a file that
+  could not be read, parsed or resolved raised straight out of discovery — and stdout came back
+  empty, denying every other case its result. A corpus of one healthy case and one with an
+  unresolvable `#include` printed nothing at all; it now names the bad file and reports
+  `1/2 passed, 1 could not be run`.
+
+- **An oversized diagnostic stays readable, and clingo's own diagnostics stay on one channel.** A
+  check renders the set it judged against, and the program decides how large that is — a cautious
+  reading over a large fact base is the whole fact base. Sets are now shown as a sorted prefix with
+  the remainder counted, so the diagnostic is both bounded and stable across runs. Separately,
+  clingo's term parser was called with no logger, so a malformed contract produced elenctic's
+  friendly error *and* clingo's own on stderr; that text is now folded into the error being raised.
+
+- **A resource the run exhausts is reported rather than dumped as a traceback**, and a fault that
+  reaches the top frame says whose it is before printing one — the traceback is the report, and the
+  sentence above it is what tells a user this is not theirs to fix.
+
+### Added
+
+- **`--deadline`**, which bounds the whole run rather than one solve. `--budget` bounds a single
+  solve; a case routes to as many as four, and a corpus has as many cases as it has files, so the
+  cost of a run is a product of three numbers of which only one was bounded. Past the deadline the
+  run stops dispatching and every case it did not reach is counted into the not-run register, so
+  the corpus total stays the corpus total. It is off unless asked for: a default low enough to
+  bound a hostile corpus would turn a large honest one into cases that could not be run.
+
+### Changed
+
+- **A defect in elenctic's own code is now reported as one.** A failure inside the AST walk or the
+  solve reduction used to be translated into a program fault, which named the corpus author. Worse,
+  it named *every* author: the same internal failure recurs for each case, so one defect in
+  elenctic produced an accusation against every file in the corpus and a summary saying none of
+  them passed.
+
+  ```text
+  # before, with a defect injected into elenctic's own solve reduction
+  PROGRAM ERROR — alpha.lp: cannot run the program (alpha.lp): <the internal failure>
+  PROGRAM ERROR — beta.lp: cannot run the program (beta.lp): <the internal failure>
+
+  0/2 passed, 2 could not be run
+  ```
+
+  ```text
+  # after
+  internal error: this is an elenctic bug, not a fault in your corpus. Please report it
+  with the traceback below.
+  Traceback (most recent call last):
+    ...
+  ```
+
+  Both exit `2`. The change costs the run rather than the case — the same trade the outermost
+  handler already makes for every other unanticipated fault — and it is the right one here, because
+  what the run would go on to produce is of unknown worth once elenctic is known to be broken. If
+  you match on `PROGRAM ERROR` lines in CI, note that a class of them has moved.
+
 ## [0.1.3] - 2026-07-27
 
 ### Fixed
@@ -132,6 +275,7 @@ This release also makes every in-source comment self-contained for external
 contributors, single-sources the version from `elenctic.__version__`, and runs CI on
 Linux and macOS.
 
+[Unreleased]: https://github.com/GregoryGelfond/elenctic/compare/v0.1.3...HEAD
 [0.1.3]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.3
 [0.1.2]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.2
 [0.1.1]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.1
