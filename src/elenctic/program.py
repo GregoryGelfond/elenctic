@@ -200,10 +200,19 @@ _THEORY_OBJECTIVES: Final = frozenset({"minimize", "maximize"})
 def _is_theory_objective(node: AST) -> bool:
     """A theory-native objective (``&minimize { … }`` / ``&maximize { … }``): a ``TheoryAtom``
     whose term names one of them. Read by name, since the objective belongs to the theory rather
-    than to clingo: no ``Minimize`` node is produced and no clingo optimization flag reaches it."""
+    than to clingo: no ``Minimize`` node is produced and no clingo optimization flag reaches it.
+
+    The term's type is asked before its name, rather than reading the name with a default to fall
+    back on. The fallback would work here — a missing field on an AST node does return the default
+    — but relying on it is what hid a defect in the signature reader, where the same expression
+    over a *symbol* raises instead, so the default could never fire. Nothing about the two spellings
+    distinguishes them at a glance, so neither is written. clingo represents a theory atom's term
+    as a function node in every form it accepts, in a head or a body, with arguments or with a
+    condition, so asking is total."""
     return (
         node.ast_type is ASTType.TheoryAtom
-        and getattr(node.term, "name", None) in _THEORY_OBJECTIVES
+        and node.term.ast_type is ASTType.Function
+        and node.term.name in _THEORY_OBJECTIVES
     )
 
 
