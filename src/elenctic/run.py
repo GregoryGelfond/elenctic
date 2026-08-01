@@ -27,6 +27,7 @@ from elenctic.checks import Check
 from elenctic.expectation import Expectation, Sat, Unsat
 from elenctic.query import Query, QueryForm, classify
 from elenctic.result import (
+    Collection,
     Consistent,
     ConsistentBrave,
     ConsistentCautious,
@@ -38,85 +39,8 @@ from elenctic.result import (
     ConsistentWitness,
     Field,
     HarnessError,
+    collection_of,
 )
-
-
-class Collection(Enum):
-    """What a reading ranges over — the structural fact that fixes how a run must treat an
-    objective.
-
-    An objective (``#minimize``/``#maximize``/``:~``) *ranks* answer sets; it never removes any, so
-    AS(P) is the same set with or without one. A solver need not enumerate it that way, though:
-    clingo optimizes by default, and an enumerating solve under an active objective reports only the
-    branch-and-bound **improving sequence** — the models the search passed through on its way to the
-    optimum. That sequence is neither AS(P) nor Opt(P), it varies with the search heuristic, and
-    clingo says so where consequences are involved ("Consequences may depend on enumeration order").
-
-    So what a reading ranges over settles the optimization it needs:
-
-    - ``ALL`` — all of AS(P), so the objective must be switched **off** or the search prunes it.
-    - ``OPTIMAL`` — all of Opt(P), which only an active objective identifies, so **on**.
-    - ``WITNESS`` — a single answer set, and only its existence and contents. An objective changes
-      neither whether one exists nor whether a given model qualifies, so the setting cannot move
-      the answer and the reading states none.
-    """
-
-    ALL = "AS(P)"
-    OPTIMAL = "Opt(P)"
-    WITNESS = "one answer set"
-
-    @property
-    def needs_exhausted_search(self) -> bool:
-        """Whether a reading over this collection requires the search that produced it to have
-        finished.
-
-        A solver settles two separate things: whether a model exists, and whether the search that
-        found one covered everything it was asked to. ``ALL`` and ``OPTIMAL`` are readings of a
-        whole collection — a census, an intersection, a union, a proven optimum — and each is a
-        claim about every member, so a search that stopped early leaves an arbitrary prefix that
-        answers a different question.
-
-        ``WITNESS`` asks only whether some answer set exists and what is in it, which one model
-        settles whatever the rest of the search would have found. The exemption is not merely
-        permitted but necessary: with nothing else driving it a witness search stops at the first
-        answer set and reports a search that did not finish, so requiring exhaustion would report
-        satisfiable programs as undecided. It is *not* that such a search never finishes — an
-        objective puts the solver's own optimization in force and proving an optimum does exhaust —
-        which is why this is a statement about what the reading requires, not about what the search
-        happens to do."""
-        return self is not Collection.WITNESS
-
-
-# Which collection each field is a reading of. This is the partition the mode-level collection
-# derives from: a field IS a question about a collection (⋂/⋃/a census are questions about AS(P);
-# a cost or an optimal census about Opt(P); a witness about one model), so a mode's collection is
-# whatever its fields agree on rather than a second thing to declare and keep in step.
-_READS: Final[dict[Field, Collection]] = {
-    Field.WITNESS: Collection.WITNESS,
-    Field.SHOWN_CENSUS: Collection.ALL,
-    Field.FULL_CENSUS: Collection.ALL,
-    Field.CAUTIOUS: Collection.ALL,
-    Field.BRAVE: Collection.ALL,
-    Field.SHOWN_OPTIMAL_CENSUS: Collection.OPTIMAL,
-    Field.FULL_OPTIMAL_CENSUS: Collection.OPTIMAL,
-    Field.OPTIMUM: Collection.OPTIMAL,
-}
-
-
-def collection_of(fields: frozenset[Field]) -> Collection:
-    """The collection a run populating ``fields`` reads. Total over the field vocabulary (an
-    unmapped field raises ``KeyError`` at import, before any solve), and defined only where the
-    fields agree: a run reading both AS(P) and Opt(P) has no single optimization to lower to, so it
-    is a contradiction, reported loudly rather than resolved by picking one."""
-    collections = {_READS[field] for field in fields}
-    if len(collections) != 1:
-        named = ", ".join(sorted(collection.value for collection in collections)) or "nothing"
-        raise HarnessError(
-            f"a run reading {{{', '.join(sorted(field.value for field in fields))}}} would read "
-            f"{named}, but a run reads exactly one collection — it lowers to one optimization "
-            "setting, and no setting answers for two (an elenctic bug, not a verdict)"
-        )
-    return collections.pop()
 
 
 class Mode(Enum):

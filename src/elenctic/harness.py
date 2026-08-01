@@ -50,10 +50,8 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
     theory_in_force = provides_theory(case.solver)
     reports: list[CheckReport] = []
     for run in runs_for(case.expectation, theory_in_force):
-        determination = solve(
-            case.solver, run.mode, files=case.files, budget=budget, project=run.project
-        )
-        reports.extend(check(determination) for check in run.checks)
+        outcome = solve(case.solver, run.mode, files=case.files, budget=budget, project=run.project)
+        reports.extend(check(outcome) for check in run.checks)
     return tuple(reports)
 
 

@@ -43,6 +43,7 @@ from elenctic.result import (
     Optimum,
     Verdict,
 )
+from support import decided
 
 _atoms = st.builds(Function, st.sampled_from(["a", "b", "c", "d", "e"]))
 _atom_sets = st.frozensets(_atoms, max_size=5)
@@ -76,7 +77,9 @@ def _every_check(litset: frozenset[Symbol]) -> list[Check]:
 @given(_litsets)
 def test_every_check_is_undecided_on_inconclusive(litset: frozenset[Symbol]) -> None:
     for check in _every_check(litset):
-        assert check(Inconclusive()).verdict is Verdict.UNDECIDED  # never FAIL, never raises
+        assert (
+            check(decided(Inconclusive())).verdict is Verdict.UNDECIDED
+        )  # never FAIL, never raises
 
 
 @given(st.lists(_atom_sets, min_size=1, max_size=4))
@@ -88,8 +91,8 @@ def test_optimal_aggregation_equals_the_pairwise_fold(family: list[frozenset[Sym
     result = ConsistentOptimalEnumeration(tuple(Observable(s) for s in members), Optimum((0,)))
     meet: frozenset[Symbol] = functools.reduce(operator.and_, members)
     join: frozenset[Symbol] = functools.reduce(operator.or_, members)
-    assert cautious_optimal_contains(meet)(result).verdict is Verdict.PASS
-    assert brave_optimal_contains(join)(result).verdict is Verdict.PASS
+    assert cautious_optimal_contains(meet)(decided(result)).verdict is Verdict.PASS
+    assert brave_optimal_contains(join)(decided(result)).verdict is Verdict.PASS
 
 
 @given(_litsets)
@@ -98,8 +101,8 @@ def test_static_label_equals_reported_label(litset: frozenset[Symbol]) -> None:
     # its CheckReport carries on every (field-free) arm — one source, no divergence.
     for check in _every_check(litset):
         assert check.label  # statically readable, non-empty
-        assert check.label == check(Inconclusive()).label
-        assert check.label == check(Inconsistent()).label
+        assert check.label == check(decided(Inconclusive())).label
+        assert check.label == check(decided(Inconsistent())).label
 
 
 @given(_litsets, _atom_sets)
@@ -108,14 +111,14 @@ def test_cautious_passes_iff_subset(
 ) -> None:
     result = ConsistentCautious(aggregate)
     expected = Verdict.PASS if litset <= aggregate else Verdict.FAIL
-    assert cautious_contains(litset)(result).verdict is expected
+    assert cautious_contains(litset)(decided(result)).verdict is expected
 
 
 @given(_litsets, _atom_sets)
 def test_brave_passes_iff_subset(litset: frozenset[Symbol], aggregate: frozenset[Symbol]) -> None:
     result = ConsistentBrave(aggregate)
     expected = Verdict.PASS if litset <= aggregate else Verdict.FAIL
-    assert brave_contains(litset)(result).verdict is expected
+    assert brave_contains(litset)(decided(result)).verdict is expected
 
 
 def test_query_check_subject_discriminates_instances() -> None:

@@ -13,7 +13,8 @@ ran out of time" are the same fact about knowledge.
 
 from clingo import Control
 
-from elenctic.result import Consistent, Inconclusive
+from elenctic.checks import count_is
+from elenctic.result import Conclusion, Consistent, SolveOutcome, Verdict
 from elenctic.run import Mode
 from elenctic.solvers import MODEL_CAP, _Collector, _drive
 
@@ -28,7 +29,7 @@ def _quiet(_code: object, _message: str) -> None:
     """Keep clingo's own diagnostics out of the test output."""
 
 
-def _drive_over(program: str, cap: int | None = None) -> tuple[object, _Collector]:
+def _drive_over(program: str, cap: int | None = None) -> tuple[SolveOutcome, _Collector]:
     control = Control(list(Mode.ENUM_ALL.args), logger=_quiet)
     control.add("base", [], program)
     control.ground([("base", [])])
@@ -40,21 +41,28 @@ def test_a_cap_is_in_force_by_default() -> None:
     # The bound has to be the default, not an opt-in: the run that needs it is the one nobody
     # anticipated.
     assert MODEL_CAP > 0
-    _determination, collector = _drive_over(_MANY)
+    _outcome, collector = _drive_over(_MANY)
     assert collector.models_seen <= MODEL_CAP
 
 
-def test_an_enumeration_past_the_cap_is_undecided_not_a_partial_census() -> None:
-    # The whole point: a census cut short must not be reported as the census. It reaches the same
-    # arm a hit budget does, through the same route — a search that did not finish.
-    determination, collector = _drive_over(_MANY, cap=8)
+def test_an_enumeration_past_the_cap_is_never_read_as_the_whole_census() -> None:
+    # The whole point: a census cut short must not be reported as the census. The cap is a bound the
+    # run itself requested, so that is what the outcome says — and a reading over the collection is
+    # refused, which is the guarantee. Asserted at the verdict, because "the census is 8" being
+    # reported as verified is the failure that would matter.
+    outcome, collector = _drive_over(_MANY, cap=8)
     assert collector.models_seen == 8, "the search stops at the cap, it does not merely truncate"
-    assert isinstance(determination, Inconclusive)
+    assert outcome.conclusion is Conclusion.STOPPED
+    assert count_is(8)(outcome).verdict is Verdict.UNDECIDED, (
+        "the count the truncated run holds must not be reported as the count"
+    )
 
 
 def test_an_ordinary_run_never_meets_the_cap() -> None:
     # The other side: the cap must be invisible to every run that does not need it, or it would
     # turn working corpora undecided.
-    determination, collector = _drive_over(_FEW, cap=8)
+    outcome, collector = _drive_over(_FEW, cap=8)
     assert collector.models_seen < 8
-    assert isinstance(determination, Consistent)
+    assert isinstance(outcome.determination, Consistent)
+    assert outcome.conclusion is Conclusion.EXHAUSTED
+    assert count_is(2)(outcome).verdict is Verdict.PASS, "an uncapped reading still decides"

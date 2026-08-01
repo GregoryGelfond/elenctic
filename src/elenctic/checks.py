@@ -1,6 +1,6 @@
 """Pure per-tag checks: each is a :class:`Check`, a labelled callable.
 
-A check reads one :class:`~elenctic.result.Determination` and returns a :class:`CheckReport` — a
+A check reads one :class:`~elenctic.result.SolveOutcome` and returns a :class:`CheckReport` — a
 three-valued :class:`~elenctic.result.Verdict` *plus the diagnostic*: the contract ``label``
 and an expected-vs-actual ``message``. A check **dispatches on the arm**: ``Inconclusive`` →
 ``UNDECIDED`` (a timeout is never FAIL); ``Inconsistent`` (AS(P)=∅) → the tag's static
@@ -14,7 +14,13 @@ any solve; the ``SeamError`` at the accessor seam is the should-never-fire backs
 containment checks (⊆) reject an empty litset at construction — mirroring ``terms.parse_litset``
 at the type boundary — so no vacuous ``∅ ⊆ A`` PASS arises.
 
-Checks are pure over a ``Determination``; only ``solvers.py`` touches clingo/clingcon.
+A check also decides whether the search behind a result was good enough for *its* reading. That
+requirement belongs here rather than at the solver because it depends on what is read, and one run
+carries several checks that do not all range over the same thing: a census over part of a collection
+is not the census, while a check that reads nothing from the collection is settled by one model
+whatever the rest of the search would have found.
+
+Checks are pure over a ``SolveOutcome``; only ``solvers.py`` touches clingo/clingcon.
 """
 
 from collections.abc import Callable, Iterable
@@ -39,17 +45,20 @@ from elenctic.query import (
     singleton_answer,
 )
 from elenctic.result import (
+    Conclusion,
     Consistent,
-    Determination,
     Field,
+    HarnessError,
     Inconclusive,
     Inconsistent,
     Observable,
+    SolveOutcome,
     Verdict,
     brave_of,
     brave_optimal_of,
     cautious_of,
     cautious_optimal_of,
+    collection_of,
     observables_of,
     optimal_observables_of,
     optimum_of,
@@ -76,6 +85,30 @@ class CheckReport:
 
 
 _UNDECIDED_MESSAGE = "the solve did not settle the question — UNDECIDED, never FAIL"
+
+# Why a reading over a collection could not be made, in terms of how the search ended. A report
+# that cannot say which kind of not-knowing it met leaves the reader nothing to act on: raising a
+# budget and shrinking a corpus are different remedies.
+_PARTIAL_MESSAGE: Final[dict[Conclusion, str]] = {
+    Conclusion.STOPPED: (
+        "the search stopped at a requested bound before covering the collection this reads, so "
+        "what it holds is part of the collection and not the collection — UNDECIDED, never FAIL"
+    ),
+    Conclusion.INTERRUPTED: (
+        "the search was cut short by the time budget before covering the collection this reads, "
+        "so what it holds is part of the collection and not the collection — UNDECIDED, never "
+        "FAIL. A larger budget may decide it"
+    ),
+}
+
+
+def _partial_message(conclusion: Conclusion | None) -> str:
+    """Why a reading over a collection could not be made, given how the search ended."""
+    if conclusion is None or conclusion is Conclusion.EXHAUSTED:
+        raise HarnessError(
+            "a finished search needs no partial-reading diagnostic (an elenctic bug, not a verdict)"
+        )
+    return _PARTIAL_MESSAGE[conclusion]
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -105,18 +138,35 @@ class Check:
         if not self.label.startswith("@"):
             raise ValueError(f"a check label must be a contract tag, got {self.label!r}")
 
-    def __call__(self, determination: Determination) -> CheckReport:
-        match determination:
+    @property
+    def needs_exhausted_search(self) -> bool:
+        """Whether this check's reading requires the search behind it to have finished.
+
+        Derived from what the check declares it reads, never stored. A reading of a whole
+        collection — a census, an intersection, a union, a proven optimum — is a claim about every
+        member, so a search that stopped early makes it a claim about an arbitrary part instead. A
+        check that reads nothing from the collection asks only whether an answer set exists, which
+        one model settles whatever the rest of the search would have found. Deriving it is what
+        stops a check added later from forgetting to declare it.
+        """
+        return any(collection_of(frozenset({field})).needs_exhausted_search for field in self.reads)
+
+    def __call__(self, outcome: SolveOutcome) -> CheckReport:
+        match outcome.determination:
             case Inconclusive():
                 return CheckReport(Verdict.UNDECIDED, self.label, _UNDECIDED_MESSAGE)
             case Inconsistent():
                 verdict, message = self._inconsistent
                 return CheckReport(verdict, self.label, message)
             case Consistent() as shape:
+                if self.needs_exhausted_search and outcome.conclusion is not Conclusion.EXHAUSTED:
+                    return CheckReport(
+                        Verdict.UNDECIDED, self.label, _partial_message(outcome.conclusion)
+                    )
                 verdict, message = self._decide(shape)
                 return CheckReport(verdict, self.label, message)
             case _:
-                assert_never(determination)
+                assert_never(outcome.determination)
 
 
 # --- construction helpers ---

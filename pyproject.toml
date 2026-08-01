@@ -54,6 +54,7 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --strict-markers --strict-config"
 testpaths = ["tests"]
+pythonpath = ["tests"]  # so shared test scaffolding (tests/support.py) is importable
 
 [tool.mypy]
 strict = true

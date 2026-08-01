@@ -14,6 +14,7 @@ from clingo import Function, Symbol
 
 from elenctic.program import ProgramError
 from elenctic.result import (
+    Conclusion,
     Consistent,
     ConsistentBrave,
     ConsistentCautious,
@@ -62,13 +63,13 @@ def _write(directory: Path, name: str, text: str) -> Path:
 
 
 def test_default_mode_yields_a_consistent_witness() -> None:
-    det = run_clingo(Mode.DEFAULT, "a. b. #show a/0. #show b/0.")
+    det = run_clingo(Mode.DEFAULT, "a. b. #show a/0. #show b/0.").determination
     assert isinstance(det, ConsistentWitness)
     assert names(witness_of(det).shown) == {"a", "b"}
 
 
 def test_enum_all_collects_distinct_observables_and_derives_consequences() -> None:
-    det = run_clingo(Mode.ENUM_ALL, _CHOICE)
+    det = run_clingo(Mode.ENUM_ALL, _CHOICE).determination
     assert isinstance(det, ConsistentEnumeration)
     assert shown_names(observables_of(det)) == {frozenset({"a"}), frozenset({"b"})}
     assert names(brave_of(det)) == {"a", "b"}  # ⋃ derived from the census
@@ -76,33 +77,35 @@ def test_enum_all_collects_distinct_observables_and_derives_consequences() -> No
 
 
 def test_cautious_all_yields_the_cautious_consequences() -> None:
-    det = run_clingo(Mode.CAUTIOUS_ALL, _CHOICE_WITH_FACT)
+    det = run_clingo(Mode.CAUTIOUS_ALL, _CHOICE_WITH_FACT).determination
     assert isinstance(det, ConsistentCautious)
     assert names(cautious_of(det)) == {"c"}
 
 
 def test_brave_all_yields_the_brave_consequences() -> None:
-    det = run_clingo(Mode.BRAVE_ALL, _CHOICE_WITH_FACT)
+    det = run_clingo(Mode.BRAVE_ALL, _CHOICE_WITH_FACT).determination
     assert isinstance(det, ConsistentBrave)
     assert names(brave_of(det)) == {"a", "b", "c"}
 
 
 def test_optimal_enum_yields_the_optimal_class_and_proven_optimum() -> None:
-    det = run_clingo(Mode.OPTIMAL_ENUM, _MINIMIZE)
+    det = run_clingo(Mode.OPTIMAL_ENUM, _MINIMIZE).determination
     assert isinstance(det, ConsistentOptimalEnumeration)
     assert optimum_of(det).cost == (1,)
     assert shown_names(optimal_observables_of(det)) == {frozenset({"a"}), frozenset({"b"})}
 
 
 def test_optimal_yields_only_the_proven_optimum_cost() -> None:
-    det = run_clingo(Mode.OPTIMAL, "1 {a; b} 1. #minimize { 2,a : a; 1,b : b }. #show a/0.")
+    det = run_clingo(
+        Mode.OPTIMAL, "1 {a; b} 1. #minimize { 2,a : a; 1,b : b }. #show a/0."
+    ).determination
     assert isinstance(det, ConsistentOptimum)
     assert optimum_of(det).cost == (1,)  # choosing b (cost 1) over a (cost 2)
 
 
 def test_optimum_cost_vector_is_priority_ordered_highest_first() -> None:
     # Multi-level: level 2 (higher priority) before level 1 in the vector.
-    det = run_clingo(Mode.OPTIMAL, "a. b. #minimize { 2@2,a : a; 3@1,b : b }.")
+    det = run_clingo(Mode.OPTIMAL, "a. b. #minimize { 2@2,a : a; 3@1,b : b }.").determination
     assert isinstance(det, ConsistentOptimum)
     assert optimum_of(det).cost == (2, 3)
 
@@ -117,7 +120,7 @@ def test_optimal_enum_pins_the_collision_class_to_the_proven_optimum() -> None:
     # regardless of the sub-optimal {b} -> {mark} collision sharing the shown projection. Robust by
     # construction: phase 2 enumerates a single optimization level, so no model below the optimum is
     # enumerable and cross-level deduplication cannot empty or corrupt the class.
-    det = run_clingo(Mode.OPTIMAL_ENUM, _COLLISION)
+    det = run_clingo(Mode.OPTIMAL_ENUM, _COLLISION).determination
     assert isinstance(det, ConsistentOptimalEnumeration)
     assert optimum_of(det).cost == (0,)
     assert shown_names(optimal_observables_of(det)) == {frozenset({"mark"})}
@@ -131,7 +134,7 @@ def test_optimal_enum_timeout_yields_inconclusive() -> None:
     # `#minimize { 1,p(X) : p(X) }` made the optimum the empty model, found instantly, so the result
     # raced on phase 1 and flaked under suite load.)
     program = "{ p(1..28) }. c. #minimize { 1,c : c }. #show p/1."
-    det = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0)
+    det = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0).determination
     assert isinstance(det, Inconclusive)
 
 
@@ -142,7 +145,7 @@ def test_clingcon_optimal_enum_two_phase_yields_the_optimal_class() -> None:
     from elenctic.solvers import run_clingcon
 
     program = "1 {a; b} 1. #minimize { 2,a : a; 1,b : b }. #show a/0. #show b/0."
-    det = run_clingcon(Mode.OPTIMAL_ENUM, program)
+    det = run_clingcon(Mode.OPTIMAL_ENUM, program).determination
     assert isinstance(det, ConsistentOptimalEnumeration)
     assert optimum_of(det).cost == (1,)  # choosing b (cost 1) over a (cost 2)
     assert shown_names(optimal_observables_of(det)) == {frozenset({"b"})}
@@ -155,7 +158,7 @@ def test_clingcon_optimal_enum_two_phase_yields_the_optimal_class() -> None:
 def test_unsat_program_is_inconsistent_under_every_mode(mode: Mode) -> None:
     # "a. :- a." is UNSAT under every mode (incl. the optimization modes: an UNSAT optimization
     # reports unsatisfiable with no cost-bearing model, so the arm is decided before _optimum_cost).
-    det = run_clingo(mode, "a. :- a.")
+    det = run_clingo(mode, "a. :- a.").determination
     assert isinstance(det, Inconsistent)
 
 
@@ -163,7 +166,7 @@ def test_unsat_program_is_inconsistent_under_clingcon() -> None:
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 
-    assert isinstance(run_clingcon(Mode.ENUM_ALL, "a. :- a."), Inconsistent)
+    assert isinstance(run_clingcon(Mode.ENUM_ALL, "a. :- a.").determination, Inconsistent)
 
 
 # --- the #maximize deferral: rejected at discovery; the raw facade behaviour pinned (a canary) ---
@@ -173,7 +176,9 @@ def test_maximize_cost_is_negated_at_the_facade_the_deferred_normalisation_canar
     # @cost wants the NATURAL value; clingo reports a #maximize cost negated.
     # v1 rejects @cost-over-#maximize at discovery, so this only pins the raw facade behaviour —
     # the canary that fails the day sign-normalisation lands.
-    det = run_clingo(Mode.OPTIMAL, "1 {a; b} 1. #maximize { 3,a : a; 1,b : b }. #show a/0.")
+    det = run_clingo(
+        Mode.OPTIMAL, "1 {a; b} 1. #maximize { 3,a : a; 1,b : b }. #show a/0."
+    ).determination
     assert isinstance(det, ConsistentOptimum)
     assert optimum_of(det).cost == (-3,)  # maximizing picks a (value 3); internal cost is -3
 
@@ -188,20 +193,30 @@ def test_optimization_mode_on_a_nonoptimizing_program_is_a_program_error() -> No
         run_clingo(Mode.OPTIMAL, "a. #show a/0.")
 
 
-# --- the Inconclusive arm: a hit budget is UNDECIDED, never FAIL/UNSAT ---
+# --- a hit budget: what the search settled is kept, and how it ended is reported ---
 
 
-def test_timeout_yields_inconclusive() -> None:
-    # 2^30 models with a zero budget: the solve cannot finish, so the result is Inconclusive.
-    det = run_clingo(Mode.ENUM_ALL, "{ p(1..30) }. #show p/1.", budget=0.0)
-    assert isinstance(det, Inconclusive)
+def test_a_hit_budget_keeps_the_satisfiability_the_search_settled() -> None:
+    # 2^30 models and a budget no machine meets: the search cannot cover the space, but it does
+    # find a model, and that answer is kept rather than discarded along with the census. Which
+    # readings survive is the check's question, asserted in test_partial_search_verdicts.py; the
+    # guarantee that a hit budget is UNDECIDED and never FAIL/UNSAT is asserted there too.
+    outcome = run_clingo(Mode.ENUM_ALL, "{ p(1..30) }. #show p/1.", budget=0.05)
+    assert isinstance(outcome.determination, ConsistentEnumeration)
+    assert outcome.conclusion is Conclusion.INTERRUPTED
+
+
+# The other half — a cut that lands before the search has decided anything, leaving no
+# satisfiability to keep — is asserted in test_solve_undecided.py, driven by a conflict limit
+# rather than by the clock so that it does not depend on how fast this machine is. A zero budget
+# races: it was measured settling satisfiable on 29 of 30 runs of the program above.
 
 
 def test_clingo_enumeration_projects_so_a_hidden_blowup_still_decides() -> None:
     # clingo enumeration projects onto shown atoms (information-preserving), so a program with an
     # astronomically large hidden space but a single shown class decides instead of timing out:
     # 2^30 hidden p-subsets all project to the one shown class { s }, enumerated as a single model.
-    det = run_clingo(Mode.ENUM_ALL, "{ p(1..30) }. s. #show s/0.", budget=5.0)
+    det = run_clingo(Mode.ENUM_ALL, "{ p(1..30) }. s. #show s/0.", budget=5.0).determination
     assert isinstance(det, ConsistentEnumeration)  # decided, not Inconclusive
     assert shown_names(observables_of(det)) == {frozenset({"s"})}  # the single shown class
 
@@ -252,7 +267,7 @@ def test_lowering_postcondition(solver: str, mode: Mode, project: bool) -> None:
     if solver == "clingcon":
         pytest.importorskip("clingcon")
     projects_to_shown = project and solver == "clingcon"
-    det = solve(solver, mode, _SAT_PROGRAM[mode], project=project)
+    det = solve(solver, mode, _SAT_PROGRAM[mode], project=project).determination
     assert isinstance(det, Consistent)
     assert type(det) is shape_for(mode, projects_to_shown)
     assert _readable_fields(det) == populates(mode, projects_to_shown)
@@ -264,7 +279,7 @@ def test_lowering_postcondition(solver: str, mode: Mode, project: bool) -> None:
 def test_clingo_projects_but_yields_the_full_shape() -> None:
     # The decoupling: clingo @count over ENUM_ALL passes --project (perf) yet yields the FULL shape
     # (assign ≡ ∅, so --project is information-preserving), read correctly — clingo is unaffected.
-    det = solve("clingo", Mode.ENUM_ALL, _CHOICE, project=True)
+    det = solve("clingo", Mode.ENUM_ALL, _CHOICE, project=True).determination
     assert isinstance(det, ConsistentEnumeration)  # the full shape, despite --project
     assert len(observables_of(det)) == 2  # {a}, {b}
 
@@ -273,7 +288,9 @@ def test_clingcon_projects_to_the_shown_shape_when_no_full_reader() -> None:
     # A projecting clingcon enumeration collapses CSP multiplicity onto the shown census (the
     # shown-only shape), so a shown-only contract terminates instead of enumerating the CSP space.
     pytest.importorskip("clingcon")
-    det = solve("clingcon", Mode.ENUM_ALL, "&dom {1..3} = v(x). ok. #show ok/0.", project=True)
+    det = solve(
+        "clingcon", Mode.ENUM_ALL, "&dom {1..3} = v(x). ok. #show ok/0.", project=True
+    ).determination
     assert isinstance(det, ConsistentShownCensus)
     assert shown_census_of(det) == {frozenset({Function("ok")})}  # 3 CSP solutions -> 1 shown class
 
@@ -282,7 +299,9 @@ def test_clingcon_stays_full_when_project_is_off() -> None:
     # project=False keeps the full census (3 distinct CSP observables): the multiplicity a @count
     # or @assign rider needs is preserved.
     pytest.importorskip("clingcon")
-    det = solve("clingcon", Mode.ENUM_ALL, "&dom {1..3} = v(x). #show.", project=False)
+    det = solve(
+        "clingcon", Mode.ENUM_ALL, "&dom {1..3} = v(x). #show.", project=False
+    ).determination
     assert isinstance(det, ConsistentEnumeration)
     assert len(observables_of(det)) == 3
 
@@ -295,7 +314,9 @@ def test_clingcon_recovers_a_compound_csp_assignment() -> None:
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 
-    det = run_clingcon(Mode.ENUM_ALL, "&dom {0..9} = digit(s). &sum { digit(s) } = 9. #show.")
+    det = run_clingcon(
+        Mode.ENUM_ALL, "&dom {0..9} = digit(s). &sum { digit(s) } = 9. #show."
+    ).determination
     assert isinstance(det, ConsistentEnumeration)
     (observable,) = observables_of(det)
     assert observable.shown == frozenset()  # nothing shown; distinctness is the assignment
@@ -307,7 +328,7 @@ def test_clingcon_surfaces_distinct_csp_solutions_as_distinct_observables() -> N
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 
-    det = run_clingcon(Mode.ENUM_ALL, "&dom {1..3} = v(x). #show.")
+    det = run_clingcon(Mode.ENUM_ALL, "&dom {1..3} = v(x). #show.").determination
     assert isinstance(det, ConsistentEnumeration)
     observables = observables_of(det)
     assert len(observables) == 3  # not collapsed to 1 by projection
@@ -316,8 +337,8 @@ def test_clingcon_surfaces_distinct_csp_solutions_as_distinct_observables() -> N
 
 def test_solve_dispatches_by_solver_name() -> None:
     pytest.importorskip("clingcon")
-    clingo_det = solve("clingo", Mode.DEFAULT, "a. #show a/0.")
-    clingcon_det = solve("clingcon", Mode.ENUM_ALL, "&dom {1..2} = v(x). #show.")
+    clingo_det = solve("clingo", Mode.DEFAULT, "a. #show a/0.").determination
+    clingcon_det = solve("clingcon", Mode.ENUM_ALL, "&dom {1..2} = v(x). #show.").determination
     assert isinstance(clingo_det, ConsistentWitness)
     assert isinstance(clingcon_det, ConsistentEnumeration)
     assert len(observables_of(clingcon_det)) == 2
@@ -333,7 +354,7 @@ def test_clingcon_timeout_yields_inconclusive() -> None:
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 
-    det = run_clingcon(Mode.ENUM_ALL, "{ p(1..30) }. #show p/1.", budget=0.0)
+    det = run_clingcon(Mode.ENUM_ALL, "{ p(1..30) }. #show p/1.", budget=0.0).determination
     assert isinstance(det, Inconclusive)
 
 
@@ -343,7 +364,7 @@ def test_clingcon_timeout_yields_inconclusive() -> None:
 def test_run_clingo_loads_multiple_files_in_order(tmp_path: Path) -> None:
     encoding = _write(tmp_path, "enc.lp", "b :- a. #show b/0.\n")  # b follows from a
     instance = _write(tmp_path, "inst.lp", "a.\n")  # supplied by the instance
-    det = run_clingo(Mode.DEFAULT, files=(encoding, instance))
+    det = run_clingo(Mode.DEFAULT, files=(encoding, instance)).determination
     assert isinstance(det, ConsistentWitness)
     assert names(witness_of(det).shown) == {"b"}
 
@@ -354,7 +375,7 @@ def test_run_clingcon_rewrites_multiple_files(tmp_path: Path) -> None:
 
     encoding = _write(tmp_path, "enc.lp", "&dom {1..3} = v. #show.\n")
     instance = _write(tmp_path, "inst.lp", "&sum { v } = 2.\n")  # theory atom in a second file
-    det = run_clingcon(Mode.ENUM_ALL, files=(encoding, instance))
+    det = run_clingcon(Mode.ENUM_ALL, files=(encoding, instance)).determination
     assert isinstance(det, ConsistentEnumeration)
     (observable,) = observables_of(det)
     assert (Function("v"), 2) in observable.assign
@@ -366,7 +387,7 @@ def test_run_clingo_resolves_include_relative_to_the_case_file(tmp_path: Path) -
     (tmp_path / "lib").mkdir()
     _write(tmp_path / "lib", "facts.lp", "p(1). p(2).\n")
     case = _write(tmp_path, "case.lp", '#include "lib/facts.lp".\nq :- p(1).\n#show q/0.\n')
-    det = run_clingo(Mode.ENUM_ALL, files=(case,))
+    det = run_clingo(Mode.ENUM_ALL, files=(case,)).determination
     assert isinstance(det, ConsistentEnumeration)
     assert any("q" in names(obs.shown) for obs in observables_of(det))
 
@@ -380,7 +401,7 @@ def test_run_clingcon_rewrites_theory_inside_an_include(tmp_path: Path) -> None:
     (tmp_path / "lib").mkdir()
     _write(tmp_path / "lib", "sched.lp", "&dom { 1..3 } = x. &sum { x } >= 2.\n")  # x in {2,3}
     case = _write(tmp_path, "case.lp", '#include "lib/sched.lp".\n#show.\n')
-    det = run_clingcon(Mode.ENUM_ALL, files=(case,))
+    det = run_clingcon(Mode.ENUM_ALL, files=(case,)).determination
     assert isinstance(det, ConsistentEnumeration)
     xs = {val for obs in observables_of(det) for sym, val in obs.assign if str(sym) == "x"}
     assert xs == {2, 3}  # the included &dom/&sum BOTH rewrote and propagated (x=1 pruned)

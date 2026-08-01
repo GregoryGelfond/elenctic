@@ -26,18 +26,18 @@ from elenctic import checks
 from elenctic.expectation import Expectation, Sat, Unsat, WitnessClaim, parse
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral, Var
 from elenctic.result import (
+    Collection,
     Consistent,
     ConsistentShownCensus,
     ConsistentShownOptimalCensus,
     Field,
     HarnessError,
+    collection_of,
 )
 from elenctic.run import (
-    Collection,
     Mode,
     RoutingError,
     Run,
-    collection_of,
     populates,
     reads_full_census,
     runs_for,

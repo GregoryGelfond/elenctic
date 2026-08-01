@@ -1,4 +1,4 @@
-"""Outcome data types: ``Observable``, ``Verdict``, and the ``Determination``.
+"""Outcome data types: ``Observable``, ``Verdict``, the ``Determination``, and the ``Conclusion``.
 
 A solved program yields a :data:`Determination` — a three-arm outcome surface:
 :class:`Inconsistent` (AS(P)=∅), :class:`Inconclusive` (the solve did not decide), or one of the
@@ -6,23 +6,34 @@ A solved program yields a :data:`Determination` — a three-arm outcome surface:
 *exactly* the observations its run-mode computes, so a field's absence is a type fact, not a
 sentinel — there is no ``NotConfigured`` and no per-field guard.
 
+Whether a model exists and whether the search that looked covered the space are independent
+questions, so the second has its own answer: a :class:`Conclusion`, paired with the determination
+as a :class:`SolveOutcome`. Which readings that answer disturbs is a question about what is read,
+so it is settled where the reading is (``checks.py``), not here and not at the solver.
+
 A check reads a field through one accessor (``*_of``); the single centralised ``_seam_violation`` is
 the one narrowing assertion, unreachable through the supported path on **two** premises: (1) the
 ``reads ⊆ populates`` wiring rule (``run.py``) attaches a check only to a run whose mode populates
 what it reads, and (2) the lowering postcondition — ``solvers.py`` produces, for a run of mode M,
 exactly the ``Consistent`` shape whose fields are ``populates(M)``. Checks (``checks.py``) are pure
-functions of a ``Determination``; only ``solvers.py`` constructs one.
+functions of a ``SolveOutcome``; only ``solvers.py`` constructs one.
+
+:class:`Collection` — what a reading ranges over — lives here beside :class:`Field` because it is a
+statement about a *field*, not about a run: a mode and a check each read whatever their fields read,
+so neither declares one and the two cannot drift apart.
 """
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import NoReturn, final
+from typing import Final, NoReturn, final
 
 from clingo import Symbol
 
 from elenctic.terms import intersect_all, union_all
 
 __all__ = [
+    "Collection",
+    "Conclusion",
     "Consistent",
     "ConsistentBrave",
     "ConsistentCautious",
@@ -40,11 +51,13 @@ __all__ = [
     "Observable",
     "Optimum",
     "SeamError",
+    "SolveOutcome",
     "Verdict",
     "brave_of",
     "brave_optimal_of",
     "cautious_of",
     "cautious_optimal_of",
+    "collection_of",
     "observables_of",
     "optimal_observables_of",
     "optimum_of",
@@ -95,6 +108,84 @@ class Field(Enum):
     SHOWN_OPTIMAL_CENSUS = "shown optimal census"
     FULL_OPTIMAL_CENSUS = "full optimal census"
     OPTIMUM = "optimum"
+
+
+class Collection(Enum):
+    """What a reading ranges over — the structural fact that fixes how a run must treat an
+    objective, and whether the search behind a reading had to finish.
+
+    An objective (``#minimize``/``#maximize``/``:~``) *ranks* answer sets; it never removes any, so
+    AS(P) is the same set with or without one. A solver need not enumerate it that way, though:
+    clingo optimizes by default, and an enumerating solve under an active objective reports only the
+    branch-and-bound **improving sequence** — the models the search passed through on its way to the
+    optimum. That sequence is neither AS(P) nor Opt(P), it varies with the search heuristic, and
+    clingo says so where consequences are involved ("Consequences may depend on enumeration order").
+
+    So what a reading ranges over settles the optimization it needs:
+
+    - ``ALL`` — all of AS(P), so the objective must be switched **off** or the search prunes it.
+    - ``OPTIMAL`` — all of Opt(P), which only an active objective identifies, so **on**.
+    - ``WITNESS`` — a single answer set, and only its existence and contents. An objective changes
+      neither whether one exists nor whether a given model qualifies, so the setting cannot move
+      the answer and the reading states none.
+    """
+
+    ALL = "AS(P)"
+    OPTIMAL = "Opt(P)"
+    WITNESS = "one answer set"
+
+    @property
+    def needs_exhausted_search(self) -> bool:
+        """Whether a reading over this collection requires the search that produced it to have
+        finished.
+
+        A solver settles two separate things: whether a model exists, and whether the search that
+        found one covered everything it was asked to. ``ALL`` and ``OPTIMAL`` are readings of a
+        whole collection — a census, an intersection, a union, a proven optimum — and each is a
+        claim about every member, so a search that stopped early leaves an arbitrary part unseen
+        and answers a different question.
+
+        ``WITNESS`` asks only whether some answer set exists and what is in it, which one model
+        settles whatever the rest of the search would have found. The exemption is not merely
+        permitted but necessary: with nothing else driving it a witness search stops at the first
+        answer set and reports a search that did not finish, so requiring exhaustion would report
+        satisfiable programs as undecided. It is *not* that such a search never finishes — an
+        objective puts the solver's own optimization in force and proving an optimum does exhaust —
+        which is why this is a statement about what the reading requires, not about what the search
+        happens to do."""
+        return self is not Collection.WITNESS
+
+
+# Which collection each field is a reading of. This is the partition both the mode-level and the
+# check-level collection derive from: a field IS a question about a collection (⋂/⋃/a census are
+# questions about AS(P); a cost or an optimal census about Opt(P); a witness about one model), so
+# neither a mode nor a check declares one — each reads whatever its fields read.
+_READS: Final[dict[Field, Collection]] = {
+    Field.WITNESS: Collection.WITNESS,
+    Field.SHOWN_CENSUS: Collection.ALL,
+    Field.FULL_CENSUS: Collection.ALL,
+    Field.CAUTIOUS: Collection.ALL,
+    Field.BRAVE: Collection.ALL,
+    Field.SHOWN_OPTIMAL_CENSUS: Collection.OPTIMAL,
+    Field.FULL_OPTIMAL_CENSUS: Collection.OPTIMAL,
+    Field.OPTIMUM: Collection.OPTIMAL,
+}
+
+
+def collection_of(fields: frozenset[Field]) -> Collection:
+    """The collection a reader of ``fields`` ranges over. Total over the field vocabulary (an
+    unmapped field raises ``KeyError`` at import, before any solve), and defined only where the
+    fields agree: a run reading both AS(P) and Opt(P) has no single optimization to lower to, so it
+    is a contradiction, reported loudly rather than resolved by picking one."""
+    collections = {_READS[field] for field in fields}
+    if len(collections) != 1:
+        named = ", ".join(sorted(collection.value for collection in collections)) or "nothing"
+        raise HarnessError(
+            f"a run reading {{{', '.join(sorted(field.value for field in fields))}}} would read "
+            f"{named}, but a run reads exactly one collection — it lowers to one optimization "
+            "setting, and no setting answers for two (an elenctic bug, not a verdict)"
+        )
+    return collections.pop()
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +330,49 @@ class ConsistentOptimum(Consistent):
 
 
 type Determination = Inconsistent | Inconclusive | Consistent
+
+
+class Conclusion(Enum):
+    """How a search that settled satisfiability came to an end.
+
+    Separate from the :data:`Determination` because the two are independent: a search can decide
+    that an answer set exists and still stop long before it has seen them all. Reading a stopped
+    search as a finished one is the error this vocabulary exists to prevent — a reading over a whole
+    collection is a claim about every member, and over a partial search it is a claim about an
+    arbitrary part instead.
+    """
+
+    EXHAUSTED = "exhausted"
+    """The search closed the space: every answer set the configuration admits was seen."""
+    STOPPED = "stopped"
+    """A bound the run itself requested was reached — a normal, chosen end, neither an error nor
+    completeness."""
+    INTERRUPTED = "interrupted"
+    """The search was cut short from outside it, by a time budget rather than by anything the
+    search found."""
+
+
+@dataclass(frozen=True, slots=True)
+class SolveOutcome:
+    """One solve's result: what it determined, and how the search that determined it ended.
+
+    ``conclusion`` is ``None`` exactly when the solve settled nothing (the :class:`Inconclusive`
+    arm) — there is no completed search to describe. On either other arm it is present, and an
+    :class:`Inconsistent` result always closed the space, since no search can report that a program
+    has no answer set without covering it.
+    """
+
+    determination: Determination
+    conclusion: Conclusion | None
+
+    def __post_init__(self) -> None:
+        decided = not isinstance(self.determination, Inconclusive)
+        if decided != (self.conclusion is not None):
+            raise HarnessError(
+                "a decided solve reports how its search ended and an undecided one has no search "
+                f"to describe; this pairs {type(self.determination).__name__} with "
+                f"{self.conclusion!r} (an elenctic bug, not a verdict)"
+            )
 
 
 # --- harness-internal errors (never a Verdict; the runner reports them as harness errors) ---

@@ -46,6 +46,7 @@ from elenctic.result import (
     witness_of,
 )
 from elenctic.run import Mode, populates, runs_for, shape_for
+from support import decided
 
 
 def _obs(*names: str) -> Observable:
@@ -138,7 +139,9 @@ def test_correctly_routed_checks_read_cleanly(contract: str) -> None:
     for run in runs_for(parse(contract)):
         shape = _MINIMAL_SHAPE[run.mode]
         for check in run.checks:
-            report = check(shape)  # raises SeamError if the check reads a field the shape lacks
+            report = check(
+                decided(shape)
+            )  # raises SeamError if the check reads a field the shape lacks
             assert report.verdict in {Verdict.PASS, Verdict.FAIL, Verdict.UNDECIDED}
 
 
@@ -146,17 +149,19 @@ def test_expect_sat_is_mode_agnostic() -> None:
     # @expect sat reads ∅: PASS on EVERY Consistent shape (no emptiness-read false-FAIL), including
     # the projected shapes.
     for _mode, _projects, shape, _fields in _MODE_SHAPES:
-        assert expect_sat()(shape).verdict is Verdict.PASS
-    assert expect_sat()(Inconsistent()).verdict is Verdict.FAIL
-    assert expect_sat()(Inconclusive()).verdict is Verdict.UNDECIDED
+        assert expect_sat()(decided(shape)).verdict is Verdict.PASS
+    assert expect_sat()(decided(Inconsistent())).verdict is Verdict.FAIL
+    assert expect_sat()(decided(Inconclusive())).verdict is Verdict.UNDECIDED
 
 
 def test_expect_unsat_passes_only_on_inconsistent() -> None:
     # The headline false-PASS fence: @expect unsat PASSes on the Inconsistent arm alone — never from
     # reading observables == () off a non-enumeration shape (the old silent-miscompile, now gone).
-    assert expect_unsat()(Inconsistent()).verdict is Verdict.PASS
-    assert expect_unsat()(ConsistentWitness(_obs("a"))).verdict is Verdict.FAIL  # rides DEFAULT
-    assert expect_unsat()(Inconclusive()).verdict is Verdict.UNDECIDED
+    assert expect_unsat()(decided(Inconsistent())).verdict is Verdict.PASS
+    assert (
+        expect_unsat()(decided(ConsistentWitness(_obs("a")))).verdict is Verdict.FAIL
+    )  # rides DEFAULT
+    assert expect_unsat()(decided(Inconclusive())).verdict is Verdict.UNDECIDED
 
 
 def test_forgotten_full_declaration_is_a_seam_error_not_a_silent_wrong_verdict() -> None:
@@ -177,4 +182,4 @@ def test_forgotten_full_declaration_is_a_seam_error_not_a_silent_wrong_verdict()
     )
     projected = ConsistentShownCensus(frozenset({frozenset({Function("a")})}))
     with pytest.raises(SeamError):
-        liar(projected)
+        liar(decided(projected))
