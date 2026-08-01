@@ -11,7 +11,6 @@ but explained with the wrong *remedy* is worse than no explanation, because it i
 act on.
 """
 
-import os
 from pathlib import Path
 
 import pytest
@@ -68,13 +67,15 @@ def test_a_file_name_that_is_not_utf8_is_the_corpus_author_s_fault(tmp_path: Pat
     # UnicodeEncodeError — a sibling of UnicodeDecodeError, not a subclass, so it escaped the
     # region entirely and was reported as an elenctic bug. It is the corpus's, and renaming fixes
     # it.
-    raw = os.fsencode(tmp_path) + b"/caf\xe9.lp"
-    with open(raw, "wb") as handle:
-        handle.write(b"p.\n#show p/0.\n")
-    case = Path(os.fsdecode(raw))
+    #
+    # The file is never created. The encode happens in Python before anything is opened, so the
+    # name alone decides this — which is also what keeps the test honest on a filesystem that
+    # refuses such a name outright (APFS does; ext4 does not, so a corpus can carry one and be
+    # cloned onto a machine that cannot even write it).
+    named = tmp_path / "caf\udce9.lp"
 
     with pytest.raises(ProgramError) as caught:
-        inspect((case,))
+        inspect((named,))
     assert "UTF-8" in str(caught.value)
 
 
