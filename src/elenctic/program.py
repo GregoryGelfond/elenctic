@@ -87,17 +87,42 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
             has_theory_optimization=any(_is_theory_objective(node) for node in nodes),
             sources=frozenset(Path(name).resolve() for name in filenames if name),
         )
+    except RecursionError as exc:
+        # elenctic's own AST walk, not the program's structure, is what ran out of room. The author
+        # is still the one who can act, so this stays a ProgramError — but the remedy is to flatten
+        # the term, and the include advice below would send them to read a line that is not there.
+        names = ", ".join(str(path) for path in files)
+        raise ProgramError(
+            f"cannot read the program ({names}): a term is nested more deeply than elenctic's "
+            "walk over the program can follow — flatten the term, or split the rule that builds it"
+        ) from exc
+    except UnicodeEncodeError as exc:
+        # The file *name*, not its contents: clingo encodes the path strictly, so a name carrying a
+        # byte that is not UTF-8 fails before the file is opened. A sibling of UnicodeDecodeError
+        # rather than a subclass, so the tuple below does not cover it.
+        names = ", ".join(str(path) for path in files)
+        raise ProgramError(
+            f"cannot open the program ({names}): the file name is not valid UTF-8, which the "
+            "solver requires — rename the file"
+        ) from exc
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
         # RuntimeError: a parse / missing-or-cyclic-#include failure (clingo logged the detail to
         # `messages`); UnicodeDecodeError: a non-UTF-8 source byte; OSError: unreadable. All are
         # author/corpus faults → a friendly ProgramError with provenance, never a raw traceback.
         # A harness-logic bug (AttributeError/KeyError/...) is NOT caught and stays loud.
         names = ", ".join(str(path) for path in files)
-        detail = "; ".join(messages) or str(exc)
-        raise ProgramError(
-            f"cannot resolve the program ({names}): {detail} — check the case's #include paths "
-            "(they resolve relative to the including file)"
-        ) from exc
+        # Both, never one or the other: the logger holds the provenance but accumulates routine
+        # notices too, so a fault raised after a clean parse would otherwise be reported as
+        # whichever harmless notice was logged first, with the real cause dropped.
+        detail = "; ".join([*messages, str(exc)])
+        # The include advice is specific enough to act on, so it is offered only when it is the
+        # remedy. Attached to a syntax error it sends the author to check paths that are fine.
+        hint = (
+            " — check the case's #include paths (they resolve relative to the including file)"
+            if "could not be opened" in detail
+            else ""
+        )
+        raise ProgramError(f"cannot resolve the program ({names}): {detail}{hint}") from exc
 
 
 def _descendants(node: object) -> Iterator[AST]:

@@ -134,9 +134,18 @@ class _Collector:
     def _optimum_cost(self) -> tuple[int, ...]:
         costs = [cost for cost in self._costs if cost]  # cost-bearing optimization models
         if not costs:
-            raise HarnessError(
-                "an optimization mode produced no cost vector — the encoding has no "
-                "#minimize/#maximize (a discovery precondition should have caught this)"
+            # A ``ProgramError``, not a ``HarnessError``. The discovery precondition reads a
+            # *syntactic* fact — a ``#minimize``/``#maximize``/``:~`` appears in the program — and
+            # having a cost is a fact about the *ground* program, which is not the same thing: an
+            # objective over an empty domain grounds away and leaves none. So arriving here does
+            # not establish that the precondition failed, and claiming it did would accuse
+            # elenctic of a bug the corpus explains. Either way the program lacks what the mode
+            # needs, which its author is the one who can fix.
+            raise ProgramError(
+                "an optimization mode produced no cost vector: the ground program has no "
+                "objective. Either the encoding declares no #minimize/#maximize at all, or it "
+                "declares one that is not in the ground program — its elements ground away, or it "
+                "sits in a program part this run does not ground"
             )
         return min(costs)  # lexicographic, priority-ordered highest-first
 
@@ -239,11 +248,11 @@ def _determination(
     projecting), reported only if the search behind it finished.
 
     The shape is formed before the exhaustion question is asked, so that a mode whose requirements
-    the solve did not meet still fails loudly. ``OPTIMAL`` on a program carrying no objective is
-    that case: clingo has nothing to optimize, so it stops at the first model and reports a search
-    that did not finish — the same bit a truncated search sets. Reducing that to ``UNDECIDED`` would
-    report an elenctic fault as a statement about the program under test, and would swallow the
-    diagnostic saying the encoding has no ``#minimize``/``#maximize``."""
+    the solve did not meet still fails loudly. ``OPTIMAL`` over a program with no objective in its
+    ground form is that case: clingo has nothing to optimize, so it stops at the first model and
+    reports a search that did not finish — the same bit a truncated search sets. Reducing that to
+    ``UNDECIDED`` would answer a question the program never posed, and would swallow the diagnostic
+    saying the ground program carries no objective."""
     settled = _undecided_or_unsat(completed, result)
     if settled is not None:
         return settled
@@ -326,8 +335,17 @@ def _drive(
 def _set_opt_mode(control: Control, opt_mode: str) -> None:
     """Set clingo's optimization mode on an already-grounded control (``'opt'`` or
     ``'enum,<bound>'``). The configuration proxy is dynamically typed, so the assignment is isolated
-    here, mirroring the untyped clingcon-theory boundary."""
-    control.configuration.solve.opt_mode = opt_mode  # type: ignore[union-attr]
+    here, mirroring the untyped clingcon-theory boundary.
+
+    A rejected value is a ``HarnessError``: the string is elenctic's own construction, so the
+    corpus cannot be at fault for it. Without this it would surface as the ``RuntimeError`` clingo
+    reports every failure as, and the enclosing region would report it as a fault in the program."""
+    try:
+        control.configuration.solve.opt_mode = opt_mode  # type: ignore[union-attr]
+    except RuntimeError as exc:
+        raise HarnessError(
+            f"clingo rejected the optimization mode elenctic built ({opt_mode!r})"
+        ) from exc
 
 
 def _optimal_enum_two_phase(
@@ -470,9 +488,11 @@ def run_clingcon(
     theory: Any = clingcon.ClingconTheory()  # type: ignore[no-untyped-call]
     messages: list[str] = []
     control = Control(_solver_args(mode, project), logger=_capture(messages))
+    # Registering the propagator concerns the solver, not the program, so a failure there is not
+    # the corpus author's and is left outside the region that would say it was.
+    theory.register(control)
     with _program_faults(files, messages):
-        theory.register(control)
-        _rewrite_program(control, theory, program, files)
+        _rewrite_program(control, theory, program, files, messages)
         control.ground([("base", [])])
         theory.prepare(control)
 
@@ -546,7 +566,9 @@ def _add_program(control: Control, program: str, files: tuple[Path, ...]) -> Non
         control.load(str(path))
 
 
-def _rewrite_program(control: Control, theory: Any, program: str, files: tuple[Path, ...]) -> None:
+def _rewrite_program(
+    control: Control, theory: Any, program: str, files: tuple[Path, ...], messages: list[str]
+) -> None:
     """Rewrite inline ``program`` and ``files`` through clingcon's theory rewriter into ``control``.
     ``parse_files`` resolves ``#include`` relative to the including file AND fires the
     theory rewrite on the *expanded* AST (a theory atom inside an ``#include``d
@@ -560,10 +582,14 @@ def _rewrite_program(control: Control, theory: Any, program: str, files: tuple[P
         def add(ast: object) -> None:
             theory.rewrite_ast(ast, builder.add)
 
+        # The capturing logger belongs here as much as on the control: these calls do the parsing
+        # on this path, so without it a theory program's parse diagnostics go to stderr unowned —
+        # outside elenctic's framing, unsanitised, and missing from the fault this raises.
+        capture = _capture(messages)
         if program:
-            parse_string(program, add)
+            parse_string(program, add, logger=capture)
         if files:
-            parse_files([str(path) for path in files], add)
+            parse_files([str(path) for path in files], add, logger=capture)
 
 
 def _main() -> None:
