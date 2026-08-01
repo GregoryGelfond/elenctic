@@ -9,13 +9,23 @@ Being unable to *bound* the resource does not excuse being unable to *report* it
 """
 
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
 from elenctic import cli
+from elenctic.checks import CheckReport
 from elenctic.cli import main
+from elenctic.discovery import Case
+from elenctic.harness import run_case
+from elenctic.solvers import TIME_BUDGET
 
 _GOOD = "% @expect sat\n% @count  1\n\na.\n#show a/0.\n"
+
+
+def _corpus(root: Path, *names: str) -> None:
+    for name in names:
+        (root / f"{name}.lp").write_text(_GOOD, encoding="utf-8")
 
 
 def test_exhausting_memory_is_reported_as_an_error_not_a_traceback(
@@ -33,6 +43,49 @@ def test_exhausting_memory_is_reported_as_an_error_not_a_traceback(
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
     assert status == 2, "an exhausted resource is the error register, never a verdict"
+    assert "Traceback" not in captured.err
+    assert "memory" in captured.err.lower()
+
+
+def test_a_case_that_exhausts_memory_costs_only_its_own_result(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Every other way a case can fail to run is reported against its own file while the rest of the
+    # corpus still runs — a guarantee the CLI states in its own documentation. Exhausting memory
+    # was the one register that abandoned it, and it abandoned it for the failure most likely to
+    # arrive in a large corpus, where the results it discards are worth the most.
+    _corpus(tmp_path, "first", "greedy", "last")
+
+    def greedy(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]:
+        if case.contract_source.name == "greedy.lp":
+            raise MemoryError("std::bad_alloc")
+        return run_case(case, budget=budget)  # the other two cases run for real
+
+    monkeypatch.setattr(cli, "run_case", greedy)
+    status = main([str(tmp_path)])
+    captured = capsys.readouterr()
+    assert status == 2, "a resource the run exhausted is the error register, never a verdict"
+    assert "greedy.lp" in captured.err, "the reader has to be told which case it was"
+    assert "2/3 passed, 1 could not be run" in captured.out, (
+        "the other two cases keep their results, and the one that did not run is accounted for"
+    )
+
+
+def test_memory_exhausted_outside_a_case_is_still_reported(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The outermost handler stays the backstop it was meant to be: an allocation that fails where
+    # no case owns it — walking the corpus, here — has no case to be reported against, and still
+    # must not reach the user as a stack trace.
+    _corpus(tmp_path, "case")
+
+    def out_of_memory(*_args: object, **_kwargs: object) -> NoReturn:
+        raise MemoryError("std::bad_alloc")
+
+    monkeypatch.setattr(cli, "inspect_corpus", out_of_memory)
+    status = main([str(tmp_path)])
+    captured = capsys.readouterr()
+    assert status == 2
     assert "Traceback" not in captured.err
     assert "memory" in captured.err.lower()
 

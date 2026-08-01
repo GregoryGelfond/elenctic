@@ -297,8 +297,8 @@ discovered.
 **Grounding is not bounded at all.** A program can be small and still ground to something enormous,
 and clingo offers no way to cap that — it is not a limit elenctic can lift. Running an untrusted
 corpus therefore belongs inside whatever your platform already gives you: a container with a memory
-limit and a job timeout. Exhausting memory is reported rather than dumped as a traceback, but it
-cannot be prevented from here.
+limit and a job timeout. Exhausting memory is reported against the case that exhausted it, and
+costs that case's result rather than the whole run's — but it cannot be prevented from here.
 
 Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation <file.lp>`
 (the parsed contract), `python -m elenctic.run <file.lp>` (the derived run plan),
