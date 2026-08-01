@@ -10,6 +10,14 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-01
+
+The minor bump is deliberate. Earlier releases changed what a *consumer* had to catch; this one can
+change whether a *corpus that ran before still runs*. A case may now only load files from inside
+the corpus the run was pointed at, so a corpus that reached outside it — absolutely, with `../`, or
+through a symlink — is refused rather than read. Reaching up and across to a shared encoding
+remains the ordinary shape of a corpus and is unaffected.
+
 ### Security
 
 - **A case may only load files from the corpus it belongs to.** `#include` resolution belongs to
@@ -275,7 +283,8 @@ This release also makes every in-source comment self-contained for external
 contributors, single-sources the version from `elenctic.__version__`, and runs CI on
 Linux and macOS.
 
-[Unreleased]: https://github.com/GregoryGelfond/elenctic/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/GregoryGelfond/elenctic/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.2.0
 [0.1.3]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.3
 [0.1.2]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.2
 [0.1.1]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.1
