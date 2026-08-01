@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from clingo import Function, Symbol
 
+from elenctic.program import ProgramError
 from elenctic.result import (
     Consistent,
     ConsistentBrave,
@@ -22,7 +23,6 @@ from elenctic.result import (
     ConsistentShownCensus,
     ConsistentWitness,
     Field,
-    HarnessError,
     Inconclusive,
     Inconsistent,
     Observable,
@@ -178,10 +178,13 @@ def test_maximize_cost_is_negated_at_the_facade_the_deferred_normalisation_canar
     assert optimum_of(det).cost == (-3,)  # maximizing picks a (value 3); internal cost is -3
 
 
-def test_optimization_mode_on_a_nonoptimizing_program_raises_harness_error() -> None:
+def test_optimization_mode_on_a_nonoptimizing_program_is_a_program_error() -> None:
     # The _optimum_cost backstop is reachable if the discovery optimization precondition is bypassed
     # (a direct facade call on a #minimize-free program); it must fail loud, never fabricate a cost.
-    with pytest.raises(HarnessError, match=r"no cost vector"):
+    # A ProgramError rather than a HarnessError: reaching here does not establish that elenctic's
+    # precondition is broken, because an objective can be present in the source and absent from the
+    # ground program. Either way the program lacks what the mode needs.
+    with pytest.raises(ProgramError, match=r"no cost vector"):
         run_clingo(Mode.OPTIMAL, "a. #show a/0.")
 
 
