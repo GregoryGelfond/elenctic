@@ -127,6 +127,15 @@ def test_commented_show_does_not_pollute_the_shown_vocabulary(tmp_path: Path) ->
     assert inspect((case,)).shown == frozenset({("reachable", 1)})  # commented -reachable is prose
 
 
+def test_a_shown_non_predicate_term_declares_no_signature(tmp_path: Path) -> None:
+    # `#show <term> : body.` need not show a predicate at all: clingo runs both of these and prints
+    # `p "text"` and `p 42`. A symbol's name is defined only for a function symbol, and clingo
+    # raises when one is read off a string or a number rather than reporting that there is none —
+    # so asking for a name without asking the type first refused a program that is valid.
+    case = _write(tmp_path, "c.lp", '#show "text" : p.\n#show 42 : p.\np.\n#show p/0.\n')
+    assert inspect((case,)).shown == frozenset({("p", 0)})
+
+
 def test_percent_inside_a_string_term_is_not_a_comment(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", 'label("50% done"). #show label/1.\n')
     assert inspect((case,)).shown == frozenset({("label", 1)})

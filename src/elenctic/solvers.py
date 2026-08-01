@@ -26,7 +26,8 @@ maximize-using corpus arrives (it needs per-priority-level sign tracking).
 """
 
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, assert_never
 
@@ -318,6 +319,13 @@ def _solve_under_budget(
         return completed, result
 
 
+# The region a caller supplies to say whose fault a solver-origin failure is. It is a factory
+# rather than a context manager because a driver may solve more than once, and a region is entered
+# once. `nullcontext` is what a caller with no program to name supplies: a direct call has no file
+# to attribute a fault to, so nothing is translated and the failure propagates as itself.
+type _FaultRegion = Callable[[], AbstractContextManager[None]]
+
+
 def _drive(
     control: Control,
     mode: Mode,
@@ -325,10 +333,17 @@ def _drive(
     on_model: Callable[[Model], bool],
     budget: float,
     projects_to_shown: bool = False,
+    *,
+    faults: _FaultRegion = nullcontext,
 ) -> Determination:
     """Run one async solve under ``budget`` and reduce it to a ``Determination`` (the single-solve
-    modes; ``OPTIMAL_ENUM`` uses the two-phase driver instead)."""
-    completed, result = _solve_under_budget(control, on_model, budget)
+    modes; ``OPTIMAL_ENUM`` uses the two-phase driver instead).
+
+    ``faults`` covers the solve and stops there. What follows is elenctic's own reduction of what
+    came back, running long past the point where a failure could be the program's, so a region
+    reaching over it would report an elenctic defect as a program that cannot be run."""
+    with faults():
+        completed, result = _solve_under_budget(control, on_model, budget)
     return _determination(mode, collector, completed, result, projects_to_shown)
 
 
@@ -353,6 +368,8 @@ def _optimal_enum_two_phase(
     make_on_model: Callable[[_Collector], Callable[[Model], bool]],
     budget: float,
     projects_to_shown: bool,
+    *,
+    faults: _FaultRegion = nullcontext,
 ) -> Determination:
     """Enumerate Opt(P) in two phases on one grounded ``control``, so the optimal class is correct
     independent of clingo's ``--project`` cross-level deduplication scoping:
@@ -366,10 +383,15 @@ def _optimal_enum_two_phase(
     was hit, or the search gave up — yields ``Inconclusive``, as does one that decides but stops
     before finishing: phase 1 would then not have *proven* the optimum, and phase 2 would hold part
     of the optimal class rather than the class. UNSAT in phase 1 yields ``Inconsistent``. Setting
-    ``opt_mode`` overrides the construction ``--opt-mode=optN``."""
+    ``opt_mode`` overrides the construction ``--opt-mode=optN``.
+
+    ``faults`` covers each solve and nothing between them: the reduction that decides whether there
+    is a second phase is elenctic's own, and so is ``_set_opt_mode``, which builds its argument
+    here and therefore reports a rejected one as elenctic's rather than the corpus's."""
     _set_opt_mode(control, "opt")
     prover = _Collector()
-    completed, result = _solve_under_budget(control, make_on_model(prover), budget)
+    with faults():
+        completed, result = _solve_under_budget(control, make_on_model(prover), budget)
     settled = _undecided_or_unsat(completed, result)
     if settled is not None:
         return settled
@@ -378,7 +400,8 @@ def _optimal_enum_two_phase(
         return Inconclusive()  # the bound was not proven, so there is nothing to enumerate at
     _set_opt_mode(control, "enum," + ",".join(str(c) for c in optimum.cost))
     enumerator = _Collector()
-    completed, result = _solve_under_budget(control, make_on_model(enumerator), budget)
+    with faults():
+        completed, result = _solve_under_budget(control, make_on_model(enumerator), budget)
     settled = _undecided_or_unsat(completed, result)
     if settled is not None:
         return settled
@@ -418,7 +441,12 @@ def _program_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[No
     unsat`` contract written against a broken program. The catch is by exception type and
     deliberately narrow: elenctic's own errors are not in it and stay loud, and ``RecursionError``
     is re-raised because it is a ``RuntimeError`` subclass that never means the program under test
-    is at fault."""
+    is at fault.
+
+    It is entered around the calls that hand work to the solver and left as soon as they return, so
+    what it covers has one owner. Its postcondition is what makes each translation statable on its
+    own: the solver ran, and either it produced a result or a ``ProgramError`` names the file and
+    carries clingo's diagnostic. Reducing that result is elenctic's, and happens outside."""
     try:
         yield
     except RecursionError:
@@ -448,15 +476,18 @@ def run_clingo(
     control = Control(
         _solver_args(mode, project or mode in _CLINGO_ENUM_MODES), logger=_capture(messages)
     )
-    with _program_faults(files, messages):
+    faults = partial(_program_faults, files, messages)
+    with faults():
         _add_program(control, program, files)
         control.ground([("base", [])])
-        if mode is Mode.OPTIMAL_ENUM:
-            return _optimal_enum_two_phase(
-                control, lambda c: c.on_model, budget, projects_to_shown=False
-            )
-        collector = _Collector()
-        return _drive(control, mode, collector, collector.on_model, budget, projects_to_shown=False)
+    if mode is Mode.OPTIMAL_ENUM:
+        return _optimal_enum_two_phase(
+            control, lambda c: c.on_model, budget, projects_to_shown=False, faults=faults
+        )
+    collector = _Collector()
+    return _drive(
+        control, mode, collector, collector.on_model, budget, projects_to_shown=False, faults=faults
+    )
 
 
 def run_clingcon(
@@ -491,32 +522,39 @@ def run_clingcon(
     # Registering the propagator concerns the solver, not the program, so a failure there is not
     # the corpus author's and is left outside the region that would say it was.
     theory.register(control)
-    with _program_faults(files, messages):
+    faults = partial(_program_faults, files, messages)
+    with faults():
         _rewrite_program(control, theory, program, files, messages)
         control.ground([("base", [])])
         theory.prepare(control)
 
-        def make_on_model(collector: _Collector) -> Callable[[Model], bool]:
-            def on_model(model: Model) -> bool:
-                theory.on_model(model)  # populate the theory assignment before reading it
-                # clingcon is a linear-integer CSP solver, so assignment() yields (Symbol, int)
-                # pairs: `Observable.assign`'s `int` is exact here, not a narrowing of the untyped
-                # boundary.
-                assign = frozenset((sym, val) for sym, val in theory.assignment(model.thread_id))
-                # The collector's answer is returned, not dropped: the theory path is bounded by
-                # the same cap as the plain one.
-                return collector.on_model(model, assign)
+    def make_on_model(collector: _Collector) -> Callable[[Model], bool]:
+        def on_model(model: Model) -> bool:
+            theory.on_model(model)  # populate the theory assignment before reading it
+            # clingcon is a linear-integer CSP solver, so assignment() yields (Symbol, int)
+            # pairs: `Observable.assign`'s `int` is exact here, not a narrowing of the untyped
+            # boundary.
+            assign = frozenset((sym, val) for sym, val in theory.assignment(model.thread_id))
+            # The collector's answer is returned, not dropped: the theory path is bounded by
+            # the same cap as the plain one.
+            return collector.on_model(model, assign)
 
-            return on_model
+        return on_model
 
-        if mode is Mode.OPTIMAL_ENUM:
-            return _optimal_enum_two_phase(
-                control, make_on_model, budget, projects_to_shown=project
-            )
-        collector = _Collector()
-        return _drive(
-            control, mode, collector, make_on_model(collector), budget, projects_to_shown=project
+    if mode is Mode.OPTIMAL_ENUM:
+        return _optimal_enum_two_phase(
+            control, make_on_model, budget, projects_to_shown=project, faults=faults
         )
+    collector = _Collector()
+    return _drive(
+        control,
+        mode,
+        collector,
+        make_on_model(collector),
+        budget,
+        projects_to_shown=project,
+        faults=faults,
+    )
 
 
 type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool], Determination]
