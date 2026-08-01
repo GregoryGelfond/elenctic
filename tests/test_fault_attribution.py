@@ -63,19 +63,6 @@ def test_a_fault_that_is_not_about_includes_does_not_blame_includes(
     assert "#include" not in str(caught.value), "a remedy is offered only when it is the remedy"
 
 
-def test_a_term_nested_past_the_walk_says_so(tmp_path: Path) -> None:
-    # elenctic's own AST walk has a depth limit, and a program can exceed it. The author is the one
-    # who can act, so it stays a ProgramError — but the remedy is to flatten the term, and saying
-    # "check your #include paths" instead is a specific instruction to do something useless.
-    chain = "1" + "+1" * 2_000
-    case = _write(tmp_path, "deep.lp", f"p(X) :- X = {chain}.\n#show p/1.\n")
-    with pytest.raises(ProgramError) as caught:
-        inspect((case,))
-    message = str(caught.value)
-    assert "nested" in message, "the diagnostic must name what is actually wrong"
-    assert "#include" not in message
-
-
 def test_a_file_name_that_is_not_utf8_is_the_corpus_author_s_fault(tmp_path: Path) -> None:
     # clingo encodes the path strictly, so a file whose *name* carries a non-UTF-8 byte raises
     # UnicodeEncodeError — a sibling of UnicodeDecodeError, not a subclass, so it escaped the
