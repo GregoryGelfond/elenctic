@@ -127,6 +127,39 @@ def test_commented_show_does_not_pollute_the_shown_vocabulary(tmp_path: Path) ->
     assert inspect((case,)).shown == frozenset({("reachable", 1)})  # commented -reachable is prose
 
 
+# --- nesting depth: the program under test decides it, so the walk must not borrow a limit from
+# the interpreter. clingo grounds and solves all three of these at ten thousand deep. ---
+
+_DEEP = 5_000
+"""An order of magnitude past the shallowest depth the recursive walk gave out at (a cons list, at
+five hundred), and a depth clingo itself handles without complaint."""
+
+
+def test_a_deeply_nested_arithmetic_term_is_walked(tmp_path: Path) -> None:
+    # The hostile shape: a left-nested chain, one AST level per term.
+    case = _write(tmp_path, "deep.lp", f"p(X) :- X = {'1' + '+1' * _DEEP}.\n#show p/1.\n")
+    assert inspect((case,)).shown == frozenset({("p", 1)})
+
+
+def test_a_long_cons_list_is_walked(tmp_path: Path) -> None:
+    # The ordinary one, and the reason this is worth removing rather than documenting: a list
+    # written as cons(a, cons(b, …)) nests one level per element, so an encoding nobody would call
+    # adversarial reaches the limit in the ordinary course of things.
+    term = "nil"
+    for index in range(_DEEP):
+        term = f"cons(a{index},{term})"
+    case = _write(tmp_path, "list.lp", f"list({term}).\n#show list/1.\n")
+    assert inspect((case,)).shown == frozenset({("list", 1)})
+
+
+def test_a_long_strong_negation_chain_is_walked(tmp_path: Path) -> None:
+    # The signature reader walks its own chain, so removing the limit from the node walk alone
+    # would leave this one refused at the same depth. The accumulated sign is preserved exactly:
+    # the reader records what was written, and folding -- away is not its decision to make.
+    case = _write(tmp_path, "neg.lp", f"q(1).\n#show {'-' * _DEEP}p(X) : q(X).\n")
+    assert inspect((case,)).shown == frozenset({("-" * _DEEP + "p", 1)})
+
+
 def test_a_shown_non_predicate_term_declares_no_signature(tmp_path: Path) -> None:
     # `#show <term> : body.` need not show a predicate at all: clingo runs both of these and prints
     # `p "text"` and `p 42`. A symbol's name is defined only for a function symbol, and clingo

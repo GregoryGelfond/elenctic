@@ -110,9 +110,14 @@ def _parse_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[None
 
     Everything under this region is clingo reading the corpus author's text, so every failure it
     reports is that author's to fix. A harness-logic bug (``AttributeError``/``KeyError``/...) is
-    not caught and stays loud."""
+    not caught and stays loud, and ``RecursionError`` is re-raised for the same reason it is in the
+    solver facade: it is a ``RuntimeError`` subclass, and it never means the program is at fault.
+    Nothing under this region recurses, but the callbacks clingo fires here run on whatever stack
+    the caller had left."""
     try:
         yield
+    except RecursionError:
+        raise
     except UnicodeEncodeError as exc:
         # The file *name*, not its contents: clingo encodes the path strictly, so a name carrying a
         # byte that is not UTF-8 fails before the file is opened. A sibling of UnicodeDecodeError
@@ -148,7 +153,9 @@ def _walk_faults(files: tuple[Path, ...]) -> Iterator[None]:
 
     Anything else raised under this region comes from elenctic's traversal of an AST clingo already
     accepted, and it is elenctic's — so it is left to propagate with its own type, and is reported
-    as the defect it is instead of sending a corpus author to fix a file that parsed. The parse's
+    as the defect it is instead of sending a corpus author to fix a file that parsed. That includes
+    ``RecursionError``: nothing under this region recurses, so it can no longer describe a term the
+    walk could not follow, and it means here what it means in the solver facade. The parse's
     captured diagnostics are deliberately not spliced into these messages: they describe the text,
     and a notice about an atom occurring in no rule head explains nothing about a byte that will
     not decode."""
@@ -160,29 +167,28 @@ def _walk_faults(files: tuple[Path, ...]) -> Iterator[None]:
             f"cannot read the program ({names}): a byte in the source is not valid UTF-8, which "
             f"the solver requires — re-encode the file as UTF-8 ({exc})"
         ) from exc
-    except RecursionError as exc:
-        # elenctic's own AST walk, not the program's structure, is what ran out of room. The author
-        # is still the one who can act, so this stays a ProgramError — but the remedy is to flatten
-        # the term, and the include advice on the parse region would send them to read a line that
-        # is not there.
-        names = ", ".join(str(path) for path in files)
-        raise ProgramError(
-            f"cannot read the program ({names}): a term is nested more deeply than elenctic's "
-            "walk over the program can follow — flatten the term, or split the rule that builds it"
-        ) from exc
 
 
 def _descendants(node: object) -> Iterator[AST]:
     """Every ``AST`` node reachable from ``node`` — traversing child attributes AND clingo's
     ``ASTSequence`` (iterable, but **not** a python ``list``; a naive ``isinstance(_, list)`` walk
-    misses body literals)."""
-    if isinstance(node, AST):
-        yield node
-        for key in node.keys():  # noqa: SIM118 - keys() is the AST child-field API, not a dict
-            yield from _descendants(getattr(node, key))
-    elif not isinstance(node, (str, bytes)) and hasattr(node, "__iter__"):
-        for item in node:
-            yield from _descendants(item)
+    misses body literals).
+
+    An explicit work-list, not recursive delegation. The depth here is decided by the program under
+    test, so recursion would bound what elenctic can read by the interpreter's stack — and a term
+    nested past it is one clingo grounds and solves without complaint. It is not only a hostile
+    shape that reaches it: a list written as ``cons(a, cons(b, …))`` nests one level per element.
+    The work-list yields in a different order than recursion would, which no reader depends on —
+    each folds these nodes into a set or an existence check."""
+    pending: list[object] = [node]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, AST):
+            yield current
+            # keys() is the AST child-field API, not a dict
+            pending.extend(getattr(current, key) for key in current.keys())  # noqa: SIM118
+        elif not isinstance(current, (str, bytes)) and hasattr(current, "__iter__"):
+            pending.extend(current)
 
 
 # The theory-native objective directives. clingcon spells its objective `&minimize`/`&maximize`,
@@ -235,10 +241,26 @@ def _shown_signature(node: AST) -> tuple[str, int] | None:
 
 def _predicate_signature(term: AST) -> tuple[str, int] | None:
     """The ``(sign-aware-name, arity)`` of a shown term: ``(p, n)`` / ``(-p, n)`` for a (possibly
-    negated) function or constant; ``None`` for anything else (a non-predicate term has no name)."""
-    if term.ast_type is ASTType.UnaryOperation and term.operator_type == UnaryOperator.Minus:
-        inner = _predicate_signature(term.argument)
-        return (f"-{inner[0]}", inner[1]) if inner else None
+    negated) function or constant; ``None`` for anything else (a non-predicate term has no name).
+
+    The negation chain is peeled with a loop for the same reason the node walk uses one: its length
+    is the program's to choose, and clingo accepts one far longer than the interpreter would let
+    this recurse along. Each sign is kept rather than folded, so the signature records what the
+    author wrote."""
+    negations = 0
+    while term.ast_type is ASTType.UnaryOperation and term.operator_type == UnaryOperator.Minus:
+        negations += 1
+        term = term.argument
+    signature = _unsigned_signature(term)
+    if signature is None:
+        return None
+    name, arity = signature
+    return ("-" * negations + name, arity)
+
+
+def _unsigned_signature(term: AST) -> tuple[str, int] | None:
+    """The ``(name, arity)`` of a shown term with its negation chain already peeled: a function or
+    constant carries one, anything else carries none."""
     if term.ast_type is ASTType.Function:
         return (term.name, len(term.arguments)) if term.name else None
     if term.ast_type is ASTType.SymbolicTerm:
