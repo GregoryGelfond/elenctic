@@ -4,6 +4,7 @@ parse_files over the case + resolved #includes."""
 from pathlib import Path
 
 import pytest
+from clingo.ast import AST, ASTType, parse_string
 
 from elenctic.program import ProgramError, inspect
 
@@ -158,6 +159,52 @@ def test_a_long_strong_negation_chain_is_walked(tmp_path: Path) -> None:
     # the reader records what was written, and folding -- away is not its decision to make.
     case = _write(tmp_path, "neg.lp", f"q(1).\n#show {'-' * _DEEP}p(X) : q(X).\n")
     assert inspect((case,)).shown == frozenset({("-" * _DEEP + "p", 1)})
+
+
+# --- the theory-native objective gate: what sets it, rather than what reads it. The gate refuses
+# a v1 exclusion loudly, so a form it fails to recognise is a program admitted in silence. ---
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "&minimize { x }.\n",
+        "&maximize { x }.\n",
+        "&minimize { 1*x : p }.\n",
+        ":- &minimize { x }.\n",
+        "&minimize(3) { x }.\n",
+    ],
+)
+def test_a_theory_native_objective_is_detected_in_every_form(tmp_path: Path, body: str) -> None:
+    # Head and body, with arguments and with a condition. clingo represents the atom's term as a
+    # function node in all of them, which is what makes reading the name by type total.
+    assert inspect((_write(tmp_path, "c.lp", body),)).has_theory_optimization is True
+
+
+@pytest.mark.parametrize("body", ["&sum { x } >= 1.\n", "&diff { a - b } <= 3.\n"])
+def test_a_theory_atom_that_is_not_an_objective_does_not_trip_the_gate(
+    tmp_path: Path, body: str
+) -> None:
+    # The other side: the gate is about the objective, not about theories. A constraint atom is
+    # ordinary use, and refusing it would refuse the fragment the theory extra exists for.
+    facts = inspect((_write(tmp_path, "c.lp", body),))
+    assert facts.has_theory_atom is True
+    assert facts.has_theory_optimization is False
+
+
+def test_a_symbol_reports_a_name_it_lacks_by_raising_not_by_absence() -> None:
+    # The premise behind asking a symbol's type before its name, pinned against clingo rather than
+    # assumed — and the reason a defect hid here. A missing field on an *AST node* falls back to
+    # the default, which is what made the pattern look safe everywhere; a name read off a symbol
+    # that has none raises instead, so the default cannot stand in for it. If a future clingo makes
+    # the two agree, this test fails and says so.
+    statements: list[AST] = []
+    parse_string('#show "text" : p.\np.\n', statements.append, logger=lambda *_args: None)
+    shown = next(node for node in statements if node.ast_type is ASTType.ShowTerm)
+
+    assert getattr(shown, "no_such_field", None) is None, "a missing AST field falls back"
+    with pytest.raises(RuntimeError):
+        getattr(shown.term.symbol, "name", None)  # the default is the point: it cannot fire
 
 
 def test_a_shown_non_predicate_term_declares_no_signature(tmp_path: Path) -> None:
