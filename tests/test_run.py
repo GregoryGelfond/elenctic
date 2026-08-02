@@ -18,12 +18,12 @@ unknown binding rides ``ENUM_ALL``; and ``@cost`` rides ``OPTIMAL_ENUM`` with an
 from typing import assert_never
 
 import pytest
-from clingo import Function
+from clingo import Function, Symbol
 from hypothesis import given
 from hypothesis import strategies as st
 
 from elenctic import checks
-from elenctic.expectation import Expectation, Sat, Unsat, WitnessClaim, parse
+from elenctic.expectation import Claimed, Expectation, Sat, Unsat, WitnessClaim, parse
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral, Var
 from elenctic.result import (
     Collection,
@@ -245,7 +245,7 @@ def test_run_rejects_a_misrouted_check_at_construction() -> None:
     # @count reads the full census; CAUTIOUS_ALL does not populate it — rejected before any solve,
     # as a RoutingError (a harness bug), never a verdict; the message names the field, check, mode.
     with pytest.raises(RoutingError) as exc:
-        Run(Mode.CAUTIOUS_ALL, (checks.count_is(2),))
+        Run(Mode.CAUTIOUS_ALL, (checks.count_is(2, line=1),))
     message = str(exc.value)
     assert "full census" in message  # the missing field
     assert "@count" in message  # the offending check
@@ -258,7 +258,7 @@ def test_wiring_rule_catches_a_bad_projection_at_construction() -> None:
     # full-census token, so the wiring rule fires before any solve — no should_project mis-derive
     # can reach one.
     with pytest.raises(RoutingError) as exc:
-        Run(Mode.ENUM_ALL, (checks.count_is(2),), project=True, theory_in_force=True)
+        Run(Mode.ENUM_ALL, (checks.count_is(2, line=1),), project=True, theory_in_force=True)
     message = str(exc.value)
     assert "full census" in message  # the missing token
     assert "@count" in message  # the offending check
@@ -269,12 +269,12 @@ def test_wiring_rule_catches_a_bad_projection_at_construction() -> None:
 
 
 def test_reads_full_census_is_a_vocabulary_membership_test() -> None:
-    assert reads_full_census(checks.count_is(2))  # @count reads the full census
-    assert reads_full_census(checks.assign_contains(frozenset({(Function("x"), 1)})))
-    assert reads_full_census(checks.count_optimal_is(1))  # reads the full optimal census
-    bare_model = checks.has_model(WitnessClaim(shown=frozenset({Function("a")})))
+    assert reads_full_census(checks.count_is(2, line=1))  # @count reads the full census
+    assert reads_full_census(checks.assign_contains(frozenset({(Function("x"), 1)}), line=1))
+    assert reads_full_census(checks.count_optimal_is(1, line=1))  # reads the full optimal census
+    bare_model = checks.has_model(WitnessClaim(shown=frozenset({Function("a")})), line=1)
     assert not reads_full_census(bare_model)  # @model reads the shown census, not full
-    assert not reads_full_census(checks.cautious_contains(frozenset({Function("a")})))
+    assert not reads_full_census(checks.cautious_contains(frozenset({Function("a")}), line=1))
 
 
 @pytest.mark.parametrize(
@@ -295,9 +295,9 @@ def test_should_project_decision_matrix(
     theory: bool, mode: Mode, carried: tuple[str, ...], expected: bool
 ) -> None:
     factory = {
-        "model": lambda: checks.has_model(WitnessClaim(shown=frozenset({Function("a")}))),
-        "count": lambda: checks.count_is(2),
-        "assign": lambda: checks.assign_contains(frozenset({(Function("x"), 1)})),
+        "model": lambda: checks.has_model(WitnessClaim(shown=frozenset({Function("a")})), line=1),
+        "count": lambda: checks.count_is(2, line=1),
+        "assign": lambda: checks.assign_contains(frozenset({(Function("x"), 1)}), line=1),
     }
     built = tuple(factory[name]() for name in carried)
     assert should_project(theory, mode, built) is expected
@@ -306,20 +306,20 @@ def test_should_project_decision_matrix(
 def test_count_diverges_requires_theory_from_reads_full_census() -> None:
     # @count reads the full census (so it suppresses projection under a theory) yet does NOT itself
     # require a theory solver (@count is meaningful on pure clingo) — the two properties diverge.
-    assert reads_full_census(checks.count_is(2))
+    assert reads_full_census(checks.count_is(2, line=1))
     exp = parse("% @expect sat\n% @count 2\n")
     assert isinstance(exp, Sat) and not exp.requires_theory
 
 
 def test_run_accepts_a_well_routed_check() -> None:
-    run = Run(Mode.CAUTIOUS_ALL, (checks.cautious_contains(frozenset({Function("a")})),))
+    run = Run(Mode.CAUTIOUS_ALL, (checks.cautious_contains(frozenset({Function("a")}), line=1),))
     assert labels(run) == {"@cautious"}
 
 
 def test_run_equality_is_by_identity() -> None:
-    one = Run(Mode.DEFAULT, (checks.expect_unsat(),))
+    one = Run(Mode.DEFAULT, (checks.expect_unsat(line=1),))
     assert one == one
-    assert one != Run(Mode.DEFAULT, (checks.expect_unsat(),))  # eq=False: distinct objects
+    assert one != Run(Mode.DEFAULT, (checks.expect_unsat(line=1),))  # eq=False: distinct objects
 
 
 # --- the core routing: each model-bearing tag rides its taxonomy cell ---
@@ -520,32 +520,44 @@ _BIND_NO = BindingQuery(
 _LIT = frozenset({Function("a")})
 
 
+def _consequence_claims() -> st.SearchStrategy[tuple[Claimed[frozenset[Symbol]], ...]]:
+    """Zero, one or two claims for a consequence cell, each on its own line.
+
+    Two is not padding: a repeated tag is the only way a contract puts two checks on one mode, so
+    it is the case the coalescing property has to see. Drawing only "present or absent" would leave
+    the split uncovered by everything below.
+    """
+    lines = st.integers(min_value=1, max_value=9)
+    return st.lists(lines.map(lambda line: Claimed(_LIT, line)), max_size=2).map(tuple)
+
+
 @st.composite
 def _sats(draw: st.DrawFn) -> Sat:
     """An arbitrary structurally-valid ``Sat`` (runs_for derives runs from any Sat; cross-tag
     well-formedness is ``parse``'s concern, not runs_for's)."""
-    optional_lit = st.sampled_from([_LIT, frozenset()])
     queries: st.SearchStrategy[Query] = st.sampled_from(
         [_GROUND, _GROUND_CONJ, _BIND_YES, _BIND_NO, _BIND_UNKNOWN]
     )
+    cost: Claimed[tuple[int, ...]] = Claimed((8,), 6)  # a one-component vector is still variadic
     return Sat(
-        model=draw(st.sampled_from([WitnessClaim(shown=_LIT), None])),
-        optimal_model=draw(st.sampled_from([WitnessClaim(shown=_LIT), None])),
-        cautious=draw(optional_lit),
-        cautious_optimal=draw(optional_lit),
-        brave=draw(optional_lit),
-        brave_optimal=draw(optional_lit),
-        count=draw(st.sampled_from([2, None])),
-        count_optimal=draw(st.sampled_from([1, None])),
-        cost=draw(st.sampled_from([(8,), None])),
-        assign=draw(st.sampled_from([frozenset({(Function("x"), 1)}), frozenset()])),
-        queries=tuple(draw(st.lists(queries, max_size=3))),
+        expect_line=1,
+        model=draw(st.sampled_from([Claimed(WitnessClaim(shown=_LIT), 2), None])),
+        optimal_model=draw(st.sampled_from([Claimed(WitnessClaim(shown=_LIT), 3), None])),
+        cautious=draw(_consequence_claims()),
+        cautious_optimal=draw(_consequence_claims()),
+        brave=draw(_consequence_claims()),
+        brave_optimal=draw(_consequence_claims()),
+        count=draw(st.sampled_from([Claimed(2, 4), None])),
+        count_optimal=draw(st.sampled_from([Claimed(1, 5), None])),
+        cost=draw(st.sampled_from([cost, None])),
+        assign=draw(st.sampled_from([Claimed(frozenset({(Function("x"), 1)}), 7), None])),
+        queries=tuple(draw(st.lists(queries.map(lambda query: Claimed(query, 8)), max_size=3))),
     )
 
 
 def _expectations() -> st.SearchStrategy[Expectation]:
     """The whole Expectation sum (Unsat | Sat); runs_for is total over it."""
-    return st.one_of(st.just(Unsat()), _sats())
+    return st.one_of(st.just(Unsat(expect_line=1)), _sats())
 
 
 @given(_expectations())
@@ -568,7 +580,8 @@ def test_assign_optimal_rides_the_optimal_enum_run() -> None:
 
 def test_where_witness_reads_full_token_and_suppresses_projection() -> None:
     where_check = checks.has_model(
-        WitnessClaim(shown=frozenset({Function("a")}), assign=frozenset({(Function("v"), 1)}))
+        WitnessClaim(shown=frozenset({Function("a")}), assign=frozenset({(Function("v"), 1)})),
+        line=1,
     )
     assert reads_full_census(where_check)  # the where-clause makes it read the full census
     assert should_project(True, Mode.ENUM_ALL, (where_check,)) is False  # suppressed

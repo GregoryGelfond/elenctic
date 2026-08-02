@@ -387,7 +387,7 @@ def check_program(
             "#minimize, or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
         )
     for query in expectation.queries:
-        if missing := _contraries_needed(query) - facts.shown:
+        if missing := _contraries_needed(query.value) - facts.shown:
             needed = ", ".join(f"{name}/{arity}" for name, arity in sorted(missing))
             have = ", ".join(f"{name}/{arity}" for name, arity in sorted(facts.shown))
             raise DiscoveryError(

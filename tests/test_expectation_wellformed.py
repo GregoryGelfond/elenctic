@@ -223,7 +223,7 @@ def test_empty_where_is_rejected() -> None:
 def test_prose_where_without_a_brace_stays_a_comment() -> None:
     # 'where' as ordinary prose (no following brace) is a comment, not a dangling witness.
     exp = parse("% @expect sat\n% @model { a }\n% where the cost is low\n% @count 1\n")
-    assert isinstance(exp, Sat) and exp.count == 1
+    assert isinstance(exp, Sat) and exp.count is not None and exp.count.value == 1
 
 
 def test_prose_where_with_a_brace_outside_a_witness_stays_a_comment() -> None:

@@ -40,7 +40,7 @@ def _census(*models: str) -> ConsistentEnumeration:
 
 @pytest.mark.parametrize("conclusion", _UNFINISHED)
 def test_expect_sat_is_decided_by_a_search_that_did_not_finish(conclusion: Conclusion) -> None:
-    report = checks.expect_sat()(SolveOutcome(_census("a"), conclusion))
+    report = checks.expect_sat(line=1)(SolveOutcome(_census("a"), conclusion))
     assert report.verdict is Verdict.PASS, (
         "@expect sat reads nothing from the collection, so one model settles it"
     )
@@ -50,7 +50,7 @@ def test_expect_sat_is_decided_by_a_search_that_did_not_finish(conclusion: Concl
 def test_a_census_reading_is_undecided_by_a_search_that_did_not_finish(
     conclusion: Conclusion,
 ) -> None:
-    report = checks.count_is(1)(SolveOutcome(_census("a"), conclusion))
+    report = checks.count_is(1, line=1)(SolveOutcome(_census("a"), conclusion))
     assert report.verdict is Verdict.UNDECIDED, (
         "a census over part of the collection is not the census"
     )
@@ -63,7 +63,7 @@ def test_a_consequence_reading_over_a_partial_search_never_passes_a_claim(
     # The dangerous direction: clingo refines cautious consequences downwards, so a cut-short run
     # holds a SUPERSET of the true ⋂. A claim naming a surplus atom would be "verified" by a search
     # that never established it.
-    report = checks.cautious_contains(frozenset(parse_litset("a")))(
+    report = checks.cautious_contains(frozenset(parse_litset("a")), line=1)(
         SolveOutcome(_census("a"), conclusion)
     )
     assert report.verdict is Verdict.UNDECIDED
@@ -71,15 +71,15 @@ def test_a_consequence_reading_over_a_partial_search_never_passes_a_claim(
 
 def test_a_finished_search_decides_both() -> None:
     outcome = SolveOutcome(_census("a"), Conclusion.EXHAUSTED)
-    assert checks.expect_sat()(outcome).verdict is Verdict.PASS
-    assert checks.count_is(1)(outcome).verdict is Verdict.PASS
+    assert checks.expect_sat(line=1)(outcome).verdict is Verdict.PASS
+    assert checks.count_is(1, line=1)(outcome).verdict is Verdict.PASS
 
 
 def test_the_undecided_message_says_which_way_the_search_ended() -> None:
     # Raising a budget and shrinking a corpus are different remedies, so a report that cannot say
     # which kind of not-knowing it met leaves the reader nothing to act on.
-    incomplete = checks.count_is(1)(SolveOutcome(_census("a"), Conclusion.INCOMPLETE))
-    interrupted = checks.count_is(1)(SolveOutcome(_census("a"), Conclusion.INTERRUPTED))
+    incomplete = checks.count_is(1, line=1)(SolveOutcome(_census("a"), Conclusion.INCOMPLETE))
+    interrupted = checks.count_is(1, line=1)(SolveOutcome(_census("a"), Conclusion.INTERRUPTED))
     assert incomplete.message != interrupted.message
     assert "answer sets" in incomplete.message, "it names what ends a search this way"
     assert "--budget" in interrupted.message, "it names the remedy"

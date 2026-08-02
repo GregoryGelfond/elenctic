@@ -144,12 +144,12 @@ def synthetic(expectation: Sat | Unsat, solver: Solver = "clingo") -> Case:
 
 
 def test_render_pass_case_is_a_terse_header() -> None:
-    out = render(synthetic(Sat()), (report(Verdict.PASS, "@expect sat"),))
+    out = render(synthetic(Sat(expect_line=1)), (report(Verdict.PASS, "@expect sat"),))
     assert out == "tests/cases/x.lp [clingo] — PASS"
 
 
 def test_render_fail_shows_the_failing_check_and_the_note() -> None:
-    case = synthetic(Sat(notes=("the budget forces a detour",)))
+    case = synthetic(Sat(expect_line=1, notes=("the budget forces a detour",)))
     reports = (
         report(Verdict.PASS, "@expect sat"),
         CheckReport(Verdict.FAIL, "@cautious", "{ c } ⊄ ⋂ AS(P) = { } (missing: { c })"),
@@ -166,27 +166,27 @@ def test_render_keeps_fail_and_undecided_distinct() -> None:
         CheckReport(Verdict.FAIL, "@cautious", "decided wrong"),
         CheckReport(Verdict.UNDECIDED, "@brave", "the solve did not complete"),
     )
-    out = render(synthetic(Sat()), reports)
+    out = render(synthetic(Sat(expect_line=1)), reports)
     assert "[FAIL] @cautious: decided wrong" in out
     assert "[UNDECIDED] @brave: the solve did not complete" in out
 
 
 def test_render_surfaces_note_on_undecided_too() -> None:
     # A "known-slow" @note is useful on UNDECIDED, not only FAIL.
-    case = synthetic(Sat(notes=("this instance is known-slow",)))
+    case = synthetic(Sat(expect_line=1, notes=("this instance is known-slow",)))
     out = render(case, (CheckReport(Verdict.UNDECIDED, "@count", "budget hit"),))
     assert "— UNDECIDED" in out
     assert "note: this instance is known-slow" in out
 
 
 def test_render_suppresses_the_note_on_a_passing_case() -> None:
-    case = synthetic(Sat(notes=("irrelevant on pass",)))
+    case = synthetic(Sat(expect_line=1, notes=("irrelevant on pass",)))
     out = render(case, (report(Verdict.PASS, "@expect sat"),))
     assert out == "tests/cases/x.lp [clingo] — PASS"  # no note line on a passing case
 
 
 def test_render_surfaces_an_unsat_cases_note_on_failure() -> None:
-    case = synthetic(Unsat(notes=("the budget cap excludes every s–t path",)))
+    case = synthetic(Unsat(expect_line=1, notes=("the budget cap excludes every s–t path",)))
     out = render(case, (CheckReport(Verdict.FAIL, "@expect unsat", "a model exists: { a }"),))
     assert "— FAIL" in out
     assert "[FAIL] @expect unsat: a model exists: { a }" in out
@@ -199,4 +199,4 @@ def test_case_verdict_empty_is_vacuously_pass() -> None:
 
 
 def test_render_empty_reports_is_a_bare_header() -> None:
-    assert render(synthetic(Sat()), ()) == "tests/cases/x.lp [clingo] — PASS"
+    assert render(synthetic(Sat(expect_line=1)), ()) == "tests/cases/x.lp [clingo] — PASS"

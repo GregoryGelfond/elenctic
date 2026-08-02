@@ -135,12 +135,15 @@ class Check:
     ``_inconsistent`` and ``_decide`` are private and omitted from ``repr`` so the arm dispatch
     cannot be bypassed. ``label`` is the contract tag (it groups checks); ``subject`` discriminates
     instances of the one repeatable tag (the ``@query`` surface; ``""`` otherwise), so
-    ``(label, subject)`` names a check for explain. Equality is by **identity** (``eq=False``):
-    compare ``check.label`` / ``check.subject``, never ``check == check``.
+    ``(label, subject)`` names a check for explain. ``line`` is not part of that name: it is the
+    1-based line of the case file the claim was written on, which is what lets a consumer place a
+    diagnostic against the claim rather than against the file. Equality is by **identity**
+    (``eq=False``): compare ``check.label`` / ``check.subject``, never ``check == check``.
     """
 
     label: str
     reads: frozenset[Field]
+    line: int
     _inconsistent: tuple[Verdict, str] = dc_field(repr=False)
     _decide: Callable[[Consistent], tuple[Verdict, str]] = dc_field(repr=False)
     subject: str = ""
@@ -195,12 +198,13 @@ def _check(
     label: str,
     reads: frozenset[Field],
     *,
+    line: int,
     inconsistent: tuple[Verdict, str],
     decide: Callable[[Consistent], tuple[Verdict, str]],
     subject: str = "",
 ) -> Check:
     """The single construction site for a check (the arm dispatch lives in ``Check.__call__``)."""
-    return Check(label, reads, inconsistent, decide, subject)
+    return Check(label, reads, line, inconsistent, decide, subject)
 
 
 def _unsat_fail(reason: str) -> tuple[Verdict, str]:
@@ -340,17 +344,18 @@ def _count(expected: int, actual: int, noun: str) -> tuple[Verdict, str]:
 # --- the all-base checks ---
 
 
-def expect_sat() -> Check:
+def expect_sat(*, line: int) -> Check:
     """``@expect sat``: ``AS(P) ≠ ∅`` — a model exists. Reads only the arm."""
     return _check(
         "@expect sat",
         frozenset(),
+        line=line,
         inconsistent=(Verdict.FAIL, "expected sat, but AS(P) = ∅ — no model"),
         decide=lambda _shape: (Verdict.PASS, "AS(P) ≠ ∅ — a model exists"),
     )
 
 
-def expect_unsat() -> Check:
+def expect_unsat(*, line: int) -> Check:
     """``@expect unsat``: ``AS(P) = ∅`` — no model. PASSes on the ``Inconsistent`` arm;
     on a ``Consistent`` run it FAILs with the witnessing model (the DEFAULT witness)."""
 
@@ -361,12 +366,13 @@ def expect_unsat() -> Check:
     return _check(
         "@expect unsat",
         frozenset({Field.WITNESS}),
+        line=line,
         inconsistent=(Verdict.PASS, "AS(P) = ∅ — no model, as expected"),
         decide=decide,
     )
 
 
-def has_model(claim: WitnessClaim) -> Check:
+def has_model(claim: WitnessClaim, *, line: int) -> Check:
     """``@model { L } [where { A }]``: a bare claim asserts ``L`` is some answer set's shown
     projection (the shown census, projection-invariant); a ``where``-qualified claim asserts there
     is one model with ``shown(M) = L`` AND ``assign(M) ⊇ A`` (the joint witness, full census — so it
@@ -375,12 +381,14 @@ def has_model(claim: WitnessClaim) -> Check:
         return _check(
             "@model",
             frozenset({Field.SHOWN_CENSUS}),
+            line=line,
             inconsistent=_unsat_fail(f"no model equals {_show_set(claim.shown)}"),
             decide=lambda shape: _witness(claim.shown, shown_census_of(shape), "enumerated models"),
         )
     return _check(
         "@model",
         frozenset({Field.FULL_CENSUS}),
+        line=line,
         inconsistent=_unsat_fail(
             f"no model is {_show_set(claim.shown)} with assignment ⊇ {_show_assign(claim.assign)}"
         ),
@@ -388,7 +396,7 @@ def has_model(claim: WitnessClaim) -> Check:
     )
 
 
-def count_is(n: int) -> Check:
+def count_is(n: int, *, line: int) -> Check:
     """``@count n``: exactly ``n`` distinct observables (total at both ends). ``@count 0`` is the
     unsat case, so it PASSes on ``Inconsistent``. Reads the full census — its theory-distinct count
     is what projection would collapse, so a ``@count`` rider suppresses projection."""
@@ -398,34 +406,37 @@ def count_is(n: int) -> Check:
     return _check(
         "@count",
         frozenset({Field.FULL_CENSUS}),
+        line=line,
         inconsistent=inconsistent,
         decide=lambda shape: _count(n, len(observables_of(shape)), "models"),
     )
 
 
-def cautious_contains(litset: frozenset[Symbol]) -> Check:
+def cautious_contains(litset: frozenset[Symbol], *, line: int) -> Check:
     """``@cautious { L }``: ``L ⊆ ⋂`` (the cautious consequences)."""
     _require_nonempty(litset, "@cautious")
     return _check(
         "@cautious",
         frozenset({Field.CAUTIOUS}),
+        line=line,
         inconsistent=_unsat_fail("no cautious consequences"),
         decide=lambda shape: _containment(litset, cautious_of(shape), "⋂ AS(P)"),
     )
 
 
-def brave_contains(litset: frozenset[Symbol]) -> Check:
+def brave_contains(litset: frozenset[Symbol], *, line: int) -> Check:
     """``@brave { L }``: ``L ⊆ ⋃`` (the brave consequences)."""
     _require_nonempty(litset, "@brave")
     return _check(
         "@brave",
         frozenset({Field.BRAVE}),
+        line=line,
         inconsistent=_unsat_fail("no brave consequences"),
         decide=lambda shape: _containment(litset, brave_of(shape), "⋃ AS(P)"),
     )
 
 
-def cost_is(cost: tuple[int, ...]) -> Check:
+def cost_is(cost: tuple[int, ...], *, line: int) -> Check:
     """``@cost { c }``: the proven optimum cost vector equals ``c`` by value."""
 
     def decide(shape: Consistent) -> tuple[Verdict, str]:
@@ -437,6 +448,7 @@ def cost_is(cost: tuple[int, ...]) -> Check:
     return _check(
         "@cost",
         frozenset({Field.OPTIMUM}),
+        line=line,
         inconsistent=(
             Verdict.FAIL,
             f"no optimum proven — AS(P) = ∅; expected cost {_show_cost(cost)}",
@@ -445,7 +457,7 @@ def cost_is(cost: tuple[int, ...]) -> Check:
     )
 
 
-def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
+def assign_contains(assignment: frozenset[tuple[Symbol, int]], *, line: int) -> Check:
     """``@assign { A }``: some observable's theory assignment ⊇ ``A``. Reads the full census (the
     assignment dimension projection would erase, so an ``@assign`` rider suppresses projection)."""
     _require_nonempty(assignment, "@assign")
@@ -463,6 +475,7 @@ def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
     return _check(
         "@assign",
         frozenset({Field.FULL_CENSUS}),
+        line=line,
         inconsistent=_unsat_fail(f"no assignment ⊇ {_show_assign(assignment)}"),
         decide=decide,
     )
@@ -471,7 +484,7 @@ def assign_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
 # --- the optimal base (each mode is its all-base aggregation over Opt(P)) ---
 
 
-def has_optimal_model(claim: WitnessClaim) -> Check:
+def has_optimal_model(claim: WitnessClaim, *, line: int) -> Check:
     """``@optimal { L } [where { A }]``: a bare claim reads the shown optimal census
     (projection-invariant) — what lets it ride a projecting optimal run and terminate; a
     ``where``-qualified claim asserts one optimal model with ``shown(M) = L`` AND ``assign(M) ⊇ A``
@@ -480,6 +493,7 @@ def has_optimal_model(claim: WitnessClaim) -> Check:
         return _check(
             "@optimal",
             frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
+            line=line,
             inconsistent=_unsat_fail(f"no optimal model equals {_show_set(claim.shown)}"),
             decide=lambda shape: _witness(
                 claim.shown, shown_optimal_census_of(shape), "optimal models"
@@ -488,6 +502,7 @@ def has_optimal_model(claim: WitnessClaim) -> Check:
     return _check(
         "@optimal",
         frozenset({Field.FULL_OPTIMAL_CENSUS}),
+        line=line,
         inconsistent=_unsat_fail(
             f"no optimal model is {_show_set(claim.shown)} with assignment ⊇ "
             f"{_show_assign(claim.assign)}"
@@ -496,31 +511,33 @@ def has_optimal_model(claim: WitnessClaim) -> Check:
     )
 
 
-def cautious_optimal_contains(litset: frozenset[Symbol]) -> Check:
+def cautious_optimal_contains(litset: frozenset[Symbol], *, line: int) -> Check:
     """``@cautious optimal { L }``: ``L ⊆ ⋂ Opt(P)`` (the optimal backbone). Reads the shown optimal
     census (projection-invariant)."""
     _require_nonempty(litset, "@cautious optimal")
     return _check(
         "@cautious optimal",
         frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
+        line=line,
         inconsistent=_unsat_fail("no optimal models"),
         decide=lambda shape: _containment(litset, cautious_optimal_of(shape), "⋂ Opt(P)"),
     )
 
 
-def brave_optimal_contains(litset: frozenset[Symbol]) -> Check:
+def brave_optimal_contains(litset: frozenset[Symbol], *, line: int) -> Check:
     """``@brave optimal { L }``: ``L ⊆ ⋃ Opt(P)``. Reads the shown optimal census
     (projection-invariant)."""
     _require_nonempty(litset, "@brave optimal")
     return _check(
         "@brave optimal",
         frozenset({Field.SHOWN_OPTIMAL_CENSUS}),
+        line=line,
         inconsistent=_unsat_fail("no optimal models"),
         decide=lambda shape: _containment(litset, brave_optimal_of(shape), "⋃ Opt(P)"),
     )
 
 
-def count_optimal_is(n: int) -> Check:
+def count_optimal_is(n: int, *, line: int) -> Check:
     """``@count optimal n``: exactly ``n`` distinct optimal observables. Reads the full optimal
     census (the theory-distinct count projection would collapse, so it suppresses projection)."""
     inconsistent = (
@@ -531,12 +548,13 @@ def count_optimal_is(n: int) -> Check:
     return _check(
         "@count optimal",
         frozenset({Field.FULL_OPTIMAL_CENSUS}),
+        line=line,
         inconsistent=inconsistent,
         decide=lambda shape: _count(n, len(optimal_observables_of(shape)), "optimal models"),
     )
 
 
-def assign_optimal_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
+def assign_optimal_contains(assignment: frozenset[tuple[Symbol, int]], *, line: int) -> Check:
     """``@assign optimal { A }``: some optimal model's theory assignment ⊇ ``A`` — there is an
     M ∈ Opt(P) with assign(M) ⊇ A. Reads the full optimal census (projection-sensitive, so it
     suppresses projection)."""
@@ -555,6 +573,7 @@ def assign_optimal_contains(assignment: frozenset[tuple[Symbol, int]]) -> Check:
     return _check(
         "@assign optimal",
         frozenset({Field.FULL_OPTIMAL_CENSUS}),
+        line=line,
         inconsistent=_unsat_fail(f"no optimal assignment ⊇ {_show_assign(assignment)}"),
         decide=decide,
     )
@@ -617,7 +636,7 @@ def _binding_verdict(
     )
 
 
-def query_matches(query: Query) -> Check:
+def query_matches(query: Query, *, line: int) -> Check:
     """The ``@query`` check (Gelfond–Kahl Def 2.2.2, corrected per the errata): the
     program's computed answer matches the contract's. A *singleton* ground query reads the cautious
     consequences ⋂; a *conjunctive* (n≥2) ground query reads the model census (its "no"/"unknown" is
@@ -650,6 +669,7 @@ def query_matches(query: Query) -> Check:
                 return _check(
                     "@query",
                     frozenset({Field.CAUTIOUS}),
+                    line=line,
                     inconsistent=inconsistent,
                     decide=decide_singleton,
                     subject=subject,
@@ -665,6 +685,7 @@ def query_matches(query: Query) -> Check:
             return _check(
                 "@query",
                 frozenset({Field.SHOWN_CENSUS}),
+                line=line,
                 inconsistent=inconsistent,
                 decide=decide_conjunctive,
                 subject=subject,
@@ -681,6 +702,7 @@ def query_matches(query: Query) -> Check:
                 return _check(
                     "@query",
                     frozenset({Field.CAUTIOUS, Field.BRAVE}),
+                    line=line,
                     inconsistent=inconsistent,
                     decide=decide_binding_unknown,
                     subject=subject,
@@ -693,6 +715,7 @@ def query_matches(query: Query) -> Check:
             return _check(
                 "@query",
                 frozenset({Field.CAUTIOUS}),
+                line=line,
                 inconsistent=inconsistent,
                 decide=decide_binding_settled,
                 subject=subject,

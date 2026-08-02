@@ -59,14 +59,16 @@ def enum(*observables: Observable) -> ConsistentEnumeration:
 @pytest.mark.parametrize(
     ("check", "label"),
     [
-        pytest.param(has_optimal_model(wm("a")), "@optimal", id="optimal"),
+        pytest.param(has_optimal_model(wm("a"), line=1), "@optimal", id="optimal"),
         pytest.param(
-            cautious_optimal_contains(lits("a")), "@cautious optimal", id="cautious-optimal"
+            cautious_optimal_contains(lits("a"), line=1), "@cautious optimal", id="cautious-optimal"
         ),
-        pytest.param(brave_optimal_contains(lits("a")), "@brave optimal", id="brave-optimal"),
-        pytest.param(count_optimal_is(1), "@count optimal", id="count-optimal"),
         pytest.param(
-            query_matches(GroundQuery(Answer.yes, (parse_term("a"),))), "@query", id="query"
+            brave_optimal_contains(lits("a"), line=1), "@brave optimal", id="brave-optimal"
+        ),
+        pytest.param(count_optimal_is(1, line=1), "@count optimal", id="count-optimal"),
+        pytest.param(
+            query_matches(GroundQuery(Answer.yes, (parse_term("a"),)), line=1), "@query", id="query"
         ),
     ],
 )
@@ -78,42 +80,49 @@ def test_undecided_when_inconclusive(check: Check, label: str) -> None:
 
 def test_optimal_base_checks_share_the_optimal_observables() -> None:
     result = opt_enum(obs("a", "x"), obs("a", "y"))
-    assert has_optimal_model(wm("a", "x"))(decided(result)).verdict is Verdict.PASS
+    assert has_optimal_model(wm("a", "x"), line=1)(decided(result)).verdict is Verdict.PASS
     assert (
-        cautious_optimal_contains(lits("a"))(decided(result)).verdict is Verdict.PASS
+        cautious_optimal_contains(lits("a"), line=1)(decided(result)).verdict is Verdict.PASS
     )  # optimal backbone
-    missing = cautious_optimal_contains(lits("x"))(decided(result))
+    missing = cautious_optimal_contains(lits("x"), line=1)(decided(result))
     assert missing.verdict is Verdict.FAIL  # x is in only one optimum
     assert "x" in missing.message and "⋂" in missing.message
-    assert brave_optimal_contains(lits("y"))(decided(result)).verdict is Verdict.PASS
-    assert count_optimal_is(2)(decided(result)).verdict is Verdict.PASS
+    assert brave_optimal_contains(lits("y"), line=1)(decided(result)).verdict is Verdict.PASS
+    assert count_optimal_is(2, line=1)(decided(result)).verdict is Verdict.PASS
 
 
 def test_optimal_base_is_total_on_unsat() -> None:
-    assert has_optimal_model(wm("a"))(decided(Inconsistent())).verdict is Verdict.FAIL
-    assert cautious_optimal_contains(lits("a"))(decided(Inconsistent())).verdict is Verdict.FAIL
-    assert brave_optimal_contains(lits("a"))(decided(Inconsistent())).verdict is Verdict.FAIL
-    assert count_optimal_is(2)(decided(Inconsistent())).verdict is Verdict.FAIL
+    assert has_optimal_model(wm("a"), line=1)(decided(Inconsistent())).verdict is Verdict.FAIL
     assert (
-        count_optimal_is(0)(decided(Inconsistent())).verdict is Verdict.PASS
+        cautious_optimal_contains(lits("a"), line=1)(decided(Inconsistent())).verdict
+        is Verdict.FAIL
+    )
+    assert (
+        brave_optimal_contains(lits("a"), line=1)(decided(Inconsistent())).verdict is Verdict.FAIL
+    )
+    assert count_optimal_is(2, line=1)(decided(Inconsistent())).verdict is Verdict.FAIL
+    assert (
+        count_optimal_is(0, line=1)(decided(Inconsistent())).verdict is Verdict.PASS
     )  # @count optimal 0 over ∅
 
 
 def test_optimal_base_singleton_class() -> None:
     # ⋂ Opt(P) = ⋃ Opt(P) = the single optimal model (the family[0].∩(*[]) edge).
     result = opt_enum(obs("a", "x"))
-    assert has_optimal_model(wm("a", "x"))(decided(result)).verdict is Verdict.PASS
-    assert cautious_optimal_contains(lits("a", "x"))(decided(result)).verdict is Verdict.PASS
-    assert brave_optimal_contains(lits("x"))(decided(result)).verdict is Verdict.PASS
+    assert has_optimal_model(wm("a", "x"), line=1)(decided(result)).verdict is Verdict.PASS
+    assert (
+        cautious_optimal_contains(lits("a", "x"), line=1)(decided(result)).verdict is Verdict.PASS
+    )
+    assert brave_optimal_contains(lits("x"), line=1)(decided(result)).verdict is Verdict.PASS
 
 
 def test_optimal_base_failures_name_opt_p_not_enumerated_models() -> None:
     result = opt_enum(obs("a", "x"), obs("a", "y"))
-    partial = has_optimal_model(wm("a"))(decided(result))  # subset, not the whole model
+    partial = has_optimal_model(wm("a"), line=1)(decided(result))  # subset, not the whole model
     assert partial.verdict is Verdict.FAIL
     assert "optimal" in partial.message  # names Opt(P), not "enumerated models"
     assert "enumerated models" not in partial.message
-    brave_miss = brave_optimal_contains(lits("z"))(decided(result))
+    brave_miss = brave_optimal_contains(lits("z"), line=1)(decided(result))
     assert brave_miss.verdict is Verdict.FAIL
     assert "z" in brave_miss.message and "⋃" in brave_miss.message
 
@@ -122,7 +131,9 @@ def test_optimal_base_failures_name_opt_p_not_enumerated_models() -> None:
 
 
 def test_query_ground_conjunctive_reads_the_census_and_localizes() -> None:
-    asked = query_matches(GroundQuery(Answer.yes, (parse_term("start(s)"), parse_term("end(t)"))))
+    asked = query_matches(
+        GroundQuery(Answer.yes, (parse_term("start(s)"), parse_term("end(t)"))), line=1
+    )
     both = asked(
         decided(enum(obs("start(s)", "end(t)")))
     )  # both conjuncts true in all → computed yes
@@ -139,7 +150,7 @@ def test_query_ground_conjunctive_no_localizes_from_the_census() -> None:
     # each model falsifies a *different* conjunct → computed "no" (∀M ∃i: l̄i∈M); ⋂ is empty here,
     # so the localization MUST come from the census, not ⋂ (the regression fence for the
     # "(counter-entailed: { })" defect).
-    asked = query_matches(GroundQuery(Answer.yes, (parse_term("p(a)"), parse_term("p(b)"))))
+    asked = query_matches(GroundQuery(Answer.yes, (parse_term("p(a)"), parse_term("p(b)"))), line=1)
     missed = asked(decided(enum(obs("p(a)", "-p(b)"), obs("-p(a)", "p(b)"))))
     assert missed.verdict is Verdict.FAIL  # expected yes, computed no
     assert "no" in missed.message
@@ -148,7 +159,7 @@ def test_query_ground_conjunctive_no_localizes_from_the_census() -> None:
 
 
 def test_query_ground_singleton_no_via_strong_negation() -> None:
-    asked = query_matches(GroundQuery(Answer.no, (parse_term("reachable(x)"),)))
+    asked = query_matches(GroundQuery(Answer.no, (parse_term("reachable(x)"),)), line=1)
     # contrary -reachable(x) entailed ⇒ computed no (Def 2.2.2)
     assert asked(decided(ConsistentCautious(lits("-reachable(x)")))).verdict is Verdict.PASS
     # mere absence is not falsity ⇒ computed unknown ≠ no ⇒ FAIL
@@ -156,7 +167,7 @@ def test_query_ground_singleton_no_via_strong_negation() -> None:
 
 
 def test_query_short_circuits_to_fail_on_unsat() -> None:
-    asked = query_matches(GroundQuery(Answer.yes, (parse_term("start(s)"),)))
+    asked = query_matches(GroundQuery(Answer.yes, (parse_term("start(s)"),)), line=1)
     short = asked(decided(Inconsistent()))
     assert short.verdict is Verdict.FAIL  # AS(P) = ∅: every query vacuously yes-and-no
     assert "∅" in short.message
@@ -168,7 +179,8 @@ def test_query_binding_yes_reads_cautious() -> None:
             Answer.yes,
             QueryLiteral("reachable", True, (Var("X"),)),
             frozenset({(parse_term("s"),), (parse_term("a"),)}),
-        )
+        ),
+        line=1,
     )
     assert (
         asked(decided(ConsistentCautious(lits("reachable(s)", "reachable(a)")))).verdict
@@ -186,7 +198,8 @@ def test_query_binding_no_via_contrary() -> None:
             Answer.no,
             QueryLiteral("blocked", True, (Var("X"),)),
             frozenset({(parse_term("a"),)}),
-        )
+        ),
+        line=1,
     )
     # -blocked(a) entailed ⇒ the no-binding set is { (a) }
     assert asked(decided(ConsistentCautious(lits("-blocked(a)")))).verdict is Verdict.PASS
@@ -198,7 +211,8 @@ def test_query_binding_unknown_reads_brave_from_the_enumeration() -> None:
             Answer.unknown,
             QueryLiteral("reachable", True, (Var("X"),)),
             frozenset({(parse_term("b"),)}),
-        )
+        ),
+        line=1,
     )
     # census {reachable(s), reachable(b)}, {reachable(s)} → ⋂ = {reachable(s)}, ⋃ adds reachable(b);
     # brave domain { s, b } − yes { s } − no { } = { b }; the contract asserts unknown = { b }
@@ -214,7 +228,8 @@ def test_query_binding_unknown_off_a_cautious_only_shape_raises_seam_error() -> 
             Answer.unknown,
             QueryLiteral("reachable", True, (Var("X"),)),
             frozenset({(parse_term("b"),)}),
-        )
+        ),
+        line=1,
     )
     with pytest.raises(SeamError):
         asked(decided(ConsistentCautious(lits("reachable(s)"))))
@@ -226,7 +241,9 @@ def test_assign_optimal_contains_reads_the_optimal_assignment() -> None:
     want = frozenset({(parse_term("w"), 2)})
     carrying = opt_enum(Observable(frozenset({parse_term("a")}), frozenset({(parse_term("w"), 2)})))
     missing = opt_enum(Observable(frozenset({parse_term("a")}), frozenset({(parse_term("w"), 9)})))
-    assert assign_optimal_contains(want)(decided(carrying)).verdict is Verdict.PASS
-    assert assign_optimal_contains(want)(decided(missing)).verdict is Verdict.FAIL
-    assert assign_optimal_contains(want)(decided(Inconsistent())).verdict is Verdict.FAIL
-    assert assign_optimal_contains(want)(decided(Inconclusive())).verdict is Verdict.UNDECIDED
+    assert assign_optimal_contains(want, line=1)(decided(carrying)).verdict is Verdict.PASS
+    assert assign_optimal_contains(want, line=1)(decided(missing)).verdict is Verdict.FAIL
+    assert assign_optimal_contains(want, line=1)(decided(Inconsistent())).verdict is Verdict.FAIL
+    assert (
+        assign_optimal_contains(want, line=1)(decided(Inconclusive())).verdict is Verdict.UNDECIDED
+    )

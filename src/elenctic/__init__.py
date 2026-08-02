@@ -50,7 +50,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         discover,
         inspect_corpus,
     )
-    from elenctic.expectation import ContractError, Expectation, Sat, Unsat, parse
+    from elenctic.expectation import Claimed, ContractError, Expectation, Sat, Unsat, parse
     from elenctic.harness import case_verdict, render, run_case
     from elenctic.program import ProgramError
     from elenctic.query import Answer, Query
@@ -88,7 +88,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "discover",
         "inspect_corpus",
     ),
-    "elenctic.expectation": ("ContractError", "Expectation", "Sat", "Unsat", "parse"),
+    "elenctic.expectation": ("Claimed", "ContractError", "Expectation", "Sat", "Unsat", "parse"),
     "elenctic.harness": ("case_verdict", "render", "run_case"),
     "elenctic.program": ("ProgramError",),
     "elenctic.query": ("Answer", "Query"),

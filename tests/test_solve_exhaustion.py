@@ -231,7 +231,7 @@ def test_a_partial_cautious_search_would_otherwise_pass_a_false_claim() -> None:
     )
     surplus = partial_meet - truth
     assert surplus, "the truncated reading is expected to carry atoms the whole one does not"
-    false_claim = cautious_contains(frozenset(surplus))
+    false_claim = cautious_contains(frozenset(surplus), line=1)
     assert false_claim(outcome).verdict is Verdict.UNDECIDED, (
         "a claim the truncated reading would satisfy must not be reported as verified"
     )
@@ -293,7 +293,7 @@ def test_a_partial_second_phase_of_the_optimal_driver_reports_that_it_did_not_fi
     )
     # And the reading over it is refused, which is the guarantee that matters: an optimal-class
     # census taken from part of the class must not be reported as the census.
-    assert count_optimal_is(92)(outcome).verdict is Verdict.UNDECIDED
+    assert count_optimal_is(92, line=1)(outcome).verdict is Verdict.UNDECIDED
 
 
 def test_a_witness_search_is_not_required_to_finish() -> None:

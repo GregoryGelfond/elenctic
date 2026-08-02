@@ -140,7 +140,7 @@ def test_an_optimal_enum_under_a_hit_budget_never_claims_a_complete_optimal_clas
     program = "{ p(1..28) }. c. #minimize { 1,c : c }. #show p/1."
     outcome = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0)
     assert outcome.conclusion is not Conclusion.EXHAUSTED
-    assert count_optimal_is(1)(outcome).verdict is Verdict.UNDECIDED
+    assert count_optimal_is(1, line=1)(outcome).verdict is Verdict.UNDECIDED
 
 
 def test_clingcon_optimal_enum_two_phase_yields_the_optimal_class() -> None:

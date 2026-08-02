@@ -53,7 +53,7 @@ def test_an_enumeration_past_the_cap_is_never_read_as_the_whole_census() -> None
     outcome, collector = _drive_over(_MANY, cap=8)
     assert collector.models_seen == 8, "the search stops at the cap, it does not merely truncate"
     assert outcome.conclusion is Conclusion.INCOMPLETE
-    assert count_is(8)(outcome).verdict is Verdict.UNDECIDED, (
+    assert count_is(8, line=1)(outcome).verdict is Verdict.UNDECIDED, (
         "the count the truncated run holds must not be reported as the count"
     )
 
@@ -65,4 +65,4 @@ def test_an_ordinary_run_never_meets_the_cap() -> None:
     assert collector.models_seen < 8
     assert isinstance(outcome.determination, Consistent)
     assert outcome.conclusion is Conclusion.EXHAUSTED
-    assert count_is(2)(outcome).verdict is Verdict.PASS, "an uncapped reading still decides"
+    assert count_is(2, line=1)(outcome).verdict is Verdict.PASS, "an uncapped reading still decides"

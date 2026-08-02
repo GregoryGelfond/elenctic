@@ -239,7 +239,13 @@ def runs_for(exp: Expectation, theory_in_force: bool = False) -> tuple[Run, ...]
     ``False`` (pure clingo) so the solver-less dry-run and existing callers are unaffected."""
     match exp:
         case Unsat():
-            return (Run(Mode.DEFAULT, (checks.expect_unsat(),), theory_in_force=theory_in_force),)
+            return (
+                Run(
+                    Mode.DEFAULT,
+                    (checks.expect_unsat(line=exp.expect_line),),
+                    theory_in_force=theory_in_force,
+                ),
+            )
         case Sat():
             return _sat_runs(exp, theory_in_force)
         case _:
@@ -253,51 +259,71 @@ def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
     Each check is added under a mode that populates the fields its decision reads; the wiring rule
     (``Run.__post_init__``) verifies ``reads ⊆ populates`` per run, so coalescing soundness is
     enforced by construction rather than by hand.
+
+    A repeated consequence tag is a repeated *claim*: each ``@cautious``/``@brave`` line becomes its
+    own check, decided and reported against the line it was written on. The claims are equivalent
+    checked apart or together — ``L₁ ⊆ ⋂`` and ``L₂ ⊆ ⋂`` hold exactly when ``(L₁ ∪ L₂) ⊆ ⋂`` does —
+    and they coalesce onto one solve either way, so this costs nothing and a failure gains the line.
     """
     bucket: dict[Mode, list[Check]] = {}
 
     def add(mode: Mode, check: Check) -> None:
         bucket.setdefault(mode, []).append(check)
 
-    # ``is not None`` for the Optional cells (absent vs present — @count 0 is a *present* unsat
-    # claim, not absence); truthy for the containment tags, where ∅ is a vacuous claim their
-    # builders reject (so empty == absent), keeping them consistent with cautious/brave.
+    # ``is not None`` throughout: absence is a type fact, not an empty value. @count 0 is a
+    # *present* unsat claim rather than absence, and the containment tags reject ∅ at construction
+    # (a vacuous claim), so no cell needs to be tested for emptiness.
     if exp.model is not None:
-        add(Mode.ENUM_ALL, checks.has_model(exp.model))
+        add(Mode.ENUM_ALL, checks.has_model(exp.model.value, line=exp.model.line))
     if exp.count is not None:
-        add(Mode.ENUM_ALL, checks.count_is(exp.count))
-    if exp.assign:
-        add(Mode.ENUM_ALL, checks.assign_contains(exp.assign))
+        add(Mode.ENUM_ALL, checks.count_is(exp.count.value, line=exp.count.line))
+    if exp.assign is not None:
+        add(Mode.ENUM_ALL, checks.assign_contains(exp.assign.value, line=exp.assign.line))
     # cautious and brave run as two native consequence solves, not one ENUM_ALL census: clingo's
     # --enum-mode=cautious/brave compute ⋂/⋃ directly, avoiding a full (possibly exponential) enum.
-    if exp.cautious:
-        add(Mode.CAUTIOUS_ALL, checks.cautious_contains(exp.cautious))
-    if exp.brave:
-        add(Mode.BRAVE_ALL, checks.brave_contains(exp.brave))
+    for claim in exp.cautious:
+        add(Mode.CAUTIOUS_ALL, checks.cautious_contains(claim.value, line=claim.line))
+    for claim in exp.brave:
+        add(Mode.BRAVE_ALL, checks.brave_contains(claim.value, line=claim.line))
 
     if exp.optimal_model is not None:
-        add(Mode.OPTIMAL_ENUM, checks.has_optimal_model(exp.optimal_model))
-    if exp.cautious_optimal:
-        add(Mode.OPTIMAL_ENUM, checks.cautious_optimal_contains(exp.cautious_optimal))
-    if exp.brave_optimal:
-        add(Mode.OPTIMAL_ENUM, checks.brave_optimal_contains(exp.brave_optimal))
+        add(
+            Mode.OPTIMAL_ENUM,
+            checks.has_optimal_model(exp.optimal_model.value, line=exp.optimal_model.line),
+        )
+    for claim in exp.cautious_optimal:
+        add(Mode.OPTIMAL_ENUM, checks.cautious_optimal_contains(claim.value, line=claim.line))
+    for claim in exp.brave_optimal:
+        add(Mode.OPTIMAL_ENUM, checks.brave_optimal_contains(claim.value, line=claim.line))
     if exp.count_optimal is not None:
-        add(Mode.OPTIMAL_ENUM, checks.count_optimal_is(exp.count_optimal))
-    if exp.assign_optimal:
-        add(Mode.OPTIMAL_ENUM, checks.assign_optimal_contains(exp.assign_optimal))
+        add(
+            Mode.OPTIMAL_ENUM,
+            checks.count_optimal_is(exp.count_optimal.value, line=exp.count_optimal.line),
+        )
+    if exp.assign_optimal is not None:
+        add(
+            Mode.OPTIMAL_ENUM,
+            checks.assign_optimal_contains(exp.assign_optimal.value, line=exp.assign_optimal.line),
+        )
     if exp.cost is not None:
         # @cost rides the shared Opt(P) enumeration when an optimal-base mode is present, else a
         # cheap single-optimum solve. Optimal-base membership lives on Sat (one home).
-        add(Mode.OPTIMAL_ENUM if exp.has_optimal_base else Mode.OPTIMAL, checks.cost_is(exp.cost))
+        add(
+            Mode.OPTIMAL_ENUM if exp.has_optimal_base else Mode.OPTIMAL,
+            checks.cost_is(exp.cost.value, line=exp.cost.line),
+        )
 
     for query in exp.queries:
-        add(_query_mode(query), checks.query_matches(query))
+        add(_query_mode(query.value), checks.query_matches(query.value, line=query.line))
 
     # @expect sat reads ∅ (the arm is the answer), so it could ride any run; it rides an existing
     # full enumeration when one exists, else a cheap DEFAULT 1-model solve — deliberately not an
     # expensive cautious/brave/opt run, which is likelier to time out and report UNDECIDED where the
     # cheap solve would decide satisfiability. (A more refined UNDECIDED treatment is deferred.)
-    add(Mode.ENUM_ALL if Mode.ENUM_ALL in bucket else Mode.DEFAULT, checks.expect_sat())
+    add(
+        Mode.ENUM_ALL if Mode.ENUM_ALL in bucket else Mode.DEFAULT,
+        checks.expect_sat(line=exp.expect_line),
+    )
 
     return tuple(
         Run(

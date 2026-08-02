@@ -55,22 +55,24 @@ def _every_check(litset: frozenset[Symbol]) -> list[Check]:
     every tag and every ``@query`` form, so the timeout→UNDECIDED invariant holds surface-wide."""
     goal = QueryLiteral("p", True, (Var("X"),))
     return [
-        expect_sat(),
-        expect_unsat(),
-        has_model(WitnessClaim(shown=litset)),
-        count_is(len(litset)),
-        assign_contains(frozenset({(Function("a"), 1)})),
-        cautious_contains(litset),
-        brave_contains(litset),
-        cost_is((1,)),
-        has_optimal_model(WitnessClaim(shown=litset)),
-        cautious_optimal_contains(litset),
-        brave_optimal_contains(litset),
-        count_optimal_is(1),
-        query_matches(GroundQuery(Answer.yes, (Function("a"),))),  # singleton ground
-        query_matches(GroundQuery(Answer.no, (Function("a"), Function("b")))),  # conjunctive
-        query_matches(BindingQuery(Answer.yes, goal, frozenset())),  # binding settled
-        query_matches(BindingQuery(Answer.unknown, goal, frozenset())),  # binding unknown
+        expect_sat(line=1),
+        expect_unsat(line=1),
+        has_model(WitnessClaim(shown=litset), line=1),
+        count_is(len(litset), line=1),
+        assign_contains(frozenset({(Function("a"), 1)}), line=1),
+        cautious_contains(litset, line=1),
+        brave_contains(litset, line=1),
+        cost_is((1,), line=1),
+        has_optimal_model(WitnessClaim(shown=litset), line=1),
+        cautious_optimal_contains(litset, line=1),
+        brave_optimal_contains(litset, line=1),
+        count_optimal_is(1, line=1),
+        query_matches(GroundQuery(Answer.yes, (Function("a"),)), line=1),  # singleton ground
+        query_matches(
+            GroundQuery(Answer.no, (Function("a"), Function("b"))), line=1
+        ),  # conjunctive
+        query_matches(BindingQuery(Answer.yes, goal, frozenset()), line=1),  # binding settled
+        query_matches(BindingQuery(Answer.unknown, goal, frozenset()), line=1),  # binding unknown
     ]
 
 
@@ -91,8 +93,8 @@ def test_optimal_aggregation_equals_the_pairwise_fold(family: list[frozenset[Sym
     result = ConsistentOptimalEnumeration(tuple(Observable(s) for s in members), Optimum((0,)))
     meet: frozenset[Symbol] = functools.reduce(operator.and_, members)
     join: frozenset[Symbol] = functools.reduce(operator.or_, members)
-    assert cautious_optimal_contains(meet)(decided(result)).verdict is Verdict.PASS
-    assert brave_optimal_contains(join)(decided(result)).verdict is Verdict.PASS
+    assert cautious_optimal_contains(meet, line=1)(decided(result)).verdict is Verdict.PASS
+    assert brave_optimal_contains(join, line=1)(decided(result)).verdict is Verdict.PASS
 
 
 @given(_litsets)
@@ -111,29 +113,29 @@ def test_cautious_passes_iff_subset(
 ) -> None:
     result = ConsistentCautious(aggregate)
     expected = Verdict.PASS if litset <= aggregate else Verdict.FAIL
-    assert cautious_contains(litset)(decided(result)).verdict is expected
+    assert cautious_contains(litset, line=1)(decided(result)).verdict is expected
 
 
 @given(_litsets, _atom_sets)
 def test_brave_passes_iff_subset(litset: frozenset[Symbol], aggregate: frozenset[Symbol]) -> None:
     result = ConsistentBrave(aggregate)
     expected = Verdict.PASS if litset <= aggregate else Verdict.FAIL
-    assert brave_contains(litset)(decided(result)).verdict is expected
+    assert brave_contains(litset, line=1)(decided(result)).verdict is expected
 
 
 def test_query_check_subject_discriminates_instances() -> None:
     # the repeatable @query tag: label groups, subject (the surface) discriminates instances, so a
     # consumer/explain can tell two @query checks apart before any solve.
     goal = QueryLiteral("p", True, (Var("X"),))
-    singleton = query_matches(GroundQuery(Answer.yes, (Function("a"),)))
-    conjunctive = query_matches(GroundQuery(Answer.no, (Function("a"), Function("b"))))
-    binding = query_matches(BindingQuery(Answer.unknown, goal, frozenset()))
+    singleton = query_matches(GroundQuery(Answer.yes, (Function("a"),)), line=1)
+    conjunctive = query_matches(GroundQuery(Answer.no, (Function("a"), Function("b"))), line=1)
+    binding = query_matches(BindingQuery(Answer.unknown, goal, frozenset()), line=1)
     assert singleton.label == conjunctive.label == binding.label == "@query"  # the tag groups
     assert singleton.subject == "yes { a }"
     assert conjunctive.subject == "no { a, b }"
     assert binding.subject == "unknown p(X)"
     bare = WitnessClaim(shown=frozenset({Function("a")}))
-    assert has_model(bare).subject == ""  # non-repeatable tags carry an empty subject
+    assert has_model(bare, line=1).subject == ""  # non-repeatable tags carry an empty subject
 
 
 def test_containment_builders_reject_an_empty_litset() -> None:
@@ -146,4 +148,4 @@ def test_containment_builders_reject_an_empty_litset() -> None:
         assign_contains,
     ):
         with pytest.raises(ValueError, match="vacuous"):
-            build(frozenset())
+            build(frozenset(), line=1)
