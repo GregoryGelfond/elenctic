@@ -4,12 +4,13 @@ The reference implementation of a language-parametric ``@``-contract format over
 of an answer-set program (shown atoms + theory assignment). A contract is parsed (:func:`parse`)
 into an :data:`Expectation`; :func:`discover` walks a corpus into :class:`Case`\\ s;
 :func:`runs_for` derives the solver runs and their checks; :func:`solve` collects a
-:data:`Determination`; and :func:`run_case` / :func:`render` run a case end-to-end and format
-its diagnostic.
+:class:`SolveOutcome` — what the solve determined, and how far the search behind it got; and
+:func:`run_case` / :func:`render` run a case end-to-end and format its diagnostic.
 
 **The three-valued verdict.** A check yields a :class:`Verdict` about the *program under
-test*: ``PASS`` (the contract holds), ``FAIL`` (the program decided wrong), or ``UNDECIDED`` (the
-solve did not decide — never conflated with FAIL or UNSAT). :func:`case_verdict` folds the reports.
+test*: ``PASS`` (the contract holds), ``FAIL`` (the program decided wrong), or ``UNDECIDED`` —
+which covers both a solve that decided nothing and a search too partial for what this check reads.
+``UNDECIDED`` is never conflated with FAIL or UNSAT. :func:`case_verdict` folds the reports.
 
 **The error taxonomy (errors are never verdicts).** Four loud error families, distinct from the
 ``Verdict`` and disjoint from one another:
@@ -56,6 +57,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     from elenctic.registry import SOLVERS, Solver
     from elenctic.result import (
         Collection,
+        Conclusion,
         Consistent,
         Determination,
         HarnessError,
@@ -64,6 +66,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         Observable,
         Optimum,
         SeamError,
+        SolveOutcome,
         Verdict,
     )
     from elenctic.run import Mode, RoutingError, Run, runs_for
@@ -92,6 +95,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
     "elenctic.registry": ("SOLVERS", "Solver"),
     "elenctic.result": (
         "Collection",
+        "Conclusion",
         "Consistent",
         "Determination",
         "HarnessError",
@@ -100,6 +104,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "Observable",
         "Optimum",
         "SeamError",
+        "SolveOutcome",
         "Verdict",
     ),
     "elenctic.run": ("Mode", "RoutingError", "Run", "runs_for"),

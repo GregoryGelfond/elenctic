@@ -13,10 +13,13 @@ A search cut short still reports the satisfiability it settled. Whether the sear
 range over the same thing — so that question is answered where the reading is (``checks.py``), and
 this module reports only the :class:`~elenctic.result.Conclusion` it observed.
 
-**The lowering contract (the accessor seam's second premise).** ``solve(mode)`` produces, for a SAT
-run, *exactly* ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)``. The match in
-:func:`_consistent_shape` is that Mode→shape arrow; the gating lowering-postcondition test ties it
-to ``shape_for``/``populates`` so the construction here and the type oracle in ``run`` do not drift.
+**The lowering contract (the accessor seam's second premise).** Whenever ``solve(mode)`` yields a
+``Consistent``, it is *exactly* ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)``.
+A satisfiable solve does not always yield one: a search may settle satisfiability and still produce
+nothing the mode's shape can honestly be made of, which is reported as a solve that settled nothing.
+The match in :func:`_consistent_shape` is that Mode→shape arrow; the gating lowering-postcondition
+test ties it to ``shape_for``/``populates`` so the construction here and the type oracle in ``run``
+do not drift.
 A single ``_Collector`` dispatches on ``model.type``:
 ``StableModel`` rows become observables (with cost); a final ``CautiousConsequences`` /
 ``BraveConsequences`` model carries ⋂/⋃. clingo enumeration always projects onto shown atoms
@@ -64,13 +67,20 @@ from elenctic.run import Mode
 
 __all__ = ["TIME_BUDGET", "run_clingcon", "run_clingo", "solve"]
 
-TIME_BUDGET: float = 30.0  # seconds; the hang-protection default (a hit budget is UNDECIDED)
+# The hang-protection default, in seconds. A budget hit *before* the solve decides is UNDECIDED
+# and never FAIL; one hit after it decides keeps what was decided, and only the readings that
+# needed more of the search go UNDECIDED.
+TIME_BUDGET: float = 30.0
 
-# The companion bound to TIME_BUDGET, over the other exhaustible resource. A solve holds every
-# model it is shown, and a time budget says nothing about how fast they arrive — a program decides
-# that — so a budget that never expires can still end in exhausted memory. High enough that no
-# corpus reading a collection anyone means to read will meet it, and a run that does meet it is
-# reported as not having finished, which is what it is.
+# The companion bound to TIME_BUDGET, over the other exhaustible resource. An enumerating solve
+# holds every model it is shown, and a time budget says nothing about how fast they arrive — a
+# program decides that — so a budget that never expires can still end in exhausted memory. High
+# enough that no corpus reading a collection anyone means to read will meet it, and a run that does
+# meet it is reported as not having finished, which is what it is.
+#
+# It counts stable models, so it bounds the modes that are shown them: the enumerations. A
+# consequence run is shown a refining sequence of consequence *sets* instead, of which only the
+# latest is kept, so it is bounded already and this cap never fires there.
 MODEL_CAP: int = 1_000_000
 
 
@@ -131,8 +141,9 @@ class _Collector:
         search ended before it reported one.
 
         clingo narrows this set as the search proceeds, so it is ⋂ only once the search has closed
-        the space; over a search that stopped early it is a *superset* of ⋂. Which of the two you
-        hold is what the outcome's conclusion says, and no reader may treat this as ⋂ without
+        the space; over a search that did not close the space it is a *superset* of ⋂. Which of the
+        two you hold is what the outcome's conclusion says, and no reader may treat this as ⋂
+        without
         consulting it."""
         return self._cautious
 
@@ -141,12 +152,18 @@ class _Collector:
         ended before it reported one.
 
         clingo widens this set as the search proceeds, so it is ⋃ only once the search has closed
-        the space; over a search that stopped early it is a *subset* of ⋃ — the mirror of the
+        the space; over a search that did not close the space it is a *subset* of ⋃ — the mirror of
+        the
         cautious case, and read under the same condition."""
         return self._brave
 
     def optimum(self) -> Optimum:
-        """The proven optimum cost alone (``OPTIMAL``): the lexicographic min over the stream."""
+        """The lexicographic minimum cost over the models this collector saw.
+
+        It takes a minimum; it proves nothing. Whether that minimum is *the* optimum is the
+        caller's to have established — by a search that closed its own space, or by an earlier
+        phase that proved the bound this one enumerates at. Both phases of the two-phase optimal
+        driver call it, as does the single-optimum mode."""
         return Optimum(self._optimum_cost())
 
     def _optimum_cost(self) -> tuple[int, ...]:
@@ -171,8 +188,8 @@ class _Collector:
 def _consistent_shape(
     mode: Mode,
     collector: _Collector,
-    projects_to_shown: bool = False,
-    conclusion: Conclusion = Conclusion.EXHAUSTED,
+    projects_to_shown: bool,
+    conclusion: Conclusion,
 ) -> Consistent | None:
     """The Mode→shape lowering arrow. Total over ``Mode`` × the projection coordinate; produces
     exactly ``run.shape_for(mode, projects_to_shown)`` (the lowering-postcondition test proves it).
@@ -230,7 +247,7 @@ def _consistent_shape(
             assert_never(mode)
 
 
-def _settled(completed: bool, result: SolveResult) -> SolveOutcome | None:
+def _outcome_unless_satisfiable(completed: bool, result: SolveResult) -> SolveOutcome | None:
     """The outcome of a solve that did not decide *satisfiable*, or ``None`` if it did.
 
     clingo's result is three-valued — satisfiable, unsatisfiable, or neither — and its first two
@@ -284,9 +301,9 @@ def _outcome(
     Whether that search covered what a reading needs is deliberately **not** decided here. It
     depends on what is read, and this module does not know what will read it — one run carries
     several checks and they do not all range over the same thing."""
-    settled = _settled(completed, result)
-    if settled is not None:
-        return settled
+    decided = _outcome_unless_satisfiable(completed, result)
+    if decided is not None:
+        return decided
     conclusion = _conclusion(completed, result)
     shape = _consistent_shape(mode, collector, projects_to_shown, conclusion)
     if shape is None:
@@ -426,30 +443,38 @@ def _optimal_enum_two_phase(
     prover = _Collector()
     with faults():
         completed, result = _solve_under_budget(control, make_on_model(prover), budget)
-    settled = _settled(completed, result)
-    if settled is not None:
-        return settled
+    decided = _outcome_unless_satisfiable(completed, result)
+    if decided is not None:
+        return decided
     if _conclusion(completed, result) is not Conclusion.EXHAUSTED:
         # The optimum was not proven, so there is no bound to enumerate at. Asked before the cost
-        # is read, and the order is load-bearing in both directions. A search cut short may have
-        # collected no cost at all, and reading one there would report "this program has no
-        # objective" about a program whose objective the budget never reached — an accusation the
-        # corpus did not earn. The honest form of that diagnostic is not lost: a program that
-        # really has no objective in its ground form exhausts this phase, so it passes here and
-        # meets the cost read below.
+        # is read, because a search cut short may have collected no cost at all, and reading one
+        # there would report "this program has no objective" about a program whose objective the
+        # budget never reached — an accusation the corpus did not earn. The honest form of that
+        # diagnostic is not lost: this phase enumerates without a model bound, so a program that
+        # really has no objective exhausts it, passes here, and meets the cost read below. The
+        # single-optimum mode orders these the other way round, and safely, because it guards the
+        # no-model case on its own and its search does *not* exhaust on such a program.
         return SolveOutcome(Inconclusive(), None)
     optimum = prover.optimum()  # the proven optimum cost vector — the phase-2 bound
     _set_opt_mode(control, "enum," + ",".join(str(c) for c in optimum.cost))
     enumerator = _Collector()
     with faults():
         completed, result = _solve_under_budget(control, make_on_model(enumerator), budget)
-    settled = _settled(completed, result)
-    if settled is not None:
-        return settled
-    shape = _consistent_shape(Mode.OPTIMAL_ENUM, enumerator, projects_to_shown)
+    decided = _outcome_unless_satisfiable(completed, result)
+    if decided is not None:
+        return decided
+    conclusion = _conclusion(completed, result)
+    shape = _consistent_shape(Mode.OPTIMAL_ENUM, enumerator, projects_to_shown, conclusion)
     if shape is None:
-        return SolveOutcome(Inconclusive(), None)
-    return SolveOutcome(shape, _conclusion(completed, result))
+        # Unreachable: the optimal-enumeration arm always builds, because phase 1 proved the
+        # bound this phase enumerates at. Loud rather than absent, so a future arm that learns to
+        # decline says so here instead of being read as an enumeration of nothing.
+        raise HarnessError(
+            "the optimal-class enumeration declined to build a shape (an elenctic bug, not a "
+            "verdict)"
+        )
+    return SolveOutcome(shape, conclusion)
 
 
 # clingo's enumeration modes always project: ``--project`` is information-preserving here (the

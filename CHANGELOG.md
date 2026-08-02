@@ -31,9 +31,10 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
   ```
   case.lp [clingo] — UNDECIDED
-    [UNDECIDED] @count: the search was cut short by the time budget before covering the
-    collection this reads, so what it holds is part of the collection and not the collection —
-    UNDECIDED, never FAIL. A larger budget may decide it
+    [UNDECIDED] @count: the search was cut short before covering the collection this reads, so
+    what it holds is part of the collection and not the collection — UNDECIDED, never FAIL. The
+    per-solve time budget is what stops a search this way from the command line, so a larger
+    --budget may decide it
   ```
 
 ### Changed
@@ -46,9 +47,10 @@ means for them — a reader deciding whether to upgrade should not have to read 
   derived from what each check declares it reads, so it cannot drift from the reading it protects.
   A reading that outran its search is still UNDECIDED, never FAIL and never a PASS it did not earn.
 
-- **An undecided report now says which kind of not-knowing it met** — the search closed the space,
-  stopped short of closing it, or was cut short from outside. Raising a budget and
-  shrinking a corpus are different remedies, and the single previous message distinguished neither.
+- **An undecided report now says which kind of not-knowing it met** — the solve settled nothing,
+  or it settled satisfiability over a search that stopped short of covering what this check
+  reads, or one that was cut short from outside. Raising a budget and shrinking what a case
+  enumerates are different remedies, and the single previous message distinguished neither.
 
 - **`Collection` is now imported from `elenctic.result`** rather than `elenctic.run`; it describes
   what a *field* is a reading of, so it belongs beside the field vocabulary. `elenctic.Collection`

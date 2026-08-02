@@ -1,8 +1,8 @@
-"""``solvers`` — the clingo facade and the Mode→``Determination`` lowering.
+"""``solvers`` — the clingo facade and the Mode→shape lowering.
 
 These run real clingo (fast; tiny programs). They confirm the facade produces the three-arm
 ``Determination``: a per-mode ``Consistent`` shape on SAT, ``Inconsistent`` on the whole-result
-``unsatisfiable`` bit, ``Inconclusive`` on a hit time budget. The **GATING**
+``unsatisfiable`` bit, ``Inconclusive`` where the solve settled nothing. The **GATING**
 property — ``type(solve(mode)) is shape_for(mode)`` and its readable fields are exactly
 ``populates(mode)`` — closes the accessor seam's second premise empirically (the postcondition).
 """
@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from clingo import Function, Symbol
 
+from elenctic.checks import count_optimal_is
 from elenctic.program import ProgramError
 from elenctic.result import (
     Conclusion,
@@ -28,6 +29,7 @@ from elenctic.result import (
     Inconsistent,
     Observable,
     SeamError,
+    Verdict,
     brave_of,
     cautious_of,
     observables_of,
@@ -126,16 +128,19 @@ def test_optimal_enum_pins_the_collision_class_to_the_proven_optimum() -> None:
     assert shown_names(optimal_observables_of(det)) == {frozenset({"mark"})}
 
 
-def test_optimal_enum_timeout_yields_inconclusive() -> None:
-    # The two-phase optimal driver returns Inconclusive on a hit budget in EITHER phase, never a
-    # fabricated or partial optimal class. A constant objective makes all 2^28 p-choices co-optimal,
-    # so phase 2 (enumerating the optimal class) cannot finish at a 0.0 poll — Inconclusive holds
-    # whether or not the trivially-fast phase 1 (prove c*) wins the wait(0.0) race. (A prior
-    # `#minimize { 1,p(X) : p(X) }` made the optimum the empty model, found instantly, so the result
-    # raced on phase 1 and flaked under suite load.)
+def test_an_optimal_enum_under_a_hit_budget_never_claims_a_complete_optimal_class() -> None:
+    # A constant objective makes all 2^28 p-choices co-optimal, so a 0.0 poll cannot get through
+    # both phases. Which phase the budget cuts short is a race, and the two outcomes differ: a
+    # phase 1 that never proved the optimum leaves nothing to enumerate at and settles nothing,
+    # while a phase 2 cut short holds part of the optimal class around a sound optimum. So the
+    # assertion is over what both have in common and what actually matters — neither reports a
+    # search that closed the space, so no reading over the optimal class can be taken from either.
+    # (Asserting one of the two outcomes is what made an earlier version of this test flake under
+    # suite load while passing in isolation.)
     program = "{ p(1..28) }. c. #minimize { 1,c : c }. #show p/1."
-    det = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0).determination
-    assert isinstance(det, Inconclusive)
+    outcome = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0)
+    assert outcome.conclusion is not Conclusion.EXHAUSTED
+    assert count_optimal_is(1)(outcome).verdict is Verdict.UNDECIDED
 
 
 def test_clingcon_optimal_enum_two_phase_yields_the_optimal_class() -> None:
@@ -199,8 +204,9 @@ def test_optimization_mode_on_a_nonoptimizing_program_is_a_program_error() -> No
 def test_a_hit_budget_keeps_the_satisfiability_the_search_settled() -> None:
     # 2^30 models and a budget no machine meets: the search cannot cover the space, but it does
     # find a model, and that answer is kept rather than discarded along with the census. Which
-    # readings survive is the check's question, asserted in test_partial_search_verdicts.py; the
-    # guarantee that a hit budget is UNDECIDED and never FAIL/UNSAT is asserted there too.
+    # readings survive is the check's question, asserted in test_partial_search_verdicts.py,
+    # which also holds the guarantee that a budget hit before the solve decides is UNDECIDED and
+    # never FAIL or UNSAT.
     outcome = run_clingo(Mode.ENUM_ALL, "{ p(1..30) }. #show p/1.", budget=0.05)
     assert isinstance(outcome.determination, ConsistentEnumeration)
     assert outcome.conclusion is Conclusion.INTERRUPTED

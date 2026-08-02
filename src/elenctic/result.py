@@ -14,9 +14,9 @@ so it is settled where the reading is (``checks.py``), not here and not at the s
 A check reads a field through one accessor (``*_of``); the single centralised ``_seam_violation`` is
 the one narrowing assertion, unreachable through the supported path on **two** premises: (1) the
 ``reads ⊆ populates`` wiring rule (``run.py``) attaches a check only to a run whose mode populates
-what it reads, and (2) the lowering postcondition — ``solvers.py`` produces, for a run of mode M,
-exactly the ``Consistent`` shape whose fields are ``populates(M)``. Checks (``checks.py``) are pure
-functions of a ``SolveOutcome``; only ``solvers.py`` constructs one.
+what it reads, and (2) the lowering postcondition — whenever ``solvers.py`` yields a ``Consistent``
+for a run of mode M, it is exactly the shape whose fields are ``populates(M)``. Checks
+(``checks.py``) are pure functions of a ``SolveOutcome``; only ``solvers.py`` constructs one.
 
 :class:`Collection` — what a reading ranges over — lives here beside :class:`Field` because it is a
 statement about a *field*, not about a run: a mode and a check each read whatever their fields read,
@@ -142,8 +142,8 @@ class Collection(Enum):
         A solver settles two separate things: whether a model exists, and whether the search that
         found one covered everything it was asked to. ``ALL`` and ``OPTIMAL`` are readings of a
         whole collection — a census, an intersection, a union, a proven optimum — and each is a
-        claim about every member, so a search that stopped early leaves an arbitrary part unseen
-        and answers a different question.
+        claim about every member, so a search that did not close the space leaves an arbitrary part
+        unseen and answers a different question.
 
         ``WITNESS`` asks only whether some answer set exists and what is in it, which one model
         settles whatever the rest of the search would have found. The exemption is not merely
@@ -193,11 +193,13 @@ class Optimum:
     """The proven optimum of an optimisation run. ``cost`` is the
     priority-ordered (lexicographic) cost vector, compared positionally, never a scalar.
 
-    Read it as a proof-token of *proven* optimality: only ``solvers.py`` builds one, and only from a
-    search that closed its space, so the best cost a stopped search happened to reach is never
-    dressed as an optimum. That is a construction convention rather than a type guarantee — Python
-    has no private constructor — and it is sound because checks are pure readers that never mint a
-    result. It is enforced where the shape is built rather than left to each reader, because a
+    Read it as a proof-token of *proven* optimality: only ``solvers.py`` puts one on a shape, and
+    only where the cost was in fact proven — by the search that closed its own space, or by an
+    earlier phase that proved the bound a later one enumerates at, which is why a truncated
+    optimal-class enumeration still carries a sound optimum around a partial class. A best-so-far is
+    never published. That is a construction convention rather than a type guarantee — Python has no
+    private constructor — and it is sound because checks are pure readers that never mint a result.
+    The condition is applied where the shape is built rather than left to each reader, because a
     reader who forgot would publish an unproven number under a name that says otherwise.
     """
 
@@ -220,11 +222,13 @@ class Inconclusive:
     without an answer. Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an
     undecided solve is inexpressible.
 
-    A search that *did* settle satisfiability and then stopped early is a different state and does
-    not land here: it keeps what it settled, and how far the search got rides beside it as a
-    :class:`Conclusion`. Two narrow cases still arrive here because the search produced nothing the
-    shape could be made of — a consequence run that ended before clingo reported a set, and an
-    optimal run whose first phase never proved an optimum."""
+    A search that *did* settle satisfiability and then stopped early usually lands elsewhere: it
+    keeps what it settled, and how far the search got rides beside it as a :class:`Conclusion`.
+    Three narrower states still arrive here, because the solve produced nothing the mode's shape
+    could honestly be made of — a consequence run that ended before clingo reported a set; a search
+    that reported no model at all; and an optimal run with no *proven* optimum, whether that is the
+    single-optimum mode over a search that did not close its space, or the two-phase driver whose
+    first phase did not."""
 
 
 class Consistent:
@@ -289,7 +293,7 @@ class ConsistentCautious(Consistent):
     from).
 
     It is ⋂ exactly when the search closed the space; clingo narrows the set as it goes, so over a
-    search that stopped early it is a *superset* of ⋂. The accompanying
+    search that did not close the space it is a *superset* of ⋂. The accompanying
     :class:`Conclusion` is what distinguishes the two, and a reading that treats this as ⋂ must
     consult it — a claim naming one of the surplus atoms would otherwise be satisfied by a search
     that never established it."""
@@ -303,7 +307,8 @@ class ConsistentBrave(Consistent):
     """``BRAVE_ALL``: the brave-consequence set clingo reported, alone (no census to derive from).
 
     It is ⋃ exactly when the search closed the space; clingo widens the set as it goes, so over a
-    search that stopped early it is a *subset* of ⋃ — the mirror of the cautious case, and read
+    search that did not close the space it is a *subset* of ⋃ — the mirror of the cautious case, and
+    read
     under the same condition."""
 
     brave: frozenset[Symbol]
@@ -355,7 +360,7 @@ class Conclusion(Enum):
     """How a search that settled satisfiability came to an end.
 
     Separate from the :data:`Determination` because the two are independent: a search can decide
-    that an answer set exists and still stop long before it has seen them all. Reading a stopped
+    that an answer set exists and still stop long before it has seen them all. Reading such a
     search as a finished one is the error this vocabulary exists to prevent — a reading over a whole
     collection is a claim about every member, and over a partial search it is a claim about an
     arbitrary part instead.
@@ -365,11 +370,12 @@ class Conclusion(Enum):
     """The search closed the space: every answer set the configuration admits was seen."""
     INCOMPLETE = "incomplete"
     """The search ended without closing the space and without being interrupted — it stopped short.
-    Any bound in force ends a search this way, and not all of them are asked for: elenctic caps how
-    many models one solve may hold, and the solver applies a limit of its own to a search nobody
-    asked to enumerate, which is why an ordinary satisfiability run reports this. Named for what it
-    is rather than for a cause it does not establish. It is the value that would be catastrophic to
-    read as ``EXHAUSTED``."""
+    A bound the search runs *into* ends it this way, and not all such bounds are asked for: elenctic
+    caps how many models one solve may hold, and the solver applies a limit of its own to a search
+    nobody asked to enumerate, which is why an ordinary satisfiability run reports this. A bound
+    applied from *outside* the search — the per-solve time budget — is ``INTERRUPTED`` instead.
+    Named for what it is rather than for a cause it does not establish, and it is the value that
+    would be catastrophic to read as ``EXHAUSTED``."""
     INTERRUPTED = "interrupted"
     """The search was cut short from outside it, rather than by anything the search found."""
 
@@ -405,7 +411,9 @@ class SolveOutcome:
             # search that had not established anything of the kind.
             raise HarnessError(
                 "an unsatisfiable result reports a search that closed the space, but this one "
-                f"reports {self.conclusion} (an elenctic bug, not a verdict)"
+                f"reports {self.conclusion}. No search can establish that a program has no answer "
+                "set without covering it, so this is a solver reporting something elenctic relies "
+                "on it never to report — please report it. Never a verdict."
             )
 
 
@@ -422,8 +430,9 @@ class SeamError(HarnessError):
     """A check read a field off a ``Consistent`` shape that does not populate it — the one
     provably-unreachable narrowing assertion fired, unreachable on **two** premises: the
     ``reads ⊆ populates`` wiring rule (the primary guard, ``run.py``) attaches a check only to a
-    run whose mode populates what it reads; and the ``solvers.py`` lowering postcondition produces,
-    for a run of mode M, the shape whose fields are exactly ``populates(M)``. If it fires, one of
+    run whose mode populates what it reads; and the ``solvers.py`` lowering postcondition, that any
+    ``Consistent`` it yields for a run of mode M is the shape whose fields are exactly
+    ``populates(M)``. If it fires, one of
     those was violated — an elenctic bug, never a verdict."""
 
 

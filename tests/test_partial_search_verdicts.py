@@ -13,12 +13,14 @@ from pathlib import Path
 import pytest
 
 from elenctic import checks
+from elenctic.checks import _partial_message
 from elenctic.discovery import discover
 from elenctic.expectation import parse
 from elenctic.harness import case_verdict, run_case
 from elenctic.result import (
     Conclusion,
     ConsistentEnumeration,
+    HarnessError,
     Observable,
     SolveOutcome,
     Verdict,
@@ -140,3 +142,23 @@ def test_a_case_under_a_hit_budget_still_reports_the_satisfiability_it_settled(
     )
     assert by_label["@count"] is Verdict.UNDECIDED
     assert case_verdict(reports) is Verdict.UNDECIDED
+
+
+def test_every_unfinished_conclusion_has_a_diagnostic() -> None:
+    # The partition is closed here as it is everywhere else in this codebase: a conclusion added
+    # later without a message would otherwise surface as a bare lookup failure inside a check, at
+    # verdict time, on a user's corpus.
+    described = {Conclusion.EXHAUSTED}  # a finished search needs no excuse
+    for conclusion in Conclusion:
+        if conclusion in described:
+            with pytest.raises(HarnessError):
+                _partial_message(conclusion)
+        else:
+            assert _partial_message(conclusion), f"{conclusion.name} has no diagnostic"
+
+
+def test_a_search_that_never_happened_is_refused_a_partial_diagnostic() -> None:
+    # The other guarded input. It is unreachable through Check.__call__ — a Consistent arm always
+    # carries a conclusion — but the guard is what makes that composition safe to rely on.
+    with pytest.raises(HarnessError):
+        _partial_message(None)

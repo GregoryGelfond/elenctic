@@ -205,13 +205,18 @@ encoding; `@assign`, `@assign optimal`, and a `where`-witness need clingcon; a `
 Each check yields a three-valued **Verdict** about the program under test:
 
 - **PASS** — the contract holds.
-- **FAIL** — the program decided *wrong* (the contract is violated by a completed solve).
-- **UNDECIDED** — the solve did not settle the question: the time budget was hit, the solver gave
-  up without an answer, or it answered over a search that stopped before covering what the check
-  reads. None of the three is **ever** `FAIL` and none is **ever** `UNSAT`: "could not decide" and
-  "decided wrong" are different facts. The third case is why a partial search is not reported at
-  all: `@cautious` over part of the answer-set collection yields a *superset* of the true
-  intersection, so a false claim would be satisfied by it.
+- **FAIL** — the program decided *wrong*: the contract is violated by a search good enough to
+  settle what this check asks.
+- **UNDECIDED** — the check could not be settled: the time budget was hit before the solve decided
+  anything, the solver gave up without an answer, or the solve did decide but over a search that
+  stopped before covering what this check reads. None of the three is **ever** `FAIL` and none is
+  **ever** `UNSAT`: "could not decide" and "decided wrong" are different facts. The third case is
+  why a partial search is not read: `@cautious` over part of the answer-set collection yields a
+  *superset* of the true intersection, so a false claim would be satisfied by it.
+
+  Note that only the checks whose reading needs more of the search go `UNDECIDED`. A budget hit
+  after the solve has decided satisfiability leaves `@expect sat` decided, because one model
+  settles it whatever the rest of the search would have found.
 
 A case passes iff every check passes. Errors are a separate register, never verdicts, and they are
 reported loudly and distinctly rather than as a costumed `FAIL`. They divide by whose fault they
@@ -300,6 +305,12 @@ and clingo offers no way to cap that — it is not a limit elenctic can lift. Ru
 corpus therefore belongs inside whatever your platform already gives you: a container with a memory
 limit and a job timeout. Exhausting memory is reported against the case that exhausted it, and
 costs that case's result rather than the whole run's — but it cannot be prevented from here.
+
+**An enumerating solve holds at most a million answer sets.** Past that the search stops, and every
+check whose reading ranges over the whole collection is `UNDECIDED` — a census of part of a
+collection is not the census. The bound is fixed and has no flag: a case that meets it is asking for
+a reading nobody can hold, and the encoding is where that is fixed. Consequence and optimum runs are
+not affected, since clingo hands those back a single answer rather than a stream of models.
 
 Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation <file.lp>`
 (the parsed contract), `python -m elenctic.run <file.lp>` (the derived run plan),

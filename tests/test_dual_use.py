@@ -54,11 +54,12 @@ def test_discovery_module_lists_cases(tmp_path: Path) -> None:
     assert result.stderr == ""
 
 
-def test_solvers_module_prints_the_determination(tmp_path: Path) -> None:
+def test_solvers_module_prints_the_solve_outcome(tmp_path: Path) -> None:
     program = write(tmp_path / "p.lp", "a. #show a/0.\n")
     result = run_module("solvers", "DEFAULT", str(program))
     assert result.returncode == 0
-    assert "ConsistentWitness" in result.stdout
+    assert "ConsistentWitness" in result.stdout, "the arm the solve settled"
+    assert "Conclusion." in result.stdout, "and how its search ended, which is half the answer"
     assert result.stderr == ""
 
 

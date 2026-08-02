@@ -14,9 +14,11 @@ from clingo.solving import SolveResult
 from elenctic.result import (
     Conclusion,
     Consistent,
+    ConsistentWitness,
     HarnessError,
     Inconclusive,
     Inconsistent,
+    Observable,
     SolveOutcome,
 )
 from elenctic.run import Mode
@@ -117,8 +119,11 @@ def test_a_consequence_run_with_no_consequence_model_settles_nothing() -> None:
     # as a violated clingo assumption; blaming elenctic for a budget the user chose would be wrong.
     # Driven through the collector rather than through a timing window, so it is decided by the
     # state itself and not by how fast this machine is.
-    assert _consistent_shape(Mode.CAUTIOUS_ALL, _Collector()) is None
-    assert _consistent_shape(Mode.BRAVE_ALL, _Collector()) is None
+    # The conclusion passed is EXHAUSTED, so the refusal is attributable to the missing set alone
+    # and not to how the search ended.
+    for mode in (Mode.CAUTIOUS_ALL, Mode.BRAVE_ALL):
+        shape = _consistent_shape(mode, _Collector(), False, Conclusion.EXHAUSTED)
+        assert shape is None, f"{mode.name} has no consequence set to build from"
 
 
 def test_a_consequence_run_that_reached_its_fixpoint_reports_it() -> None:
@@ -187,6 +192,10 @@ def test_an_unproven_optimum_is_never_built() -> None:
         (Inconclusive(), Conclusion.EXHAUSTED),  # nothing was settled, so no search to describe
         (Inconsistent(), None),  # decided, so it must say how the search ended
         (Inconsistent(), Conclusion.INCOMPLETE),  # unsatisfiable is itself a completeness claim
+        # The pairing the check layer relies on being impossible: a Consistent arm always carries a
+        # conclusion, which is what lets `Check.__call__` compare it without a None case and reach
+        # the partial-reading diagnostic only for the two conclusions that have one.
+        (ConsistentWitness(Observable(frozenset())), None),
     ],
 )
 def test_an_arm_paired_with_the_wrong_search_is_refused(
@@ -194,3 +203,17 @@ def test_an_arm_paired_with_the_wrong_search_is_refused(
 ) -> None:
     with pytest.raises(HarnessError):
         SolveOutcome(determination, conclusion)  # type: ignore[arg-type]
+
+
+def test_a_cancelled_theory_solve_also_keeps_what_it_settled() -> None:
+    # The "both backends" obligation. clingcon shares the driver but registers a propagator and
+    # rewrites the program first, so its cancel path is worth exercising rather than assumed: the
+    # clingo side of this is asserted above, and nothing else covers the theory side.
+    pytest.importorskip("clingcon")
+    from elenctic.solvers import run_clingcon
+
+    outcome = run_clingcon(Mode.ENUM_ALL, program=_WIDE, budget=0.05)
+    assert isinstance(outcome.determination, Consistent), (
+        "a cancelled theory search that found models decided satisfiability"
+    )
+    assert outcome.conclusion is Conclusion.INTERRUPTED

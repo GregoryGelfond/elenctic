@@ -67,7 +67,9 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=TIME_BUDGET,
         metavar="SECONDS",
-        help=f"per-solve budget; a hit budget is UNDECIDED, not FAIL (default {TIME_BUDGET}s)",
+        help="per-solve time budget in seconds. A budget hit before the solve decides is UNDECIDED "
+        "and never FAIL; one hit after it decides keeps what was decided, and only the checks "
+        f"that needed more of the search are UNDECIDED (default {TIME_BUDGET}s)",
     )
     parser.add_argument(
         "--deadline",

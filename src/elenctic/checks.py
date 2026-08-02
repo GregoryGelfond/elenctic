@@ -105,10 +105,16 @@ _PARTIAL_MESSAGE: Final[dict[Conclusion, str]] = {
 
 
 def _partial_message(conclusion: Conclusion | None) -> str:
-    """Why a reading over a collection could not be made, given how the search ended."""
+    """Why a reading over a collection could not be made, given how the search ended.
+
+    Total over the two conclusions that describe a search too partial to read from. The other two
+    inputs are refused rather than given a message, because neither describes such a search: a
+    finished one has nothing to excuse, and ``None`` means there was no completed search at all —
+    an arm that carries its own diagnostic."""
     if conclusion is None or conclusion is Conclusion.EXHAUSTED:
         raise HarnessError(
-            "a finished search needs no partial-reading diagnostic (an elenctic bug, not a verdict)"
+            "a search that finished — or that never happened — needs no partial-reading "
+            "diagnostic (an elenctic bug, not a verdict)"
         )
     return _PARTIAL_MESSAGE[conclusion]
 
@@ -121,8 +127,11 @@ class Check:
     identify, route, or *explain* a check before any solve.
 
     Calling it dispatches on the ``Determination`` arm: ``Inconclusive`` → ``UNDECIDED`` (before
-    any decision logic); ``Inconsistent`` → the static ``_inconsistent`` verdict (AS(P)=∅
-    needs no field); ``Consistent`` → ``_decide`` over the shape, reading fields through the seam.
+    any decision logic); ``Inconsistent`` → the static ``_inconsistent`` verdict (AS(P)=∅ needs no
+    field, and needs no search either — a result that no answer set exists is one only a search
+    that covered the space can report); ``Consistent`` → ``UNDECIDED`` if this check's reading
+    needed more of the search than it got, else ``_decide`` over the shape, reading fields through
+    the seam.
     ``_inconsistent`` and ``_decide`` are private and omitted from ``repr`` so the arm dispatch
     cannot be bypassed. ``label`` is the contract tag (it groups checks); ``subject`` discriminates
     instances of the one repeatable tag (the ``@query`` surface; ``""`` otherwise), so
@@ -144,12 +153,20 @@ class Check:
     def needs_exhausted_search(self) -> bool:
         """Whether this check's reading requires the search behind it to have finished.
 
-        Derived from what the check declares it reads, never stored. A reading of a whole
-        collection — a census, an intersection, a union, a proven optimum — is a claim about every
-        member, so a search that stopped early makes it a claim about an arbitrary part instead. A
-        check that reads nothing from the collection asks only whether an answer set exists, which
-        one model settles whatever the rest of the search would have found. Deriving it is what
-        stops a check added later from forgetting to declare it.
+        Derived from what the check declares it reads, never stored, so a check added later cannot
+        forget to declare it. A reading of a whole collection — a census, an intersection, a union,
+        a proven optimum — is a claim about every member, so a search that did not close the space
+        makes it a claim about an arbitrary part instead. A check whose reads range over no
+        collection is exempt: ``@expect sat`` reads nothing at all, and ``@expect unsat`` reads only
+        the witness, and each is settled by what one model shows whatever the rest of the search
+        would have found.
+
+        Asked of each field separately rather than of ``reads`` as a whole, and that is not a
+        stylistic choice: :func:`~elenctic.result.collection_of` is undefined on the empty set —
+        deliberately, since a *run* reading no collection has no optimization to lower to — and
+        ``@expect sat`` reads exactly that. Over an empty ``reads`` this yields ``False``, which is
+        the right answer. The whole-set form is the right one where disagreement must be loud, and
+        ``run.py`` uses it there.
         """
         return any(collection_of(frozenset({field})).needs_exhausted_search for field in self.reads)
 
