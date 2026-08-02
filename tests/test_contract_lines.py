@@ -7,8 +7,18 @@ check that reads it.
 
 import pytest
 
+from elenctic.checks import CheckReport
 from elenctic.expectation import Claimed, Sat, Unsat, parse
+from elenctic.result import (
+    Conclusion,
+    ConsistentCautious,
+    ConsistentEnumeration,
+    Observable,
+    SolveOutcome,
+    Verdict,
+)
 from elenctic.run import runs_for
+from elenctic.terms import parse_litset
 
 _CONTRACT = """\
 % a leading comment that is not a contract line
@@ -201,9 +211,10 @@ def test_a_repeatable_tag_carries_its_surface_as_its_subject() -> None:
 
 
 def test_a_line_is_1_based_wherever_one_is_carried() -> None:
-    # The same invariant on three carriers. Claimed validated it from the start; the other two took
-    # a bare int, so a decoder or a hand-built shape could seat a 0 where the contract promises a
-    # line — the one value a missing JSON field decodes to.
+    # The same invariant on every carrier. Claimed validated it from the start; the others took a
+    # bare int, so a decoder or a hand-built shape could seat a 0 where the contract promises a
+    # line — the one value a missing JSON field decodes to. The report is the carrier that leaves
+    # the process, which is why it is guarded rather than trusted to the check that built it.
     from elenctic import checks
 
     with pytest.raises(ValueError, match="1-based"):
@@ -214,6 +225,8 @@ def test_a_line_is_1_based_wherever_one_is_carried() -> None:
         Unsat(expect_line=0)
     with pytest.raises(ValueError, match="1-based"):
         checks.expect_sat(line=0)
+    with pytest.raises(ValueError, match="1-based"):
+        CheckReport(Verdict.PASS, "@expect sat", "", "", 0, Conclusion.EXHAUSTED)
 
 
 def test_a_line_is_counted_the_way_clingo_counts_one() -> None:
@@ -225,3 +238,37 @@ def test_a_line_is_counted_the_way_clingo_counts_one() -> None:
     expectation = parse(text)
     assert expectation.expect_line == 2
     assert len(text.splitlines()) == 3, "splitlines would have made this line 3"
+
+
+# --- the coordinate reaches the report, which is where a consumer reads it ---
+
+
+def test_a_report_carries_the_claim_it_judged() -> None:
+    # The last hop. A check knowing its own coordinate is no use to a consumer that only ever sees
+    # the report, and the report is what both the human render and the document are built from.
+    expectation = parse("% @expect sat\n% @cautious { a }\n")
+    census = ConsistentEnumeration((Observable(frozenset(parse_litset("a"))),))
+    outcome = SolveOutcome(census, Conclusion.EXHAUSTED)
+    reports = {
+        report.label: report
+        for run in runs_for(expectation)
+        for check in run.checks
+        for report in [check(outcome)]
+    }
+    assert reports["@cautious"].line == 2
+    assert reports["@cautious"].subject == "{ a }", "a consequence tag is repeatable, so it has one"
+    assert reports["@cautious"].conclusion is Conclusion.EXHAUSTED
+    assert reports["@expect sat"].subject == "", "a tag that can occur once has nothing to name"
+
+
+def test_a_query_report_carries_its_subject() -> None:
+    expectation = parse("% @expect sat\n% @query yes { a }\n")
+    outcome = SolveOutcome(ConsistentCautious(frozenset(parse_litset("a"))), Conclusion.EXHAUSTED)
+    (report,) = [
+        check(outcome)
+        for run in runs_for(expectation)
+        for check in run.checks
+        if check.label == "@query"
+    ]
+    assert report.subject, "the repeatable tag is discernible only by its subject"
+    assert report.line == 2

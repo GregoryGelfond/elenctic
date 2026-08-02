@@ -222,13 +222,17 @@ class Inconclusive:
     without an answer. Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an
     undecided solve is inexpressible.
 
+    No fields — but the solve still *ran*, and how its search ended rides beside this arm as a
+    :class:`Conclusion` like any other. That is what lets a report say which kind of not-knowing it
+    met: raising a budget and shrinking a program are different remedies, and the reading most
+    likely to be short of time is the one that lands here.
+
     A search that *did* settle satisfiability and then stopped early usually lands elsewhere: it
-    keeps what it settled, and how far the search got rides beside it as a :class:`Conclusion`.
-    Three narrower states still arrive here, because the solve produced nothing the mode's shape
-    could honestly be made of — a consequence run that ended before clingo reported a set; a search
-    that reported no model at all; and an optimal run with no *proven* optimum, whether that is the
-    single-optimum mode over a search that did not close its space, or the two-phase driver whose
-    first phase did not."""
+    keeps what it settled. Three narrower states still arrive here, because the solve produced
+    nothing the mode's shape could honestly be made of — a consequence run that ended before clingo
+    reported a set; a search that reported no model at all; and an optimal run with no *proven*
+    optimum, whether that is the single-optimum mode over a search that did not close its space, or
+    the two-phase driver whose first phase did not."""
 
 
 class Consistent:
@@ -357,13 +361,14 @@ type Determination = Inconsistent | Inconclusive | Consistent
 
 
 class Conclusion(Enum):
-    """How a search that settled satisfiability came to an end.
+    """How a search came to an end.
 
     Separate from the :data:`Determination` because the two are independent: a search can decide
-    that an answer set exists and still stop long before it has seen them all. Reading such a
-    search as a finished one is the error this vocabulary exists to prevent — a reading over a whole
-    collection is a claim about every member, and over a partial search it is a claim about an
-    arbitrary part instead.
+    that an answer set exists and still stop long before it has seen them all, and a search can end
+    every one of these ways without deciding anything at all. Reading a partial search as a finished
+    one is the error this vocabulary exists to prevent — a reading over a whole collection is a
+    claim about every member, and over a partial search it is a claim about an arbitrary part
+    instead.
     """
 
     EXHAUSTED = "exhausted"
@@ -384,23 +389,17 @@ class Conclusion(Enum):
 class SolveOutcome:
     """One solve's result: what it determined, and how the search that determined it ended.
 
-    ``conclusion`` is ``None`` exactly when the solve settled nothing (the :class:`Inconclusive`
-    arm) — there is no completed search to describe. On either other arm it is present, and an
+    Both are total. Every outcome comes from a search that ran, so every outcome can say how that
+    search ended — including one that settled nothing, where the answer is the whole diagnostic a
+    reader has to act on. The two axes are otherwise free of each other, with one exception: an
     :class:`Inconsistent` result always closed the space, since no search can report that a program
     has no answer set without covering it.
     """
 
     determination: Determination
-    conclusion: Conclusion | None
+    conclusion: Conclusion
 
     def __post_init__(self) -> None:
-        decided = not isinstance(self.determination, Inconclusive)
-        if decided != (self.conclusion is not None):
-            raise HarnessError(
-                "a decided solve reports how its search ended and an undecided one has no search "
-                f"to describe; this pairs {type(self.determination).__name__} with "
-                f"{self.conclusion!r} (an elenctic bug, not a verdict)"
-            )
         if isinstance(self.determination, Inconsistent) and self.conclusion is not (
             Conclusion.EXHAUSTED
         ):

@@ -188,7 +188,10 @@ def test_a_partial_optimal_search_yields_no_optimum_at_all(
     # nobody established into a type whose whole meaning is that someone did.
     outcome, _ = _drive_partial(Mode.OPTIMAL, monkeypatch)
     assert isinstance(outcome.determination, Inconclusive)
-    assert outcome.conclusion is None
+    assert outcome.conclusion is Conclusion.INCOMPLETE, (
+        "refusing to build the shape must not also discard why: this is the reading a user is "
+        "likeliest to be short of time for, and the diagnostic is all it has left to give"
+    )
 
 
 def test_a_partial_cautious_search_would_otherwise_pass_a_false_claim() -> None:

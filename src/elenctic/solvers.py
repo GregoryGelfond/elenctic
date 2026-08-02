@@ -8,10 +8,12 @@ decided, or the solver gave up (both ``UNDECIDED``, never FAIL/UNSAT);
 once, never inferred from an empty field);
 else the :class:`~elenctic.result.Consistent` shape the mode produces.
 
-A search cut short still reports the satisfiability it settled. Whether the search covered what a
-*reading* needs is a question about what is read, and a run carries several checks that do not all
-range over the same thing — so that question is answered where the reading is (``checks.py``), and
-this module reports only the :class:`~elenctic.result.Conclusion` it observed.
+A search cut short still reports the satisfiability it settled, and every arm reports the search
+behind it — the undecided one included, where how the search ended is the only thing there is to
+say. Whether that search covered what a *reading* needs is a question about what is read, and a run
+carries several checks that do not all range over the same thing — so that question is answered
+where the reading is (``checks.py``), and this module reports only the
+:class:`~elenctic.result.Conclusion` it observed.
 
 **The lowering contract (the accessor seam's second premise).** Whenever ``solve(mode)`` yields a
 ``Consistent``, it is *exactly* ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)``.
@@ -256,15 +258,13 @@ def _outcome_unless_satisfiable(completed: bool, result: SolveResult) -> SolveOu
     satisfiability it managed to settle, and that answer is kept: discarding it would report a
     question as unanswered because a *different* question ran out of time.
 
-    Pairing the arm with its search happens here and nowhere else, because the rule differs between
-    the two arms and every caller must apply the same one: unsatisfiable is a decided answer whose
-    search covered the space to reach it, while a solve that settled nothing has no completed search
-    to describe."""
+    Both arms report the search that produced them, and a solve that settled nothing reports it too:
+    that is the only thing such a solve has to say, and it is what tells a reader whether to raise a
+    budget or to look at the program."""
     if result.satisfiable:
         return None
-    if result.unsatisfiable:
-        return SolveOutcome(Inconsistent(), _conclusion(completed, result))
-    return SolveOutcome(Inconclusive(), None)
+    arm = Inconsistent() if result.unsatisfiable else Inconclusive()
+    return SolveOutcome(arm, _conclusion(completed, result))
 
 
 def _conclusion(completed: bool, result: SolveResult) -> Conclusion:
@@ -293,10 +293,11 @@ def _outcome(
     result: SolveResult,
     projects_to_shown: bool = False,
 ) -> SolveOutcome:
-    """The solve's arm together with the shape of its search: a solve that settled nothing is
-    ``Inconclusive`` with no search to describe; the whole-result ``unsatisfiable`` bit is
-    ``Inconsistent``; else the mode's ``Consistent`` shape (shown-only when projecting), paired with
-    how the search ended.
+    """The solve's arm together with how its search ended: a solve that settled nothing is
+    ``Inconclusive``; the whole-result ``unsatisfiable`` bit is ``Inconsistent``; else the mode's
+    ``Consistent`` shape (shown-only when projecting). Every arm is paired with the same observed
+    conclusion, including the one that carries no field of its own — a solve with nothing to report
+    about the program still has something to report about the search.
 
     Whether that search covered what a reading needs is deliberately **not** decided here. It
     depends on what is read, and this module does not know what will read it — one run carries
@@ -307,7 +308,7 @@ def _outcome(
     conclusion = _conclusion(completed, result)
     shape = _consistent_shape(mode, collector, projects_to_shown, conclusion)
     if shape is None:
-        return SolveOutcome(Inconclusive(), None)
+        return SolveOutcome(Inconclusive(), conclusion)
     return SolveOutcome(shape, conclusion)
 
 
@@ -446,7 +447,8 @@ def _optimal_enum_two_phase(
     decided = _outcome_unless_satisfiable(completed, result)
     if decided is not None:
         return decided
-    if _conclusion(completed, result) is not Conclusion.EXHAUSTED:
+    conclusion = _conclusion(completed, result)
+    if conclusion is not Conclusion.EXHAUSTED:
         # The optimum was not proven, so there is no bound to enumerate at. Asked before the cost
         # is read, because a search cut short may have collected no cost at all, and reading one
         # there would report "this program has no objective" about a program whose objective the
@@ -455,7 +457,7 @@ def _optimal_enum_two_phase(
         # really has no objective exhausts it, passes here, and meets the cost read below. The
         # single-optimum mode orders these the other way round, and safely, because it guards the
         # no-model case on its own and its search does *not* exhaust on such a program.
-        return SolveOutcome(Inconclusive(), None)
+        return SolveOutcome(Inconclusive(), conclusion)
     optimum = prover.optimum()  # the proven optimum cost vector — the phase-2 bound
     _set_opt_mode(control, "enum," + ",".join(str(c) for c in optimum.cost))
     enumerator = _Collector()

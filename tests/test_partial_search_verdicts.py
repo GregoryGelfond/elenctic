@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from elenctic import checks
-from elenctic.checks import _partial_message
+from elenctic.checks import _partial_message, _undecided_message
 from elenctic.discovery import discover
 from elenctic.expectation import parse
 from elenctic.harness import case_verdict, run_case
@@ -21,6 +21,7 @@ from elenctic.result import (
     Conclusion,
     ConsistentEnumeration,
     HarnessError,
+    Inconclusive,
     Observable,
     SolveOutcome,
     Verdict,
@@ -30,6 +31,19 @@ from elenctic.run import runs_for
 from elenctic.terms import parse_litset
 
 _UNFINISHED = [Conclusion.INCOMPLETE, Conclusion.INTERRUPTED]
+
+# An optimum this machine cannot prove in a thousand times the budget the test gives it, but which
+# grounds in milliseconds: 16-queens under an objective. Measured — the proof does not finish in a
+# minute, so a 0.05s budget is never a race.
+_UNPROVABLE_OPTIMUM = """
+#const n=16.
+row(1..n). col(1..n).
+1 { queen(R,C) : col(C) } 1 :- row(R).
+:- queen(R1,C), queen(R2,C), R1 < R2.
+:- queen(R1,C1), queen(R2,C2), R1 < R2, R2-R1 == |C2-C1|.
+#minimize { R*C,R,C : queen(R,C) }.
+#show queen/2.
+"""
 
 
 def _census(*models: str) -> ConsistentEnumeration:
@@ -157,8 +171,46 @@ def test_every_unfinished_conclusion_has_a_diagnostic() -> None:
             assert _partial_message(conclusion), f"{conclusion.name} has no diagnostic"
 
 
-def test_a_search_that_never_happened_is_refused_a_partial_diagnostic() -> None:
-    # The other guarded input. It is unreachable through Check.__call__ — a Consistent arm always
-    # carries a conclusion — but the guard is what makes that composition safe to rely on.
-    with pytest.raises(HarnessError):
-        _partial_message(None)
+# --- the same question on the other arm: a solve that settled nothing at all ---
+
+
+def test_the_undecided_arm_says_which_way_the_search_ended() -> None:
+    # An undecided solve used to discard how its search ended, so every check on the arm said the
+    # same thing. @cost lands here whenever an optimal search runs out of budget — the reading most
+    # likely to be short of time was the one that could not say so, while a @count over the same
+    # program named the remedy.
+    check = checks.cost_is((1,), line=1)
+    messages = {
+        conclusion: check(SolveOutcome(Inconclusive(), conclusion)).message
+        for conclusion in Conclusion
+    }
+    assert "--budget" in messages[Conclusion.INTERRUPTED], "it names the remedy"
+    assert len(set(messages.values())) == len(Conclusion), "each way of ending reads differently"
+
+
+def test_an_undecided_solve_is_undecided_however_its_search_ended() -> None:
+    # The verdict does not move: carrying the conclusion changes what the report can say, never
+    # what it decides. A solve that settled nothing is UNDECIDED, never FAIL, on every conclusion.
+    for conclusion in Conclusion:
+        report = checks.count_is(1, line=1)(SolveOutcome(Inconclusive(), conclusion))
+        assert report.verdict is Verdict.UNDECIDED
+
+
+def test_every_conclusion_has_an_undecided_diagnostic() -> None:
+    # Closed like the partition beside it. Unlike the partial-reading message this one is total:
+    # an exhausted search reaches it too, when it closed the space and still left the mode without
+    # what its shape is made of, and refusing that input would raise inside a check at verdict time.
+    for conclusion in Conclusion:
+        assert _undecided_message(conclusion), f"{conclusion.name} has no diagnostic"
+
+
+def test_a_cost_under_a_hit_budget_names_the_remedy(tmp_path: Path) -> None:
+    # End to end through the ordinary path, on the reading the defect was found in. Both ways this
+    # run can end short of a shape — no model collected yet, or a best-so-far that is not a proven
+    # optimum — report the same interruption, so the assertion does not race the search.
+    case_file = tmp_path / "hard.lp"
+    case_file.write_text("% @expect sat\n% @cost { 1 }\n" + _UNPROVABLE_OPTIMUM, encoding="utf-8")
+    (case,) = discover(case_file)
+    (report,) = [r for r in run_case(case, budget=0.05) if r.label == "@cost"]
+    assert report.verdict is Verdict.UNDECIDED
+    assert "--budget" in report.message, "the mode most likely to be short of time must say so"

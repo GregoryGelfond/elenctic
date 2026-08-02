@@ -30,7 +30,7 @@ from typing import Final, assert_never
 
 from clingo import Symbol
 
-from elenctic.expectation import WitnessClaim
+from elenctic.expectation import WitnessClaim, _require_line
 from elenctic.query import (
     Answer,
     BindingQuery,
@@ -71,20 +71,49 @@ from elenctic.terms import contrary, intersect_all
 
 @dataclass(frozen=True, slots=True)
 class CheckReport:
-    """The outcome of one check: a three-valued verdict plus the diagnostic to surface.
+    """The outcome of one check: a three-valued verdict, the diagnostic to surface, and enough of
+    the check's identity for a consumer to place it.
 
-    ``label`` is the contract tag (e.g. ``@cautious optimal``); ``message`` is the diagnostic the
-    user sees on a non-``PASS`` (the expected-vs-actual reading). The report is exactly the
-    *check's* output — the case's ``@note`` and its source provenance are the renderer's concern,
-    read from the case, not carried here.
+    ``label`` is the contract tag (e.g. ``@cautious optimal``); ``subject`` discriminates instances
+    of a repeatable tag and is ``""`` otherwise, so ``(label, subject)`` names the check; ``line``
+    is the 1-based line of the case file the claim was written on, and ``(label, subject, line)``
+    identifies it, since at most one tag occupies a line. ``message`` is the diagnostic the user
+    sees on a non-``PASS``. ``conclusion`` is how the search behind the verdict ended — present on
+    every report, because every verdict comes from a search that ran, and it is what lets a reader
+    tell a program that is wrong from a search that ran out of room. The case's ``@note`` and its
+    source provenance are the renderer's concern, read from the case, not carried here.
     """
 
     verdict: Verdict
     label: str
     message: str
+    subject: str
+    line: int
+    conclusion: Conclusion
+
+    def __post_init__(self) -> None:
+        _require_line(self.line)
 
 
-_UNDECIDED_MESSAGE = "the solve did not settle the question — UNDECIDED, never FAIL"
+# Why a solve settled nothing, in terms of how its search ended. Total over the conclusions,
+# unlike its partial-reading sibling: an exhausted search reaches this arm too, when it closed the
+# space and still left the mode without what its shape is made of.
+_UNDECIDED_MESSAGE: Final[dict[Conclusion, str]] = {
+    Conclusion.EXHAUSTED: (
+        "the solve did not settle the question — UNDECIDED, never FAIL. The search finished, so a "
+        "larger budget will not change this: the solver reported nothing this reading could be "
+        "made of"
+    ),
+    Conclusion.INCOMPLETE: (
+        "the solve did not settle the question — UNDECIDED, never FAIL. The search stopped short "
+        "of covering the space, so what ended it was a bound it ran into rather than an answer"
+    ),
+    Conclusion.INTERRUPTED: (
+        "the solve did not settle the question — UNDECIDED, never FAIL. The search was cut short "
+        "before it could: the per-solve time budget is what stops a search this way from the "
+        "command line, so a larger --budget may decide it"
+    ),
+}
 
 # Why a reading over a collection could not be made, in terms of how the search ended. A report
 # that cannot say which kind of not-knowing it met leaves the reader nothing to act on: raising a
@@ -104,17 +133,22 @@ _PARTIAL_MESSAGE: Final[dict[Conclusion, str]] = {
 }
 
 
-def _partial_message(conclusion: Conclusion | None) -> str:
+def _undecided_message(conclusion: Conclusion) -> str:
+    """Why a solve settled nothing, given how its search ended. Total, so the arm that carries no
+    field of its own still carries something a reader can act on."""
+    return _UNDECIDED_MESSAGE[conclusion]
+
+
+def _partial_message(conclusion: Conclusion) -> str:
     """Why a reading over a collection could not be made, given how the search ended.
 
-    Total over the two conclusions that describe a search too partial to read from. The other two
-    inputs are refused rather than given a message, because neither describes such a search: a
-    finished one has nothing to excuse, and ``None`` means there was no completed search at all —
-    an arm that carries its own diagnostic."""
-    if conclusion is None or conclusion is Conclusion.EXHAUSTED:
+    Total over the two conclusions that describe a search too partial to read from. A finished
+    search is refused rather than given a message, because it does not describe one and has nothing
+    to excuse."""
+    if conclusion is Conclusion.EXHAUSTED:
         raise HarnessError(
-            "a search that finished — or that never happened — needs no partial-reading "
-            "diagnostic (an elenctic bug, not a verdict)"
+            "a search that finished needs no partial-reading diagnostic (an elenctic bug, not a "
+            "verdict)"
         )
     return _PARTIAL_MESSAGE[conclusion]
 
@@ -161,8 +195,7 @@ class Check:
     def __post_init__(self) -> None:
         if not self.label.startswith("@"):
             raise ValueError(f"a check label must be a contract tag, got {self.label!r}")
-        if self.line < 1:
-            raise ValueError(f"a contract line is 1-based, got {self.line}")
+        _require_line(self.line)
 
     @property
     def needs_exhausted_search(self) -> bool:
@@ -186,19 +219,23 @@ class Check:
         return any(collection_of(frozenset({field})).needs_exhausted_search for field in self.reads)
 
     def __call__(self, outcome: SolveOutcome) -> CheckReport:
+        verdict, message = self._judge(outcome)
+        return CheckReport(
+            verdict, self.label, message, self.subject, self.line, outcome.conclusion
+        )
+
+    def _judge(self, outcome: SolveOutcome) -> tuple[Verdict, str]:
+        """The arm dispatch, to a verdict and its diagnostic. Split from ``__call__`` so the
+        report's identity is attached at one place: an arm added here cannot forget to carry it."""
         match outcome.determination:
             case Inconclusive():
-                return CheckReport(Verdict.UNDECIDED, self.label, _UNDECIDED_MESSAGE)
+                return Verdict.UNDECIDED, _undecided_message(outcome.conclusion)
             case Inconsistent():
-                verdict, message = self._inconsistent
-                return CheckReport(verdict, self.label, message)
+                return self._inconsistent
             case Consistent() as shape:
                 if self.needs_exhausted_search and outcome.conclusion is not Conclusion.EXHAUSTED:
-                    return CheckReport(
-                        Verdict.UNDECIDED, self.label, _partial_message(outcome.conclusion)
-                    )
-                verdict, message = self._decide(shape)
-                return CheckReport(verdict, self.label, message)
+                    return Verdict.UNDECIDED, _partial_message(outcome.conclusion)
+                return self._decide(shape)
             case _:
                 assert_never(outcome.determination)
 

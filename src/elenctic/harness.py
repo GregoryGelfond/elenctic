@@ -11,10 +11,11 @@ Three responsibilities, layered by purity:
   check does; an UNDECIDED check is "could not decide", a FAIL is "decided wrong" —
   both red, but a decisive FAIL is the more informative label).
 - :func:`render` — **pure**: the human diagnostic. FAIL and UNDECIDED stay **distinct** (never
-  collapsed into one red), and the case's ``@note`` prose and its ``contract_source`` (file-level
-  provenance; per-tag line precision is deferred) are read from the *case* — the
-  renderer's concern, not the check's, so the reports carry no note. ``@note`` surfaces on **any**
-  non-PASS (FAIL or UNDECIDED — a "known-slow" note explains a timeout).
+  collapsed into one red); each non-PASS line names the contract line it judged, and the claim's
+  own surface where the tag is a repeatable one. The case's ``@note`` prose and its
+  ``contract_source`` are read from the *case* — the renderer's concern, not the check's, so the
+  reports carry no note. ``@note`` surfaces on **any** non-PASS (FAIL or UNDECIDED — a
+  "known-slow" note explains a timeout).
 
 A **misrouted run-plan** is a :class:`~elenctic.result.HarnessError` (``RoutingError``) raised by
 ``runs_for`` at plan construction — a harness bug, never a verdict. ``run_case`` lets it
@@ -69,16 +70,18 @@ def case_verdict(reports: tuple[CheckReport, ...]) -> Verdict:
 def render(case: Case, reports: tuple[CheckReport, ...]) -> str:
     """Render the case outcome as a human diagnostic (pure). The header names the contract source,
     the solver, and the case verdict; each non-``PASS`` check contributes a line tagged with its own
-    verdict (FAIL vs UNDECIDED kept distinct); and on any non-``PASS`` outcome the case's
-    ``@note`` prose is surfaced, read from the case. A passing case is a terse header.
+    verdict (FAIL vs UNDECIDED kept distinct), the contract line it judged, and its subject where it
+    has one; and on any non-``PASS`` outcome the case's ``@note`` prose is surfaced, read from the
+    case. A passing case is a terse header.
 
-    The path, the note prose and each check's message all come from the corpus, so each is made
-    :func:`~elenctic.display.legible` first: this string is the verdict a reader acts on, and text
-    that could rewrite it would undo the point of producing it."""
+    The path, the note prose, each check's subject and each check's message all come from the
+    corpus, so each is made :func:`~elenctic.display.legible` first: this string is the verdict a
+    reader acts on, and text that could rewrite it would undo the point of producing it."""
     verdict = case_verdict(reports)
     lines = [f"{legible(str(case.contract_source))} [{case.solver}] — {verdict.name}"]
     lines.extend(
-        f"  [{report.verdict.name}] {report.label}: {legible(report.message)}"
+        f"  [{report.verdict.name}] line {report.line} {report.label}"
+        f"{f' ({legible(report.subject)})' if report.subject else ''}: {legible(report.message)}"
         for report in reports
         if report.verdict is not Verdict.PASS
     )

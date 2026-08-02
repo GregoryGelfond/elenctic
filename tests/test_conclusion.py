@@ -91,7 +91,10 @@ def test_a_search_that_hit_the_model_cap_is_consistent_and_incomplete() -> None:
     )
 
 
-def test_an_undecided_search_has_no_conclusion_to_report() -> None:
+def test_an_undecided_search_still_reports_how_it_ended() -> None:
+    # A solve that settles nothing has run all the same, and how it ended is the only thing it has
+    # to say. Dropping it left every check on this arm reciting one sentence, so the reading most
+    # likely to be short of time was the one that could not name the remedy.
     control = Control(list(Mode.ENUM_ALL.args), logger=_quiet)
     control.add("base", [], _HARD)
     control.ground([("base", [])])
@@ -101,7 +104,9 @@ def test_an_undecided_search_has_no_conclusion_to_report() -> None:
     assert isinstance(outcome.determination, Inconclusive), (
         "the conflict limit should end the search before it decides anything"
     )
-    assert outcome.conclusion is None, "there is no completed search to describe"
+    assert outcome.conclusion is Conclusion.INCOMPLETE, (
+        "a conflict limit is a bound the search ran into, not an interruption from outside it"
+    )
 
 
 def test_an_unsatisfiable_program_closed_the_space() -> None:
@@ -187,22 +192,31 @@ def test_an_unproven_optimum_is_never_built() -> None:
 
 
 @pytest.mark.parametrize(
-    ("determination", "conclusion"),
-    [
-        (Inconclusive(), Conclusion.EXHAUSTED),  # nothing was settled, so no search to describe
-        (Inconsistent(), None),  # decided, so it must say how the search ended
-        (Inconsistent(), Conclusion.INCOMPLETE),  # unsatisfiable is itself a completeness claim
-        # The pairing the check layer relies on being impossible: a Consistent arm always carries a
-        # conclusion, which is what lets `Check.__call__` compare it without a None case and reach
-        # the partial-reading diagnostic only for the two conclusions that have one.
-        (ConsistentWitness(Observable(frozenset())), None),
-    ],
+    "conclusion",
+    # Unsatisfiability is itself a completeness claim: the one pairing rule left once every arm
+    # reports its search, and the one the check layer leans on — every check answers this arm from
+    # a static verdict without consulting the search, so `@expect unsat` would otherwise PASS on a
+    # search that had established nothing of the kind.
+    [Conclusion.INCOMPLETE, Conclusion.INTERRUPTED],
 )
-def test_an_arm_paired_with_the_wrong_search_is_refused(
-    determination: object, conclusion: Conclusion | None
+def test_an_unsatisfiable_result_from_an_unfinished_search_is_refused(
+    conclusion: Conclusion,
 ) -> None:
     with pytest.raises(HarnessError):
-        SolveOutcome(determination, conclusion)  # type: ignore[arg-type]
+        SolveOutcome(Inconsistent(), conclusion)
+
+
+@pytest.mark.parametrize(
+    "determination",
+    [Inconclusive(), Inconsistent(), ConsistentWitness(Observable(frozenset()))],
+)
+def test_every_arm_reports_the_search_behind_it(determination: object) -> None:
+    # Totality is what lets `Check.__call__` read the conclusion on any arm without a missing case,
+    # and it is why the diagnostic for a solve that settled nothing can name a remedy at all. An
+    # exhausted search reaching the undecided arm is not a contradiction: it closed the space and
+    # still left the mode without what its shape is made of.
+    outcome = SolveOutcome(determination, Conclusion.EXHAUSTED)  # type: ignore[arg-type]
+    assert outcome.conclusion is Conclusion.EXHAUSTED
 
 
 def test_a_cancelled_theory_solve_also_keeps_what_it_settled() -> None:
