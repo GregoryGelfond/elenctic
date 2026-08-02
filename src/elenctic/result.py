@@ -193,10 +193,12 @@ class Optimum:
     """The proven optimum of an optimisation run. ``cost`` is the
     priority-ordered (lexicographic) cost vector, compared positionally, never a scalar.
 
-    Read it as a proof-token of *proven* optimality: by construction convention only ``solvers.py``
-    builds one, and only once the optimum is proven, so a best-so-far never reaches a check. Python
-    has no private constructor, so this is a construction convention, not a
-    type guarantee — sound because checks are pure readers that never mint a result.
+    Read it as a proof-token of *proven* optimality: only ``solvers.py`` builds one, and only from a
+    search that closed its space, so the best cost a stopped search happened to reach is never
+    dressed as an optimum. That is a construction convention rather than a type guarantee — Python
+    has no private constructor — and it is sound because checks are pure readers that never mint a
+    result. It is enforced where the shape is built rather than left to each reader, because a
+    reader who forgot would publish an unproven number under a name that says otherwise.
     """
 
     cost: tuple[int, ...]
@@ -214,10 +216,15 @@ class Inconsistent:
 
 @dataclass(frozen=True, slots=True)
 class Inconclusive:
-    """The solve did not settle the question — the time budget was hit, the solver gave up without
-    an answer, or it answered over a search that stopped before covering what the reading ranges
-    over. Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an undecided
-    solve is inexpressible — including which of the three it was."""
+    """The solve settled nothing: the budget was hit before it decided, or the solver gave up
+    without an answer. Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an
+    undecided solve is inexpressible.
+
+    A search that *did* settle satisfiability and then stopped early is a different state and does
+    not land here: it keeps what it settled, and how far the search got rides beside it as a
+    :class:`Conclusion`. Two narrow cases still arrive here because the search produced nothing the
+    shape could be made of — a consequence run that ended before clingo reported a set, and an
+    optimal run whose first phase never proved an optimum."""
 
 
 class Consistent:
@@ -246,10 +253,12 @@ class ConsistentWitness(Consistent):
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentEnumeration(Consistent):
-    """``ENUM_ALL``: the complete answer-set census. The cautious ⋂ and brave ⋃ are *views* of it
-    (derived by ``cautious_of`` / ``brave_of``), never stored, so they cannot disagree with the
-    census — single source of truth. Carries ≥1 observable by construction (Consistent ⟹ AS(P)≠∅),
-    which makes ``query.conjunctive_answer``'s non-empty-census precondition hold structurally."""
+    """``ENUM_ALL``: the answer-set census the search collected — all of AS(P) exactly when the
+    search closed the space, and a part of it otherwise, which the accompanying
+    :class:`Conclusion` distinguishes. The cautious ⋂ and brave ⋃ are *views* of it (derived by
+    ``cautious_of`` / ``brave_of``), never stored, so they cannot disagree with the census — single
+    source of truth. Carries ≥1 observable by construction (Consistent ⟹ AS(P)≠∅), which makes
+    ``query.conjunctive_answer``'s non-empty-census precondition hold structurally."""
 
     observables: tuple[Observable, ...]
 
@@ -276,8 +285,14 @@ class ConsistentShownCensus(Consistent):
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentCautious(Consistent):
-    """``CAUTIOUS_ALL``: the cautious consequences ⋂ alone (clingo-emitted; no census to derive
-    from)."""
+    """``CAUTIOUS_ALL``: the cautious-consequence set clingo reported, alone (no census to derive
+    from).
+
+    It is ⋂ exactly when the search closed the space; clingo narrows the set as it goes, so over a
+    search that stopped early it is a *superset* of ⋂. The accompanying
+    :class:`Conclusion` is what distinguishes the two, and a reading that treats this as ⋂ must
+    consult it — a claim naming one of the surplus atoms would otherwise be satisfied by a search
+    that never established it."""
 
     cautious: frozenset[Symbol]
 
@@ -285,7 +300,11 @@ class ConsistentCautious(Consistent):
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentBrave(Consistent):
-    """``BRAVE_ALL``: the brave consequences ⋃ alone (clingo-emitted; no census to derive from)."""
+    """``BRAVE_ALL``: the brave-consequence set clingo reported, alone (no census to derive from).
+
+    It is ⋃ exactly when the search closed the space; clingo widens the set as it goes, so over a
+    search that stopped early it is a *subset* of ⋃ — the mirror of the cautious case, and read
+    under the same condition."""
 
     brave: frozenset[Symbol]
 
@@ -372,6 +391,18 @@ class SolveOutcome:
                 "a decided solve reports how its search ended and an undecided one has no search "
                 f"to describe; this pairs {type(self.determination).__name__} with "
                 f"{self.conclusion!r} (an elenctic bug, not a verdict)"
+            )
+        if isinstance(self.determination, Inconsistent) and self.conclusion is not (
+            Conclusion.EXHAUSTED
+        ):
+            # No search can report that a program has no answer set without covering the space, so
+            # this pairing describes a solver that contradicted itself. Checked rather than assumed
+            # because the claim is load-bearing: every check answers the inconsistent arm from a
+            # static verdict without consulting the search, so `@expect unsat` would PASS on a
+            # search that had not established anything of the kind.
+            raise HarnessError(
+                "an unsatisfiable result reports a search that closed the space, but this one "
+                f"reports {self.conclusion} (an elenctic bug, not a verdict)"
             )
 
 

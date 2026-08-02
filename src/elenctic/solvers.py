@@ -94,10 +94,10 @@ class _Collector:
         """Take one model; return whether the search should continue.
 
         Returning ``False`` at the cap is clingo's own way to stop a search, and stopping is what
-        keeps the accumulation below it. A stopped search reports itself as not exhausted, so a
-        reading over a whole collection is already routed to ``Inconclusive`` — the cap needs no
-        verdict vocabulary of its own, because running out of room and running out of time are the
-        same fact about knowledge."""
+        keeps the accumulation below it. A stopped search reports itself as not exhausted, which is
+        what a reading over a whole collection consults before trusting it — so the cap needs no
+        verdict vocabulary of its own. Note that clingo does *not* set its interrupted bit for a
+        callback that asks it to stop: the bit is for an interruption from outside the search."""
         # The lists stay index-aligned because the StableModel branch is the only writer of both.
         shown = frozenset(model.symbols(shown=True))
         match model.type:
@@ -127,13 +127,22 @@ class _Collector:
         return frozenset(observable.shown for observable in self._observables)
 
     def cautious(self) -> frozenset[Symbol] | None:
-        """The cautious consequences ⋂ (``CAUTIOUS_ALL``), from the final consequence model, or
-        ``None`` if the search ended before clingo emitted one."""
+        """The last cautious-consequence set clingo reported (``CAUTIOUS_ALL``), or ``None`` if the
+        search ended before it reported one.
+
+        clingo narrows this set as the search proceeds, so it is ⋂ only once the search has closed
+        the space; over a search that stopped early it is a *superset* of ⋂. Which of the two you
+        hold is what the outcome's conclusion says, and no reader may treat this as ⋂ without
+        consulting it."""
         return self._cautious
 
     def brave(self) -> frozenset[Symbol] | None:
-        """The brave consequences ⋃ (``BRAVE_ALL``), from the final consequence model, or ``None``
-        if the search ended before clingo emitted one."""
+        """The last brave-consequence set clingo reported (``BRAVE_ALL``), or ``None`` if the search
+        ended before it reported one.
+
+        clingo widens this set as the search proceeds, so it is ⋃ only once the search has closed
+        the space; over a search that stopped early it is a *subset* of ⋃ — the mirror of the
+        cautious case, and read under the same condition."""
         return self._brave
 
     def optimum(self) -> Optimum:
@@ -160,15 +169,29 @@ class _Collector:
 
 
 def _consistent_shape(
-    mode: Mode, collector: _Collector, projects_to_shown: bool = False
+    mode: Mode,
+    collector: _Collector,
+    projects_to_shown: bool = False,
+    conclusion: Conclusion = Conclusion.EXHAUSTED,
 ) -> Consistent | None:
     """The Mode→shape lowering arrow. Total over ``Mode`` × the projection coordinate; produces
     exactly ``run.shape_for(mode, projects_to_shown)`` (the lowering-postcondition test proves it).
     A projecting run of an enumeration mode builds the shown-only shape.
 
-    ``None`` for a consequence mode whose search ended before clingo reported its fixpoint: the ⋂
-    or ⋃ that mode exists to produce was never computed, and there is no partial one to offer in
-    its place. The caller reports that as a solve that settled nothing."""
+    ``None`` where the search did not produce what the shape is *made of*, which is not the same
+    question as whether a reading over it would be sound — that one belongs to the reading, and is
+    asked of the check. Two cases:
+
+    - a consequence mode whose search ended before clingo reported its fixpoint, so the ⋂ or ⋃ that
+      mode exists to produce was never computed and there is no partial one to offer instead;
+    - ``OPTIMAL`` over a search that did not finish, because an :class:`~elenctic.result.Optimum`
+      asserts a *proven* optimum by its own construction. The best cost a stopped search happened
+      to reach is not one, and building it would put a claim nobody established into a type whose
+      meaning is that someone did. ``OPTIMAL_ENUM`` needs no such guard: its optimum is proven by a
+      first phase that must exhaust before a second runs, so a truncated second phase yields a
+      partial class around a sound optimum, and it is the class the reading is refused over.
+
+    The caller reports either as a solve that settled nothing."""
     match mode:
         case Mode.DEFAULT:
             return ConsistentWitness(collector.witness())
@@ -191,7 +214,18 @@ def _consistent_shape(
                 return ConsistentShownOptimalCensus(frozenset(o.shown for o in optimal), optimum)
             return ConsistentOptimalEnumeration(optimal, optimum)
         case Mode.OPTIMAL:
-            return ConsistentOptimum(collector.optimum())
+            # Three states, and the order separates them. A search that reported no model at all
+            # says nothing about the program, so nothing is claimed about it. One that reported
+            # models but no cost has told us the ground program carries no objective — a fact
+            # independent of how far the search got, and one that must be surfaced rather than
+            # folded into "undecided", because a program with nothing to optimize does not exhaust
+            # this mode's search. Only then does an unproven best-so-far get refused.
+            if not collector.models_seen:
+                return None
+            optimum = collector.optimum()
+            if conclusion is not Conclusion.EXHAUSTED:
+                return None
+            return ConsistentOptimum(optimum)
         case _:
             assert_never(mode)
 
@@ -253,10 +287,11 @@ def _outcome(
     settled = _settled(completed, result)
     if settled is not None:
         return settled
-    shape = _consistent_shape(mode, collector, projects_to_shown)
+    conclusion = _conclusion(completed, result)
+    shape = _consistent_shape(mode, collector, projects_to_shown, conclusion)
     if shape is None:
         return SolveOutcome(Inconclusive(), None)
-    return SolveOutcome(shape, _conclusion(completed, result))
+    return SolveOutcome(shape, conclusion)
 
 
 class _CallbackGuard:

@@ -394,7 +394,7 @@ def test_run_clingo_resolves_include_relative_to_the_case_file(tmp_path: Path) -
 
 def test_run_clingcon_rewrites_theory_inside_an_include(tmp_path: Path) -> None:
     # parse_files fires the theory rewrite on the EXPANDED AST: a theory constraint living entirely
-    # in an #include'd library is rewritten and propagated (spike b1), not merely path-resolved.
+    # in an #include'd library is rewritten and propagated, not merely path-resolved.
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 

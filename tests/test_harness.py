@@ -3,7 +3,7 @@
 ``run_case(case)`` is the impure orchestrator (derive runs → solve → check), ``case_verdict`` folds
 the per-check reports to a case verdict (FAIL dominates UNDECIDED dominates PASS), and ``render`` is
 the pure human diagnostic that keeps FAIL and UNDECIDED distinct and surfaces the case's
-``@note`` prose and its ``contract_source`` provenance (Model A — from the case, not the reports).
+``@note`` prose and its ``contract_source`` provenance, taken from the case rather than the reports.
 """
 
 from pathlib import Path

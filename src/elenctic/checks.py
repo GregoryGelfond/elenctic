@@ -76,7 +76,7 @@ class CheckReport:
     ``label`` is the contract tag (e.g. ``@cautious optimal``); ``message`` is the diagnostic the
     user sees on a non-``PASS`` (the expected-vs-actual reading). The report is exactly the
     *check's* output — the case's ``@note`` and its source provenance are the renderer's concern,
-    read from the case (Model A), not carried here.
+    read from the case, not carried here.
     """
 
     verdict: Verdict
@@ -95,9 +95,10 @@ _PARTIAL_MESSAGE: Final[dict[Conclusion, str]] = {
         "what it holds is part of the collection and not the collection — UNDECIDED, never FAIL"
     ),
     Conclusion.INTERRUPTED: (
-        "the search was cut short by the time budget before covering the collection this reads, "
-        "so what it holds is part of the collection and not the collection — UNDECIDED, never "
-        "FAIL. A larger budget may decide it"
+        "the search was cut short before covering the collection this reads, so what it holds is "
+        "part of the collection and not the collection — UNDECIDED, never FAIL. The per-solve time "
+        "budget is what stops a search this way from the command line, so a larger --budget may "
+        "decide it"
     ),
 }
 

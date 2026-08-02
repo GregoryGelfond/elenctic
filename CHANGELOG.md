@@ -10,6 +10,50 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+### Fixed
+
+- **A solve cut short by `--budget` no longer throws away the answer it did reach.** A cancelled
+  search still reports whether the program is satisfiable; elenctic decided the run was undecided
+  before reading that, so every check on it came back UNDECIDED — including checks the search had
+  already settled. Any corpus whose search outlives its budget met this, so it was not a corner
+  case but the ordinary behaviour of a hit budget.
+
+  Before, on a program with 2^20 answer sets under `--budget 0.5`:
+
+  ```
+  case.lp [clingo] — UNDECIDED
+    [UNDECIDED] @count: the solve did not settle the question — UNDECIDED, never FAIL
+    [UNDECIDED] @expect sat: the solve did not settle the question — UNDECIDED, never FAIL
+  ```
+
+  After — the satisfiability question was answered, so it is answered, and the census question
+  says why it was not and what would help:
+
+  ```
+  case.lp [clingo] — UNDECIDED
+    [UNDECIDED] @count: the search was cut short by the time budget before covering the
+    collection this reads, so what it holds is part of the collection and not the collection —
+    UNDECIDED, never FAIL. A larger budget may decide it
+  ```
+
+### Changed
+
+- **Whether a search had to finish is now decided per check, not per run.** One solve serves
+  several checks and they do not all ask the same thing: a census, an intersection, a union or a
+  proven optimum is a claim about every member of a collection, so a search that stopped early
+  makes it a claim about an arbitrary part — while `@expect sat` reads nothing from the collection
+  and one model settles it whatever the rest of the search would have found. The requirement is
+  derived from what each check declares it reads, so it cannot drift from the reading it protects.
+  A reading that outran its search is still UNDECIDED, never FAIL and never a PASS it did not earn.
+
+- **An undecided report now says which kind of not-knowing it met** — the search closed the space,
+  stopped at a bound the run requested, or was cut short by the budget. Raising a budget and
+  shrinking a corpus are different remedies, and the single previous message distinguished neither.
+
+- **`Collection` is now imported from `elenctic.result`** rather than `elenctic.run`; it describes
+  what a *field* is a reading of, so it belongs beside the field vocabulary. `elenctic.Collection`
+  is unchanged.
+
 ## [0.2.0] - 2026-08-01
 
 The minor bump is deliberate. Earlier releases changed what a *consumer* had to catch; this one can

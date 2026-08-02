@@ -62,8 +62,12 @@ class Mode(Enum):
 
     @property
     def args(self) -> tuple[str, ...]:
-        """The clingo arg tuple this mode lowers to — its search-config flags; another
-        backend would lower the same mode differently."""
+        """The clingo arg tuple this mode is constructed with — its search-config flags; another
+        backend would lower the same mode differently.
+
+        These are construction flags, not always the configuration a solve finally runs under:
+        ``OPTIMAL_ENUM`` is driven in two phases that set the optimization mode on the already-built
+        control, so its ``--opt-mode=optN`` here is overridden before either phase solves."""
         return _ARGS[self]
 
     @property

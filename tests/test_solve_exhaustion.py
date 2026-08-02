@@ -38,6 +38,7 @@ from elenctic.result import (
     Consistent,
     ConsistentWitness,
     Inconclusive,
+    SolveOutcome,
     Verdict,
 )
 from elenctic.run import Mode
@@ -138,35 +139,56 @@ def test_a_capped_solve_can_decide_satisfiable_without_finishing() -> None:
     _assert_partial(completed, result)
 
 
-@pytest.mark.parametrize("mode", [Mode.ENUM_ALL, Mode.BRAVE_ALL, Mode.OPTIMAL])
-def test_a_partial_search_over_a_collection_reports_that_it_did_not_finish(
+def _drive_partial(
     mode: Mode, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The census, the consequences and the optimum are all readings of a collection, and over a
-    # search that stopped early each would be a reading of an arbitrary part. The solve keeps the
-    # satisfiability it settled and says the search stopped at a bound; refusing the reading itself
-    # is the check's job, since the same solve may also carry a reading that needs no more than
-    # this. The spy asserts the mode really reached the partial state rather than an undecided one.
+) -> tuple[SolveOutcome, list[tuple[bool, SolveResult]]]:
+    """Drive ``mode`` over a capped search, returning its outcome and what the solve reported.
+
+    The spy is what keeps these tests honest: without it a solve that came back *unknown* would
+    reach the undecided arm down a path that has nothing to do with a partial search, and the
+    assertion would pass while covering none of it."""
     real = solvers._solve_under_budget
     seen: list[tuple[bool, SolveResult]] = []
 
     def spy(
         control: Control, on_model: Callable[[Model], bool], budget: float
     ) -> tuple[bool, SolveResult]:
-        outcome = real(control, on_model, budget)
-        seen.append(outcome)
-        return outcome
+        reported = real(control, on_model, budget)
+        seen.append(reported)
+        return reported
 
     monkeypatch.setattr(solvers, "_solve_under_budget", spy)
-
     collector = _Collector()
     outcome = _drive(_control(mode, _PARTIAL), mode, collector, collector.on_model, 30.0)
     assert len(seen) == 1, "the single-solve driver is expected to solve exactly once"
     _assert_partial(*seen[0])
+    return outcome, seen
+
+
+@pytest.mark.parametrize("mode", [Mode.ENUM_ALL, Mode.BRAVE_ALL])
+def test_a_partial_census_is_kept_and_reported_as_unfinished(
+    mode: Mode, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A census and a union are made of what the search saw, so a partial search yields a partial
+    # one — real information, and the solve says so rather than discarding it. Refusing the reading
+    # over it is the check's job, since the same solve may carry a reading that needs no more.
+    outcome, _ = _drive_partial(mode, monkeypatch)
     assert isinstance(outcome.determination, Consistent)
     assert outcome.conclusion is Conclusion.STOPPED, (
         "a search cut short must never be reported as one that closed the space"
     )
+
+
+def test_a_partial_optimal_search_yields_no_optimum_at_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The optimum is different in kind from a census: it is not made of what the search saw, it is
+    # a claim that nothing better exists. A search that stopped early has a best-so-far and no such
+    # claim, so there is no partial optimum to keep — and constructing one would put an assertion
+    # nobody established into a type whose whole meaning is that someone did.
+    outcome, _ = _drive_partial(Mode.OPTIMAL, monkeypatch)
+    assert isinstance(outcome.determination, Inconclusive)
+    assert outcome.conclusion is None
 
 
 def test_a_partial_cautious_search_would_otherwise_pass_a_false_claim() -> None:

@@ -12,8 +12,8 @@ Three responsibilities, layered by purity:
   both red, but a decisive FAIL is the more informative label).
 - :func:`render` — **pure**: the human diagnostic. FAIL and UNDECIDED stay **distinct** (never
   collapsed into one red), and the case's ``@note`` prose and its ``contract_source`` (file-level
-  provenance; per-tag line precision is deferred) are read from the *case* (Model A — the
-  renderer's concern, not the check's; the reports carry no note). ``@note`` surfaces on **any**
+  provenance; per-tag line precision is deferred) are read from the *case* — the
+  renderer's concern, not the check's, so the reports carry no note. ``@note`` surfaces on **any**
   non-PASS (FAIL or UNDECIDED — a "known-slow" note explains a timeout).
 
 A **misrouted run-plan** is a :class:`~elenctic.result.HarnessError` (``RoutingError``) raised by
@@ -70,7 +70,7 @@ def render(case: Case, reports: tuple[CheckReport, ...]) -> str:
     """Render the case outcome as a human diagnostic (pure). The header names the contract source,
     the solver, and the case verdict; each non-``PASS`` check contributes a line tagged with its own
     verdict (FAIL vs UNDECIDED kept distinct); and on any non-``PASS`` outcome the case's
-    ``@note`` prose is surfaced (Model A — read from the case). A passing case is a terse header.
+    ``@note`` prose is surfaced, read from the case. A passing case is a terse header.
 
     The path, the note prose and each check's message all come from the corpus, so each is made
     :func:`~elenctic.display.legible` first: this string is the verdict a reader acts on, and text

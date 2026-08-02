@@ -57,7 +57,7 @@ def test_verdict_three_valued() -> None:
     assert len({Verdict.PASS, Verdict.FAIL, Verdict.UNDECIDED}) == 3
 
 
-# --- the Determination arms (depth D) ---
+# --- the Determination arms ---
 
 
 def _obs(*names: str) -> Observable:
@@ -72,7 +72,7 @@ def test_consistent_shapes_are_consistent_others_are_not() -> None:
 
 
 def test_consistent_base_is_abstract() -> None:
-    # the depth-D invariant: only the six concrete shapes are inhabitable, never a bare Consistent
+    # only the concrete shapes are inhabitable, never a bare Consistent
     with pytest.raises(TypeError, match="abstract"):
         Consistent()
 

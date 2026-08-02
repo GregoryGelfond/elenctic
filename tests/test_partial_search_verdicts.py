@@ -22,6 +22,7 @@ from elenctic.result import (
     Observable,
     SolveOutcome,
     Verdict,
+    collection_of,
 )
 from elenctic.run import runs_for
 from elenctic.terms import parse_litset
@@ -82,17 +83,43 @@ def test_the_undecided_message_says_which_way_the_search_ended() -> None:
     assert "budget" in interrupted.message
 
 
-def test_only_the_collection_free_check_survives_an_unfinished_search() -> None:
-    # Derived, not declared: exactly the checks that read nothing from the collection are the ones
-    # a search may stop early without disturbing. This is what catches a check added later whose
-    # reads and whose exhaustion requirement disagree.
-    every = parse("% @expect sat\n% @count 2\n% @cautious { a }\n% @brave { a }\n% @model { a }\n")
-    for run in runs_for(every):
-        for check in run.checks:
-            assert check.needs_exhausted_search == bool(check.reads), (
-                f"{check.label} reads {check.reads} but requires "
-                f"exhaustion={check.needs_exhausted_search}"
-            )
+def test_a_check_needs_an_exhausted_search_exactly_when_it_reads_a_collection() -> None:
+    # Derived, not declared: a check is exempt exactly when nothing it reads is a reading of a
+    # collection. Stated over the fields, not over "reads anything at all" — those differ, because
+    # `@expect unsat` reads the witness, which is not a collection, so it is exempt while reading
+    # something. Both contract shapes appear, since one exempt check lives in each.
+    contracts = (
+        "% @expect sat\n% @count 2\n% @cautious { a }\n% @brave { a }\n% @model { a }\n"
+        "% @query yes { a }\n",
+        "% @expect unsat\n",
+    )
+    seen = set()
+    for text in contracts:
+        for run in runs_for(parse(text)):
+            for check in run.checks:
+                seen.add(check.label)
+                reads_a_collection = any(
+                    collection_of(frozenset({field})).needs_exhausted_search
+                    for field in check.reads
+                )
+                assert check.needs_exhausted_search == reads_a_collection, (
+                    f"{check.label} reads {sorted(f.value for f in check.reads)} but requires "
+                    f"exhaustion={check.needs_exhausted_search}"
+                )
+    assert {"@expect sat", "@expect unsat"} <= seen, "both exempt checks must be covered"
+
+
+def test_the_exempt_checks_are_exactly_the_two_that_read_no_collection() -> None:
+    # The closed companion to the derivation above, which is otherwise a tautology: if a future
+    # check joins the exempt set, this names it and a reader has to justify it.
+    exempt = {
+        check.label
+        for text in ("% @expect sat\n% @count 2\n% @cautious { a }\n", "% @expect unsat\n")
+        for run in runs_for(parse(text))
+        for check in run.checks
+        if not check.needs_exhausted_search
+    }
+    assert exempt == {"@expect sat", "@expect unsat"}
 
 
 def test_a_case_under_a_hit_budget_still_reports_the_satisfiability_it_settled(
