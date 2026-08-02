@@ -133,12 +133,22 @@ class Check:
     needed more of the search than it got, else ``_decide`` over the shape, reading fields through
     the seam.
     ``_inconsistent`` and ``_decide`` are private and omitted from ``repr`` so the arm dispatch
-    cannot be bypassed. ``label`` is the contract tag (it groups checks); ``subject`` discriminates
-    instances of the one repeatable tag (the ``@query`` surface; ``""`` otherwise), so
-    ``(label, subject)`` names a check for explain. ``line`` is not part of that name: it is the
-    1-based line of the case file the claim was written on, which is what lets a consumer place a
-    diagnostic against the claim rather than against the file. Equality is by **identity**
-    (``eq=False``): compare ``check.label`` / ``check.subject``, never ``check == check``.
+    cannot be bypassed.
+
+    Three fields say which check this is, and they do different jobs. ``label`` is the contract tag,
+    and it **groups**. ``subject`` discriminates instances of a *repeatable* tag by their surface —
+    ``@query``, and the four consequence tags, which a contract may write on more than one line;
+    ``""`` for a tag that can occur only once, where there is nothing to discriminate. ``line`` is
+    the 1-based line of the case file the claim was written on; a claim brace-continued over several
+    lines reports the line its tag opened on.
+
+    ``(label, subject)`` names a check but does not **identify** one: nothing stops an author
+    writing the same claim on two lines, and then two checks share both. ``(label, subject, line)``
+    identifies, because at most one contract tag occupies a line. That triple is what a consumer
+    should key on, and the line is what lets it place a diagnostic against the claim rather than
+    against the file.
+
+    Equality is by **identity** (``eq=False``): compare the fields above, never ``check == check``.
     """
 
     label: str
@@ -151,6 +161,8 @@ class Check:
     def __post_init__(self) -> None:
         if not self.label.startswith("@"):
             raise ValueError(f"a check label must be a contract tag, got {self.label!r}")
+        if self.line < 1:
+            raise ValueError(f"a contract line is 1-based, got {self.line}")
 
     @property
     def needs_exhausted_search(self) -> bool:
@@ -421,6 +433,7 @@ def cautious_contains(litset: frozenset[Symbol], *, line: int) -> Check:
         line=line,
         inconsistent=_unsat_fail("no cautious consequences"),
         decide=lambda shape: _containment(litset, cautious_of(shape), "⋂ AS(P)"),
+        subject=_show_set(litset),
     )
 
 
@@ -433,6 +446,7 @@ def brave_contains(litset: frozenset[Symbol], *, line: int) -> Check:
         line=line,
         inconsistent=_unsat_fail("no brave consequences"),
         decide=lambda shape: _containment(litset, brave_of(shape), "⋃ AS(P)"),
+        subject=_show_set(litset),
     )
 
 
@@ -521,6 +535,7 @@ def cautious_optimal_contains(litset: frozenset[Symbol], *, line: int) -> Check:
         line=line,
         inconsistent=_unsat_fail("no optimal models"),
         decide=lambda shape: _containment(litset, cautious_optimal_of(shape), "⋂ Opt(P)"),
+        subject=_show_set(litset),
     )
 
 
@@ -534,6 +549,7 @@ def brave_optimal_contains(litset: frozenset[Symbol], *, line: int) -> Check:
         line=line,
         inconsistent=_unsat_fail("no optimal models"),
         decide=lambda shape: _containment(litset, brave_optimal_of(shape), "⋃ Opt(P)"),
+        subject=_show_set(litset),
     )
 
 

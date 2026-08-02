@@ -103,6 +103,12 @@ def test_cautious_accumulation_is_order_independent(atom_texts: list[str]) -> No
     forward = parse("% @expect sat\n" + "".join(lines))
     backward = parse("% @expect sat\n" + "".join(reversed(lines)))
     assert isinstance(forward, Sat) and isinstance(backward, Sat)
+    # One claim per line, in surface order. Asserted first because the coverage assertions below
+    # cannot see it: they compare flattened unions, which an implementation that re-merged the
+    # claims into one cell would satisfy exactly as well.
+    assert [claim.value for claim in forward.cautious] == [
+        frozenset({parse_term(text)}) for text in atom_texts
+    ]
     covered = {atom for claim in forward.cautious for atom in claim.value}
     assert covered == {atom for claim in backward.cautious for atom in claim.value}
     assert covered == {parse_term(text) for text in atom_texts}

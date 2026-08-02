@@ -66,7 +66,9 @@ def test_cli_explain_narrates_the_plan_without_solving(
     out = capsys.readouterr().out
     assert status == 0
     assert "CAUTIOUS_ALL (projects: no):" in out  # the run, its projection decision
-    assert "@cautious — reads {cautious}" in out  # the check and the fields it reads
+    # the check, the claim it judges, and the fields it reads. The claim is named because a
+    # contract may repeat the tag, and two claims a reader cannot tell apart explain nothing.
+    assert "@cautious ({ a }) — reads {cautious}" in out
 
 
 def test_cli_runs_the_krbook_dogfood_corpus(capsys: pytest.CaptureFixture[str]) -> None:

@@ -261,18 +261,24 @@ def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
     enforced by construction rather than by hand.
 
     A repeated consequence tag is a repeated *claim*: each ``@cautious``/``@brave`` line becomes its
-    own check, decided and reported against the line it was written on. The claims are equivalent
-    checked apart or together — ``L₁ ⊆ ⋂`` and ``L₂ ⊆ ⋂`` hold exactly when ``(L₁ ∪ L₂) ⊆ ⋂`` does —
-    and they coalesce onto one solve either way, so this costs nothing and a failure gains the line.
+    own check, decided and reported against the line it was written on. Checking them apart decides
+    the case identically — for any set ``S``, ``L₁ ⊆ S`` and ``L₂ ⊆ S`` hold exactly when
+    ``(L₁ ∪ L₂) ⊆ S`` does, a fact about ⊆ and ∪ that covers the ⋃ and Opt(P) readings as much as ⋂
+    — and all of a cell's claims land on one mode, so no extra search is done. What changes is the
+    report: a failure that turns on which claim was false now names that claim, and the arms whose
+    verdict does not depend on the claim report once per claim instead of once per cell.
     """
     bucket: dict[Mode, list[Check]] = {}
 
     def add(mode: Mode, check: Check) -> None:
         bucket.setdefault(mode, []).append(check)
 
-    # ``is not None`` throughout: absence is a type fact, not an empty value. @count 0 is a
-    # *present* unsat claim rather than absence, and the containment tags reject ∅ at construction
-    # (a vacuous claim), so no cell needs to be tested for emptiness.
+    # Two idioms, one rule: ``is not None`` for the single-valued cells below, plain iteration for
+    # the consequence tuples further down. In both, absence is a type fact rather than an empty
+    # value — @count 0 is a *present* unsat claim, and an empty tuple derives nothing without
+    # needing a guard — so no cell is ever tested for emptiness to learn whether it is occupied.
+    # (The containment builders separately reject an empty litset, which is a vacuity guard on a
+    # claim that is present, not an absence test.)
     if exp.model is not None:
         add(Mode.ENUM_ALL, checks.has_model(exp.model.value, line=exp.model.line))
     if exp.count is not None:

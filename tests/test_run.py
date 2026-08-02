@@ -15,6 +15,7 @@ unknown binding rides ``ENUM_ALL``; and ``@cost`` rides ``OPTIMAL_ENUM`` with an
 ``OPTIMAL``.
 """
 
+from collections import Counter
 from typing import assert_never
 
 import pytest
@@ -487,14 +488,20 @@ def test_enumeration_tags_coalesce_onto_one_enum_all_solve() -> None:
     assert labels(derived[0]) == {"@model", "@count", "@assign", "@expect sat"}
 
 
-def test_every_tag_becomes_exactly_one_check_no_drop_no_duplicate() -> None:
+def test_every_claim_becomes_exactly_one_check_no_drop_no_duplicate() -> None:
+    # The guarantee is no drop and no duplicate, and its unit is the CLAIM, not the tag: a tag a
+    # contract may repeat yields one check per line. Counting distinct labels would state this only
+    # for a contract that happens to repeat nothing, which is the weaker thing a fixture can show
+    # by accident, so the contract here repeats @cautious deliberately.
     contract = (
-        "% @expect sat\n% @model { a }\n% @cautious { a }\n% @brave { a }\n% @query yes { a }\n"
+        "% @expect sat\n% @model { a }\n% @cautious { a }\n% @cautious { b }\n"
+        "% @brave { a }\n% @query yes { a }\n"
     )
     derived = runs(contract)
-    all_labels = [check.label for run in derived for check in run.checks]
-    assert sorted(all_labels) == ["@brave", "@cautious", "@expect sat", "@model", "@query"]
-    assert len(all_labels) == len(set(all_labels))  # each tag yields exactly one check
+    per_label = Counter(check.label for run in derived for check in run.checks)
+    assert per_label == Counter(
+        {"@cautious": 2, "@brave": 1, "@expect sat": 1, "@model": 1, "@query": 1}
+    )
 
 
 def test_runs_for_is_deterministic_in_order() -> None:
@@ -527,8 +534,10 @@ def _consequence_claims() -> st.SearchStrategy[tuple[Claimed[frozenset[Symbol]],
     it is the case the coalescing property has to see. Drawing only "present or absent" would leave
     the split uncovered by everything below.
     """
-    lines = st.integers(min_value=1, max_value=9)
-    return st.lists(lines.map(lambda line: Claimed(_LIT, line)), max_size=2).map(tuple)
+    # `unique` because two claims cannot share a line: a tag is anchored at the start of its line,
+    # so the generator's domain would otherwise be wider than the type's.
+    lines = st.lists(st.integers(min_value=1, max_value=9), max_size=2, unique=True)
+    return lines.map(lambda drawn: tuple(Claimed(_LIT, line) for line in drawn))
 
 
 @st.composite
@@ -551,6 +560,10 @@ def _sats(draw: st.DrawFn) -> Sat:
         count_optimal=draw(st.sampled_from([Claimed(1, 5), None])),
         cost=draw(st.sampled_from([cost, None])),
         assign=draw(st.sampled_from([Claimed(frozenset({(Function("x"), 1)}), 7), None])),
+        # Drawn, not left at its default: this cell decides `has_optimal_base`, which is what
+        # routes @cost between OPTIMAL_ENUM and OPTIMAL. Held fixed, every instance the routing
+        # property sees agrees about it, and a whole branch goes unvisited.
+        assign_optimal=draw(st.sampled_from([Claimed(frozenset({(Function("y"), 2)}), 9), None])),
         queries=tuple(draw(st.lists(queries.map(lambda query: Claimed(query, 8)), max_size=3))),
     )
 

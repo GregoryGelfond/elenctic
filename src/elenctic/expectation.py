@@ -39,21 +39,38 @@ class ContractError(Exception):
     """An ill-formed or inconsistent contract block. Carries source:line provenance."""
 
 
+def _require_line(line: int) -> None:
+    """Reject a line that is not 1-based. The one home for the invariant every carrier of a
+    contract coordinate shares, so the three of them cannot come to disagree about it."""
+    if line < 1:
+        raise ValueError(f"a contract line is 1-based, got {line}")
+
+
 @dataclass(frozen=True, slots=True)
 class Claimed[T]:
-    """A contract claim together with the 1-based line of the file it was written on.
+    """A contract claim together with the 1-based line of the case file it was written on.
 
     The line is what lets a consumer put a diagnostic where the claim is, rather than against the
     file as a whole. It is required, not optional: a claim exists because someone wrote it
-    somewhere, so a claim without a line would be a state the contract cannot be in.
+    somewhere, so a claim without a line would be a state the contract cannot be in. A claim
+    brace-continued over several lines reports the line its tag opened on — one claim, one
+    coordinate, and the tag is where a reader looks for it.
+
+    Lines are counted by newlines alone, which is how clingo, a diff and a reviewer count them.
+    That is narrower than Python's own ``str.splitlines``, which also breaks on a vertical tab, a
+    form feed and several Unicode separators; resolving this coordinate with ``splitlines`` would
+    point at the wrong line in a file containing any of them.
+
+    This wraps a claim; it is not itself one. ``WitnessClaim`` is the other direction — a payload
+    shape, the thing a ``@model`` cell holds — so ``Claimed[WitnessClaim]`` is a witness payload
+    together with where it was written.
     """
 
     value: T
     line: int
 
     def __post_init__(self) -> None:
-        if self.line < 1:
-            raise ValueError(f"a contract line is 1-based, got {self.line}")
+        _require_line(self.line)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,10 +91,13 @@ class Unsat:
     """``@expect unsat``: ``AS(P) = ∅``; excludes every model-bearing tag.
 
     ``expect_line`` is the 1-based line ``@expect`` was written on — the coordinate the one check
-    this shape derives is reported against."""
+    this shape derives carries."""
 
     expect_line: int
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
+
+    def __post_init__(self) -> None:
+        _require_line(self.expect_line)
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,10 +109,14 @@ class Sat:
     (the ``(mode, base)`` cells), so ``@model`` and ``@model optimal`` coexist.
 
     The single-valued cells hold one :class:`Claimed` each. The four consequence cells hold a
-    *tuple* of claims in surface order, because those are the only tags a contract may repeat: two
-    ``@cautious`` lines are two claims, each checked and reported against its own line. Checking
-    them apart decides the case identically — ``L₁ ⊆ ⋂`` and ``L₂ ⊆ ⋂`` hold exactly when
-    ``(L₁ ∪ L₂) ⊆ ⋂`` does — while letting a failure name the line whose claim was false.
+    *tuple* of claims in surface order rather than one merged set: two ``@cautious`` lines are two
+    claims, each decided and reported against its own line. Checking them apart decides the case
+    identically — for any set ``S``, ``L₁ ⊆ S`` and ``L₂ ⊆ S`` hold exactly when ``(L₁ ∪ L₂) ⊆ S``
+    does, which is a fact about ⊆ and ∪ and so covers the ⋃ and Opt(P) readings as well as ⋂ —
+    while letting a failure that turns on which claim was false name that claim's line.
+
+    ``expect_line`` is a bare line rather than a :class:`Claimed` because the ``@expect`` value is
+    what this shape *is*; only its coordinate is left to carry.
     """
 
     expect_line: int
@@ -109,6 +133,9 @@ class Sat:
     assign_optimal: Claimed[frozenset[tuple[Symbol, int]]] | None = None
     queries: tuple[Claimed[Query], ...] = ()
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
+
+    def __post_init__(self) -> None:
+        _require_line(self.expect_line)
 
     @property
     def has_optimal_base(self) -> bool:

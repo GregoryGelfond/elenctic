@@ -42,7 +42,7 @@ def test_run_module_prints_the_derived_plan(tmp_path: Path) -> None:
     result = run_module("run", str(contract))
     assert result.returncode == 0
     assert "CAUTIOUS_ALL:" in result.stdout
-    assert "@cautious — reads {cautious}" in result.stdout
+    assert "@cautious ({ a }) — reads {cautious}" in result.stdout  # the claim, not just the tag
     assert result.stderr == ""
 
 

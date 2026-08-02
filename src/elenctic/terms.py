@@ -40,9 +40,15 @@ def parse_litset(body: str) -> tuple[Symbol, ...]:
     tuple Symbol whose ``.arguments`` are the literals; a single element yields that
     element directly (the parens are grouping). The grammar needs ≥1 literal, and litset
     elements are literals (atoms or strong-negation literals) only, so this rejects an
-    empty body and any non-``Function`` element — a parsed litset is literal-shaped by
-    construction. (A bare tuple ``(a,b)`` — not a valid literal — flattens
+    empty *result* and any non-``Function`` element — a parsed litset is non-empty and
+    literal-shaped by construction. (A bare tuple ``(a,b)`` — not a valid literal — flattens
     indistinguishably from ``a, b`` and is the one malformed shape not detected here.)
+
+    An empty body and a body that *parses* to nothing are two different inputs and both are
+    rejected here. ``{ () }`` is the second: the body is not blank, so a blank-text guard alone
+    lets it through, and the empty tuple then flattens to no literals at all. Everything
+    downstream — the containment builders' vacuous-claim guard, the witness comparison — is
+    entitled to assume a litset has a literal in it, and this is the boundary that owes them that.
     """
     if not body.strip():
         raise ValueError("empty literal set: a litset needs at least one literal (atom or -atom)")
@@ -53,6 +59,11 @@ def parse_litset(body: str) -> tuple[Symbol, ...]:
             f"malformed literal set {{{body}}} (a ground litset is variable-free): {exc}"
         ) from exc
     literals = tuple(term.arguments) if _is_tuple_symbol(term) else (term,)
+    if not literals:
+        raise ValueError(
+            f"empty literal set {{{body}}}: it parses to no literals at all, and a litset needs at "
+            "least one (an atom or -atom)"
+        )
     for literal in literals:
         if literal.type is not SymbolType.Function:
             raise ValueError(f"litset elements must be literals (atoms or -atoms); got {literal}")
