@@ -24,9 +24,8 @@ from elenctic.solvers import _Collector, _conclusion, _consistent_shape, _drive,
 
 # 2^20 answer sets: far more than a fraction of a second can enumerate, and trivial to ground.
 _WIDE = "{ p(1..20) }.\n#show p/1.\n"
-# Small to ground, expensive to decide: a 60-queens placement whose constraints are only found by
-# search. Paired with a one-conflict limit it produces a solve that completes without deciding.
-# clingo's SolveResult bitset, from its own header: the flags are independent.
+
+# clingo's own solve-result bitset: the flags are independent, so a result can carry several.
 _SATISFIABLE = 1
 _EXHAUSTED = 4
 _INTERRUPTED = 8
@@ -43,6 +42,8 @@ row(1..n). col(1..n).
 #show queen/2.
 """
 
+# Small to ground, expensive to decide: a 60-queens placement whose constraints are only found by
+# search. Paired with a one-conflict limit it produces a solve that completes without deciding.
 _HARD = """
 #const n=60.
 1 { p(I,1..n) } 1 :- I=1..n.
@@ -73,7 +74,7 @@ def test_a_cancelled_search_that_found_models_is_consistent_and_interrupted() ->
     assert outcome.conclusion is Conclusion.INTERRUPTED
 
 
-def test_a_search_stopped_at_a_model_bound_is_consistent_and_stopped() -> None:
+def test_a_search_that_hit_the_model_cap_is_consistent_and_incomplete() -> None:
     # The cap is a constructor argument, not a module lookup: the collector's default binds it once
     # at definition, so rebinding the module attribute would not reach this run.
     control = Control(list(Mode.ENUM_ALL.args), logger=_quiet)
@@ -83,8 +84,8 @@ def test_a_search_stopped_at_a_model_bound_is_consistent_and_stopped() -> None:
     outcome = _drive(control, Mode.ENUM_ALL, collector, collector.on_model, 30.0)
     assert collector.models_seen == 4, "the search stops at the cap, it does not merely truncate"
     assert isinstance(outcome.determination, Consistent)
-    assert outcome.conclusion is Conclusion.STOPPED, (
-        "a requested bound is not an external interruption and not exhaustion"
+    assert outcome.conclusion is Conclusion.INCOMPLETE, (
+        "a search that stopped short is neither an external interruption nor exhaustion"
     )
 
 
@@ -185,7 +186,7 @@ def test_an_unproven_optimum_is_never_built() -> None:
     [
         (Inconclusive(), Conclusion.EXHAUSTED),  # nothing was settled, so no search to describe
         (Inconsistent(), None),  # decided, so it must say how the search ended
-        (Inconsistent(), Conclusion.STOPPED),  # unsatisfiable is itself a completeness claim
+        (Inconsistent(), Conclusion.INCOMPLETE),  # unsatisfiable is itself a completeness claim
     ],
 )
 def test_an_arm_paired_with_the_wrong_search_is_refused(

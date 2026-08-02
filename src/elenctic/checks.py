@@ -90,9 +90,10 @@ _UNDECIDED_MESSAGE = "the solve did not settle the question — UNDECIDED, never
 # that cannot say which kind of not-knowing it met leaves the reader nothing to act on: raising a
 # budget and shrinking a corpus are different remedies.
 _PARTIAL_MESSAGE: Final[dict[Conclusion, str]] = {
-    Conclusion.STOPPED: (
-        "the search stopped at a requested bound before covering the collection this reads, so "
-        "what it holds is part of the collection and not the collection — UNDECIDED, never FAIL"
+    Conclusion.INCOMPLETE: (
+        "the search stopped short of covering the collection this reads, so what it holds is part "
+        "of the collection and not the collection — UNDECIDED, never FAIL. A program with more "
+        "answer sets than one solve will hold ends a search this way"
     ),
     Conclusion.INTERRUPTED: (
         "the search was cut short before covering the collection this reads, so what it holds is "

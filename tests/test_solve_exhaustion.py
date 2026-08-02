@@ -174,7 +174,7 @@ def test_a_partial_census_is_kept_and_reported_as_unfinished(
     # over it is the check's job, since the same solve may carry a reading that needs no more.
     outcome, _ = _drive_partial(mode, monkeypatch)
     assert isinstance(outcome.determination, Consistent)
-    assert outcome.conclusion is Conclusion.STOPPED, (
+    assert outcome.conclusion is Conclusion.INCOMPLETE, (
         "a search cut short must never be reported as one that closed the space"
     )
 
@@ -288,7 +288,7 @@ def test_a_partial_second_phase_of_the_optimal_driver_reports_that_it_did_not_fi
 
     outcome = _optimal_enum_two_phase(_control(Mode.OPTIMAL_ENUM), _on_model_for, 30.0, False)
     assert calls == 2, "phase 1 must have proven an optimum, so that phase 2 ran"
-    assert outcome.conclusion is Conclusion.STOPPED, (
+    assert outcome.conclusion is Conclusion.INCOMPLETE, (
         "part of the optimal class is not the optimal class, and the outcome says so"
     )
     # And the reading over it is refused, which is the guarantee that matters: an optimal-class

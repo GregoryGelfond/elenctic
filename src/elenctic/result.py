@@ -363,12 +363,15 @@ class Conclusion(Enum):
 
     EXHAUSTED = "exhausted"
     """The search closed the space: every answer set the configuration admits was seen."""
-    STOPPED = "stopped"
-    """A bound the run itself requested was reached — a normal, chosen end, neither an error nor
-    completeness."""
+    INCOMPLETE = "incomplete"
+    """The search ended without closing the space and without being interrupted — it stopped short.
+    Any bound in force ends a search this way, and not all of them are asked for: elenctic caps how
+    many models one solve may hold, and the solver applies a limit of its own to a search nobody
+    asked to enumerate, which is why an ordinary satisfiability run reports this. Named for what it
+    is rather than for a cause it does not establish. It is the value that would be catastrophic to
+    read as ``EXHAUSTED``."""
     INTERRUPTED = "interrupted"
-    """The search was cut short from outside it, by a time budget rather than by anything the
-    search found."""
+    """The search was cut short from outside it, rather than by anything the search found."""
 
 
 @dataclass(frozen=True, slots=True)

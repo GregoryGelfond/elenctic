@@ -27,7 +27,7 @@ from elenctic.result import (
 from elenctic.run import runs_for
 from elenctic.terms import parse_litset
 
-_UNFINISHED = [Conclusion.STOPPED, Conclusion.INTERRUPTED]
+_UNFINISHED = [Conclusion.INCOMPLETE, Conclusion.INTERRUPTED]
 
 
 def _census(*models: str) -> ConsistentEnumeration:
@@ -74,13 +74,13 @@ def test_a_finished_search_decides_both() -> None:
 
 
 def test_the_undecided_message_says_which_way_the_search_ended() -> None:
-    stopped = checks.count_is(1)(SolveOutcome(_census("a"), Conclusion.STOPPED))
+    # Raising a budget and shrinking a corpus are different remedies, so a report that cannot say
+    # which kind of not-knowing it met leaves the reader nothing to act on.
+    incomplete = checks.count_is(1)(SolveOutcome(_census("a"), Conclusion.INCOMPLETE))
     interrupted = checks.count_is(1)(SolveOutcome(_census("a"), Conclusion.INTERRUPTED))
-    assert stopped.message != interrupted.message, (
-        "a report that cannot say why it could not decide leaves the reader nothing to act on"
-    )
-    assert "bound" in stopped.message
-    assert "budget" in interrupted.message
+    assert incomplete.message != interrupted.message
+    assert "answer sets" in incomplete.message, "it names what ends a search this way"
+    assert "--budget" in interrupted.message, "it names the remedy"
 
 
 def test_a_check_needs_an_exhausted_search_exactly_when_it_reads_a_collection() -> None:

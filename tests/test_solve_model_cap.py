@@ -46,13 +46,13 @@ def test_a_cap_is_in_force_by_default() -> None:
 
 
 def test_an_enumeration_past_the_cap_is_never_read_as_the_whole_census() -> None:
-    # The whole point: a census cut short must not be reported as the census. The cap is a bound the
-    # run itself requested, so that is what the outcome says — and a reading over the collection is
-    # refused, which is the guarantee. Asserted at the verdict, because "the census is 8" being
-    # reported as verified is the failure that would matter.
+    # The whole point: a census cut short must not be reported as the census. The outcome says the
+    # search stopped short of closing the space, and a reading over the collection is refused —
+    # which is the guarantee. Asserted at the verdict, because "the census is 8" being reported
+    # as verified is the failure that would matter.
     outcome, collector = _drive_over(_MANY, cap=8)
     assert collector.models_seen == 8, "the search stops at the cap, it does not merely truncate"
-    assert outcome.conclusion is Conclusion.STOPPED
+    assert outcome.conclusion is Conclusion.INCOMPLETE
     assert count_is(8)(outcome).verdict is Verdict.UNDECIDED, (
         "the count the truncated run holds must not be reported as the count"
     )

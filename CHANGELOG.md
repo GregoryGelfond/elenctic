@@ -47,7 +47,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
   A reading that outran its search is still UNDECIDED, never FAIL and never a PASS it did not earn.
 
 - **An undecided report now says which kind of not-knowing it met** — the search closed the space,
-  stopped at a bound the run requested, or was cut short by the budget. Raising a budget and
+  stopped short of closing it, or was cut short from outside. Raising a budget and
   shrinking a corpus are different remedies, and the single previous message distinguished neither.
 
 - **`Collection` is now imported from `elenctic.result`** rather than `elenctic.run`; it describes

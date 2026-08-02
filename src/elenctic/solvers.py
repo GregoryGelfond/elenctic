@@ -266,7 +266,7 @@ def _conclusion(completed: bool, result: SolveResult) -> Conclusion:
         return Conclusion.EXHAUSTED
     if result.interrupted or not completed:
         return Conclusion.INTERRUPTED
-    return Conclusion.STOPPED
+    return Conclusion.INCOMPLETE
 
 
 def _outcome(
