@@ -61,9 +61,10 @@ class ErrorKind(Enum):
     resource it ran out of is a malformed program, and filing either as one would tell an author
     their encoding is broken when it is not.
 
-    The values name loci, not exception classes. Two of these arrive as no exception at all — a
-    deadline is a clock the run passed, and a resource running out arrives as a built-in — so a
-    vocabulary of class names would promise an import that does not exist for a third of it.
+    The values name loci, not exception classes. Two of them are not this package's exceptions at
+    all — a deadline is a clock the run passed and raises nothing, and a resource running out
+    arrives as a built-in — so a vocabulary of class names would promise an import that does not
+    exist for a third of it.
     """
 
     CONTRACT = "contract"
@@ -110,7 +111,11 @@ class Severity(Enum):
 
 
 class HygieneKind(Enum):
-    """A corpus-health observation, warned by default and promotable to an error."""
+    """A corpus-health observation, graded by the run that made it and promotable to an error.
+
+    The default grade differs by kind and is decided in one place below, so "warned by default" is
+    true of one of these and not of the other.
+    """
 
     ORPHAN_LIBRARY = "orphan_library"
     UNDECLARED_SOLVER = "undeclared_solver"

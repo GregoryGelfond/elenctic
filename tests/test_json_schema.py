@@ -2,19 +2,24 @@
 
 The schema file is the published half of the machine-readable report — for most consumers it *is*
 the documentation — so it is checked here as an artifact in its own right rather than trusted to
-have been written correctly. Three things can go wrong with it, and each has a test. It can be an
-invalid schema, in which case a consumer's generator refuses it before ever seeing a document. It
-can disagree with the document the package actually emits, in either direction: a field the schema
-does not know, or a field it requires and nothing writes. And it can drift from the vocabularies it
-claims to enumerate, which is what a consumer meets as a value their own decoder rejects on a
-document that is perfectly well-formed.
+have been written correctly. Four things can go wrong with it, and each has tests. It can be an
+invalid schema, or one that says nothing. It can disagree with the document the package emits, in
+either direction: a field the schema does not know, or a field it requires and nothing writes. It
+can drift from the vocabularies it claims to enumerate, which a consumer meets as a value their own
+decoder rejects on a document that is perfectly well-formed. And it can *loosen* — a constraint
+deleted or widened is invisible to any test that only asks whether a valid document still
+validates, so the near-miss table below asks the other question, which is what the schema refuses.
 
 The vocabularies are checked in two ways because they grow in two ways. A **closed** one is
 enumerated in the schema and gaining a member costs a version bump, so the test asserts the schema's
-list and the package's enumeration are the same set — nothing weaker would notice a member added on
-one side. An **open** one is typed as a string and gaining a value costs nothing, so what the test
-asserts instead is that every value this version can emit appears in the prose that documents the
-known ones, since prose is the only thing a reader has there and it is the first thing to rot.
+list and the package's are the same set — nothing weaker would notice a member added on one side.
+An **open** one is typed as a string and gaining a value costs nothing, so what the test asserts
+instead is that every value this version can emit appears in the prose documenting the known ones,
+since prose is all a reader has there and it is the first thing to rot.
+
+Two guarantees here are about the document rather than about the schema, and they live here because
+they are what a consumer's parser meets before any schema is consulted: that the report is JSON a
+strict reader accepts, and that the description the command line prints is the file that ships.
 
 The schema is read through the package's own resources — the same lookup the command line prints
 from — so the two cannot come to read different files.
@@ -22,7 +27,6 @@ from — so the two cannot come to read different files.
 
 import json
 from copy import deepcopy
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +35,9 @@ from jsonschema import Draft202012Validator
 
 import elenctic
 from elenctic.cli import main, run_corpus
-from elenctic.json_report import SCHEMA_VERSION, as_json, schema_text
-from elenctic.outcome import ErrorKind, HygieneKind, Invocation, Scope, Severity
+from elenctic.json_report import SCHEMA_VERSION, as_json, dumps, schema_text
+from elenctic.outcome import ErrorKind, HygieneKind, Invocation
+from elenctic.registry import SOLVERS
 from elenctic.result import Conclusion, Verdict
 from elenctic.solvers import TIME_BUDGET
 
@@ -60,20 +65,56 @@ _OBJECTS: list[tuple[str, tuple[str | int, ...], tuple[str | int, ...]]] = [
 ]
 _OBJECT_IDS = [name for name, _, _ in _OBJECTS]
 
-# A closed vocabulary and the enumeration it is the wire form of. The schema lists these, so the
-# two are the same set or a consumer has been promised something untrue.
-_CLOSED: list[tuple[tuple[str | int, ...], type[Enum]]] = [
-    (("$defs", "verdict"), Verdict),
-    (("$defs", "check", "properties", "conclusion"), Conclusion),
-    (("$defs", "error", "properties", "scope"), Scope),
-    (("$defs", "hygiene", "properties", "severity"), Severity),
+# A closed vocabulary, where the schema enumerates it, and the values the package can write. The
+# schema lists these, so the two are the same set or a consumer has been promised something untrue.
+_CLOSED: list[tuple[str, tuple[str | int, ...], frozenset[str]]] = [
+    ("verdict", ("$defs", "verdict"), frozenset(member.value for member in Verdict)),
+    (
+        "conclusion",
+        ("$defs", "check", "properties", "conclusion"),
+        frozenset(member.value for member in Conclusion),
+    ),
+    ("scope", ("$defs", "error", "properties", "scope"), frozenset({"corpus", "case"})),
+    (
+        "severity",
+        ("$defs", "hygiene", "properties", "severity"),
+        frozenset({"silent", "warning", "error"}),
+    ),
 ]
 
-# An open vocabulary and the enumeration it documents the current values of. The schema constrains
-# these to `string`, so what is checked is the prose.
-_OPEN: list[tuple[tuple[str | int, ...], type[Enum]]] = [
-    (("$defs", "error", "properties", "kind"), ErrorKind),
-    (("$defs", "hygiene", "properties", "kind"), HygieneKind),
+# An open vocabulary and the values this version can put in it. The schema constrains these to
+# `string`, so what is checked is the prose.
+_OPEN: list[tuple[str, tuple[str | int, ...], frozenset[str]]] = [
+    (
+        "error kind",
+        ("$defs", "error", "properties", "kind"),
+        frozenset(member.value for member in ErrorKind),
+    ),
+    (
+        "hygiene kind",
+        ("$defs", "hygiene", "properties", "kind"),
+        frozenset(member.value for member in HygieneKind),
+    ),
+    ("solver", ("$defs", "case", "properties", "solver"), SOLVERS),
+]
+
+# Documents that are wrong in a way no valid document can demonstrate. Each one exists because the
+# constraint it violates is otherwise untested in the only direction that matters: a schema keeps
+# accepting every valid document after the constraint is deleted, so what pins a constraint is a
+# document it must refuse.
+_NEAR_MISSES: list[tuple[str, tuple[str | int, ...], Any]] = [
+    ("a case with no checks at all", ("cases", 0, "checks"), []),
+    ("a claim on line zero", ("cases", 0, "checks", 0, "line"), 0),
+    ("a line written as text", ("cases", 0, "checks", 0, "line"), "2"),
+    ("an invocation that is not an object", ("invocation",), "everything"),
+    ("cases that are not an array", ("cases",), 3),
+    ("a negative count", ("summary", "total"), -1),
+    ("a budget that is absent rather than a number", ("invocation", "budget"), None),
+    ("a deadline written as text", ("invocation", "deadline"), "60"),
+    ("a file name that is a number", ("errors", 0, "source"), 42),
+    ("an observation about no file", ("hygiene", 0, "source"), None),
+    ("an actionability answered with a word", ("errors", 0, "is_elenctic_bug"), "false"),
+    ("a document claiming another version", ("schema_version",), 2),
 ]
 
 
@@ -97,8 +138,14 @@ def _corpus(root: Path) -> Path:
     return root
 
 
-def _run(target: Path, *, strict: bool = False) -> dict[str, Any]:
-    invocation = Invocation(target=target, strict=strict, budget=TIME_BUDGET, deadline=None)
+def _run(
+    target: Path,
+    *,
+    strict: bool = False,
+    budget: float = TIME_BUDGET,
+    deadline: float | None = None,
+) -> dict[str, Any]:
+    invocation = Invocation(target=target, strict=strict, budget=budget, deadline=deadline)
     return as_json(run_corpus(invocation), invocation)
 
 
@@ -120,9 +167,25 @@ def _edited(document: dict[str, Any], path: tuple[str | int, ...], value: Any) -
     return copy
 
 
+def _documented(field: dict[str, Any], schema: dict[str, Any]) -> bool:
+    """Whether a consumer meeting this field is told what it is — here, or where it points."""
+    if field.get("description"):
+        return True
+    target = field.get("$ref")
+    if target is None:
+        return False
+    pointed_at = _resolve(schema, tuple(target.removeprefix("#/").split("/")))
+    return bool(pointed_at.get("description"))
+
+
 @pytest.fixture(scope="module")
 def document(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
-    """One document from one real run, with every register populated."""
+    """One document from one real run, with every register populated.
+
+    The run behind it prints its own report, so no test that captures output may be the first to
+    ask for this fixture — the capture would pick up a summary line written on another test's
+    behalf and accuse the wrong code of writing it.
+    """
     return _run(_corpus(tmp_path_factory.mktemp("corpus")))
 
 
@@ -131,49 +194,115 @@ def test_what_the_package_hands_back_is_the_file_that_ships() -> None:
     # `schema_text` — so none of them would notice it starting to return something *rendered from*
     # the file instead of the file. That is not a hypothetical edit: re-parsing and re-dumping a
     # JSON document on the way out looks like tidying, and it escapes every test that compares the
-    # output to the same function's return value. Someone who redirects `--print-schema` into their
-    # own repository diffs these bytes against the published ones.
+    # output to the same function's return value. Compared as bytes, since that is what someone
+    # redirecting `--print-schema` into their own repository diffs against the published ones.
     packaged = Path(elenctic.__file__).parent / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
 
-    assert schema_text() == packaged.read_text(encoding="utf-8")
+    assert schema_text().encode("utf-8") == packaged.read_bytes()
 
 
-def test_the_packaged_schema_is_itself_a_valid_schema() -> None:
-    # Not a formality: a schema with a misspelled keyword validates everything, so a document could
-    # pass every test below against a schema that is not checking anything.
+def test_the_packaged_schema_is_a_schema_this_dialect_can_read() -> None:
+    # What this protects is a known keyword given a malformed value — `"enum": "pass"`, or a
+    # `required` that is a string rather than a list — which would otherwise fail obscurely at the
+    # first validation. It does *not* protect against a misspelled keyword: the metaschema does not
+    # close its own field space, so `minItem` for `minItems` is a valid schema that constrains
+    # nothing. What guards that is the near-miss table, which asks what the schema refuses.
     Draft202012Validator.check_schema(_schema())
 
 
-def test_the_run_that_populates_every_register_populates_every_register(
-    document: dict[str, Any],
-) -> None:
-    # The premise the tests below rest on. If this corpus ever stops producing all three, they would
-    # go on passing while checking the shape of arrays that are empty.
-    assert len(document["cases"]) == 2, "a case that passes and a case that fails"
-    assert document["errors"], "a contract that will not parse"
-    assert len(document["hygiene"]) == 2, "an orphan library and an undeclared solver"
+def test_the_schema_declares_the_dialect_and_the_identity_it_is_published_under() -> None:
+    # Neither is read by anything in this file — the validator is named directly — so both would
+    # survive being deleted or left pointing at a version this is not. They are what every consumer
+    # outside this project dispatches on: a wrong dialect is silently different semantics, and a
+    # stale identity is the edit a copy made for the next version forgets.
+    schema = _schema()
+
+    assert schema["$schema"] == Draft202012Validator.META_SCHEMA["$id"]
+    assert schema["$id"].endswith(f"/output-v{SCHEMA_VERSION}.schema.json")
 
 
-@pytest.mark.parametrize("strict", [False, True], ids=["default", "strict"])
+def test_the_corpus_these_tests_rest_on_reaches_every_register(document: dict[str, Any]) -> None:
+    # The premise the rest of the file rests on, asserted as composition rather than as counts: if
+    # the failing case ever stopped failing the counts would hold and the claims made about this
+    # document would quietly become claims about something else.
+    assert [case["verdict"] for case in document["cases"]] == ["pass", "fail"]
+    assert [error["kind"] for error in document["errors"]] == ["contract"]
+    assert {record["severity"] for record in document["hygiene"]} == {"warning", "silent"}
+
+
+@pytest.mark.parametrize(
+    ("strict", "budget", "deadline"),
+    [(False, TIME_BUDGET, None), (True, TIME_BUDGET, None), (False, 2.5, 60.0)],
+    ids=["default", "strict", "dialled"],
+)
 def test_a_document_a_real_run_produced_is_one_the_schema_accepts(
-    tmp_path: Path, strict: bool
+    tmp_path: Path, strict: bool, budget: float, deadline: float | None
 ) -> None:
-    # Both footings, because strictness is what grades an observation `error` and sets the flag the
-    # invocation reports — values no default run puts in a document.
-    _validator().validate(_run(_corpus(tmp_path), strict=strict))
+    # Every dial, not just the default position of each. Strictness is what grades an observation
+    # `error`; a budget with a fractional part and a deadline that is a number rather than null are
+    # the only things standing between the published types of those two fields and a narrowing that
+    # no default-only run could notice.
+    produced = _run(_corpus(tmp_path), strict=strict, budget=budget, deadline=deadline)
+
+    # Validated after a round trip through the text, which is the form a consumer meets: a value
+    # that survives the projection but not the rendering would otherwise never be looked at.
+    _validator().validate(json.loads(dumps(produced)))
+
+
+def test_a_run_where_nothing_went_wrong_is_one_the_schema_accepts(tmp_path: Path) -> None:
+    # The modal document, and the one every other test here is blind to: each of the others carries
+    # a non-empty `errors`, so a schema that came to require one would go on accepting all of them
+    # while rejecting every report from a corpus that is simply fine.
+    (tmp_path / "fine.lp").write_text(_PASSES, encoding="utf-8")
+    document = _run(tmp_path)
+
+    _validator().validate(document)
+    assert document["errors"] == []
+    assert document["hygiene"] == [], "the case declares its solver, and nothing is orphaned"
+    assert document["cases"], "and there is something in the register that matters"
 
 
 def test_a_run_that_found_nothing_to_run_is_still_a_document_the_schema_accepts(
     tmp_path: Path,
 ) -> None:
-    # The corpus-scoped register, which the fixture's corpus never reaches: no case produced a
-    # verdict, so `cases` is empty and an error stands where they would have been. It is also the
-    # only shape in which `source` is null rather than a file name.
+    # The corpus-scoped register, which no other document here reaches: no case produced a verdict,
+    # so `cases` is empty and an error stands where they would have been. It is also the only shape
+    # in which `source` is null rather than a file name, which is the whole of what defends that
+    # field being published as nullable.
     document = _run(tmp_path / "nowhere")
 
     _validator().validate(document)
     assert document["cases"] == []
-    assert document["errors"], "a target that does not exist is a fault, not an empty corpus"
+    (error,) = document["errors"]
+    assert error["scope"] == "corpus", "the fault stopped the run, not one case"
+    assert error["source"] is None, "a corpus-level fault belongs to no single file"
+
+
+def test_the_document_is_json_that_a_strict_reader_accepts(document: dict[str, Any]) -> None:
+    # This language reads back things that are not JSON, so a report can be well-formed here and
+    # refused by every consumer it was written for. `parse_constant` fires on exactly those tokens.
+    def refuse(literal: str) -> float:
+        raise AssertionError(f"{literal} is not JSON — a consumer's parser will refuse the report")
+
+    json.loads(dumps(document), parse_constant=refuse)
+
+
+def test_a_number_with_no_json_form_is_refused_rather_than_written(
+    document: dict[str, Any],
+) -> None:
+    # A budget can be given as infinite, and the obliging thing to do with it is to write
+    # `Infinity`, which is not JSON. There being no document is the right outcome: a document a
+    # consumer cannot parse is worse than an error saying why there is none.
+    with pytest.raises(ValueError):
+        dumps(_edited(document, ("invocation", "budget"), float("inf")))
+
+
+def test_the_same_corpus_yields_the_same_document_twice(tmp_path: Path) -> None:
+    # The order promised at the top of the schema is promised of the run, not of the projection —
+    # so pinning it over a fixed outcome cannot see order introduced by discovery or by the runner.
+    corpus = _corpus(tmp_path)
+
+    assert _run(corpus) == _run(corpus)
 
 
 def test_the_version_is_one_number_that_three_places_agree_on(document: dict[str, Any]) -> None:
@@ -218,6 +347,57 @@ def test_every_field_the_package_writes_is_one_the_schema_requires(
     )
 
 
+@pytest.mark.parametrize(("described", "in_document", "in_schema"), _OBJECTS, ids=_OBJECT_IDS)
+def test_the_schema_requires_every_field_it_describes(
+    described: str, in_document: tuple[str | int, ...], in_schema: tuple[str | int, ...]
+) -> None:
+    # A property described but not required does two things, and the second is the damage: it
+    # documents a field nothing writes, and it takes that field's name out of the closed field
+    # space, so a record carrying it validates. That is the shape of the likeliest real drift — the
+    # schema edited first for a field the code has not got yet, and `required` forgotten.
+    object_schema = _resolve(_schema(), in_schema)
+
+    assert set(object_schema["properties"]) == set(object_schema["required"]), (
+        f"{described} describes a field it does not require"
+    )
+
+
+@pytest.mark.parametrize(("described", "in_document", "in_schema"), _OBJECTS, ids=_OBJECT_IDS)
+def test_every_field_a_consumer_meets_says_what_it_is(
+    described: str, in_document: tuple[str | int, ...], in_schema: tuple[str | int, ...]
+) -> None:
+    # This file is the documentation, so a field that ships without prose is undocumented rather
+    # than merely terse — and nothing else in the suite reads a description except the two that
+    # enumerate open values, which leaves every other one deletable.
+    schema = _schema()
+    for name, field in _resolve(schema, in_schema)["properties"].items():
+        assert _documented(field, schema), f"{described}'s {name} ships with nothing said about it"
+
+
+def test_every_definition_the_schema_names_says_what_it_is() -> None:
+    # A definition is reached by reference, and a reference to one may carry prose of its own — so
+    # the definition's own description is read by nothing and would survive being deleted without
+    # any field appearing undocumented. The one on `verdict` is where the three-valued reading is
+    # explained, which is the sentence in this file it would cost a consumer most to lose.
+    for name, definition in _schema()["$defs"].items():
+        assert definition.get("description"), f"the {name} definition says nothing about itself"
+
+
+@pytest.mark.parametrize(
+    ("described", "path", "value"), _NEAR_MISSES, ids=[name for name, _, _ in _NEAR_MISSES]
+)
+def test_a_document_that_is_wrong_in_a_way_no_valid_document_shows_is_refused(
+    document: dict[str, Any], described: str, path: tuple[str | int, ...], value: Any
+) -> None:
+    # The rejecting direction. Every constraint here mirrors something the package guarantees — a
+    # case carries the reports its verdict came from, a contract line is 1-based, a count cannot go
+    # negative — and each would be free to delete if the only question ever asked were whether a
+    # valid document still validates.
+    assert not _validator().is_valid(_edited(document, path, value)), (
+        f"the schema accepted {described}"
+    )
+
+
 @pytest.mark.parametrize(
     ("path", "name"),
     [
@@ -234,8 +414,11 @@ def test_a_closed_vocabulary_refuses_the_member_name_where_its_value_belongs(
 ) -> None:
     # Every closed vocabulary is written as its member's value, because that is what the ordinary
     # constructor reads back. The member's *name* is therefore the one wrong spelling a future edit
-    # is most likely to reintroduce, and the schema has to be what refuses it.
-    assert not _validator().is_valid(_edited(document, path, name))
+    # is most likely to reintroduce. This is also the only test that would notice the site being
+    # unwired from the closed definition altogether — a `$ref` degraded to a bare string type.
+    assert not _validator().is_valid(_edited(document, path, name)), (
+        f"{name!r} was accepted where only its wire value belongs"
+    )
 
 
 @pytest.mark.parametrize(
@@ -257,42 +440,59 @@ def test_an_open_vocabulary_accepts_a_value_this_version_never_heard_of(
 
 
 @pytest.mark.parametrize(
-    ("path", "vocabulary"), _CLOSED, ids=[vocabulary.__name__ for _, vocabulary in _CLOSED]
+    ("described", "path", "values"), _CLOSED, ids=[name for name, _, _ in _CLOSED]
 )
 def test_a_closed_vocabulary_is_exactly_what_the_package_can_emit(
-    path: tuple[str | int, ...], vocabulary: type[Enum]
+    described: str, path: tuple[str | int, ...], values: frozenset[str]
 ) -> None:
     # Both directions are failures and neither is caught by validating a document: a member the
     # schema omits makes a valid document invalid the first time it occurs, and a member the schema
     # invents promises a value nothing will ever write.
-    assert set(_resolve(_schema(), path)["enum"]) == {member.value for member in vocabulary}
+    assert set(_resolve(_schema(), path)["enum"]) == values, (
+        f"the {described} vocabulary has drifted"
+    )
 
 
-@pytest.mark.parametrize(
-    ("path", "vocabulary"), _OPEN, ids=[vocabulary.__name__ for _, vocabulary in _OPEN]
-)
+@pytest.mark.parametrize(("described", "path", "values"), _OPEN, ids=[name for name, _, _ in _OPEN])
 def test_an_open_vocabulary_documents_every_value_this_version_can_emit(
-    path: tuple[str | int, ...], vocabulary: type[Enum]
+    described: str, path: tuple[str | int, ...], values: frozenset[str]
 ) -> None:
     # The schema cannot constrain these, so its prose is the whole of what a reader is given. A
     # value added to the package and not to the prose is undocumented rather than merely unlisted.
-    described = _resolve(_schema(), path)["description"]
-    for member in vocabulary:
-        assert f"`{member.value}`" in described, f"{member.value!r} is emitted but not documented"
+    documented = _resolve(_schema(), path)["description"]
+    for value in values:
+        assert f"`{value}`" in documented, f"{described} can be {value!r} and does not say so"
+
+
+def test_the_counts_are_the_registers_this_document_carries(document: dict[str, Any]) -> None:
+    # The schema says the counts are there so a consumer need not walk the arrays, which is a
+    # promise that walking them would agree. Asserted against a real document because that is where
+    # the shapes are: this is the only run in the suite carrying an observation the run did not
+    # report, and a count that quietly dropped it would agree with every synthetic register.
+    counts = document["summary"]
+    verdicts = [case["verdict"] for case in document["cases"]]
+
+    assert counts["errors"] == len(document["errors"])
+    assert counts["hygiene"] == len(document["hygiene"]), "a silent observation is still one"
+    assert counts["passed"] == verdicts.count("pass")
+    assert counts["failed"] == verdicts.count("fail")
+    assert counts["undecided"] == verdicts.count("undecided")
+    assert counts["total"] == len(verdicts) + sum(
+        1 for error in document["errors"] if error["scope"] == "case"
+    ), "every case discovered is accounted for, whether or not it reached a verdict"
 
 
 def test_printing_the_schema_writes_the_packaged_file_and_nothing_else(
-    capsys: pytest.CaptureFixture[str],
+    capfdbinary: pytest.CaptureFixture[bytes],
 ) -> None:
-    # Byte-for-byte, because someone redirecting this into a file is entitled to the file: a
-    # description that had been parsed and re-rendered on the way out would say the same thing while
-    # diffing against the published one as a change.
+    # Captured at the descriptor, which is what a shell redirect sees. Anything above it cannot
+    # observe the encoding the bytes are written in, and the file is not ASCII.
     status = main(["--print-schema"])
 
-    captured = capsys.readouterr()
+    captured = capfdbinary.readouterr()
     assert status == 0
-    assert captured.out == schema_text()
-    assert captured.err == "", "nothing shares the stream the description is written to"
+    assert captured.out == schema_text().encode("utf-8")
+    assert captured.err == b"", "nothing shares the stream the description is written to"
 
 
 def test_printing_the_schema_asks_nothing_of_a_corpus(
@@ -305,3 +505,22 @@ def test_printing_the_schema_asks_nothing_of_a_corpus(
 
     assert status == 0
     assert capsys.readouterr().out == schema_text()
+
+
+def test_a_copy_of_the_package_carrying_no_description_says_so(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Driven through the real lookup, at a name nothing ships, rather than by making the reader
+    # raise: what is being checked is that a missing resource arrives as something the command line
+    # recognises. The reader would otherwise reach the backstop, which prints a traceback and asks
+    # for a bug report — sending someone whose installer dropped the data files to an issue tracker
+    # that cannot help them.
+    monkeypatch.setattr("elenctic.json_report.SCHEMA_VERSION", 999)
+
+    status = main(["--print-schema"])
+
+    captured = capsys.readouterr()
+    assert status == 2, "the environment is mis-shaped, which is a fault its owner can repair"
+    assert captured.out == "", "half a description is worse than none"
+    assert "Traceback" not in captured.err, "an actionable fault is never delivered as a traceback"
+    assert "elenctic/schema/" in captured.err, "and it says where the missing thing belongs"

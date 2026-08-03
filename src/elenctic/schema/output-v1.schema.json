@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/main/src/elenctic/schema/output-v1.schema.json",
   "title": "elenctic run report",
-  "description": "The result of running a corpus of @-contracts over Answer Set Programs, as one JSON object on standard output. Results are kept in three registers that must not be confused: a case in `cases` received a judgment about the program under test; an entry in `errors` says no judgment could be made and why; an entry in `hygiene` is an observation about the corpus's health and is neither. A consumer drawing a failure indicator should draw it for a non-passing case, never for an error — an error is usually not a fault in the contract at all.",
+  "description": "The result of running a corpus of @-contracts over Answer Set Programs, as one JSON object on standard output. Results are kept in three registers that must not be confused: a case in `cases` received a judgment about the program under test; an entry in `errors` says no judgment could be made and why; an entry in `hygiene` is an observation about the corpus's health and is neither. A consumer drawing a failure indicator should draw it for a non-passing case, never for an error — an error is usually not a fault in the contract at all. This describes a run that solved: the dry run, which derives each case's plan without solving, produces a different thing and has no machine-readable form in this version.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "invocation", "summary", "cases", "errors", "hygiene"],
@@ -25,7 +25,7 @@
     },
     "hygiene": {
       "type": "array",
-      "description": "Observations about the corpus itself rather than about any program's behaviour. Warnings by default; `--strict` promotes them to failures.",
+      "description": "Observations about the corpus itself rather than about any program's behaviour. How loudly each was taken is carried on the observation and differs by kind — do not assume they are warnings, because one of the two this version makes is silent by default. `--strict` puts every one of them on `error`.",
       "items": { "$ref": "#/$defs/hygiene" }
     }
   },
@@ -33,17 +33,17 @@
     "verdict": {
       "type": "string",
       "enum": ["pass", "fail", "undecided"],
-      "description": "A three-valued judgment. `undecided` is not a failure and must not be shown as one: it says the solver did not settle the question, which is an absence of knowledge rather than a wrong answer."
+      "description": "A three-valued judgment. `undecided` is not a failure and must not be shown as one: it is an absence of knowledge rather than a wrong answer, and it arises two ways — the solve settled nothing, or the solve settled what it was asked and the search behind it was too partial for what this particular claim reads. `conclusion` is what tells those apart."
     },
     "invocation": {
       "type": "object",
       "additionalProperties": false,
       "required": ["target", "strict", "budget", "deadline"],
-      "description": "The flags this run was given, so a stored report can be reproduced and so its exit status can be reconstructed.",
+      "description": "The flags this run was given, so a stored report can be reproduced and so its exit status can be reconstructed. The status is a ladder read off this document alone, in this order: `3` if any error has `is_elenctic_bug` true, which outranks everything because a harness wrong about one case is evidence about every other; otherwise `2` if there is any error at all, or any observation graded `error`; otherwise `1` if any case's verdict is not `pass`; otherwise `0`.",
       "properties": {
         "target": {
           "type": "string",
-          "description": "The file or directory that was run."
+          "description": "The file or directory that was run, exactly as the invocation named it. Every path in this document follows it, so a relative target yields relative paths: resolve them against the working directory the run was made from, because nothing in this document records what that was."
         },
         "strict": {
           "type": "boolean",
@@ -63,28 +63,53 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["total", "passed", "failed", "undecided", "errors", "hygiene"],
-      "description": "Counts computed from the registers below, provided so a consumer need not walk the arrays. `total` counts every case discovered — those with a verdict plus those that could not be run — so `total` equals `passed + failed + undecided` plus the number of case-scoped errors. A `total` of 0 with a non-empty `errors` means discovery itself failed; with an empty `errors` it means the corpus held no cases.",
+      "description": "Counts computed from the registers below, provided so a consumer need not walk the arrays. Each is the length of the register it names, and none of them omits anything the register holds. A `total` of 0 with a non-empty `errors` means no case reached a verdict — the fault stopped the whole corpus rather than any one case, so do not read it as an empty corpus; with an empty `errors` it means the corpus genuinely held no cases, which is a run with nothing to do rather than a run that went wrong.",
       "properties": {
-        "total": { "type": "integer", "minimum": 0 },
-        "passed": { "type": "integer", "minimum": 0 },
-        "failed": { "type": "integer", "minimum": 0 },
-        "undecided": { "type": "integer", "minimum": 0 },
-        "errors": { "type": "integer", "minimum": 0 },
-        "hygiene": { "type": "integer", "minimum": 0 }
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Every case discovered: those that reached a verdict plus those that could not be run. So it equals `passed + failed + undecided` plus the number of errors whose scope is `case`, and a case is never accounted for by being left out."
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cases whose every check passed."
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cases where a check decided wrong. This is the count a gate fails on, not `errors`."
+        },
+        "undecided": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cases where no check decided wrong but at least one could not be decided. Not a failure count: see `verdict`."
+        },
+        "errors": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The length of `errors`, counting corpus-scoped and case-scoped alike — so it is not the number of cases that lost a verdict, which is the case-scoped part of it."
+        },
+        "hygiene": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The length of `hygiene`, counting every observation this run recorded — including those graded `silent`, which are recorded and not reported. A consumer wanting the number a reader was shown filters on `severity` itself."
+        }
       }
     },
     "case": {
       "type": "object",
       "additionalProperties": false,
+      "description": "One contract-bearing file that was run, and the judgment its claims received. A case appears here only if it produced a verdict; one that could not be run appears among the errors instead, so this register never contains a file elenctic failed to test.",
       "required": ["source", "solver", "verdict", "checks"],
       "properties": {
         "source": {
           "type": "string",
-          "description": "The case file, as it was named on the command line or found beneath the target. Do not parse a line number out of it; each check carries its own."
+          "description": "The case file, as it was named on the command line or found beneath the target — so it is relative when the target was, and is resolved against the run's working directory. Do not parse a line number out of it; each check carries its own."
         },
         "solver": {
           "type": "string",
-          "description": "The solver the case declared or defaulted to. An open-valued field: more may be supported later, so treat an unfamiliar name as a name, not as an error."
+          "description": "The solver the case declared or defaulted to. This version emits `clingo` or `clingcon`. An open-valued field: more may be supported later, so treat an unfamiliar name as a name, not as an error."
         },
         "verdict": {
           "$ref": "#/$defs/verdict",
@@ -93,7 +118,7 @@
         "checks": {
           "type": "array",
           "minItems": 1,
-          "description": "One entry per contract claim, in a stable order; a check's position in this array is its identity.",
+          "description": "One entry per contract claim, in a stable order; a check's position in this array is its identity within this document. Across documents, what identifies a check is its case's `source` together with the check's own `tag`, `subject` and `line`, because at most one contract tag is written on a line.",
           "items": { "$ref": "#/$defs/check" }
         }
       }
@@ -101,15 +126,16 @@
     "check": {
       "type": "object",
       "additionalProperties": false,
+      "description": "One claim a contract made, and what running the program did to it. This is the grain a diagnostic is placed at: a claim is written on a line, so a check carries one.",
       "required": ["tag", "subject", "status", "message", "line", "conclusion"],
       "properties": {
         "tag": {
           "type": "string",
-          "description": "The contract tag this claim was written with, such as `@cautious` or `@query`. Open-valued: tags may be added."
+          "description": "The contract tag this claim was written with, such as `@cautious` or `@query`. The tag vocabulary belongs to the contract language rather than to this document, and is documented with that language rather than enumerated here. Open-valued: tags may be added."
         },
         "subject": {
           "type": "string",
-          "description": "What distinguishes one instance of a repeatable tag from another — the query's surface form for `@query`, and the empty string for every tag that may appear only once. Together with `tag` it names the check; it does not identify it, because two instances can render alike."
+          "description": "What distinguishes one instance of a repeatable tag from another: the query's surface form for `@query`, and the set of literals claimed for each of the four consequence tags (`@cautious` and `@brave`, and the `optimal` counterpart of each). Every one of those five may be written more than once in a contract, and each writing is an independent claim with its own entry here. It is the empty string for every tag that may appear only once — so do not read a non-empty subject as meaning the tag is `@query`. Together with `tag` it names the check; it does not identify it, because two instances can render alike."
         },
         "status": {
           "$ref": "#/$defs/verdict",
@@ -134,11 +160,12 @@
     "error": {
       "type": "object",
       "additionalProperties": false,
+      "description": "One reason a verdict could not be produced. Never a judgment about a program — a case that could not be run has been tested by nothing, which is why this is a register of its own rather than a fourth verdict.",
       "required": ["kind", "is_elenctic_bug", "scope", "source", "message"],
       "properties": {
         "kind": {
           "type": "string",
-          "description": "Where the fault lies. Known values: `contract` (the @-contract is ill-formed), `discovery` (the corpus or the environment is mis-shaped, including a declared solver that is not installed), `program` (the program under test will not load, ground, or solve), `deadline` (the run's time limit was reached before this case was tried), `resource` (the case ran out of a resource — memory — that only you can bound), `harness` (elenctic violated one of its own invariants — the only kind that is ours to fix rather than yours). These name loci rather than exception classes; two of them arrive as no exception at all. Open-valued: treat an unfamiliar kind as one you cannot act on specifically, and read `is_elenctic_bug` for the one question about it that is closed."
+          "description": "Where the fault lies. Known values: `contract` (the @-contract is ill-formed), `discovery` (the corpus or the environment is mis-shaped, including a declared solver that is not installed), `program` (the program under test will not load, ground, or solve), `deadline` (the run's time limit was reached before this case was tried), `resource` (the case ran out of a resource — memory — that only you can bound), `harness` (elenctic violated one of its own invariants — the only kind that is ours to fix rather than yours). These name loci rather than exception classes, and none of them should be read as one: a deadline arrives as no exception at all, and a resource running out arrives as a built-in rather than as anything this package defines. Open-valued: treat an unfamiliar kind as one you cannot act on specifically, and read `is_elenctic_bug` for the one question about it that is closed."
         },
         "is_elenctic_bug": {
           "type": "boolean",
@@ -151,7 +178,7 @@
         },
         "source": {
           "type": ["string", "null"],
-          "description": "The file the error belongs to, or null for a corpus-level fault that belongs to no single file."
+          "description": "The file the error belongs to, named as the invocation named it and so resolved the same way `case.source` is, or null for a corpus-level fault that belongs to no single file."
         },
         "message": {
           "type": "string",
@@ -162,6 +189,7 @@
     "hygiene": {
       "type": "object",
       "additionalProperties": false,
+      "description": "One observation about the corpus's own health, together with the footing this run put it on. It is neither a verdict nor an error: nothing was decided and nothing was prevented, which is why a consumer drawing failures should draw none of these unless the severity says otherwise.",
       "required": ["kind", "severity", "source", "message"],
       "properties": {
         "kind": {
@@ -173,8 +201,14 @@
           "enum": ["silent", "warning", "error"],
           "description": "How loudly this run graded the observation, which is a policy of the invocation rather than a property of what was seen: `--strict` grades every observation `error`, and without it an orphan library is a `warning` while an undeclared solver is `silent`. `error` means the run failed on it. `silent` means the observation was recorded but not reported, so a consumer drawing diagnostics should draw nothing for it — it is here so that a consumer applying its own policy still has the fact. Read this rather than deriving a footing from `kind`: `kind` is open-valued, so a table of kinds cannot stay complete, and this field is what says what the exit status was based on."
         },
-        "source": { "type": "string" },
-        "message": { "type": "string" }
+        "source": {
+          "type": "string",
+          "description": "The file the observation is about, resolved the same way `case.source` is. Unlike the other two registers this need not be a case at all: an orphan library is by definition a file carrying no contract, so a consumer that assumes every `source` names a case will look for one that is not there."
+        },
+        "message": {
+          "type": "string",
+          "description": "The human-readable observation. Opaque, like every message here: display it, do not parse it."
+        }
       }
     }
   }

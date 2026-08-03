@@ -91,6 +91,20 @@ _CORPUS_OUT_OF_MEMORY = (
 # for the same reason as the two above: one sentence, stated once.
 _INTERNAL_ERROR = "this is an elenctic bug, not a fault in your corpus"
 
+# The one thing --print-schema can fail at, said in terms the reader can act on. It is worth its own
+# sentence rather than the internal-error backstop, because the backstop asks for a bug report and
+# this is not a bug in elenctic: the description ships beside the modules, so a copy that has the
+# modules and not the description was assembled by something downstream — a vendoring step, a
+# repackaging, an installer that keeps code and drops data. Sending that reader to elenctic's issue
+# tracker sends them somewhere that cannot help them.
+_SCHEMA_UNREADABLE = (
+    "elenctic could not read its own output description. It ships inside the package, beside the "
+    "modules, at elenctic/schema/ — so this copy of elenctic has the code and not the data, which "
+    "is something a packaging or vendoring step did rather than anything you configured. "
+    "Reinstalling elenctic from a released wheel or from its source tree restores it. Nothing else "
+    "is affected: running a corpus never reads this file."
+)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -155,12 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         args = _build_parser().parse_args(argv)
         if args.print_schema:
-            # Answered from the package alone, so it is answered before anything is looked for on
-            # disk: someone asking what the output looks like need not have a corpus, and a target
-            # that does not exist must not turn the question into a fault. Written rather than
-            # printed, so what a reader redirects into a file is the file.
-            sys.stdout.write(schema_text())
-            return 0
+            return _print_schema()
         invocation = Invocation(
             target=args.target,
             strict=args.strict,
@@ -190,6 +199,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         traceback.print_exc()
         outcome = _fault_outcome(ErrorKind.HARNESS, f"{_INTERNAL_ERROR}: {type(exc).__name__}")
         return exit_status(outcome)
+
+
+def _print_schema() -> int:
+    """Write the description of the machine-readable report, and say so if this copy has none.
+
+    Answered from the package alone, so it is answered before anything is looked for on disk:
+    someone asking what the output looks like need not have a corpus, and a target that does not
+    exist must not turn the question into a fault. Written rather than printed, so what a reader
+    redirects into a file is the file.
+
+    An unreadable description is the environment being mis-shaped rather than elenctic being wrong
+    about something, which is why it is graded as a fault the reader can fix and not as a bug to
+    report. The status is read off a record like every other, rather than chosen beside one.
+    """
+    try:
+        description = schema_text()
+    except OSError:
+        print(f"environment error: {_SCHEMA_UNREADABLE}", file=sys.stderr)
+        return exit_status(_fault_outcome(ErrorKind.DISCOVERY, _SCHEMA_UNREADABLE))
+    sys.stdout.write(description)
+    return 0
 
 
 def run_corpus(invocation: Invocation) -> RunOutcome:

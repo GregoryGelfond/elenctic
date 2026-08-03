@@ -75,8 +75,16 @@ def dumps(document: dict[str, object]) -> str:
     ``ensure_ascii`` is off because the sanitizer has already removed everything that would need
     escaping for safety, so what remains is legible as itself — the atoms of an answer set read as
     the program wrote them.
+
+    ``allow_nan`` is off because it is on by default, and what it allows is not JSON: a non-finite
+    float is written as a bare ``Infinity`` or ``NaN``, which this language reads back and most
+    others refuse outright — so a document carrying one is one the consumer this exists for cannot
+    parse at all. The two numbers a caller supplies are the budget and the deadline, and a caller
+    can supply either as infinite. Refusing here makes the rule that there is a document or there is
+    an error, never a document that is not JSON; telling the caller so in terms of what they typed
+    is the command line's part, since by this point the value has lost the name it arrived under.
     """
-    return json.dumps(document, ensure_ascii=False, indent=2) + "\n"
+    return json.dumps(document, ensure_ascii=False, allow_nan=False, indent=2) + "\n"
 
 
 def schema_text() -> str:
