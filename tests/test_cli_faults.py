@@ -36,7 +36,8 @@ def test_an_ungroundable_case_exits_as_an_error_not_a_verdict(
 ) -> None:
     status = main([_corpus(tmp_path, broken=_UNSAFE)])
     captured = capsys.readouterr()
-    # 2 is the error register. 1 would claim the case was tested and decided wrong.
+    # An error register, not a verdict: 1 would claim the case was tested and decided wrong.
+    # 2 rather than 3 because the program under test is the author's to fix, not elenctic's.
     assert status == 2
     assert "Traceback" not in captured.err
     # The author needs the offending line and the cause, not a summary that grounding stopped.
@@ -136,7 +137,10 @@ def test_a_harness_fault_at_solve_time_costs_only_the_case_that_met_it(
     monkeypatch.setattr(cli, "run_case", broken)
     status = main([_corpus(tmp_path, aaa_good=_GOOD, mmm_broken=_GOOD, zzz_good=_GOOD)])
     captured = capsys.readouterr()
-    assert status == 2, "a harness fault is the error register, never a verdict"
+    assert status == 3, (
+        "a harness fault is elenctic's own error register — never a verdict, and never filed with "
+        "the faults a user can fix"
+    )
     assert "mmm_broken.lp" in captured.err, "the reader has to be told which case it was"
     assert "2/3 passed, 1 harness error(s)" in captured.out, (
         "the cases either side of it keep their results, and the one that broke is accounted for"

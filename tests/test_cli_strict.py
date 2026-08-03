@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from elenctic.cli import main
+from elenctic.discovery import ORPHAN_LIBRARY, UNDECLARED_SOLVER
 
 _DECLARED = "% @expect sat\n% @model { ok }\n% @elenctic solver clingo\nok.\n#show ok/0.\n"
 _UNDECLARED = "% @expect sat\n% @model { ok }\nok.\n#show ok/0.\n"
@@ -53,6 +54,35 @@ def test_undeclared_solver_is_silent_by_default_and_errors_under_strict(
     assert "undeclared" not in capsys.readouterr().err.lower()  # silent by default (no nag)
     assert main([str(tmp_path), "--strict"]) == 2  # required explicit under --strict
     assert "undeclared" in capsys.readouterr().err.lower()
+
+
+def test_each_reported_observation_renders_the_sentence_its_own_record_carries(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # One home per observation: the sentence a reader is shown and the sentence a consumer reads
+    # are one string, so neither can be edited into disagreement with the other. The aggregated
+    # line is the one that had to be watched — it states the observation once for a set of files,
+    # and stating it from anywhere but the records would leave the records unread.
+    write(tmp_path / "case.lp", _UNDECLARED)
+    write(tmp_path / "orphan.lp", "never(included).\n")
+    assert main([str(tmp_path), "--strict"]) == 2
+    err = capsys.readouterr().err
+    assert ORPHAN_LIBRARY in err
+    assert UNDECLARED_SOLVER in err
+
+
+def test_the_hygiene_heading_says_whether_the_run_failed_on_what_follows(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The heading and the exit status are two readings of one grading. A reader shown "warnings"
+    # over the same observations a gate has just failed the run on would be looking at the tool
+    # contradicting itself about what it thinks of them.
+    write(tmp_path / "case.lp", _DECLARED)
+    write(tmp_path / "orphan.lp", "never(included).\n")
+    assert main([str(tmp_path)]) == 0
+    assert "hygiene warnings:" in capsys.readouterr().err
+    assert main([str(tmp_path), "--strict"]) == 2
+    assert "hygiene errors (--strict):" in capsys.readouterr().err
 
 
 def test_a_clean_corpus_emits_no_hygiene_even_under_strict(

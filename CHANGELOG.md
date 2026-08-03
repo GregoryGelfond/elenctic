@@ -66,6 +66,23 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ### Changed
 
+- **A fault in elenctic now exits `3`, apart from a fault in your corpus.** Exit `2` meant both
+  "your corpus has something to fix" and "elenctic violated one of its own invariants" — one status
+  for the two things a reader can least afford to confuse, since one is work for them and the other
+  is a bug to report. A harness fault is now `3`, and it outranks every other signal, because a
+  harness that is wrong about one case is evidence about every other. Everything else that was `2`
+  stays `2`: a bad contract, a mis-shaped corpus, a program that will not ground, a case that ran
+  out of memory, a run that passed its `--deadline`, and corpus-health observations under
+  `--strict`. A job gating on non-zero is unaffected; one testing for exactly `2` will stop seeing
+  elenctic's own faults, which is the point.
+
+- **A corpus-health observation now carries the grade the run gave it.** `HygieneRecord` gained a
+  `severity`: `error` under `--strict`, and otherwise `warning` for an orphan library and `silent`
+  for an undeclared solver — the footing each observation already had. What is printed, what fails
+  the run, and what a consumer is told are now read off that one field rather than each deriving it
+  again from the flag, so they cannot come to disagree about a single observation. Nothing a run
+  prints changed.
+
 - **A failure now names the contract line it judged, and repeated claims no longer repeat one
   sentence.** Every claim carries the line it was written on, so a diagnostic can be placed against
   the claim rather than against the file, and a tag a contract may write more than once is shown

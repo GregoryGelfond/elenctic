@@ -37,6 +37,7 @@ __all__ = [
     "HygieneRecord",
     "RunOutcome",
     "Scope",
+    "Severity",
     "error_kind",
     "summary",
 ]
@@ -75,11 +76,54 @@ class Scope(Enum):
     CASE = "case"
 
 
+class Severity(Enum):
+    """How loudly a run graded a corpus-health observation — the closed vocabulary every reading of
+    that grade shares.
+
+    Grading is a policy and the policy is the caller's: the same observation is a gate's error and
+    an author's aside. Applying it where the observation is recorded leaves one field deciding what
+    is printed and what fails the run, so those two cannot come to disagree — and a consumer is told
+    the grade rather than made to re-derive it from a table of kinds it would have to keep in step
+    with this one.
+    """
+
+    SILENT = "silent"
+    """Observed and recorded, but not reported: what it observes is legitimate, so saying it would
+    nag about the expected case rather than tell anyone anything."""
+    WARNING = "warning"
+    """Reported, and it changes nothing about whether the run succeeded."""
+    ERROR = "error"
+    """Reported, and the run fails on it."""
+
+
 class HygieneKind(Enum):
     """A corpus-health observation, warned by default and promotable to an error."""
 
     ORPHAN_LIBRARY = "orphan_library"
     UNDECLARED_SOLVER = "undeclared_solver"
+
+    def severity_under(self, *, strict: bool) -> Severity:
+        """How loudly this observation is graded under the strictness dial — the one place the
+        default footing of each kind is decided.
+
+        Named apart from the graded record's own ``severity`` so that the two are not one word for a
+        value and a way of computing one; reached from a record, ``kind.severity_under(...)`` asks a
+        question and ``severity`` is the answer this run already gave.
+
+        Strictness grades everything an error; that is the whole of what it asks for. Without it the
+        two differ, because they are not the same news. A library nothing includes is a real smell —
+        a forgotten case, or dead code — and worth saying once. Relying on the stated ``clingo``
+        default is legitimate, so saying it unasked would nag about the expected case: the
+        ``mypy --strict`` and ``pytest --strict-markers`` posture, where a default is fine until you
+        opt into explicitness.
+        """
+        if strict:
+            return Severity.ERROR
+        match self:
+            case HygieneKind.ORPHAN_LIBRARY:
+                return Severity.WARNING
+            case HygieneKind.UNDECLARED_SOLVER:
+                return Severity.SILENT
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -124,9 +168,17 @@ class ErrorRecord:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class HygieneRecord:
-    """One corpus-health observation, against the file it concerns."""
+    """One corpus-health observation, against the file it concerns, at the footing this run put it
+    on.
+
+    ``severity`` is the observation as graded, not the observation itself: ``kind`` still says what
+    was seen, so a consumer that disagrees with this run's grading can apply its own policy to the
+    same fact. What it must not have to do is reconstruct *this* run's policy from the kind, which
+    is the only way it could learn why the process exited as it did.
+    """
 
     kind: HygieneKind
+    severity: Severity
     source: Path
     message: str
 

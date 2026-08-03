@@ -297,7 +297,7 @@ clingo / clingcon pairings used at scale.
 The standalone runner discovers cases under a target (a single `.lp` file or a directory) and runs them:
 
 ```console
-$ elenctic [target]            # run every case under target (default: tests/); exit 0 pass, 1 fail/undecided, 2 error
+$ elenctic [target]            # default target tests/; exit 0 pass, 1 fail/undecided, 2 a fault you can fix, 3 an elenctic bug
 $ elenctic tests/feasible.lp   # run a single case file
 $ elenctic tests/ --explain    # narrate the derived run plan, without solving
 $ elenctic tests/ --strict     # fail the run on any corpus-hygiene issue (the CI gate)

@@ -5,6 +5,7 @@ the conservation law that follows from it.
 """
 
 from dataclasses import fields
+from enum import Enum
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from elenctic.outcome import (
     HygieneRecord,
     RunOutcome,
     Scope,
+    Severity,
     error_kind,
     summary,
 )
@@ -87,6 +89,54 @@ def test_only_a_harness_fault_is_elenctic_s_to_fix() -> None:
     assert not any(kind.is_elenctic_bug for kind in ErrorKind if kind is not ErrorKind.HARNESS)
 
 
+@pytest.mark.parametrize(
+    ("vocabulary", "wire"),
+    [
+        (
+            ErrorKind,
+            {
+                "CONTRACT": "ContractError",
+                "DISCOVERY": "DiscoveryError",
+                "PROGRAM": "ProgramError",
+                "DEADLINE": "DeadlineError",
+                "RESOURCE": "ResourceError",
+                "HARNESS": "HarnessError",
+            },
+        ),
+        (Scope, {"CORPUS": "corpus", "CASE": "case"}),
+        (Severity, {"SILENT": "silent", "WARNING": "warning", "ERROR": "error"}),
+        (
+            HygieneKind,
+            {"ORPHAN_LIBRARY": "orphan_library", "UNDECLARED_SOLVER": "undeclared_solver"},
+        ),
+    ],
+)
+def test_each_vocabulary_spells_its_members_as_a_reader_outside_will_meet_them(
+    vocabulary: type[Enum], wire: dict[str, str]
+) -> None:
+    # These strings leave the package: they are what a report says and what something reading one
+    # switches on. A member's spelling is therefore not an implementation detail that may be tidied
+    # — changing one breaks a reader that was written against it, and adding one silently hands a
+    # reader a value it has no branch for. Written out in full rather than derived, so both are a
+    # deliberate edit here.
+    assert {member.name: member.value for member in vocabulary} == wire
+
+
+def test_the_strictness_dial_grades_every_observation_an_error() -> None:
+    # What strictness asks for, and the whole of it: corpus health becomes something to fix rather
+    # than something to notice, whatever footing an observation has by default.
+    assert all(kind.severity_under(strict=True) is Severity.ERROR for kind in HygieneKind)
+
+
+def test_the_two_observations_have_different_footing_by_default() -> None:
+    # They are not the same news. A library nothing includes is a real smell — a forgotten case or
+    # dead code — so it is said once. Relying on the stated default solver is legitimate, so saying
+    # it unasked would nag about the expected case, and a report a reader learns to skip is worse
+    # than one that was never made.
+    assert HygieneKind.ORPHAN_LIBRARY.severity_under(strict=False) is Severity.WARNING
+    assert HygieneKind.UNDECLARED_SOLVER.severity_under(strict=False) is Severity.SILENT
+
+
 def test_the_summary_is_a_projection_of_the_registers() -> None:
     outcome = RunOutcome(
         cases=(),
@@ -102,7 +152,12 @@ def test_the_summary_is_a_projection_of_the_registers() -> None:
             ),
         ),
         hygiene=(
-            HygieneRecord(kind=HygieneKind.ORPHAN_LIBRARY, source=Path("lib.lp"), message="unused"),
+            HygieneRecord(
+                kind=HygieneKind.ORPHAN_LIBRARY,
+                severity=Severity.WARNING,
+                source=Path("lib.lp"),
+                message="unused",
+            ),
         ),
     )
     counts = summary(outcome)
@@ -174,7 +229,13 @@ _ERRORS = st.builds(
     source=st.none() | _PATHS,
     message=_TEXT,
 )
-_HYGIENE = st.builds(HygieneRecord, kind=st.sampled_from(HygieneKind), source=_PATHS, message=_TEXT)
+_HYGIENE = st.builds(
+    HygieneRecord,
+    kind=st.sampled_from(HygieneKind),
+    severity=st.sampled_from(Severity),
+    source=_PATHS,
+    message=_TEXT,
+)
 # conclusion is drawn from the enum alone: every solve reports how its search ended, so there is no
 # absent value for a report to carry.
 _REPORTS = st.builds(

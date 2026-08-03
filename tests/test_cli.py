@@ -82,8 +82,9 @@ def test_cli_runs_the_krbook_dogfood_corpus(capsys: pytest.CaptureFixture[str]) 
 def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A misroute is a harness error (exit 2), reported distinctly, while the
-    # other cases still run. runs_for is correct-by-construction, so inject the failure on one case.
+    # A misroute is a harness error (exit 3 — elenctic's own, not a fault a user could fix),
+    # reported distinctly, while the other cases still run. runs_for is correct-by-construction, so
+    # inject the failure on one case.
     write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
     write(tmp_path / "encodings/bad/e.lp", "a. #show a/0.\n% @expect sat\n% @note BOOM\n")
 
@@ -95,7 +96,7 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
     monkeypatch.setattr(cli, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings")])
     captured = capsys.readouterr()
-    assert status == 2  # a harness error, not a verdict
+    assert status == 3  # a harness error, not a verdict and not a corpus to fix
     assert "HARNESS ERROR" in captured.err and "bad" in captured.err  # the misrouted case named
     assert "1/2 passed" in captured.out  # the good case still ran and passed
     assert "1 harness error" in captured.out
@@ -166,7 +167,8 @@ def test_the_dry_run_reports_a_misroute_it_meets_and_names_the_case(
 ) -> None:
     # Surfacing a plan that cannot be built is what the dry run is for, so it is the mode where a
     # misroute matters most — and the one where it went untested. The diagnostic goes to standard
-    # error, so it names the case there rather than relying on the narration beside it.
+    # error, so it names the case there rather than relying on the narration beside it. The status
+    # is the one a run would give the same fault: which mode met it says nothing about whose it is.
     write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
     write(tmp_path / "encodings/bad/e.lp", "a. #show a/0.\n% @expect sat\n% @note BOOM\n")
 
@@ -178,9 +180,25 @@ def test_the_dry_run_reports_a_misroute_it_meets_and_names_the_case(
     monkeypatch.setattr(cli, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings"), "--explain"])
     captured = capsys.readouterr()
-    assert status == 2, "a plan that cannot be built is a harness error, never a clean dry run"
+    assert status == 3, "a plan that cannot be built is a harness error, never a clean dry run"
     assert "HARNESS ERROR" in captured.err
     assert "bad" in captured.err, "standard error names the case on its own"
+
+
+def test_the_dry_run_reports_a_file_it_could_not_use_and_still_narrates_the_rest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The guarantee a run gives — one unusable file costs its own result and no other's — is the
+    # same guarantee in the mode whose whole purpose is inspection, where losing the narration of
+    # every other case would defeat the point of asking. The file is reported, it moves the status,
+    # and the healthy case is still narrated.
+    write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
+    write(tmp_path / "encodings/bad/e.lp", '% @expect sat\n#include "no_such_library.lp".\n')
+    status = main([str(tmp_path / "encodings"), "--explain"])
+    captured = capsys.readouterr()
+    assert status == 2, "a file that will produce no verdict is a fault the author can fix"
+    assert "CASE ERROR" in captured.err and "no_such_library.lp" in captured.err
+    assert "@model" in captured.out, "the case that could be planned is still planned"
 
 
 def test_the_dry_run_reports_no_tally_because_it_decides_nothing(

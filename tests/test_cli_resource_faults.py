@@ -18,6 +18,7 @@ from elenctic.checks import CheckReport
 from elenctic.cli import main
 from elenctic.discovery import Case
 from elenctic.harness import run_case
+from elenctic.outcome import ErrorKind, RunOutcome, Scope
 from elenctic.solvers import TIME_BUDGET
 
 _GOOD = "% @expect sat\n% @count  1\n\na.\n#show a/0.\n"
@@ -95,7 +96,7 @@ def test_an_unexpected_fault_is_framed_as_an_elenctic_bug(
 ) -> None:
     # The complement. Anything not anticipated is elenctic's fault by definition, and saying so is
     # what tells a user it is not their corpus to fix. The traceback is kept — it is the report —
-    # but it is introduced rather than dumped.
+    # but it is introduced rather than dumped, and the status says the same thing the prose does.
     (tmp_path / "case.lp").write_text(_GOOD, encoding="utf-8")
 
     def unexpected(*_args: object, **_kwargs: object) -> None:
@@ -104,6 +105,38 @@ def test_an_unexpected_fault_is_framed_as_an_elenctic_bug(
     monkeypatch.setattr(cli, "run_case", unexpected)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
-    assert status == 2
+    assert status == 3, "elenctic's own register, apart from the faults a user can fix"
     assert "elenctic" in captured.err.lower(), "the user must be told whose fault this is"
     assert "ZeroDivisionError" in captured.err, "the cause is still reported, not swallowed"
+
+
+def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_status(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The status is read off a record, which puts the weight on the record being right: its locus
+    # is what decides whose fault the run reports, and its message is the whole of what a consumer
+    # has once the traceback has scrolled past. Watched where the outcome is consumed, because a
+    # frame that hands back an integer has thrown away everything else it knew.
+    (tmp_path / "case.lp").write_text(_GOOD, encoding="utf-8")
+
+    def unexpected(*_args: object, **_kwargs: object) -> NoReturn:
+        raise ZeroDivisionError("an elenctic bug")
+
+    filed: list[RunOutcome] = []
+    decide = cli.exit_status
+
+    def watched(outcome: RunOutcome) -> int:
+        filed.append(outcome)
+        return decide(outcome)
+
+    monkeypatch.setattr(cli, "run_case", unexpected)
+    monkeypatch.setattr(cli, "exit_status", watched)
+    assert main([str(tmp_path)]) == 3
+    capsys.readouterr()
+    (outcome,) = filed
+    (record,) = outcome.errors
+    assert record.kind is ErrorKind.HARNESS, "the locus the status was read off"
+    assert record.scope is Scope.CORPUS, "no case owned it, so it belongs to the run"
+    assert "ZeroDivisionError" in record.message, (
+        "a record whose reason was dropped is not a report, and the traceback is not in it"
+    )

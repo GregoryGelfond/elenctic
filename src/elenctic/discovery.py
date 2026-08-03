@@ -107,15 +107,15 @@ UNDECLARED_SOLVER = "defaulted to clingo (declare @elenctic solver for reproduci
 @dataclass(frozen=True, slots=True)
 class HygieneReport:
     """Corpus hygiene — the third strictness axis, distinct from the always-error closed
-    vocabulary and soundness floor. These are observations, never verdicts, and the two records have
-    different default footing (the idiomatic asymmetry): an **orphan library** is a real corpus
-    smell — *warned* by default, an *error* under ``--strict`` (the CI gate). An **undeclared
-    solver** is a mere explicitness nudge — relying on the stated ``clingo`` default is legitimate,
-    so it is *silent* by default and an *error* only under ``--strict`` (the ``mypy --strict`` /
-    ``pytest --strict-markers`` posture: a default is fine until you opt into explicitness, and the
-    Unix rule of silence says do not nag about the expected case). What this shape carries is the
-    observation; the runner decides what a given invocation makes of it, reading the same records
-    for what it prints and for what it does to the exit status.
+    vocabulary and soundness floor. These are observations, never verdicts, and the two have
+    different default footing (the idiomatic asymmetry), which is why a run reports one of them
+    unasked and stays quiet about the other.
+
+    What this shape carries is the observation and nothing about how loudly to take it. How loudly
+    is a policy of the invocation rather than a property of what was seen, so it is decided once,
+    where a run records the observation, and every reading of it comes off that one decision — what
+    is printed, and what fails the run. Restating the footing here would be a second copy of it, and
+    the copy that is not consulted is the one that goes stale.
 
     ``orphan_libraries`` — contract-free ``.lp`` files in the walked tree that no case loads (the
     backstop: a forgotten case, or a dead library). ``undeclared_solvers`` — case files that did not
@@ -183,9 +183,10 @@ def inspect_corpus(target: Path) -> Corpus:
     (a contract-free ``.lp`` no case loads — the backstop) and undeclared-solver cases (defaulted
     to ``clingo``). A library is an orphan iff its resolved path is absent from ``used`` — the files
     clingo actually loads across all cases (:attr:`elenctic.program.ProgramFacts.sources`), so the
-    check matches clingo's include resolution exactly rather than re-scanning text. Hygiene is
-    warn-by-default / error-under-``--strict`` at the CLI, never a verdict. Raises the same loud
-    errors as :func:`discover` on a mis-shaped corpus.
+    check matches clingo's include resolution exactly rather than re-scanning text. What is reported
+    is the observation; how loudly a given invocation takes it is graded where the run records it,
+    and it is never a verdict. Raises the same loud errors as :func:`discover` on a mis-shaped
+    corpus.
     """
     walk = _classify(target)
     orphans = tuple(library for library in walk.libraries if library.resolve() not in walk.used)
