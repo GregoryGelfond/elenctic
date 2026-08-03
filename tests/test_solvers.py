@@ -1,8 +1,11 @@
 """``solvers`` — the clingo facade and the Mode→shape lowering.
 
-These run real clingo (fast; tiny programs). They confirm the facade produces the three-arm
-``Determination``: a per-mode ``Consistent`` shape on SAT, ``Inconsistent`` on the whole-result
-``unsatisfiable`` bit, ``Inconclusive`` where the solve settled nothing. The **GATING**
+These run real clingo (fast; tiny programs). They confirm the facade produces the ``Determination``
+arms a decided solve can carry — a per-mode ``Consistent`` shape on SAT, ``Inconsistent`` on the
+whole-result ``unsatisfiable`` bit — and that both backends honour the per-solve budget. Which arm
+a solve that ran out of budget lands on is a race rather than a property, so the arm a solve
+settling nothing produces is pinned where a search can be ended on purpose (``test_conclusion.py``,
+``test_solve_exhaustion.py``) rather than by a clock. The **GATING**
 property — ``type(solve(mode)) is shape_for(mode)`` and its readable fields are exactly
 ``populates(mode)`` — closes the accessor seam's second premise empirically (the postcondition).
 """
@@ -12,7 +15,7 @@ from pathlib import Path
 import pytest
 from clingo import Function, Symbol
 
-from elenctic.checks import count_optimal_is
+from elenctic.checks import count_is, count_optimal_is
 from elenctic.program import ProgramError
 from elenctic.result import (
     Conclusion,
@@ -25,7 +28,6 @@ from elenctic.result import (
     ConsistentShownCensus,
     ConsistentWitness,
     Field,
-    Inconclusive,
     Inconsistent,
     Observable,
     SeamError,
@@ -355,13 +357,20 @@ def test_solve_rejects_an_unknown_solver() -> None:
         solve("dlv", Mode.DEFAULT, "a.")
 
 
-def test_clingcon_timeout_yields_inconclusive() -> None:
-    # The "both backends" obligation: clingcon shares the _drive timeout path with clingo.
+def test_a_clingcon_solve_honours_the_budget_through_the_shared_driver() -> None:
+    # The "both backends" obligation: clingcon shares the _drive budget path with clingo. Which arm
+    # a zero budget lands on is a race — the cancel may or may not beat the first model out of the
+    # solver — and since a search cut short keeps the satisfiability it settled, BOTH arms are
+    # legitimate reports of the same event. So the assertion is over what they have in common and
+    # what the budget actually guarantees: the search did not close its space, and no reading over
+    # a collection may be taken from it. Asserting the arm instead passed here every time and
+    # failed on both platforms under continuous integration, which is where the load is.
     pytest.importorskip("clingcon")
     from elenctic.solvers import run_clingcon
 
-    det = run_clingcon(Mode.ENUM_ALL, "{ p(1..30) }. #show p/1.", budget=0.0).determination
-    assert isinstance(det, Inconclusive)
+    outcome = run_clingcon(Mode.ENUM_ALL, "{ p(1..30) }. #show p/1.", budget=0.0)
+    assert outcome.conclusion is Conclusion.INTERRUPTED
+    assert count_is(1, line=1)(outcome).verdict is Verdict.UNDECIDED
 
 
 # --- multi-file loading (the corpus loads encoding + instance; clingcon rewrites each) ---
