@@ -51,11 +51,13 @@
         },
         "budget": {
           "type": "number",
-          "description": "The per-solve time budget in seconds. A solve that reaches it is reported as not having finished, which is why a check may be `undecided` here and decided under a larger budget."
+          "exclusiveMinimum": 0,
+          "description": "The per-solve time budget in seconds. A solve that reaches it is reported as not having finished, which is why a check may be `undecided` here and decided under a larger budget. Always a positive finite number: a run asked for anything else is refused before it begins, because an infinity and a NaN have no JSON form at all and a report carrying one could not be parsed by the consumer it was written for."
         },
         "deadline": {
           "type": ["number", "null"],
-          "description": "The whole-run time limit in seconds, or null when none was set (the default). Cases not reached before it appear as errors, not as verdicts."
+          "exclusiveMinimum": 0,
+          "description": "The whole-run time limit in seconds, or null when none was set (the default). Cases not reached before it appear as errors, not as verdicts. When it is set it is a positive finite number, on the same footing and for the same reason as `budget`."
         }
       }
     },

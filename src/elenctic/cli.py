@@ -7,6 +7,11 @@ then solves and checks each case, rendering any non-``PASS`` outcome. ``--explai
 plan: it narrates the derived runs (mode + checks) per case without solving, the dry-run the
 ``reads``/``populates`` surface was made introspectable for.
 
+``--format`` chooses who the report is written for. The default writes prose for a reader.
+``--format json`` writes the whole run as one machine-readable document on standard output and
+moves every diagnostic to standard error, so that nothing a consumer's parser would choke on lands
+beside the document; ``--print-schema`` describes that document's shape without running anything.
+
 Exit status separates the outcome registers: ``0`` all cases pass; ``1`` some case FAILed or is
 UNDECIDED (a statement about a program under test); ``2`` a fault the user can fix — a bad contract,
 a mis-shaped corpus, a program that cannot be run, a declared solver this environment does not have,
@@ -21,6 +26,7 @@ never costs the run every other case's result. This is the standalone runner; th
 """
 
 import argparse
+import math
 import os
 import sys
 import traceback
@@ -43,7 +49,7 @@ from elenctic.discovery import (
 from elenctic.display import legible
 from elenctic.expectation import ContractError
 from elenctic.harness import render, run_case
-from elenctic.json_report import schema_text
+from elenctic.json_report import as_json, dumps, schema_text
 from elenctic.outcome import (
     CaseOutcome,
     CasePlan,
@@ -105,6 +111,19 @@ _SCHEMA_UNREADABLE = (
     "is affected: running a corpus never reads this file."
 )
 
+# Why the two flags cannot be asked for together, said to whoever asked. Each is fine alone: one
+# narrates the plan a run would follow, the other writes what a run produced. There is no document
+# for a plan in this version, so the pair could only mean writing prose to the one stream that has
+# to carry a document. Unlike the messages above this one is a diagnostic and nothing else — a
+# command line that cannot be run produced no run, so there is no record for it to also be the
+# text of.
+_NO_MACHINE_READABLE_DRY_RUN = (
+    "--explain and --format json cannot be combined. --explain narrates the plan each case would "
+    "follow without solving anything, and this version describes no machine-readable form for a "
+    "plan. Ask for --explain alone to read the plan, or for --format json alone to run the corpus "
+    "and get the report."
+)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -121,6 +140,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "--explain",
         action="store_true",
         help="narrate the derived run plan per case, without solving (a dry-run)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=("human", "json"),
+        default="human",
+        help="who the report is written for: prose for a reader (the default), or one JSON "
+        "document on standard output with every diagnostic moved to standard error, which is the "
+        "published machine-readable contract --print-schema describes",
     )
     parser.add_argument(
         "--strict",
@@ -161,23 +188,43 @@ def main(argv: Sequence[str] | None = None) -> int:
     The two outermost handlers are here because a fault that reaches this frame is by definition one
     no inner register anticipated, and the user still has to be told something they can act on. Each
     files the fault it met into an outcome of its own and reads the status off that, so the status
-    follows from a record rather than being chosen beside one.
+    follows from a record rather than being chosen beside one. Both leave by the same tail as an
+    ordinary run, because a fault that stopped everything is still something the invocation
+    produced, and a consumer handed nothing at all cannot tell it apart from a corpus that held no
+    cases.
 
     The invocation is settled in this frame rather than one below it: below here it is a value of
     a type that cannot express a mode which produces no run, which is what lets running be total
     rather than something that has to refuse."""
+    args = _build_parser().parse_args(argv)
+    if (refusal := _refusal(args)) is not None:
+        # A command line that cannot be run has produced no run, so there is nothing to report
+        # about one: no record, no document, and nothing on standard output. That is what the
+        # parser itself does with a flag it cannot read, and a machine consumer meets one thing
+        # rather than two.
+        print(f"usage error: {refusal}", file=sys.stderr)
+        return 2
+    # Settled above the guarded region rather than inside it, because a handler down there reports
+    # a run that produced nothing else, and a machine-readable report has to say what the run was
+    # asked to do. Neither step can fail here: the parser exits rather than returning on a command
+    # line it cannot read, and this is a frozen record that validates nothing.
+    invocation = Invocation(
+        target=args.target,
+        strict=args.strict,
+        budget=args.budget,
+        deadline=args.deadline,
+    )
+    machine_readable = args.format == "json"
     try:
-        args = _build_parser().parse_args(argv)
         if args.print_schema:
             return _print_schema()
-        invocation = Invocation(
-            target=args.target,
-            strict=args.strict,
-            budget=args.budget,
-            deadline=args.deadline,
-        )
-        produced = explain_corpus(invocation) if args.explain else run_corpus(invocation)
-        return exit_status(produced)
+        if not machine_readable:
+            produced = explain_corpus(invocation) if args.explain else run_corpus(invocation)
+            return exit_status(produced)
+        # Discovery is inside the region with the rest of the run, because discovery grounds, and
+        # the grounder writes where rebinding a Python stream cannot follow it.
+        with _stdout_to_stderr():
+            outcome = run_corpus(invocation)
     except MemoryError:
         # The backstop, for an allocation that fails where no case owns it. A case that runs out of
         # memory is caught in the run loop and costs only its own result; reaching this frame means
@@ -186,7 +233,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         # to *report* it. What consumed the memory is not knowable from here, so it is not claimed.
         print(f"resource error: {_CORPUS_OUT_OF_MEMORY}", file=sys.stderr)
         outcome = _fault_outcome(ErrorKind.RESOURCE, _CORPUS_OUT_OF_MEMORY)
-        return exit_status(outcome)
     except Exception as exc:
         # Whatever this is, the user did not cause it and cannot fix it. Say so first, then show
         # the traceback: it is the report, not a failure to produce one. The record names the family
@@ -198,7 +244,39 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         traceback.print_exc()
         outcome = _fault_outcome(ErrorKind.HARNESS, f"{_INTERNAL_ERROR}: {type(exc).__name__}")
-        return exit_status(outcome)
+    if machine_readable:
+        # One write, made after the region has closed and never inside it, so standard output
+        # carries a whole document or carries nothing at all — never the front half of one, cut
+        # off by the fault that stopped the run.
+        sys.stdout.write(dumps(as_json(outcome, invocation)))
+    return exit_status(outcome)
+
+
+def _refusal(args: argparse.Namespace) -> str | None:
+    """Why this command line cannot be run, or ``None`` when it can.
+
+    Answered before anything is discovered and before anything is printed, which is where the
+    parser answers a flag it cannot read — so every refusal a reader can provoke arrives at the
+    same point in the run, and none of them arrives after a run has half happened.
+
+    What is asked here is what the parser cannot ask for itself: whether two flags that each make
+    sense alone make sense together, and whether a number it converted is a number this program can
+    use.
+    """
+    if args.explain and args.format == "json":
+        return _NO_MACHINE_READABLE_DRY_RUN
+    for flag, seconds in (("--budget", args.budget), ("--deadline", args.deadline)):
+        # A duration is a positive finite number of seconds, and converting the text is as far as
+        # the parser goes: it accepts a zero, a negative, and both spellings of a number that is
+        # not one. An infinity or a NaN has no JSON form, so a report carrying one is a report the
+        # consumer it was written for cannot parse — and refusing what was typed, in terms of what
+        # was typed, is the only frame that still knows which flag it came from.
+        if seconds is not None and not (math.isfinite(seconds) and seconds > 0):
+            return (
+                f"{flag} takes a positive finite number of seconds, and this run was given "
+                f"{seconds}. A run that wants no practical limit asks for a large finite number."
+            )
+    return None
 
 
 def _print_schema() -> int:

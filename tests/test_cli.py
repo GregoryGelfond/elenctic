@@ -224,3 +224,58 @@ def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
     captured = capsys.readouterr()
     assert status == 0
     assert "passed" not in captured.out, "a dry run reports a plan, never a score"
+
+
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [
+        ("--budget", "0"),
+        ("--budget", "-1"),
+        ("--budget", "inf"),
+        ("--budget", "nan"),
+        ("--deadline", "0"),
+        ("--deadline", "-1"),
+        ("--deadline", "inf"),
+        ("--deadline", "nan"),
+    ],
+    ids=[
+        "budget-zero",
+        "budget-negative",
+        "budget-infinite",
+        "budget-not-a-number",
+        "deadline-zero",
+        "deadline-negative",
+        "deadline-infinite",
+        "deadline-not-a-number",
+    ],
+)
+def test_a_duration_that_is_not_a_positive_finite_number_of_seconds_is_refused(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str], flag: str, value: str
+) -> None:
+    # Converting the text is as far as the parser goes: it takes a zero, a negative, and both
+    # spellings of a number that is not one. Two of the four have no JSON form, so a report
+    # carrying one is a report no consumer can parse; the other two are simply not durations. All
+    # four are refused where the parser refuses a flag it cannot read — before the run — so the
+    # answer is a sentence about what was typed rather than a fault reported against a corpus.
+    write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
+
+    status = main([str(tmp_path / "encodings"), flag, value])
+
+    captured = capfd.readouterr()
+    assert status == 2, "a command line that cannot be run is a fault its author can fix"
+    assert captured.out == "", "and it produced no run, so there is nothing to report about one"
+    assert flag in captured.err, "the diagnostic names the flag that was wrong"
+    assert "seconds" in captured.err
+
+
+def test_a_large_finite_duration_is_the_remedy_and_is_accepted(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    # The other side of the refusal above, and the remedy its diagnostic offers: a run that wants
+    # no practical limit asks for a large finite number, so that number must run the corpus.
+    write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
+
+    status = main([str(tmp_path / "encodings"), "--budget", "1e9", "--deadline", "1e9"])
+
+    assert status == 0
+    assert "1/1 passed" in capfd.readouterr().out
