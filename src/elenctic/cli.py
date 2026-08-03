@@ -49,6 +49,7 @@ from elenctic.outcome import (
     ErrorRecord,
     HygieneKind,
     HygieneRecord,
+    Invocation,
     RunOutcome,
     Scope,
     Severity,
@@ -138,13 +139,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     files the fault it met into an outcome of its own and reads the status off that, so the status
     follows from a record rather than being chosen beside one.
 
-    The invocation is parsed in this frame rather than one below it, so that a handler meeting a
-    fault still knows what the run was asked to produce."""
+    The invocation is settled in this frame rather than one below it: below here it is a value of
+    a type that cannot express a mode which produces no run, which is what lets running be total
+    rather than something that has to refuse."""
     try:
         args = _build_parser().parse_args(argv)
+        invocation = Invocation(
+            target=args.target,
+            strict=args.strict,
+            budget=args.budget,
+            deadline=args.deadline,
+        )
         if args.explain:
-            return _explain_status(args)
-        return exit_status(_run_from(args))
+            return _explain_status(invocation)
+        return exit_status(run_corpus(invocation))
     except MemoryError:
         # The backstop, for an allocation that fails where no case owns it. A case that exhausts
         # memory is caught in the run loop and costs only its own result; reaching this frame means
@@ -152,7 +160,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         # API offers neither a clock nor a size limit on grounding — is not a reason to be unable
         # to *report* it. What consumed the memory is not knowable from here, so it is not claimed.
         print(f"resource error: {_CORPUS_OUT_OF_MEMORY}", file=sys.stderr)
-        return exit_status(_fault_outcome(ErrorKind.RESOURCE, _CORPUS_OUT_OF_MEMORY))
+        outcome = _fault_outcome(ErrorKind.RESOURCE, _CORPUS_OUT_OF_MEMORY)
+        return exit_status(outcome)
     except Exception as exc:
         # Whatever this is, the user did not cause it and cannot fix it. Say so first, then show
         # the traceback: it is the report, not a failure to produce one. The record names the family
@@ -163,12 +172,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         traceback.print_exc()
-        return exit_status(
-            _fault_outcome(ErrorKind.HARNESS, f"{_INTERNAL_ERROR}: {type(exc).__name__}")
-        )
+        outcome = _fault_outcome(ErrorKind.HARNESS, f"{_INTERNAL_ERROR}: {type(exc).__name__}")
+        return exit_status(outcome)
 
 
-def run(argv: Sequence[str] | None = None) -> RunOutcome:
+def run_corpus(invocation: Invocation) -> RunOutcome:
     """Run the corpus an invocation names, and return everything the run produced.
 
     The seam the process status is read off and the machine-readable report is built from, so that
@@ -177,40 +185,40 @@ def run(argv: Sequence[str] | None = None) -> RunOutcome:
     status carries one closed bit of one, and the diagnostics are written where each fault is met,
     so without this the locus a fault was filed under would be asserted nowhere.
 
-    Faults the run anticipates are recorded, not raised — that is what the error register is. What
+    Total over its argument: every invocation this can be given is one it can run, because the
+    modes that produce no run cannot be written as an :class:`Invocation`. Faults the run
+    anticipates are recorded rather than raised — that is what the error register is — and what
     still escapes is what no register anticipated, which the console entry backstops.
+
+    It is not silent. The human report is written as the run goes, so a caller wanting standard
+    output for something else diverts it first; the returned value does not determine that prose,
+    and the prose does not determine the value.
+
+    Named apart from the module ``elenctic.run``, which a package attribute of the same name would
+    resolve to instead.
     """
-    args = _build_parser().parse_args(argv)
-    if args.explain:
-        raise ValueError(
-            "the dry run decides nothing and so produces no run to hand back; it narrates a plan, "
-            "and what it can report is a plan that could not be built"
-        )
-    return _run_from(args)
-
-
-def _run_from(args: argparse.Namespace) -> RunOutcome:
-    """Discover the corpus this invocation names and run it, reporting as it goes."""
-    match _discover(args.target):
+    match _discover(invocation.target):
         case RunOutcome() as fault:
             return fault
-        case corpus:
-            unrunnable, hygiene = _record_discovered(corpus, strict=args.strict)
+        case Corpus() as corpus:
+            unrunnable, hygiene = _record_discovered(corpus, strict=invocation.strict)
             outcome = _run(
                 corpus.cases,
-                args.budget,
+                invocation.budget,
                 unrunnable=unrunnable,
                 hygiene=hygiene,
-                deadline=args.deadline,
+                deadline=invocation.deadline,
             )
             # The tally is composed here rather than where the cases are solved, so that the run
             # loop hands back a value and every rendering of it is decided in one place.
             print(f"\n{_summary_line(outcome)}")
             _report_hygiene(hygiene)
             return outcome
+        case unreachable:
+            assert_never(unreachable)
 
 
-def _explain_status(args: argparse.Namespace) -> int:
+def _explain_status(invocation: Invocation) -> int:
     """Narrate the run plan this invocation would follow, and return the status of what that met.
 
     The dry run decides nothing, so it has no case register to fill and builds no run outcome.
@@ -218,14 +226,16 @@ def _explain_status(args: argparse.Namespace) -> int:
     registers exist to make impossible. What can still go wrong is a plan that cannot be built,
     which is what this mode exists to surface, and it is the same fault here as in a run: a misroute
     reports elenctic's bug whichever mode met it."""
-    match _discover(args.target):
+    match _discover(invocation.target):
         case RunOutcome() as fault:
             return exit_status(fault)
-        case corpus:
-            unrunnable, hygiene = _record_discovered(corpus, strict=args.strict)
+        case Corpus() as corpus:
+            unrunnable, hygiene = _record_discovered(corpus, strict=invocation.strict)
             misroutes = _explain(corpus.cases)
             _report_hygiene(hygiene)
             return _fault_status((*unrunnable, *misroutes), hygiene)
+        case unreachable:
+            assert_never(unreachable)
 
 
 def _discover(target: Path) -> Corpus | RunOutcome:

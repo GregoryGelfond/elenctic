@@ -8,13 +8,24 @@ a machine-readable report is mostly made of, so it is asserted here directly, ag
 run produces rather than against the sentence it happened to print.
 """
 
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
 from elenctic import cli, discovery
-from elenctic.cli import exit_status, main, run
-from elenctic.outcome import ErrorKind, RunOutcome, Scope
+from elenctic.cli import main, run_corpus
+from elenctic.outcome import (
+    ErrorKind,
+    HygieneKind,
+    Invocation,
+    RunOutcome,
+    Scope,
+    Severity,
+)
+from elenctic.result import Verdict
+from elenctic.run import RoutingError
+from elenctic.solvers import TIME_BUDGET
 
 _PASSES = "% @expect sat\n% @count 2\n\n1 { tea; coffee } 1.\n#show tea/0.\n#show coffee/0.\n"
 _WILL_NOT_GROUND = "% @expect sat\n% @count 1\n\nq(1).\np(X) :- q(Y).\n"
@@ -26,6 +37,10 @@ _NAMES_A_SOLVER_THAT_DOES_NOT_EXIST = (
 _DECLARES_THE_THEORY_SOLVER = (
     "% @elenctic solver clingcon\n% @expect sat\n% @assign { x=1 }\n\n&sum { x } = 1.\n"
 )
+
+
+def _asked(target: Path, *, strict: bool = False, deadline: float | None = None) -> Invocation:
+    return Invocation(target=target, strict=strict, budget=TIME_BUDGET, deadline=deadline)
 
 
 def _corpus(root: Path, **cases: str) -> Path:
@@ -50,7 +65,7 @@ def test_a_case_that_produces_no_verdict_is_filed_under_its_own_locus(
     tmp_path: Path, contract: str, kind: ErrorKind, scope: Scope
 ) -> None:
     target = _corpus(tmp_path, broken=contract)
-    outcome = run([str(target)])
+    outcome = run_corpus(_asked(target))
     (record,) = outcome.errors
     assert record.kind is kind
     assert record.scope is scope
@@ -65,7 +80,7 @@ def test_a_declared_solver_this_environment_lacks_is_filed_against_the_environme
     # fault is that this machine does not have it — which a different machine would not have.
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     target = _corpus(tmp_path, theory=_DECLARES_THE_THEORY_SOLVER)
-    (record,) = run([str(target)]).errors
+    (record,) = run_corpus(_asked(target)).errors
     assert record.kind is ErrorKind.DISCOVERY
     assert record.scope is Scope.CASE
     assert record.source == target / "theory.lp"
@@ -81,7 +96,7 @@ def test_a_case_that_exhausts_a_resource_is_filed_apart_from_a_broken_program(
 
     monkeypatch.setattr(cli, "run_case", out_of_memory)
     target = _corpus(tmp_path, greedy=_PASSES)
-    (record,) = run([str(target)]).errors
+    (record,) = run_corpus(_asked(target)).errors
     assert record.kind is ErrorKind.RESOURCE
     assert record.scope is Scope.CASE
     assert record.source == target / "greedy.lp"
@@ -90,11 +105,12 @@ def test_a_case_that_exhausts_a_resource_is_filed_apart_from_a_broken_program(
 def test_a_corpus_that_cannot_be_discovered_produces_no_cases_and_one_error(
     tmp_path: Path,
 ) -> None:
-    outcome = run([str(tmp_path / "nowhere.lp")])
+    outcome = run_corpus(_asked(tmp_path / "nowhere.lp"))
     (record,) = outcome.errors
     assert outcome.cases == ()
     assert record.kind is ErrorKind.DISCOVERY
     assert record.scope is Scope.CORPUS, "nothing was discovered, so this belongs to no case"
+    assert record.source is None, "and a target that is not one file names no one file"
 
 
 def test_a_corpus_fault_on_a_named_file_names_that_file(tmp_path: Path) -> None:
@@ -103,18 +119,19 @@ def test_a_corpus_fault_on_a_named_file_names_that_file(tmp_path: Path) -> None:
     # diagnostic's own provenance is what the reader follows there instead.
     named = tmp_path / "malformed.lp"
     named.write_text(_MALFORMED_CONTRACT, encoding="utf-8")
-    (from_the_file,) = run([str(named)]).errors
+    (from_the_file,) = run_corpus(_asked(named)).errors
     assert from_the_file.scope is Scope.CORPUS
     assert from_the_file.source == named
 
-    (from_the_directory,) = run([str(tmp_path)]).errors
+    (from_the_directory,) = run_corpus(_asked(tmp_path)).errors
     assert from_the_directory.scope is Scope.CASE, "inside a corpus it is one file among others"
 
 
 def test_a_case_the_deadline_did_not_reach_is_filed_against_that_case(tmp_path: Path) -> None:
     target = _corpus(tmp_path, first=_PASSES, second=_PASSES)
-    outcome = run([str(target), "--deadline", "0"])
+    outcome = run_corpus(_asked(target, deadline=0.0))
     assert outcome.cases == (), "a deadline of zero is past before the first case is dispatched"
+    assert len(outcome.errors) == 2, "one record per case, so a case cannot be filed twice"
     assert {record.kind for record in outcome.errors} == {ErrorKind.DEADLINE}
     assert {record.scope for record in outcome.errors} == {Scope.CASE}
     assert {record.source for record in outcome.errors} == {
@@ -124,30 +141,41 @@ def test_a_case_the_deadline_did_not_reach_is_filed_against_that_case(tmp_path: 
 
 
 def test_a_case_that_passes_is_recorded_in_no_error_register(tmp_path: Path) -> None:
-    outcome = run([str(_corpus(tmp_path, good=_PASSES))])
+    outcome = run_corpus(_asked(_corpus(tmp_path, good=_PASSES)))
     assert outcome.errors == ()
-    assert len(outcome.cases) == 1
+    (only,) = outcome.cases
+    assert only.verdict is Verdict.PASS
 
 
-@pytest.mark.parametrize(
-    "flags",
-    [[], ["--strict"], ["--deadline", "0"]],
-    ids=["plain", "strict", "deadline"],
-)
-def test_the_status_a_process_returns_is_the_status_of_the_run_it_produced(
-    tmp_path: Path, flags: list[str]
+def test_the_status_a_process_returns_is_read_off_the_run_it_produced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The document a consumer stores and the number the shell sees come from one value, so they
-    # cannot come to disagree about the same run.
-    target = str(_corpus(tmp_path, good=_PASSES, broken=_WILL_NOT_GROUND))
-    assert main([target, *flags]) == exit_status(run([target, *flags]))
+    # Composition rather than coincidence: the console entry must hand the run's outcome to the one
+    # status function, not reach the same numbers a second way. Comparing two executions could not
+    # tell those apart, and on a corpus near a time bound it would compare two different runs.
+    seen: list[RunOutcome] = []
+
+    def only_status(outcome: RunOutcome) -> int:
+        seen.append(outcome)
+        return 99
+
+    monkeypatch.setattr(cli, "exit_status", only_status)
+    target = _corpus(tmp_path, good=_PASSES, broken=_WILL_NOT_GROUND)
+    assert main([str(target)]) == 99, "the status is whatever reading the outcome returned"
+    (outcome,) = seen
+    assert len(outcome.cases) == 1, "and the outcome read is the one the run produced"
+    assert len(outcome.errors) == 1
 
 
-def test_the_dry_run_is_not_a_run(tmp_path: Path) -> None:
-    # It decides nothing, so there is no outcome to hand back: an outcome built from it would
-    # report a corpus of cases as a run of none.
-    with pytest.raises(ValueError, match="dry run"):
-        run([str(_corpus(tmp_path, good=_PASSES)), "--explain"])
+def test_a_dry_run_cannot_be_asked_for_as_a_run() -> None:
+    # The mode that produces no run is not an invocation with a flag set but a different thing to
+    # do, so the runner has nothing to refuse: it is unrepresentable rather than guarded.
+    assert {field.name for field in fields(Invocation)} == {
+        "target",
+        "strict",
+        "budget",
+        "deadline",
+    }
 
 
 def test_every_discovered_case_reaches_exactly_one_register(tmp_path: Path) -> None:
@@ -157,10 +185,63 @@ def test_every_discovered_case_reaches_exactly_one_register(tmp_path: Path) -> N
         will_not_ground=_WILL_NOT_GROUND,
         malformed=_MALFORMED_CONTRACT,
     )
-    outcome = run([str(target)])
+    outcome = run_corpus(_asked(target))
     assert isinstance(outcome, RunOutcome)
-    filed = [case.case.path for case in outcome.cases]
+    filed = [outcome_of_case.case.contract_source for outcome_of_case in outcome.cases]
     for record in outcome.errors:
         assert record.source is not None, "a fault that stopped one case names the file"
         filed.append(record.source)
     assert sorted(filed) == sorted(target.glob("*.lp"))
+
+
+def _mixed_hygiene(root: Path) -> Path:
+    """A corpus with one of each observation: a case that names no solver, and a contract-free
+    file nothing includes."""
+    target = _corpus(root, case=_PASSES)
+    (target / "lib.lp").write_text("helper(1).\n", encoding="utf-8")
+    return target
+
+
+def test_an_observation_the_run_stayed_silent_about_is_still_recorded(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The dial decides what is printed and what fails the run; it does not decide what was seen. A
+    # consumer applies its own policy to the observations, which it cannot do if the run has
+    # already dropped the ones this invocation chose to stay quiet about.
+    target = _mixed_hygiene(tmp_path)
+    graded = {record.kind: record for record in run_corpus(_asked(target)).hygiene}
+    assert graded[HygieneKind.UNDECLARED_SOLVER].severity is Severity.SILENT
+    assert graded[HygieneKind.UNDECLARED_SOLVER].source == target / "case.lp"
+    assert graded[HygieneKind.ORPHAN_LIBRARY].severity is Severity.WARNING
+    assert graded[HygieneKind.ORPHAN_LIBRARY].source == target / "lib.lp"
+    reported = capsys.readouterr().err
+    assert "lib.lp" in reported, "the warned one is said once"
+    assert "case.lp" not in reported, "and the silent one is recorded without being said"
+
+
+def test_the_strictness_dial_regrades_the_same_observations(tmp_path: Path) -> None:
+    target = _mixed_hygiene(tmp_path)
+    strictly = run_corpus(_asked(target, strict=True)).hygiene
+    assert {record.severity for record in strictly} == {Severity.ERROR}
+    assert {record.kind for record in strictly} == {
+        HygieneKind.ORPHAN_LIBRARY,
+        HygieneKind.UNDECLARED_SOLVER,
+    }, "the same two observations, on a different footing"
+
+
+def test_the_dry_run_records_the_plan_it_could_not_build(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Surfacing a plan that cannot be built is what the dry run is for, and such a plan is
+    # elenctic's own fault rather than the corpus's. The mode hands back only a status, so what it
+    # filed is asserted against the records themselves.
+    def misroute(expectation: object, theory_in_force: bool = False) -> object:
+        raise RoutingError("a stale route")
+
+    monkeypatch.setattr(cli, "runs_for", misroute)
+    target = _corpus(tmp_path, bad=_PASSES)
+    (record,) = cli._explain(discovery.inspect_corpus(target).cases)
+    capsys.readouterr()
+    assert record.kind is ErrorKind.HARNESS
+    assert record.scope is Scope.CASE
+    assert record.source == target / "bad.lp"

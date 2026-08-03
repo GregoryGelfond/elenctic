@@ -201,15 +201,26 @@ def test_the_dry_run_reports_a_file_it_could_not_use_and_still_narrates_the_rest
     assert "@model" in captured.out, "the case that could be planned is still planned"
 
 
+@pytest.mark.parametrize(
+    "flags", [["--explain"], ["--explain", "--strict"]], ids=["plain", "strict"]
+)
 def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], flags: list[str]
 ) -> None:
     # The dry run narrates a plan; it produces no verdicts, so it has no cases to count. A tally
     # here could only be read as a result, and the honest number would be zero passed out of a
     # corpus of several — which is worse than saying nothing.
-    write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
-    write(tmp_path / "encodings/more/e.lp", "b. #show b/0.\n% @expect sat\n% @model { b }\n")
-    status = main([str(tmp_path / "encodings"), "--explain"])
+    # The solver is declared so that --strict has no hygiene to escalate: what is under test here
+    # is that the dial grades observations without deciding whether to solve at all.
+    write(
+        tmp_path / "encodings/good/e.lp",
+        "a. #show a/0.\n% @elenctic solver clingo\n% @expect sat\n% @model { a }\n",
+    )
+    write(
+        tmp_path / "encodings/more/e.lp",
+        "b. #show b/0.\n% @elenctic solver clingo\n% @expect sat\n% @model { b }\n",
+    )
+    status = main([str(tmp_path / "encodings"), *flags])
     captured = capsys.readouterr()
     assert status == 0
     assert "passed" not in captured.out, "a dry run reports a plan, never a score"

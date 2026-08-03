@@ -11,6 +11,10 @@ error rather than a mistake to be caught in review. What the types cannot enforc
 discovered case *reaches* one of the lists; that is the case-atomicity invariant, and the property
 test is its mechanized check.
 
+The :class:`Invocation` a run was given lives here too. It is not something a run produced, but it
+is one of the shapes a consumer decoding the output meets, and a shape with two homes is a shape
+that drifts.
+
 Every record here is built by keyword. These are the shapes a consumer decoding the run's output
 meets, and that output identifies a field by its name; constructing them by position would give the
 same data a second identity, one that a field inserted later silently re-means. It also closes the
@@ -35,6 +39,7 @@ __all__ = [
     "ErrorRecord",
     "HygieneKind",
     "HygieneRecord",
+    "Invocation",
     "RunOutcome",
     "Scope",
     "Severity",
@@ -181,6 +186,22 @@ class HygieneRecord:
     severity: Severity
     source: Path
     message: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Invocation:
+    """What a run was asked to do: the settled form of a command line, and the provenance a stored
+    report needs for its exit status to be reconstructed by a reader who has only the report.
+
+    It is what the runner takes, so a mode that produces no run has no way to be expressed here —
+    a dry run is not an invocation with a flag set but a different thing to do, and keeping it out
+    of this type is what makes running total rather than something that has to refuse.
+    """
+
+    target: Path
+    strict: bool
+    budget: float
+    deadline: float | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
