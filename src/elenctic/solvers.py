@@ -74,9 +74,9 @@ __all__ = ["TIME_BUDGET", "run_clingcon", "run_clingo", "solve"]
 # needed more of the search go UNDECIDED.
 TIME_BUDGET: float = 30.0
 
-# The companion bound to TIME_BUDGET, over the other exhaustible resource. An enumerating solve
+# The companion bound to TIME_BUDGET, over the other resource a run can use up. An enumerating solve
 # holds every model it is shown, and a time budget says nothing about how fast they arrive — a
-# program decides that — so a budget that never expires can still end in exhausted memory. High
+# program decides that — so a budget that never expires can still run out of memory. High
 # enough that no corpus reading a collection anyone means to read will meet it, and a run that does
 # meet it is reported as not having finished, which is what it is.
 #

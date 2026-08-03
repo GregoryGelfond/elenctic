@@ -58,11 +58,11 @@ class ErrorKind(Enum):
     A growable vocabulary: a consumer that meets a value it does not know treats it as one it
     cannot act on specifically, which is why the actionability split below is the closed one.
     Growable is what lets a locus be named for what it is: neither a deadline the run passed nor a
-    memory exhaustion is a malformed program, and filing either as one would tell an author their
-    encoding is broken when it is not.
+    resource it ran out of is a malformed program, and filing either as one would tell an author
+    their encoding is broken when it is not.
 
     The values name loci, not exception classes. Two of these arrive as no exception at all — a
-    deadline is a clock the run passed, and an exhausted resource arrives as a built-in — so a
+    deadline is a clock the run passed, and a resource running out arrives as a built-in — so a
     vocabulary of class names would promise an import that does not exist for a third of it.
     """
 

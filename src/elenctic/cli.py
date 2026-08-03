@@ -170,7 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         produced = explain_corpus(invocation) if args.explain else run_corpus(invocation)
         return exit_status(produced)
     except MemoryError:
-        # The backstop, for an allocation that fails where no case owns it. A case that exhausts
+        # The backstop, for an allocation that fails where no case owns it. A case that runs out of
         # memory is caught in the run loop and costs only its own result; reaching this frame means
         # there was no case to report it against. Being unable to *bound* the resource — clingo's
         # API offers neither a clock nor a size limit on grounding — is not a reason to be unable
@@ -579,7 +579,7 @@ def _run(
             errors.append(_case_error(ErrorKind.PROGRAM, case, str(exc)))
             continue
         except MemoryError:
-            # Reported against the case that exhausted it, and filed with the other cases that
+            # Reported against the case that ran out of it, and filed with the other cases that
             # could not be run, so the corpus keeps every result it had already earned. Nothing is
             # bounded by this — the grounder offers no size limit and so neither can elenctic —
             # but what it costs is one case's result rather than the whole run's. A resource the
