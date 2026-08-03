@@ -470,9 +470,15 @@ def _optimal_enum_two_phase(
         # take that back. clingo's unsatisfiable bit reports the solve step that produced it, and
         # this is a second step on the control the first one exhausted — so a phase that comes back
         # without a model has failed to enumerate the class, not discovered there was nothing to
-        # enumerate. Routed to the unsatisfiable arm it would say the program has no answer set,
-        # and every tag that PASSes on an empty AS(P) would be satisfied by a program that
-        # satisfies none of them.
+        # enumerate. Routed to the unsatisfiable arm it said AS(P) = ∅ about a program with models,
+        # which every optimal-base tag reports as a definite FAIL — a decided-wrong verdict where
+        # the honest answer is that nothing was decided, and one contradicted within the same
+        # report by the `@expect sat` riding its own run.
+        #
+        # Tested over `not satisfiable` rather than over the unsatisfiable bit alone: a phase 2
+        # cancelled before it collected anything settles nothing either, and falling through with
+        # an empty collector would read a cost off it and accuse the corpus of having no objective
+        # — one whose optimum phase 1 had just proven.
         return SolveOutcome(Inconclusive(), conclusion)
     shape = _consistent_shape(Mode.OPTIMAL_ENUM, enumerator, projects_to_shown, conclusion)
     if shape is None:

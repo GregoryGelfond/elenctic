@@ -78,8 +78,10 @@ encodings/drinks/drinks.lp [clingo]
         @brave ({ coffee, tea }) — reads {brave}
 ```
 
-A tag a contract may write more than once is shown with the claim it carries, so two lines of the
-same tag are told apart before anything is solved.
+A tag a contract may write more than once is shown with the claim it carries, so two lines making
+different claims are told apart before anything is solved. Two lines making the *same* claim are
+not: the dry run shows what each check reads, and they read the same thing. A verdict names the
+line, so the report tells them apart even when the plan cannot.
 
 When a contract is wrong — say you claim `@cautious { tea }`, but `tea` is only in one menu —
 elenctic tells you what it expected, what the program actually does, and the line of the claim it

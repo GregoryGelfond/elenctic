@@ -18,7 +18,7 @@ from clingo import Control, Function, Model, Symbol
 from clingo.solving import SolveResult
 
 from elenctic import solvers
-from elenctic.checks import count_is, count_optimal_is
+from elenctic.checks import cost_is, count_is, count_optimal_is
 from elenctic.program import ProgramError
 from elenctic.result import (
     Conclusion,
@@ -163,14 +163,16 @@ def test_a_second_phase_that_reports_no_model_never_calls_the_program_unsatisfia
     # Phase 1 proves the optimum, which it can only do by finding a model — so the program HAS an
     # answer set, and nothing phase 2 reports can take that back. clingo's unsatisfiable bit says
     # "no model in this solve step", and phase 2 is a second step on the control the first one just
-    # exhausted; reading it as a statement about the program lets a satisfiable program be reported
-    # as having none. That is a false PASS and not merely a wrong diagnostic: every tag that PASSes
-    # on an empty AS(P) — `@expect unsat`, `@count 0`, `@count optimal 0` — would be satisfied by
-    # a program that satisfies none of them.
+    # exhausted; reading it as a statement about the program made every optimal-base tag report a
+    # definite FAIL saying AS(P) = ∅ over a program with models — a decided-wrong verdict where
+    # nothing was decided, contradicted inside the same report by the `@expect sat` that rides its
+    # own run and PASSes. No tag that PASSes on an empty AS(P) can reach an optimal-enumeration run
+    # (`@expect unsat` routes to DEFAULT; `@count 0` is legal only with `@expect unsat` and is
+    # dropped there), so the reachable damage was the wrong verdict, not a claim wrongly upheld.
     #
     # Forced rather than waited for. The state showed up on one platform's continuous integration
-    # and not on the other's, and a test that can only be reached by losing a race is a test that
-    # reports the race.
+    # and never here, and a test that can only be reached by losing a race is a test that reports
+    # the race.
     real = solvers._solve_under_budget
     solves = 0
 
@@ -182,7 +184,9 @@ def test_a_second_phase_that_reports_no_model_never_calls_the_program_unsatisfia
         completed, result = real(control, on_model, budget)
         if solves == 1:
             return completed, result
-        return True, SolveResult(_UNSATISFIABLE | _EXHAUSTED)  # type: ignore[no-untyped-call]
+        forced = SolveResult(_UNSATISFIABLE | _EXHAUSTED)  # type: ignore[no-untyped-call]
+        assert forced.unsatisfiable and forced.exhausted, "the forced result is the state at issue"
+        return True, forced
 
     monkeypatch.setattr(solvers, "_solve_under_budget", no_model_in_the_second_phase)
     outcome = run_clingo(Mode.OPTIMAL_ENUM, "1 {a; b} 1. c. #minimize { 1,c : c }. #show a/0.")
@@ -190,8 +194,12 @@ def test_a_second_phase_that_reports_no_model_never_calls_the_program_unsatisfia
     assert not isinstance(outcome.determination, Inconsistent), (
         "phase 1 found a model, so the program has an answer set"
     )
-    assert count_optimal_is(0, line=1)(outcome).verdict is not Verdict.PASS, (
-        "a tag that PASSes on an empty AS(P) must not be satisfied by a program with models"
+    assert cost_is((1,), line=1)(outcome).verdict is Verdict.UNDECIDED, (
+        "the class was not enumerated, so the reading over it is undecided — never a verdict"
+    )
+    assert outcome.conclusion is Conclusion.EXHAUSTED, (
+        "refusing the determination must not also fabricate how the search ended: a search that "
+        "closed its space is not one a larger budget would change"
     )
 
 

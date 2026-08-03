@@ -115,6 +115,22 @@ def test_a_shared_message_under_different_labels_does_not_collapse() -> None:
     assert "  [FAIL] @brave { a } (line 3): no consequences — AS(P) = ∅" in out
 
 
+def test_undecided_claims_collapse_the_same_way_a_failing_one_does() -> None:
+    # The commoner shape, and the one every other fixture here misses: a repeated tag whose run hit
+    # the budget gives one partial-reading message per claim, identical in every word. Nothing
+    # about the collapse is specific to FAIL, and a rule that read the verdict rather than grouping
+    # on it would state this fact three times over.
+    partial = "the search was cut short before covering the collection this reads"
+    reports = tuple(
+        _report("@cautious", partial, subject=f"{{ a{n} }}", line=n, verdict=Verdict.UNDECIDED)
+        for n in (2, 3, 4)
+    )
+    out = render(_case(), reports)
+    assert f"  [UNDECIDED] @cautious: {partial}" in out
+    assert "         applied to { a2 } (line 2), { a3 } (line 3), { a4 } (line 4)" in out
+    assert out.count(partial) == 1
+
+
 def test_a_fail_never_collapses_into_an_undecided() -> None:
     # FAIL and UNDECIDED are kept distinct everywhere else in this renderer, and a row carrying one
     # tag would have to claim a verdict for claims that did not earn it.
@@ -130,12 +146,37 @@ def test_a_fail_never_collapses_into_an_undecided() -> None:
 # --- the constraints the collapse must not violate ---
 
 
-def test_collapsing_cannot_move_the_case_verdict() -> None:
-    # The verdict folds a *set*, so it is arithmetically immune — asserted rather than assumed,
-    # because this is the one way a display change could become a correctness change.
-    reports = _cautious_on(2, 3, 4)
-    assert case_verdict(reports) is case_verdict(reports[:1])
-    assert case_verdict(reports) is Verdict.FAIL
+@pytest.mark.parametrize(
+    "reports",
+    [
+        pytest.param(_cautious_on(2, 3, 4), id="collapsing"),
+        pytest.param(
+            (
+                _report("@cautious", _UNSAT_CAUTIOUS, subject="{ a }", line=2),
+                _report("@count", "expected 2 models, got 0", line=3, verdict=Verdict.UNDECIDED),
+            ),
+            id="not-collapsing",
+        ),
+        pytest.param(
+            (
+                _report("@count", "budget hit", line=2, verdict=Verdict.UNDECIDED),
+                _report("@cautious", _UNSAT_CAUTIOUS, subject="{ a }", line=3),
+            ),
+            id="undecided-group-first",
+        ),
+    ],
+)
+def test_the_header_reports_the_case_verdict_however_the_rows_were_grouped(
+    reports: tuple[CheckReport, ...],
+) -> None:
+    # Asserted through `render`, because that is where a display change could become a correctness
+    # change: the verdict folds a *set* of every report, and a header derived instead from the
+    # grouped rows would take the first group's verdict — which, with groups in first-appearance
+    # order, is UNDECIDED for a case the exit code calls FAIL. Reading `case_verdict` twice would
+    # prove only that `case_verdict` is a function of its argument.
+    header = render(_case(), reports).splitlines()[0]
+    assert header.endswith(f"— {case_verdict(reports).name}")
+    assert header.endswith("— FAIL"), "a definite failure sinks the case whatever else it holds"
 
 
 def test_every_collapsed_claim_appears_in_the_continuation() -> None:
@@ -149,9 +190,11 @@ def test_every_collapsed_claim_appears_in_the_continuation() -> None:
 
 def test_the_continuation_orders_claims_by_line() -> None:
     # Deterministic bytes for the same input, and ascending because that is the order the reader
-    # will meet them in when they open the file.
-    out = render(_case(), tuple(reversed(_cautious_on(2, 3, 4))))
-    assert "applied to { a2 } (line 2), { a3 } (line 3), { a4 } (line 4)" in out
+    # will meet them in when they open the file. Lines 2, 10 and 11 rather than 2, 3 and 4: single
+    # digits sort the same way lexicographically, so any fixture using them is also passed by an
+    # implementation that orders on the subject text — or on nothing at all.
+    out = render(_case(), tuple(reversed(_cautious_on(2, 10, 11))))
+    assert "applied to { a2 } (line 2), { a10 } (line 10), { a11 } (line 11)" in out
 
 
 def test_a_collapsed_subject_is_made_legible() -> None:

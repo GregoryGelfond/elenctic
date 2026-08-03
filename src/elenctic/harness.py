@@ -69,11 +69,20 @@ def case_verdict(reports: tuple[CheckReport, ...]) -> Verdict:
     return Verdict.PASS
 
 
-# The continuation line hangs under the row it belongs to, past the "  [FAIL] " that opens one, so
-# it reads as part of that row rather than as a row of its own. Fixed rather than measured off the
-# verdict, because a continuation that started in a different column per verdict would make a
-# column carry meaning it does not have.
+# The continuation line is indented past the "  [" that opens a row, so it reads as part of the row
+# above rather than as a row of its own. One fixed width rather than one measured off each verdict:
+# a continuation that started in a different column per verdict would make the column carry meaning
+# it does not have, and every continuation would move if a verdict were ever renamed. It clears the
+# widest thing it must clear — the "  [FAIL] " that opens the commoner row — and sits inside the
+# opening of a longer "  [UNDECIDED] ", which still reads as continuation because no row begins
+# there.
 _CONTINUATION: Final = " " * len("  [FAIL] ")
+
+# The continuation is deliberately NOT truncated the way a rendered *set* is (`checks._braces`).
+# The two bound different things: a set comes from the program and is as large as the program makes
+# it, while this list is one entry per contract line an author wrote, so its length is bounded by
+# what someone typed. A generated corpus could still make it long; that is worth revisiting with a
+# real case rather than pre-empting, and a cap here would have to say how much it left out.
 
 
 def _claim(report: CheckReport) -> str:

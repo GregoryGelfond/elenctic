@@ -37,6 +37,17 @@ means for them — a reader deciding whether to upgrade should not have to read 
     larger --budget may decide it
   ```
 
+- **An optimal-class run that could not finish enumerating no longer reports the program as having
+  no answer set.** The optimal-class modes solve twice: prove the optimum, then enumerate at it.
+  The second solve's "no model" answer was read as a statement about the program, when it is a
+  statement about that solve — by then the first has already found a model, so the program is known
+  to have an answer set. A case whose optimal class was too large to enumerate inside `--budget`
+  therefore came back with every optimal-base tag reporting `AS(P) = ∅`, as a definite failure,
+  contradicted in the same report by the `@expect sat` that passed. Such a case is now UNDECIDED —
+  it could not be decided, which is what happened — so a corpus that used to fail here will report
+  differently, and `@cost`, `@optimal`, `@cautious optimal`, `@brave optimal`, `@count optimal` and
+  `@assign optimal` are the tags affected.
+
 ### Changed
 
 - **A failure now names the contract line it judged, and repeated claims no longer repeat one
@@ -46,10 +57,10 @@ means for them — a reader deciding whether to upgrade should not have to read 
   once and the claims follow it:
 
   ```
-  [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
+    [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
 
-  [FAIL] @cautious: no cautious consequences — AS(P) = ∅
-         applied to { tea } (line 10), { coffee } (line 11), { biscuit } (line 12)
+    [FAIL] @cautious: no cautious consequences — AS(P) = ∅
+           applied to { tea } (line 10), { coffee } (line 11), { biscuit } (line 12)
   ```
 
   Anything reading this output by shape will need updating. Nothing about a verdict changed: the
