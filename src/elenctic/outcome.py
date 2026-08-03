@@ -8,8 +8,9 @@ could be produced — never about the program's answer-set behaviour, and so nev
 The three are disjoint by construction rather than by discipline: a :class:`CaseOutcome` has no
 error kind and an :class:`ErrorRecord` has no verdict, so an error costumed as a verdict is a type
 error rather than a mistake to be caught in review. What the types cannot enforce is that every
-discovered case *reaches* one of the lists; that is the case-atomicity invariant, and the property
-test is its mechanized check.
+discovered case *reaches* one of the lists; that is the case-atomicity invariant, and
+``tests/test_cli_records.py::test_every_discovered_case_reaches_exactly_one_register`` is its
+mechanised check.
 
 The :class:`Invocation` a run was given lives here too. It is not something a run produced, but it
 is one of the shapes a consumer decoding the output meets, and a shape with two homes is a shape

@@ -10,7 +10,41 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+### Added
+
+- **`--format json` — a machine-readable report, as one JSON object on standard output.** Everything
+  else a run writes moves to standard error, so standard output carries a whole document or nothing
+  at all and a consumer can parse it without filtering. Results stay in the three registers the exit
+  status is built from: `cases` holds judgments about programs, `errors` says where no judgment could
+  be made, `hygiene` holds observations about the corpus's own health. Each check carries the
+  **line** its claim was written on, so a result can be placed where the claim is, and a
+  `conclusion` saying how the search behind the verdict ended — which is what tells "the budget was
+  too small" apart from "the program is wrong". The exit status is readable off the document alone.
+
+  The default is `--format human`, which is also spellable, and which is byte-for-byte what earlier
+  versions printed. A format this version does not know is refused rather than quietly rendered as
+  prose — being handed prose where a document was expected is the failure a machine consumer would
+  find hardest to notice.
+
+- **`--print-schema`** writes the JSON Schema of that document and exits, without looking for a
+  corpus. The schema ships inside the package, so it describes the version you have rather than
+  whatever a web page says. `schema_version` changes when a field is added or removed or a closed
+  enumeration gains a member; the open-valued fields (`kind`, `solver`, a check's `tag`) may gain
+  values without one; every `message` is opaque and may be reworded at any time.
+
 ### Fixed
+
+- **A literal set whose body parses to nothing is refused, and refused as the author's mistake.**
+  `@cautious { () }` — or any body that tokenizes to no atom at all — was silently dropped, so a
+  contract that claimed something was checked for nothing and passed on that basis. Briefly it was
+  then reported as an elenctic bug, which sent the wrong reader to the wrong place. It is now a
+  contract error against the line that wrote it, naming what it read and what a litset needs, and
+  it costs that case its verdict rather than the run:
+
+  ```
+  CASE ERROR — empty.lp:2: empty literal set {()}: it parses to no literals at all,
+  and a litset needs at least one (an atom or -atom)
+  ```
 
 - **A solve cut short by `--budget` no longer throws away the answer it did reach.** A cancelled
   search still reports whether the program is satisfiable; elenctic decided the run was undecided
@@ -77,11 +111,25 @@ means for them — a reader deciding whether to upgrade should not have to read 
   elenctic's own faults, which is the point.
 
 - **A corpus-health observation now carries the grade the run gave it.** `HygieneRecord` gained a
-  `severity`: `error` under `--strict`, and otherwise `warning` for an orphan library and `silent`
+  `grade`: `error` under `--strict`, and otherwise `warning` for an orphan library and `silent`
   for an undeclared solver — the footing each observation already had. What is printed, what fails
   the run, and what a consumer is told are now read off that one field rather than each deriving it
   again from the flag, so they cannot come to disagree about a single observation. Nothing a run
   prints changed.
+
+  It is a *grade* and not a severity, deliberately. This language keeps the two vocabularies apart:
+  its severity ladder runs from debug to critical and has no member meaning *do not show this*,
+  because suppression there is a filter and not a level. A reader meeting a field called a severity
+  maps it onto a scale of severities — which works for two of these three values and fails on the
+  one whose whole purpose is that nothing be drawn for it.
+
+- **`--budget` and `--deadline` now require a positive finite number of seconds.** Converting the
+  text was as far as the parser went, so a zero, a negative, an infinity and a NaN were all accepted
+  and all reached the run. The last two have no JSON form at all, so a report carrying one could not
+  be parsed by anything it was written for; the first two are simply not durations. All four are now
+  refused before the run starts, with a diagnostic naming the flag, the value and what to ask for
+  instead. **`--deadline 0` used to mean "reach no cases"** and is now refused: a run that wants no
+  deadline leaves the flag off, which is the default.
 
 - **A failure now names the contract line it judged, and repeated claims no longer repeat one
   sentence.** Every claim carries the line it was written on, so a diagnostic can be placed against

@@ -193,6 +193,13 @@ base qualifier: `all` (the default — every answer set `AS(P)`) or `optimal` (t
 | `@query A { q(X̄) } = { B }` | the bindings yielding answer `A` are exactly `B` |
 | `@note …` | free prose, surfaced in the diagnostic |
 
+**Which tags may be written more than once.** `@cautious`, `@brave`, their two `optimal` siblings,
+and `@query` may each appear on several lines of one contract; `@note` may too. Each writing is an
+**independent claim**, with its own verdict, its own diagnostic and its own line — writing
+`@cautious { a }` and `@cautious { b }` on two lines says exactly what `@cautious { a, b }` says on
+one, but a failure names the line whose claim was false rather than the union. Every other tag may
+appear at most once.
+
 A litset `{ … }` is comma-separated and paren-aware (an atom may contain commas, e.g.
 `included(s,a,2,1)`), and may span continuation `%` lines while a brace stays open. An `@`-tag's
 payload runs to the end of its line, so write explanatory comments on their own lines (a `%%` or `%`
@@ -301,10 +308,96 @@ $ elenctic [target]            # default target tests/; exit 0 pass, 1 fail/unde
 $ elenctic tests/feasible.lp   # run a single case file
 $ elenctic tests/ --explain    # narrate the derived run plan, without solving
 $ elenctic tests/ --strict     # fail the run on any corpus-hygiene issue (the CI gate)
-$ elenctic tests/ --deadline 600   # stop after 10 minutes; cases not reached are reported as not run
+$ elenctic tests/ --budget 60      # per-solve time limit (default 30s)
+$ elenctic tests/ --deadline 600   # stop starting cases after 10 minutes; those not reached are reported as not run
+$ elenctic tests/ --format json    # the machine-readable report (below)
+$ elenctic --print-schema          # the JSON schema of that report, without running anything
 ```
 
-### The corpus is trusted input
+`--budget` and `--deadline` each take a **positive finite** number of seconds. A run that wants no
+practical per-solve limit asks for a large number; a run that wants no deadline leaves `--deadline`
+off, which is the default.
+
+### Machine-readable output
+
+`--format json` writes the whole run as **one JSON object on standard output**, and moves everything
+else — the per-case report, the hygiene summary, every diagnostic — to standard error. Standard
+output carries a whole document or nothing at all, so a consumer can parse it without filtering.
+Running a single case file:
+
+```console
+$ elenctic drinks.lp --format json
+{
+  "schema_version": 1,
+  "invocation": { "target": "drinks.lp", "strict": false, "budget": 30.0, "deadline": null },
+  "summary": { "total": 1, "passed": 0, "failed": 1, "undecided": 0, "errors": 0, "hygiene": 0 },
+  "cases": [
+    {
+      "source": "drinks.lp",
+      "solver": "clingo",
+      "verdict": "fail",
+      "checks": [
+        {
+          "tag": "@cautious",
+          "subject": "{ tea }",
+          "status": "fail",
+          "message": "{ tea } ⊄ ⋂ AS(P) = { } (missing: { tea })",
+          "line": 3,
+          "conclusion": "exhausted"
+        },
+        {
+          "tag": "@expect sat",
+          "subject": "",
+          "status": "pass",
+          "message": "AS(P) ≠ ∅ — a model exists",
+          "line": 2,
+          "conclusion": "incomplete"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "hygiene": []
+}
+```
+
+(`invocation`, `summary` and each check are shown on one line here for brevity; the real output is
+indented throughout.)
+
+**Three registers, and confusing them is the one mistake worth guarding against.** A case in `cases`
+received a judgment about the program under test. An entry in `errors` says *no* judgment could be
+made, and why — usually not a fault in the contract at all. An entry in `hygiene` is an observation
+about the corpus's own health and is neither. Draw a failure indicator for a non-passing case; never
+for an error.
+
+**The exit status is readable off the document alone**, in this order: `3` if any error has
+`is_elenctic_bug` true; otherwise `2` if there is any error at all, or any observation graded
+`error`; otherwise `1` if any case's verdict is not `pass`; otherwise `0`.
+
+**Each check carries the line its claim was written on**, 1-based, so a result can be placed where
+the claim is rather than against the file. `conclusion` says how the search behind the verdict ended,
+which is what tells "the budget was too small" apart from "the program is wrong".
+
+**Three tiers of change, so you know what you may rely on.** `schema_version` changes when a field is
+added or removed, or when one of the closed enumerations (`verdict`, `status`, `conclusion`, `scope`,
+`grade`) gains a member. The open-valued string fields — `kind`, `solver`, and a check's `tag` — may
+gain values *without* a version bump, so treat an unfamiliar one as a value rather than an error.
+Every `message` is **opaque**: display it, do not parse it, and expect its wording to change.
+
+Paths in the document follow the target as you named it, so a relative target yields relative paths;
+resolve them against the directory you ran from, which the document does not record.
+
+`elenctic --print-schema` writes the JSON Schema of this document and exits, without looking for a
+corpus. Two combinations are refused rather than guessed at: `--explain --format json` (a dry run
+narrates a plan, and this version describes no document for one), and a `--budget` or `--deadline`
+that is not a positive finite number of seconds. A refused command line produces **no** document, so
+check the exit status before parsing — and note that `--print-schema` puts the *schema* on that
+stream, which parses as JSON and has none of the fields above.
+
+Redirecting standard error onto standard output (`--format json 2>&1`) gives away the guarantee by
+your own hand.
+
+### The corpus is code you run
 
 elenctic runs the programs it is given, so a corpus is as trusted as code you would run. It is
 built to be well-behaved about that — a case may only `#include` files from inside the corpus it

@@ -1,6 +1,6 @@
 """Case discovery — the content-keyed corpus walk.
 
-``discover(target)`` runs a single ``.lp`` file (issue #3) or walks a directory, collecting every
+``discover(target)`` runs a single ``.lp`` file or walks a directory, collecting every
 file that carries a contract. The **collection predicate**: a ``.lp`` file is a *case* iff it
 contains a known elenctic tag (:func:`~elenctic.expectation.has_contract`), else a *library* — an
 ``#include`` target, never run directly. The solver is **declared** (``@elenctic solver``, default
@@ -159,7 +159,7 @@ class _Walk:
 
 
 def discover(target: Path) -> tuple[Case, ...]:
-    """Discover cases under ``target``. A single file is one case (issue #3); a
+    """Discover cases under ``target``. A single file is one case; a
     directory is walked (sorted, deterministic) for contract-bearing ``.lp`` files. An explicitly
     named contract-free file is loud (never a silent no-op); a contract-free file in a walked
     directory is a library (skipped). Raises :class:`DiscoveryError` on a precondition violation,
