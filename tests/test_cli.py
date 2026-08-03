@@ -122,7 +122,7 @@ def test_cli_explain_narrates_reads_and_the_projection_decision(
     out = capsys.readouterr().out
     assert status == 0
     assert "reads {shown census}" in out  # @model narrates its read token
-    assert "projects: yes" in out  # the shown-only run projects (the issue-#1 acceleration)
+    assert "projects: yes" in out  # the shown-only run projects
     assert "reads {full census}" in out  # @count narrates the full token
     assert "projects: no" in out  # the full-census run suppresses projection
 

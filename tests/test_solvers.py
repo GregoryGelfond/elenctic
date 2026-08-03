@@ -487,7 +487,11 @@ def test_run_clingo_suppresses_clingo_diagnostics_on_stderr(
     # captures clingo's logger (as program.inspect does) so it never leaks to stderr. elenctic owns
     # its diagnostics; a genuine ground/solve error still raises, unaffected by the logger.
     run_clingo(Mode.ENUM_ALL, program="p :- q. #show p/0.")
-    assert "does not occur" not in capfd.readouterr().err
+    captured = capfd.readouterr()
+    assert "does not occur" not in captured.err
+    # Nor to standard output, which a machine-readable report has to itself: read at the descriptor
+    # level, so a write from below the Python stream would be counted here too.
+    assert captured.out == ""
 
 
 def test_run_clingcon_suppresses_solver_diagnostics_on_stderr(
@@ -497,4 +501,6 @@ def test_run_clingcon_suppresses_solver_diagnostics_on_stderr(
     from elenctic.solvers import run_clingcon
 
     run_clingcon(Mode.ENUM_ALL, program="p :- q. #show p/0.")
-    assert "does not occur" not in capfd.readouterr().err
+    captured = capfd.readouterr()
+    assert "does not occur" not in captured.err
+    assert captured.out == ""  # nor to standard output, as for clingo above

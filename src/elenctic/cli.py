@@ -21,9 +21,11 @@ never costs the run every other case's result. This is the standalone runner; th
 """
 
 import argparse
+import os
 import sys
 import traceback
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from time import monotonic
 from typing import assert_never
@@ -293,6 +295,46 @@ def _unrunnable_records(unrunnable: tuple[tuple[Path, Exception], ...]) -> tuple
         ErrorRecord(kind=error_kind(fault), scope=Scope.CASE, source=path, message=str(fault))
         for path, fault in unrunnable
     )
+
+
+@contextmanager
+def _stdout_to_stderr() -> Iterator[None]:
+    """Send everything written to the process's standard output to standard error instead, for the
+    duration of the region.
+
+    Under a machine-readable format the report is the only thing that may appear on standard
+    output: one foreign byte and the document will not parse. The redirect is at the file-descriptor
+    level rather than at ``sys.stdout``, because rebinding the Python object leaves anything writing
+    to the descriptor beneath it untouched — a C library reached through a binding writes where it
+    chooses, and a guarantee that holds only while a dependency keeps choosing well is not one. What
+    would otherwise land beside the document is moved rather than discarded: a reader still sees it,
+    just not where a parser is looking.
+
+    The two boundaries decide which stream holds what, which is why the buffer is emptied at each:
+    output written before the region belongs on standard output, and output written inside it
+    belongs with the diagnostics. Within the region the two streams are not ordered against each
+    other — standard error is line-buffered and standard output need not be — so writes to the two
+    can reach a reader in an order other than the one they were made in.
+
+    The caller's side of the bargain: nothing inside the region may write to standard output, since
+    for the length of it there is no way to reach it. Anything that asks the descriptor about itself
+    — whether it is a terminal, how wide it is — is answered for standard error while it is open.
+    """
+    sys.stdout.flush()
+    saved = os.dup(1)
+    try:
+        os.dup2(2, 1)
+        yield
+    finally:
+        # The flush guards the restore, because it is the step that can fail: it is issued against
+        # standard error, so whatever makes standard error unwritable meets it here. Left
+        # unguarded, it would keep the descriptor diverted for the rest of the process and send the
+        # report itself to the one stream this region exists to keep it out of.
+        try:
+            sys.stdout.flush()
+        finally:
+            os.dup2(saved, 1)
+            os.close(saved)
 
 
 def _report_hygiene(hygiene: tuple[HygieneRecord, ...]) -> None:
