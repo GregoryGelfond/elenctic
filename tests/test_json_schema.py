@@ -111,8 +111,22 @@ _NEAR_MISSES: list[tuple[str, tuple[str | int, ...], Any]] = [
     ("a negative count", ("summary", "total"), -1),
     ("a budget that is absent rather than a number", ("invocation", "budget"), None),
     ("a budget of no seconds at all", ("invocation", "budget"), 0),
+    ("a budget written as text", ("invocation", "budget"), "60"),
     ("a deadline written as text", ("invocation", "deadline"), "60"),
     ("a deadline of no seconds at all", ("invocation", "deadline"), 0),
+    # One row per count rather than one for the register they happen to sit in. A table that varies
+    # which object is wrong but always picks the same field inside it leaves every sibling free: the
+    # constraint on `total` was pinned and its five neighbours were each deletable with this whole
+    # suite green. The fractional row is the one that catches a widening to `number`, and it has to
+    # be fractional — an integral float validates against `"type": "integer"`.
+    *(
+        (described, ("summary", count), value)
+        for count in ("total", "passed", "failed", "undecided", "errors", "hygiene")
+        for described, value in (
+            (f"a {count} count below zero", -1),
+            (f"a {count} count that is not whole", 1.5),
+        )
+    ),
     ("a file name that is a number", ("errors", 0, "source"), 42),
     ("an observation about no file", ("hygiene", 0, "source"), None),
     ("an actionability answered with a word", ("errors", 0, "is_elenctic_bug"), "false"),
@@ -220,7 +234,13 @@ def test_the_schema_declares_the_dialect_and_the_identity_it_is_published_under(
     schema = _schema()
 
     assert schema["$schema"] == Draft202012Validator.META_SCHEMA["$id"]
-    assert schema["$id"].endswith(f"/output-v{SCHEMA_VERSION}.schema.json")
+    # The whole identity, not just its last segment. An identifier is the one thing a consumer
+    # keys a cached copy by, so where it points is as much a part of it as what it is called —
+    # and a suffix test would let the location move while the identity claimed not to have.
+    assert schema["$id"] == (
+        "https://raw.githubusercontent.com/GregoryGelfond/elenctic/main/"
+        f"src/elenctic/schema/output-v{SCHEMA_VERSION}.schema.json"
+    )
 
 
 def test_the_corpus_these_tests_rest_on_reaches_every_register(document: dict[str, Any]) -> None:
@@ -234,8 +254,18 @@ def test_the_corpus_these_tests_rest_on_reaches_every_register(document: dict[st
 
 @pytest.mark.parametrize(
     ("strict", "budget", "deadline"),
-    [(False, TIME_BUDGET, None), (True, TIME_BUDGET, None), (False, 2.5, 60.0)],
-    ids=["default", "strict", "dialled"],
+    [
+        (False, TIME_BUDGET, None),
+        (True, TIME_BUDGET, None),
+        (False, 2.5, 60.0),
+        # The smallest durations a command line may ask for, and the direction the near-miss table
+        # cannot see: a floor raised above a legal value refuses nothing any test here submits, so
+        # the schema would come to reject the report of a run that was perfectly well made. What
+        # such a run decides is not fixed — a budget this small interrupts every solve — and none
+        # of that changes the shape, which is the whole of what is asserted.
+        (False, 0.001, 0.001),
+    ],
+    ids=["default", "strict", "dialled", "barely-positive"],
 )
 def test_a_document_a_real_run_produced_is_one_the_schema_accepts(
     tmp_path: Path, strict: bool, budget: float, deadline: float | None

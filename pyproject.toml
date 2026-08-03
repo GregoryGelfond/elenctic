@@ -64,6 +64,12 @@ pythonpath = ["tests"]  # so shared test scaffolding (tests/support.py) is impor
 strict = true
 warn_unreachable = true
 strict_equality = true
+# A name that is bound on some paths and read on all of them. Off under `strict`, and the defect it
+# names is the one a fault handler is most exposed to: the handler runs because something above it
+# did not finish, so anything bound up there may be unbound down here — and the failure arrives as a
+# second, unrelated error raised while reporting the first. Enabling it makes where a value is bound
+# a checked property rather than a reviewed one.
+enable_error_code = ["possibly-undefined"]
 files = ["src", "tests"]
 exclude = ["tests/spikes/"]
 

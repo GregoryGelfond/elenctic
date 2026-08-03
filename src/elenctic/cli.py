@@ -13,10 +13,11 @@ moves every diagnostic to standard error, so that nothing a consumer's parser wo
 beside the document; ``--print-schema`` describes that document's shape without running anything.
 
 Exit status separates the outcome registers: ``0`` all cases pass; ``1`` some case FAILed or is
-UNDECIDED (a statement about a program under test); ``2`` a fault the user can fix — a bad contract,
-a mis-shaped corpus, a program that cannot be run, a declared solver this environment does not have,
-a case that ran out of memory, a run that passed its deadline, or a corpus-health observation under
-``--strict`` — and ``3`` an elenctic bug, which
+UNDECIDED (a statement about a program under test); ``2`` a fault the user can fix — a command line
+that cannot be run, a bad contract, a mis-shaped corpus, a program that cannot be run, a declared
+solver this environment does not have, a case that ran out of memory, a run that passed its
+deadline, a corpus-health observation under ``--strict``, or a copy of elenctic carrying the modules
+and not the packaged description — and ``3`` an elenctic bug, which
 outranks the rest because a harness wrong about one case is evidence about every other. The two
 error levels ask different things of the reader, which is why they are not one: ``2`` is a corpus to
 attend to, ``3`` is a bug to report. Neither is ever a verdict. A case that cannot be run does not
@@ -111,12 +112,19 @@ _SCHEMA_UNREADABLE = (
     "is affected: running a corpus never reads this file."
 )
 
-# Why the two flags cannot be asked for together, said to whoever asked. Each is fine alone: one
-# narrates the plan a run would follow, the other writes what a run produced. There is no document
-# for a plan in this version, so the pair could only mean writing prose to the one stream that has
-# to carry a document. Unlike the messages above this one is a diagnostic and nothing else — a
-# command line that cannot be run produced no run, so there is no record for it to also be the
-# text of.
+# Everything below here is said to whoever typed a command line that cannot be run, and unlike the
+# messages above none of them is also the text of a record: such a command line produced no run, so
+# there is nothing for a record to be about.
+#
+# What to do instead of asking for a duration that is not one. The two answers differ because the
+# flags do — there is no way to spell "no per-solve budget", while a run with no deadline is the
+# default — so the deadline's remedy is to leave the flag off rather than to name a number.
+_UNBOUNDED_BUDGET = "A run that wants no practical limit asks for a large finite number."
+_UNBOUNDED_DEADLINE = "A run that wants no deadline leaves --deadline off, which is the default."
+
+# Why the two flags cannot be asked for together. Each is fine alone: one narrates the plan a run
+# would follow, the other writes what a run produced. There is no document for a plan in this
+# version, so the pair could only mean writing prose to the one stream that has to carry a document.
 _NO_MACHINE_READABLE_DRY_RUN = (
     "--explain and --format json cannot be combined. --explain narrates the plan each case would "
     "follow without solving anything, and this version describes no machine-readable form for a "
@@ -160,23 +168,27 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=TIME_BUDGET,
         metavar="SECONDS",
-        help="per-solve time budget in seconds. A budget hit before the solve decides is UNDECIDED "
-        "and never FAIL; one hit after it decides keeps what was decided, and only the checks "
-        f"that needed more of the search are UNDECIDED (default {TIME_BUDGET}s)",
+        help="per-solve time budget, a positive finite number of seconds. A budget hit before the "
+        "solve decides is UNDECIDED and never FAIL; one hit after it decides keeps what was "
+        f"decided, and only the checks that needed more of the search are UNDECIDED (default "
+        f"{TIME_BUDGET}s)",
     )
     parser.add_argument(
         "--deadline",
         type=float,
         default=None,
         metavar="SECONDS",
-        help="stop the run once it has taken this long; cases not reached are reported as not run "
-        "(off by default — --budget bounds one solve, this bounds the whole corpus)",
+        help="stop starting new cases once the run has taken this long, a positive finite number "
+        "of seconds; cases not reached are reported as not run. It is checked between cases, so a "
+        "solve already under way runs to its own --budget (off by default — --budget bounds one "
+        "solve, this bounds the whole corpus)",
     )
     parser.add_argument(
         "--print-schema",
         action="store_true",
         help="write the JSON schema of the machine-readable report to standard output and exit, "
-        "without running anything",
+        "without running anything. It is answered from the package alone, so the target and every "
+        "dial of the run are ignored — but a command line that cannot be run is still refused",
     )
     return parser
 
@@ -244,11 +256,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         traceback.print_exc()
         outcome = _fault_outcome(ErrorKind.HARNESS, f"{_INTERNAL_ERROR}: {type(exc).__name__}")
-    if machine_readable:
+    if machine_readable and not args.print_schema:
         # One write, made after the region has closed and never inside it, so standard output
         # carries a whole document or carries nothing at all — never the front half of one, cut
         # off by the fault that stopped the run.
-        sys.stdout.write(dumps(as_json(outcome, invocation)))
+        #
+        # A document reports a run, so where no run was asked for there is none: a refused command
+        # line produces nothing here, and neither does printing the description, whichever way that
+        # fails. Reporting a fault in *that* as a run would describe a corpus nothing had looked at.
+        _publish(dumps(as_json(outcome, invocation)))
     return exit_status(outcome)
 
 
@@ -265,16 +281,24 @@ def _refusal(args: argparse.Namespace) -> str | None:
     """
     if args.explain and args.format == "json":
         return _NO_MACHINE_READABLE_DRY_RUN
-    for flag, seconds in (("--budget", args.budget), ("--deadline", args.deadline)):
+    for flag, seconds, remedy in (
+        ("--budget", args.budget, _UNBOUNDED_BUDGET),
+        ("--deadline", args.deadline, _UNBOUNDED_DEADLINE),
+    ):
         # A duration is a positive finite number of seconds, and converting the text is as far as
         # the parser goes: it accepts a zero, a negative, and both spellings of a number that is
         # not one. An infinity or a NaN has no JSON form, so a report carrying one is a report the
         # consumer it was written for cannot parse — and refusing what was typed, in terms of what
         # was typed, is the only frame that still knows which flag it came from.
+        #
+        # The remedy differs by flag because what the two do about "no limit" differs. The reader
+        # most likely to type a zero here is one carrying over a solver convention in which zero
+        # means unbounded, so the sentence that tells them what to do instead is the half of the
+        # message they came for.
         if seconds is not None and not (math.isfinite(seconds) and seconds > 0):
             return (
                 f"{flag} takes a positive finite number of seconds, and this run was given "
-                f"{seconds}. A run that wants no practical limit asks for a large finite number."
+                f"{seconds}. {remedy}"
             )
     return None
 
@@ -296,8 +320,27 @@ def _print_schema() -> int:
     except OSError:
         print(f"environment error: {_SCHEMA_UNREADABLE}", file=sys.stderr)
         return exit_status(_fault_outcome(ErrorKind.DISCOVERY, _SCHEMA_UNREADABLE))
-    sys.stdout.write(description)
+    _publish(description)
     return 0
+
+
+def _publish(document: str) -> None:
+    """Put a published artefact on standard output, encoded as UTF-8 whatever this environment's
+    locale would have chosen.
+
+    Both things written this way are JSON — the report, and the description of the report's shape —
+    and JSON is UTF-8 by its own specification. Written through the text layer they would be encoded
+    in whatever the environment picked, which on a machine whose standard output is ASCII does not
+    write them at all: it raises, on a character the document is entitled to contain, and what
+    reaches the consumer is a failure to produce a report rather than the report. The encoding of a
+    published artefact belongs to the artefact.
+
+    The text layer is emptied first so that anything already written to it stays ahead of these
+    bytes. They are not flushed here: what a stream that cannot take them should do is one question
+    and this is another, and leaving it to the interpreter keeps that answer in one place.
+    """
+    sys.stdout.flush()
+    sys.stdout.buffer.write(document.encode("utf-8"))
 
 
 def run_corpus(invocation: Invocation) -> RunOutcome:
@@ -501,6 +544,12 @@ def _stdout_to_stderr() -> Iterator[None]:
     chooses, and a guarantee that holds only while a dependency keeps choosing well is not one. What
     would otherwise land beside the document is moved rather than discarded: a reader still sees it,
     just not where a parser is looking.
+
+    What it catches is every write *made while the region is open*, at whatever level it is made.
+    A writer that buffers below this process's control and empties that buffer after the region has
+    closed writes to the descriptor as it is then, which is the restored standard output; no writer
+    on the paths this drives is known to do that, and the distinction is recorded because the
+    mechanism cannot enforce it.
 
     The two boundaries decide which stream holds what, which is why the buffer is emptied at each:
     output written before the region belongs on standard output, and output written inside it

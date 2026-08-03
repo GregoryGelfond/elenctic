@@ -227,16 +227,16 @@ def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
 
 
 @pytest.mark.parametrize(
-    ("flag", "value"),
+    ("flag", "value", "echoed"),
     [
-        ("--budget", "0"),
-        ("--budget", "-1"),
-        ("--budget", "inf"),
-        ("--budget", "nan"),
-        ("--deadline", "0"),
-        ("--deadline", "-1"),
-        ("--deadline", "inf"),
-        ("--deadline", "nan"),
+        ("--budget", "0", "0.0"),
+        ("--budget", "-1", "-1.0"),
+        ("--budget", "inf", "inf"),
+        ("--budget", "nan", "nan"),
+        ("--deadline", "0", "0.0"),
+        ("--deadline", "-1", "-1.0"),
+        ("--deadline", "inf", "inf"),
+        ("--deadline", "nan", "nan"),
     ],
     ids=[
         "budget-zero",
@@ -250,13 +250,17 @@ def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
     ],
 )
 def test_a_duration_that_is_not_a_positive_finite_number_of_seconds_is_refused(
-    tmp_path: Path, capfd: pytest.CaptureFixture[str], flag: str, value: str
+    tmp_path: Path, capfd: pytest.CaptureFixture[str], flag: str, value: str, echoed: str
 ) -> None:
     # Converting the text is as far as the parser goes: it takes a zero, a negative, and both
     # spellings of a number that is not one. Two of the four have no JSON form, so a report
     # carrying one is a report no consumer can parse; the other two are simply not durations. All
     # four are refused where the parser refuses a flag it cannot read — before the run — so the
     # answer is a sentence about what was typed rather than a fault reported against a corpus.
+    #
+    # What the diagnostic has to contain is asserted rather than that it is non-empty: the flag, the
+    # domain, the value that was rejected, and what to do instead. A message missing any of those
+    # sends the reader back to guess at the one thing they came to be told.
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
 
     status = main([str(tmp_path / "encodings"), flag, value])
@@ -264,8 +268,33 @@ def test_a_duration_that_is_not_a_positive_finite_number_of_seconds_is_refused(
     captured = capfd.readouterr()
     assert status == 2, "a command line that cannot be run is a fault its author can fix"
     assert captured.out == "", "and it produced no run, so there is nothing to report about one"
+    assert captured.err.startswith("usage error: "), "filed where the reader's own mistakes are"
     assert flag in captured.err, "the diagnostic names the flag that was wrong"
-    assert "seconds" in captured.err
+    assert "positive finite number of seconds" in captured.err, "and the domain it wanted"
+    assert echoed in captured.err, "and the value it refused, so the reader can see what was read"
+
+
+@pytest.mark.parametrize(
+    ("flag", "remedy"),
+    [
+        ("--budget", "large finite number"),
+        ("--deadline", "leaves --deadline off"),
+    ],
+    ids=["budget", "deadline"],
+)
+def test_the_remedy_a_refused_duration_offers_is_the_one_that_flag_has(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str], flag: str, remedy: str
+) -> None:
+    # The two flags answer "I want no limit" differently, so one sentence cannot serve both. There
+    # is no way to ask for an unbounded per-solve budget, so the answer there is a large number;
+    # a run with no deadline is the default, so the answer there is to leave the flag off. A reader
+    # arriving here is most likely carrying over a convention in which zero means unbounded, which
+    # is exactly the reader for whom the wrong remedy is worse than none.
+    write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
+
+    assert main([str(tmp_path / "encodings"), flag, "0"]) == 2
+
+    assert remedy in capfd.readouterr().err
 
 
 def test_a_large_finite_duration_is_the_remedy_and_is_accepted(
