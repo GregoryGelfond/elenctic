@@ -31,13 +31,40 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
   ```
   case.lp [clingo] — UNDECIDED
-    [UNDECIDED] @count: the search was cut short before covering the collection this reads, so
-    what it holds is part of the collection and not the collection — UNDECIDED, never FAIL. The
-    per-solve time budget is what stops a search this way from the command line, so a larger
-    --budget may decide it
+    [UNDECIDED] @count (line 2): the search was cut short before covering the collection this
+    reads, so what it holds is part of the collection and not the collection — UNDECIDED, never
+    FAIL. The per-solve time budget is what stops a search this way from the command line, so a
+    larger --budget may decide it
   ```
 
 ### Changed
+
+- **A failure now names the contract line it judged, and repeated claims no longer repeat one
+  sentence.** Every claim carries the line it was written on, so a diagnostic can be placed against
+  the claim rather than against the file, and a tag a contract may write more than once is shown
+  with the claim it carries. Where several claims failed for the same reason, the reason is stated
+  once and the claims follow it:
+
+  ```
+  [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
+
+  [FAIL] @cautious: no cautious consequences — AS(P) = ∅
+         applied to { tea } (line 10), { coffee } (line 11), { biscuit } (line 12)
+  ```
+
+  Anything reading this output by shape will need updating. Nothing about a verdict changed: the
+  case verdict folds a set, so sharing a row cannot move it.
+
+- **`@cautious`, `@brave`, `@cautious optimal` and `@brave optimal` may be written on more than one
+  line**, and each line is now its own check with its own verdict and its own diagnostic. Writing
+  the claims on one line remains equivalent — `L₁ ⊆ S` and `L₂ ⊆ S` together say exactly what
+  `L₁ ∪ L₂ ⊆ S` says — but a failure now names which line was false instead of the union.
+
+- **`Sat` and `Unsat` no longer construct without a line.** Both now require `expect_line`, and
+  every contract cell carries a `Claimed` value pairing what was claimed with the line it was
+  claimed on. `CheckReport` likewise gained the claim's subject, its line, and how the search
+  behind the verdict ended. Code that builds these directly — rather than through `parse` and
+  `run_case`, which is the ordinary path — must pass the coordinate.
 
 - **Whether a search had to finish is now decided per check, not per run.** One solve serves
   several checks and they do not all ask the same thing: a census, an intersection, a union or a

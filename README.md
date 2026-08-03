@@ -73,20 +73,33 @@ encodings/drinks/drinks.lp [clingo]
         @count — reads {full census}
         @expect sat — reads {—}
     CAUTIOUS_ALL (projects: no):
-        @cautious — reads {cautious}
+        @cautious ({ biscuit }) — reads {cautious}
     BRAVE_ALL (projects: no):
-        @brave — reads {brave}
+        @brave ({ coffee, tea }) — reads {brave}
 ```
 
+A tag a contract may write more than once is shown with the claim it carries, so two lines of the
+same tag are told apart before anything is solved.
+
 When a contract is wrong — say you claim `@cautious { tea }`, but `tea` is only in one menu —
-elenctic tells you what it expected and what the program actually does, and exits non-zero:
+elenctic tells you what it expected, what the program actually does, and the line of the claim it
+judged, and exits non-zero:
 
 ```console
 $ elenctic encodings/
 encodings/drinks/drinks.lp [clingo] — FAIL
-  [FAIL] @cautious: { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
+  [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
 
 0/1 passed
+```
+
+Claims that failed for the *same* reason share a row rather than repeating it. Three `@cautious`
+lines against a program with no answer set are one fact about three claims, so it is stated once
+and the claims follow it:
+
+```console
+  [FAIL] @cautious: no cautious consequences — AS(P) = ∅
+         applied to { tea } (line 10), { coffee } (line 11), { biscuit } (line 12)
 ```
 
 ## Querying a program with `@query`

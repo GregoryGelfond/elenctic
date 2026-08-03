@@ -169,21 +169,13 @@ def test_render_fail_shows_the_failing_check_and_the_note() -> None:
     )
     out = render(case, reports)
     assert "— FAIL" in out
-    assert "[FAIL] line 4 @cautious ({ c }): { c } ⊄ ⋂ AS(P)" in out
+    assert "[FAIL] @cautious { c } (line 4): { c } ⊄ ⋂ AS(P)" in out
     assert "note: the budget forces a detour" in out
     assert "@expect sat" not in out  # the passing check is not dumped
 
 
-def test_render_places_each_failure_at_the_line_it_judged() -> None:
-    # Two claims of one tag differ only in their coordinate, so without the line the two rows are
-    # the same row twice and a reader cannot tell which claim was false.
-    reports = (
-        report(Verdict.FAIL, "@cautious", "{ a } ⊄ ⋂ AS(P)", subject="{ a }", line=2),
-        report(Verdict.FAIL, "@cautious", "{ b } ⊄ ⋂ AS(P)", subject="{ b }", line=3),
-    )
-    out = render(synthetic(Sat(expect_line=1)), reports)
-    assert "[FAIL] line 2 @cautious ({ a }): { a } ⊄ ⋂ AS(P)" in out
-    assert "[FAIL] line 3 @cautious ({ b }): { b } ⊄ ⋂ AS(P)" in out
+# How a row names the claim it judged, and when rows that share a diagnostic become one, are
+# pinned in `test_collapsed_rows.py` — this module covers the renderer's other responsibilities.
 
 
 _ESCAPE = "\x1b[2J"
@@ -221,22 +213,14 @@ def test_render_makes_every_corpus_surface_legible(surface: str) -> None:
     assert "\\x1b" in out, f"the {surface} was dropped rather than shown"
 
 
-def test_render_omits_the_parentheses_for_a_tag_that_has_no_subject() -> None:
-    # A tag that can occur only once has nothing to discriminate, so an empty pair of parentheses
-    # would be a place a reader looks for information that was never there.
-    out = render(synthetic(Sat(expect_line=1)), (report(Verdict.FAIL, "@count", "wrong", line=5),))
-    assert "[FAIL] line 5 @count: wrong" in out
-    assert "()" not in out
-
-
 def test_render_keeps_fail_and_undecided_distinct() -> None:
     reports = (
         report(Verdict.FAIL, "@cautious", "decided wrong", subject="{ a }", line=2),
         report(Verdict.UNDECIDED, "@brave", "the solve did not complete", subject="{ b }", line=3),
     )
     out = render(synthetic(Sat(expect_line=1)), reports)
-    assert "[FAIL] line 2 @cautious ({ a }): decided wrong" in out
-    assert "[UNDECIDED] line 3 @brave ({ b }): the solve did not complete" in out
+    assert "[FAIL] @cautious { a } (line 2): decided wrong" in out
+    assert "[UNDECIDED] @brave { b } (line 3): the solve did not complete" in out
 
 
 def test_render_surfaces_note_on_undecided_too() -> None:
@@ -257,7 +241,7 @@ def test_render_surfaces_an_unsat_cases_note_on_failure() -> None:
     case = synthetic(Unsat(expect_line=1, notes=("the budget cap excludes every s–t path",)))
     out = render(case, (report(Verdict.FAIL, "@expect unsat", "a model exists: { a }"),))
     assert "— FAIL" in out
-    assert "[FAIL] line 1 @expect unsat: a model exists: { a }" in out
+    assert "[FAIL] @expect unsat (line 1): a model exists: { a }" in out
     assert "note: the budget cap excludes every s–t path" in out
 
 

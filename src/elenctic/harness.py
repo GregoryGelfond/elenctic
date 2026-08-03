@@ -30,6 +30,8 @@ The pytest ``parametrize`` + assertion (and the session-level aggregation) live 
 consumers.
 """
 
+from typing import Final
+
 from elenctic.checks import CheckReport
 from elenctic.discovery import Case
 from elenctic.display import legible
@@ -67,24 +69,73 @@ def case_verdict(reports: tuple[CheckReport, ...]) -> Verdict:
     return Verdict.PASS
 
 
+# The continuation line hangs under the row it belongs to, past the "  [FAIL] " that opens one, so
+# it reads as part of that row rather than as a row of its own. Fixed rather than measured off the
+# verdict, because a continuation that started in a different column per verdict would make a
+# column carry meaning it does not have.
+_CONTINUATION: Final = " " * len("  [FAIL] ")
+
+
+def _claim(report: CheckReport) -> str:
+    """Which claim a report judged: the claim's own surface where the tag is a repeatable one, and
+    always the line, since that is what identifies it."""
+    subject = f"{legible(report.subject)} " if report.subject else ""
+    return f"{subject}(line {report.line})"
+
+
+def _rows(group: list[CheckReport]) -> list[str]:
+    """One diagnostic, rendered over the claims that share it.
+
+    A single claim is a row. Several claims that reached the *same* verdict with the *same* words
+    are one fact about all of them, so the fact is stated once and the claims follow on a
+    continuation line — each paired with its own coordinate, so a reader never has to line up two
+    lists. Ascending by line, so the same reports render the same bytes and a reader meets the
+    claims in the order the file holds them."""
+    first = group[0]
+    opening = f"  [{first.verdict.name}] {first.label}"
+    if len(group) == 1:
+        return [f"{opening} {_claim(first)}: {legible(first.message)}"]
+    applied = ", ".join(_claim(report) for report in sorted(group, key=lambda r: r.line))
+    return [f"{opening}: {legible(first.message)}", f"{_CONTINUATION}applied to {applied}"]
+
+
+def _grouped(reports: tuple[CheckReport, ...]) -> list[list[CheckReport]]:
+    """The non-``PASS`` reports, gathered into the diagnostics they share.
+
+    Keyed on the verdict as well as the tag and the message: a row carries one verdict, so grouping
+    without it could tag a claim with a verdict it did not earn — and a differing verdict is not
+    the coordinate this collapses over. Insertion-ordered, so groups appear where their first claim
+    did and the run's own order survives."""
+    groups: dict[tuple[Verdict, str, str], list[CheckReport]] = {}
+    for report in reports:
+        if report.verdict is not Verdict.PASS:
+            groups.setdefault((report.verdict, report.label, report.message), []).append(report)
+    return list(groups.values())
+
+
 def render(case: Case, reports: tuple[CheckReport, ...]) -> str:
     """Render the case outcome as a human diagnostic (pure). The header names the contract source,
-    the solver, and the case verdict; each non-``PASS`` check contributes a line tagged with its own
-    verdict (FAIL vs UNDECIDED kept distinct), the contract line it judged, and its subject where it
-    has one; and on any non-``PASS`` outcome the case's ``@note`` prose is surfaced, read from the
-    case. A passing case is a terse header.
+    the solver, and the case verdict; each non-``PASS`` diagnostic contributes a row tagged with its
+    own verdict (FAIL vs UNDECIDED kept distinct) and the claim it judged; and on any non-``PASS``
+    outcome the case's ``@note`` prose is surfaced, read from the case. A passing case is a terse
+    header.
 
-    The path, the note prose, each check's subject and each check's message all come from the
+    Claims that failed for the *same* reason share a row. A repeated tag whose diagnostic does not
+    turn on the claim — every ``@cautious`` line on a program with no answer set, say — would
+    otherwise state one fact once per claim, and the reader who has to scan that is the one already
+    being told something went wrong. Where the diagnostic *does* turn on the claim, which is the
+    informative case, nothing is shared and each claim keeps its own row.
+
+    Collapsing is display only. The verdict folds a set, so it cannot move; a consumer reading the
+    reports still gets one per claim.
+
+    The path, the note prose, each claim's subject and each diagnostic's message all come from the
     corpus, so each is made :func:`~elenctic.display.legible` first: this string is the verdict a
     reader acts on, and text that could rewrite it would undo the point of producing it."""
     verdict = case_verdict(reports)
     lines = [f"{legible(str(case.contract_source))} [{case.solver}] — {verdict.name}"]
-    lines.extend(
-        f"  [{report.verdict.name}] line {report.line} {report.label}"
-        f"{f' ({legible(report.subject)})' if report.subject else ''}: {legible(report.message)}"
-        for report in reports
-        if report.verdict is not Verdict.PASS
-    )
+    for group in _grouped(reports):
+        lines.extend(_rows(group))
     if verdict is not Verdict.PASS:
         lines.extend(f"  note: {legible(note)}" for note in case.expectation.notes)
     return "\n".join(lines)
