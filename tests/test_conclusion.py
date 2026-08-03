@@ -11,6 +11,7 @@ import pytest
 from clingo import Control
 from clingo.solving import SolveResult
 
+from elenctic.checks import expect_unsat
 from elenctic.result import (
     Conclusion,
     Consistent,
@@ -21,15 +22,24 @@ from elenctic.result import (
     Inconsistent,
     Observable,
     SolveOutcome,
+    Verdict,
 )
 from elenctic.run import Mode
-from elenctic.solvers import _Collector, _conclusion, _consistent_shape, _drive, run_clingo
+from elenctic.solvers import (
+    _Collector,
+    _conclusion,
+    _consistent_shape,
+    _drive,
+    _outcome_unless_satisfiable,
+    run_clingo,
+)
 
 # 2^20 answer sets: far more than a fraction of a second can enumerate, and trivial to ground.
 _WIDE = "{ p(1..20) }.\n#show p/1.\n"
 
 # clingo's own solve-result bitset: the flags are independent, so a result can carry several.
 _SATISFIABLE = 1
+_UNSATISFIABLE = 2
 _EXHAUSTED = 4
 _INTERRUPTED = 8
 
@@ -148,6 +158,49 @@ def test_a_search_that_both_closed_the_space_and_was_interrupted_is_exhausted() 
     both = SolveResult(_SATISFIABLE | _EXHAUSTED | _INTERRUPTED)  # type: ignore[no-untyped-call]
     assert both.exhausted and both.interrupted, "the constructed result carries both bits"
     assert _conclusion(completed=False, result=both) is Conclusion.EXHAUSTED
+
+
+def test_a_cancelled_search_reporting_no_answer_set_is_not_believed() -> None:
+    # The other side of the tie-break, and it does not work the same way. A cancelled solve can come
+    # back carrying unsatisfiable AND exhausted together: two occurrences in 1,400 zero-budget
+    # solves of a program with 2^30 answer sets, under the plain --models=1 of DEFAULT as well as
+    # the enumeration args. Read literally it says the search covered the space and found nothing,
+    # about a program whose models are beyond counting.
+    #
+    # So the rule is not "believe an exhausted search". It is that a search cut short from outside
+    # may be believed about what it *found* and never about what it *finished*: a model it produced
+    # is evidence that survives the cancel, while covering the space is a claim only a search that
+    # ran to its own end can make. The satisfiable case above keeps its exhaustion because a
+    # positive finding corroborates it; this one has no finding to corroborate anything.
+    cut_short = SolveResult(_UNSATISFIABLE | _EXHAUSTED | _INTERRUPTED)  # type: ignore[no-untyped-call]
+    assert cut_short.unsatisfiable and cut_short.exhausted, "the constructed result carries both"
+    outcome = _outcome_unless_satisfiable(completed=False, result=cut_short)
+    assert outcome is not None, "a solve that did not decide satisfiable is reduced here"
+    assert isinstance(outcome.determination, Inconclusive), "AS(P) = ∅ was never established"
+    assert outcome.conclusion is Conclusion.INTERRUPTED, "what ended it came from outside it"
+
+
+def test_a_cancelled_search_cannot_uphold_an_unsat_contract() -> None:
+    # Why the reduction above is worth its own rule: `@expect unsat` PASSes on the inconsistent arm,
+    # and rides its own DEFAULT run — the mode the row above was measured in. Routing a cancelled
+    # search there upholds "this program has no answer set" about a program nothing was learned
+    # about, which is the one outcome a testing framework must never produce.
+    cut_short = SolveResult(_UNSATISFIABLE | _EXHAUSTED | _INTERRUPTED)  # type: ignore[no-untyped-call]
+    outcome = _outcome_unless_satisfiable(completed=False, result=cut_short)
+    assert outcome is not None
+    report = expect_unsat(line=1)(outcome)
+    assert report.verdict is Verdict.UNDECIDED, "never PASS on a search that established nothing"
+
+
+def test_a_search_that_ran_to_its_end_still_reports_an_unsatisfiable_program() -> None:
+    # The premise of both tests above: the refusal is about the cancel, not about the bits. A solve
+    # nobody cut short is believed exactly as before, or the rule would trade a false PASS for a
+    # whole mode that can no longer decide anything.
+    finished = SolveResult(_UNSATISFIABLE | _EXHAUSTED)  # type: ignore[no-untyped-call]
+    outcome = _outcome_unless_satisfiable(completed=True, result=finished)
+    assert outcome is not None
+    assert isinstance(outcome.determination, Inconsistent)
+    assert outcome.conclusion is Conclusion.EXHAUSTED
 
 
 def test_a_cancelled_solve_really_does_set_clingo_s_interrupted_bit() -> None:

@@ -260,20 +260,40 @@ def _outcome_unless_satisfiable(completed: bool, result: SolveResult) -> SolveOu
 
     Both arms report the search that produced them, and a solve that settled nothing reports it too:
     that is the only thing such a solve has to say, and it is what tells a reader whether to raise a
-    budget or to look at the program."""
+    budget or to look at the program.
+
+    A search cut short from outside is believed about what it *found* and never about what it
+    *finished*. Finding a model is evidence that survives a cancellation — the model was produced,
+    and nothing later takes that back — which is why the satisfiable answer above is kept. Reporting
+    *no* answer set is the opposite kind of claim: it asserts the whole space was covered, and only
+    a search that ran to its own end can assert that. A cancelled solve does come back carrying
+    unsatisfiable and exhausted together — two occurrences in 1,400 zero-budget solves of a program
+    with 2^30 answer sets, in the plain single-model configuration as well as the enumerating one —
+    and taken at its word it says the program has no answer set. That reading upholds
+    ``@expect unsat`` over a program nothing was learned about."""
     if result.satisfiable:
         return None
+    if _cut_short(completed, result):
+        return SolveOutcome(Inconclusive(), Conclusion.INTERRUPTED)
     arm = Inconsistent() if result.unsatisfiable else Inconclusive()
     return SolveOutcome(arm, _conclusion(completed, result))
+
+
+def _cut_short(completed: bool, result: SolveResult) -> bool:
+    """Whether the search was ended from outside it rather than by anything it found: clingo's own
+    interrupted bit, or a budget this side missed. One home, because two readings depend on it —
+    how the search is reported to have ended, and whether its completeness claims are believed."""
+    return bool(result.interrupted) or not completed
 
 
 def _conclusion(completed: bool, result: SolveResult) -> Conclusion:
     """How a search that settled satisfiability ended.
 
     Exhaustion wins a tie: a search that closed the space did so whatever else was also true of it.
-    Otherwise an external cut — clingo's own interrupted bit, or a budget this side missed —
-    outranks a bound the run requested, because a run that both hit its bound and was cancelled was
-    still ended from outside.
+    Otherwise an external cut outranks a bound the run requested, because a run that both hit its
+    bound and was cancelled was still ended from outside. The tie-break holds here because the
+    caller has already established that this search settled satisfiability — a positive finding
+    corroborates the coverage it claims, and a search with no finding at all never reaches this.
 
     What ``exhausted`` certifies is that the space was covered *under the configuration the run was
     given*, so it says nothing about whether that configuration was the right one: an enumeration
@@ -281,7 +301,7 @@ def _conclusion(completed: bool, result: SolveResult) -> Conclusion:
     requirement is carried by each mode's ``args`` and gated separately."""
     if result.exhausted:
         return Conclusion.EXHAUSTED
-    if result.interrupted or not completed:
+    if _cut_short(completed, result):
         return Conclusion.INTERRUPTED
     return Conclusion.INCOMPLETE
 
