@@ -48,6 +48,22 @@ means for them — a reader deciding whether to upgrade should not have to read 
   differently, and `@cost`, `@optimal`, `@cautious optimal`, `@brave optimal`, `@count optimal` and
   `@assign optimal` are the tags affected.
 
+- **A solve cut short by `--budget` can no longer report that your program has no answer set.** A
+  cancelled solve sometimes comes back carrying clingo's "unsatisfiable" and "exhausted" bits
+  together — measured at two occurrences in 1,400 zero-budget solves of a program with 2^30 answer
+  sets, under the single-model configuration as much as the enumerating one. Read literally, that
+  says the search covered the space and found nothing. elenctic believed it, so a case whose solve
+  ran out of budget could report `AS(P) = ∅` as a decided fact about a program with more answer sets
+  than could be counted. Every model-bearing tag then failed, and `@expect unsat` — which rides its
+  own single-model run, one of the two configurations this was measured in — **passed**, upholding a
+  claim nothing had established.
+
+  A search cut short from outside is now believed about what it *found* and never about what it
+  *finished*. A model it produced is evidence a cancellation cannot take back, so a cut-short solve
+  still reports the satisfiability it settled; covering the space is a claim only a search that ran
+  to its own end can make, so neither "no answer set" nor "the space was covered" survives a
+  cancellation. Cases that met this now report UNDECIDED, which is what happened.
+
 ### Changed
 
 - **A failure now names the contract line it judged, and repeated claims no longer repeat one
@@ -76,6 +92,25 @@ means for them — a reader deciding whether to upgrade should not have to read 
   claimed on. `CheckReport` likewise gained the claim's subject, its line, and how the search
   behind the verdict ended. Code that builds these directly — rather than through `parse` and
   `run_case`, which is the ordinary path — must pass the coordinate.
+
+- **The records a machine-readable report is built from are constructed by keyword.** `CheckReport`
+  and the new `CaseOutcome`, `ErrorRecord`, `HygieneRecord` and `RunOutcome` take their fields by
+  name. A report's `message` and `subject` are neighbouring strings, so a transposed pair type-checks
+  clean and renders a plausible row against the wrong claim; and a report is identified by field
+  name wherever it is decoded, so position would be a second identity that a field added later
+  silently re-means.
+
+- **An invariant elenctic violated about its own result now raises `HarnessError`.** The empty cost
+  vector on a proven optimum, the four consistent shapes built around an empty collection, and the
+  non-empty-census precondition on a conjunctive query raised `ValueError`, which no per-case handler
+  catches — so a result that could not be right ended the whole run and discarded every case still to
+  come. It now costs one case its verdict, like every other fault the runner isolates. What a caller
+  got wrong at a boundary is still `ValueError`: an unknown solver name, and the contract payloads a
+  parse re-raises with the author's provenance.
+
+- **`HygieneReport.render` was removed.** What a run prints about corpus hygiene and what fails the
+  run under `--strict` are now read off the same records the run reports, rather than from a second
+  rendering of the same facts. The observations themselves are unchanged, and so is what is printed.
 
 - **Whether a search had to finish is now decided per check, not per run.** One solve serves
   several checks and they do not all ask the same thing: a census, an intersection, a union or a
