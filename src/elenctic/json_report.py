@@ -47,6 +47,10 @@ def as_json(outcome: RunOutcome, invocation: Invocation) -> dict[str, object]:
 
     Order is the run's own throughout — nothing is sorted — so the same input yields the same
     document, and a case's position in its array is its identity within it.
+
+    Every closed vocabulary is written as its member's value rather than its member's name, because
+    the value is what the ordinary constructor reads back: a consumer holding this document and the
+    package can write ``Verdict(case["verdict"])`` and have it work.
     """
     return {
         "schema_version": SCHEMA_VERSION,
@@ -78,7 +82,7 @@ def _case(outcome: CaseOutcome) -> dict[str, object]:
     return {
         "source": _text(outcome.case.path),
         "solver": _text(outcome.case.solver),
-        "verdict": outcome.verdict.name,
+        "verdict": outcome.verdict.value,
         "checks": [_check(report) for report in outcome.reports],
     }
 
@@ -87,7 +91,7 @@ def _check(report: CheckReport) -> dict[str, object]:
     return {
         "tag": _text(report.label),
         "subject": _text(report.subject),
-        "status": report.verdict.name,
+        "status": report.verdict.value,
         "message": _text(report.message),
         "line": report.line,
         "conclusion": report.conclusion.value,

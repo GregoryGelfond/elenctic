@@ -56,14 +56,18 @@ class ErrorKind(Enum):
     Growable is what lets a locus be named for what it is: neither a deadline the run passed nor a
     memory exhaustion is a malformed program, and filing either as one would tell an author their
     encoding is broken when it is not.
+
+    The values name loci, not exception classes. Two of these arrive as no exception at all — a
+    deadline is a clock the run passed, and an exhausted resource arrives as a built-in — so a
+    vocabulary of class names would promise an import that does not exist for a third of it.
     """
 
-    CONTRACT = "ContractError"
-    DISCOVERY = "DiscoveryError"
-    PROGRAM = "ProgramError"
-    DEADLINE = "DeadlineError"
-    RESOURCE = "ResourceError"
-    HARNESS = "HarnessError"
+    CONTRACT = "contract"
+    DISCOVERY = "discovery"
+    PROGRAM = "program"
+    DEADLINE = "deadline"
+    RESOURCE = "resource"
+    HARNESS = "harness"
 
     @property
     def is_elenctic_bug(self) -> bool:

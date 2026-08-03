@@ -154,7 +154,7 @@ def test_a_deadline_that_was_not_set_is_null_rather_than_absent() -> None:
 
 @pytest.mark.parametrize(
     ("verdict", "written"),
-    [(Verdict.PASS, "PASS"), (Verdict.FAIL, "FAIL"), (Verdict.UNDECIDED, "UNDECIDED")],
+    [(Verdict.PASS, "pass"), (Verdict.FAIL, "fail"), (Verdict.UNDECIDED, "undecided")],
 )
 def test_a_verdict_is_written_the_way_a_consumer_was_promised(
     verdict: Verdict, written: str
@@ -182,12 +182,12 @@ def test_how_a_search_ended_is_written_the_way_a_consumer_was_promised(
 @pytest.mark.parametrize(
     ("kind", "written"),
     [
-        (ErrorKind.CONTRACT, "ContractError"),
-        (ErrorKind.DISCOVERY, "DiscoveryError"),
-        (ErrorKind.PROGRAM, "ProgramError"),
-        (ErrorKind.DEADLINE, "DeadlineError"),
-        (ErrorKind.RESOURCE, "ResourceError"),
-        (ErrorKind.HARNESS, "HarnessError"),
+        (ErrorKind.CONTRACT, "contract"),
+        (ErrorKind.DISCOVERY, "discovery"),
+        (ErrorKind.PROGRAM, "program"),
+        (ErrorKind.DEADLINE, "deadline"),
+        (ErrorKind.RESOURCE, "resource"),
+        (ErrorKind.HARNESS, "harness"),
     ],
 )
 def test_where_a_fault_lies_is_written_the_way_a_consumer_was_promised(

@@ -95,12 +95,12 @@ def test_only_a_harness_fault_is_elenctic_s_to_fix() -> None:
         (
             ErrorKind,
             {
-                "CONTRACT": "ContractError",
-                "DISCOVERY": "DiscoveryError",
-                "PROGRAM": "ProgramError",
-                "DEADLINE": "DeadlineError",
-                "RESOURCE": "ResourceError",
-                "HARNESS": "HarnessError",
+                "CONTRACT": "contract",
+                "DISCOVERY": "discovery",
+                "PROGRAM": "program",
+                "DEADLINE": "deadline",
+                "RESOURCE": "resource",
+                "HARNESS": "harness",
             },
         ),
         (Scope, {"CORPUS": "corpus", "CASE": "case"}),
