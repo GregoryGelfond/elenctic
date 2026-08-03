@@ -45,11 +45,14 @@ from elenctic.expectation import ContractError
 from elenctic.harness import render, run_case
 from elenctic.outcome import (
     CaseOutcome,
+    CasePlan,
     ErrorKind,
     ErrorRecord,
     HygieneKind,
     HygieneRecord,
     Invocation,
+    Outcome,
+    PlanOutcome,
     RunOutcome,
     Scope,
     Severity,
@@ -150,9 +153,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             budget=args.budget,
             deadline=args.deadline,
         )
-        if args.explain:
-            return _explain_status(invocation)
-        return exit_status(run_corpus(invocation))
+        produced = explain_corpus(invocation) if args.explain else run_corpus(invocation)
+        return exit_status(produced)
     except MemoryError:
         # The backstop, for an allocation that fails where no case owns it. A case that exhausts
         # memory is caught in the run loop and costs only its own result; reaching this frame means
@@ -198,8 +200,8 @@ def run_corpus(invocation: Invocation) -> RunOutcome:
     resolve to instead.
     """
     match _discover(invocation.target):
-        case RunOutcome() as fault:
-            return fault
+        case ErrorRecord() as fault:
+            return RunOutcome(cases=(), errors=(fault,), hygiene=())
         case Corpus() as corpus:
             unrunnable, hygiene = _record_discovered(corpus, strict=invocation.strict)
             outcome = _run(
@@ -218,40 +220,43 @@ def run_corpus(invocation: Invocation) -> RunOutcome:
             assert_never(unreachable)
 
 
-def _explain_status(invocation: Invocation) -> int:
-    """Narrate the run plan this invocation would follow, and return the status of what that met.
+def explain_corpus(invocation: Invocation) -> PlanOutcome:
+    """Narrate the run plan this invocation would follow, and return everything the dry run
+    produced.
 
-    The dry run decides nothing, so it has no case register to fill and builds no run outcome.
-    Giving it one would report a corpus of cases as a run of none — the very accounting the
-    registers exist to make impossible. What can still go wrong is a plan that cannot be built,
-    which is what this mode exists to surface, and it is the same fault here as in a run: a misroute
-    reports elenctic's bug whichever mode met it."""
+    The sibling of :func:`run_corpus`, and the same shape for the same reason: a dry run decides
+    nothing, but it still establishes something about every case it meets — a plan, or the reason
+    there is none — and a mode that hands back only a number leaves that unobserved. What it must
+    not do is report those plans as verdicts, which is why they are their own register rather than
+    an empty one.
+
+    A plan that cannot be built is elenctic's own fault, and surfacing one before any solving is
+    the whole purpose of this mode.
+    """
     match _discover(invocation.target):
-        case RunOutcome() as fault:
-            return exit_status(fault)
+        case ErrorRecord() as fault:
+            return PlanOutcome(plans=(), errors=(fault,), hygiene=())
         case Corpus() as corpus:
             unrunnable, hygiene = _record_discovered(corpus, strict=invocation.strict)
-            misroutes = _explain(corpus.cases)
+            plans, misroutes = _explain(corpus.cases)
             _report_hygiene(hygiene)
-            return _fault_status((*unrunnable, *misroutes), hygiene)
+            return PlanOutcome(plans=plans, errors=(*unrunnable, *misroutes), hygiene=hygiene)
         case unreachable:
             assert_never(unreachable)
 
 
-def _discover(target: Path) -> Corpus | RunOutcome:
-    """The corpus a target holds, or — when discovery could not read one — the whole of what the
-    invocation produced.
+def _discover(target: Path) -> Corpus | ErrorRecord:
+    """The corpus a target holds, or — when discovery could not read one — the fault that is the
+    whole of what the invocation produced.
 
-    A fault here belongs to no case, because there are none: it is the corpus's. That makes it an
-    outcome rather than a record, and the modes below then read a status off it the same way they
-    read one off a run."""
+    A fault here belongs to no case, because there are none: it is the corpus's. It is handed back
+    as a record rather than as an outcome because which outcome holds it is the caller's question,
+    and the two modes answer it differently."""
     try:
         return inspect_corpus(target)
     except (DiscoveryError, ContractError, ProgramError) as exc:
         print(f"corpus error: {legible(str(exc))}", file=sys.stderr)
-        return _fault_outcome(
-            error_kind(exc), str(exc), source=target if target.is_file() else None
-        )
+        return _corpus_fault(error_kind(exc), str(exc), source=target if target.is_file() else None)
 
 
 def _record_discovered(
@@ -269,55 +274,56 @@ def _record_discovered(
     return unrunnable, _hygiene_records(corpus.hygiene, strict=strict)
 
 
-def exit_status(outcome: RunOutcome) -> int:
-    """The process status for a completed run, highest signal winning.
+def exit_status(outcome: Outcome) -> int:
+    """The process status for a completed invocation, highest signal winning.
 
     ``3`` an elenctic bug — a harness that is wrong about one case is evidence about every other, so
     it puts the whole run's verdicts in doubt and outranks them all; ``2`` a fault the user can fix,
     or an observation this run graded an error; ``1`` a case decided wrong or could not be decided;
-    ``0`` every case passed. The two error levels are the closed split of where a fault lies:
+    ``0`` nothing went wrong. The two error levels are the closed split of where a fault lies:
     anything that is not a harness fault is the user's, so a locus added later never silently
     changes what a status means.
 
-    A function of what the run produced and of nothing else. The strictness dial is applied where an
-    observation is recorded, so the grade travels on the record and this reading of it is the same
-    reading the end-of-run summary makes — rather than a second consultation of a flag, which is how
-    a run comes to print one thing and return another.
+    One function over both modes rather than a ladder written twice, because the faults a dry run
+    can meet are the same faults and rank the same way — and the one thing that differs, having
+    verdicts to weigh, is exactly what the two outcome types differ in. A dry run reaching the last
+    rung is ``0`` because it decided nothing: there is no verdict for it to have got wrong.
+
+    A function of what the invocation produced and of nothing else. The strictness dial is applied
+    where an observation is recorded, so the grade travels on the record and this reading of it is
+    the same reading the end-of-run summary makes — rather than a second consultation of a flag,
+    which is how a run comes to print one thing and return another.
     """
-    fault = _fault_status(outcome.errors, outcome.hygiene)
-    if fault:
-        return fault
-    return 1 if any(case.verdict is not Verdict.PASS for case in outcome.cases) else 0
-
-
-def _fault_status(errors: tuple[ErrorRecord, ...], hygiene: tuple[HygieneRecord, ...]) -> int:
-    """The status of the faults an invocation met, weighing no verdicts: ``0`` none, ``2`` the
-    user's to fix, ``3`` elenctic's.
-
-    Apart from :func:`exit_status` because the dry run reaches only these two registers — it decides
-    nothing, so it has no verdicts to weigh — and a ladder written a second time for it would be a
-    second answer to the same question."""
-    if any(error.kind.is_elenctic_bug for error in errors):
+    if any(error.kind.is_elenctic_bug for error in outcome.errors):
         return 3
-    if errors or any(record.severity is Severity.ERROR for record in hygiene):
+    if outcome.errors or any(record.severity is Severity.ERROR for record in outcome.hygiene):
         return 2
-    return 0
+    match outcome:
+        case RunOutcome():
+            return 1 if any(case.verdict is not Verdict.PASS for case in outcome.cases) else 0
+        case PlanOutcome():
+            return 0
+        case unreachable:
+            assert_never(unreachable)
 
 
-def _fault_outcome(kind: ErrorKind, message: str, *, source: Path | None = None) -> RunOutcome:
-    """A run whose whole result is one fault belonging to no single case, and therefore to the
-    corpus: nothing was discovered, or the frame that met the fault had no case to name.
+def _corpus_fault(kind: ErrorKind, message: str, *, source: Path | None = None) -> ErrorRecord:
+    """One fault belonging to no single case, and therefore to the corpus: nothing was discovered,
+    or the frame that met the fault had no case to name.
 
     ``source`` is the file when exactly one was involved — a target named on the command line is
     the only file the fault can belong to, while a directory names no one file and the diagnostic's
-    own provenance is where the reader looks. It builds a whole outcome rather than a record because
-    a corpus-scoped fault *is* the whole of what the invocation produced, and the status is then the
-    ordinary reading of an outcome rather than a number chosen beside one."""
-    return RunOutcome(
-        cases=(),
-        errors=(ErrorRecord(kind=kind, scope=Scope.CORPUS, source=source, message=message),),
-        hygiene=(),
-    )
+    own provenance is where the reader looks."""
+    return ErrorRecord(kind=kind, scope=Scope.CORPUS, source=source, message=message)
+
+
+def _fault_outcome(kind: ErrorKind, message: str, *, source: Path | None = None) -> RunOutcome:
+    """A run whose whole result is one corpus-level fault.
+
+    A whole outcome rather than a record because such a fault *is* the whole of what the invocation
+    produced, and the status is then the ordinary reading of an outcome rather than a number chosen
+    beside one."""
+    return RunOutcome(cases=(), errors=(_corpus_fault(kind, message, source=source),), hygiene=())
 
 
 def _hygiene_records(hygiene: HygieneReport, *, strict: bool) -> tuple[HygieneRecord, ...]:
@@ -443,11 +449,19 @@ def _report_hygiene(hygiene: tuple[HygieneRecord, ...]) -> None:
         print(f"  {line}", file=sys.stderr)
 
 
-def _explain(cases: tuple[Case, ...]) -> tuple[ErrorRecord, ...]:
+def _explain(
+    cases: tuple[Case, ...],
+) -> tuple[tuple[CasePlan, ...], tuple[ErrorRecord, ...]]:
     """Narrate the derived run plan per case without solving (the dry-run): each run's mode and the
     projection decision (which the contract's reads induce), and each check with the fields it
-    reads. Returns the misroutes it met — a plan that cannot be built is a harness fault, and this
-    is the mode whose whole purpose is to surface one before any solving."""
+    reads.
+
+    Every case leaves here in exactly one register — the plan it derived to, or the reason it
+    derived to none — which is the same accounting a real run keeps, for the same reason: a mode
+    that narrates a plan and then hands back nothing but a number has established something about
+    each case that nothing can afterwards check. A plan that cannot be built is a harness fault,
+    and this is the mode whose whole purpose is to surface one before any solving."""
+    plans: list[CasePlan] = []
     misroutes: list[ErrorRecord] = []
     for case in cases:
         print(f"{legible(str(case.contract_source))} [{case.solver}]")
@@ -456,14 +470,7 @@ def _explain(cases: tuple[Case, ...]) -> tuple[ErrorRecord, ...]:
         for note in case.expectation.notes:
             print(f"    note: {legible(note)}")
         try:
-            for plan in runs_for(case.expectation, provides_theory(case.solver)):
-                projects = "yes" if plan.projects_to_shown else "no"
-                print(f"    {plan.mode.name} (projects: {projects}):")
-                for check in plan.checks:
-                    # subject discerns the repeatable @query tag before any solve.
-                    name = f"{check.label} ({check.subject})" if check.subject else check.label
-                    reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
-                    print(f"        {name} — reads {{{reads}}}")
+            derived = runs_for(case.expectation, provides_theory(case.solver))
         except HarnessError as exc:
             # Named, though the narration above it on standard output already names the case: these
             # go to standard error, and a reader who has only that stream is owed the file.
@@ -472,7 +479,17 @@ def _explain(cases: tuple[Case, ...]) -> tuple[ErrorRecord, ...]:
                 file=sys.stderr,
             )
             misroutes.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-    return tuple(misroutes)
+            continue
+        for plan in derived:
+            projects = "yes" if plan.projects_to_shown else "no"
+            print(f"    {plan.mode.name} (projects: {projects}):")
+            for check in plan.checks:
+                # subject discerns the repeatable @query tag before any solve.
+                name = f"{check.label} ({check.subject})" if check.subject else check.label
+                reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
+                print(f"        {name} — reads {{{reads}}}")
+        plans.append(CasePlan(case=case, runs=tuple(derived)))
+    return tuple(plans), tuple(misroutes)
 
 
 def _run(

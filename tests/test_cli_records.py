@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from elenctic import cli, discovery
-from elenctic.cli import main, run_corpus
+from elenctic.cli import exit_status, explain_corpus, main, run_corpus
 from elenctic.outcome import (
     ErrorKind,
     HygieneKind,
@@ -25,6 +25,7 @@ from elenctic.outcome import (
 )
 from elenctic.result import Verdict
 from elenctic.run import RoutingError
+from elenctic.run import runs_for as real_runs_for
 from elenctic.solvers import TIME_BUDGET
 
 _PASSES = "% @expect sat\n% @count 2\n\n1 { tea; coffee } 1.\n#show tea/0.\n#show coffee/0.\n"
@@ -233,15 +234,70 @@ def test_the_dry_run_records_the_plan_it_could_not_build(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Surfacing a plan that cannot be built is what the dry run is for, and such a plan is
-    # elenctic's own fault rather than the corpus's. The mode hands back only a status, so what it
-    # filed is asserted against the records themselves.
+    # elenctic's own fault rather than the corpus's — so it must reach the status the same way a
+    # misroute met while solving does.
     def misroute(expectation: object, theory_in_force: bool = False) -> object:
         raise RoutingError("a stale route")
 
     monkeypatch.setattr(cli, "runs_for", misroute)
     target = _corpus(tmp_path, bad=_PASSES)
-    (record,) = cli._explain(discovery.inspect_corpus(target).cases)
+    outcome = explain_corpus(_asked(target))
     capsys.readouterr()
+    assert outcome.plans == (), "a plan that could not be built is not a plan"
+    (record,) = outcome.errors
     assert record.kind is ErrorKind.HARNESS
     assert record.scope is Scope.CASE
     assert record.source == target / "bad.lp"
+    assert exit_status(outcome) == 3, "and one status function ranks it, in either mode"
+
+
+def test_a_dry_run_on_an_undiscoverable_corpus_records_the_fault_too(tmp_path: Path) -> None:
+    # A corpus that cannot be read stops the dry run exactly as it stops a real one, and for the
+    # same reason: there is nothing to plan. The fault belongs to no case because there are none.
+    outcome = explain_corpus(_asked(tmp_path / "nowhere.lp"))
+    assert outcome.plans == ()
+    (record,) = outcome.errors
+    assert record.kind is ErrorKind.DISCOVERY
+    assert record.scope is Scope.CORPUS
+    assert exit_status(outcome) == 2, "a corpus to fix, in either mode"
+
+
+def test_the_dry_run_hands_back_the_plans_it_derived(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The plan is the answer to the question this mode asks, so it is carried rather than only
+    # narrated: a mode that establishes something about every case and returns a number leaves
+    # what it established with nothing to check it.
+    target = _corpus(tmp_path, good=_PASSES)
+    outcome = explain_corpus(_asked(target))
+    capsys.readouterr()
+    (plan,) = outcome.plans
+    assert plan.case.contract_source == target / "good.lp"
+    assert plan.runs, "a case that planned successfully planned to something"
+    assert exit_status(outcome) == 0, "a dry run decides nothing, so nothing can be decided wrong"
+
+
+def test_every_case_a_dry_run_meets_reaches_exactly_one_register(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The same accounting a real run keeps. A case is planned, or the reason it was not is
+    # recorded; a corpus of three cannot come back as a corpus of two.
+    def misroute_the_marked_one(expectation: object, theory_in_force: bool = False) -> object:
+        if "BOOM" in getattr(expectation, "notes", ()):
+            raise RoutingError("a stale route")
+        return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(cli, "runs_for", misroute_the_marked_one)
+    target = _corpus(
+        tmp_path,
+        good=_PASSES,
+        marked=f"% @note BOOM\n{_PASSES}",
+        unusable=_MALFORMED_CONTRACT,
+    )
+    outcome = explain_corpus(_asked(target))
+    capsys.readouterr()
+    filed = [plan.case.contract_source for plan in outcome.plans]
+    for record in outcome.errors:
+        assert record.source is not None
+        filed.append(record.source)
+    assert sorted(filed) == sorted(target.glob("*.lp"))

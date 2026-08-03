@@ -32,14 +32,18 @@ from elenctic.expectation import ContractError
 from elenctic.harness import case_verdict
 from elenctic.program import ProgramError
 from elenctic.result import HarnessError, Verdict
+from elenctic.run import Run
 
 __all__ = [
     "CaseOutcome",
+    "CasePlan",
     "ErrorKind",
     "ErrorRecord",
     "HygieneKind",
     "HygieneRecord",
     "Invocation",
+    "Outcome",
+    "PlanOutcome",
     "RunOutcome",
     "Scope",
     "Severity",
@@ -209,12 +213,47 @@ class Invocation:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class CasePlan:
+    """One case whose run plan could be derived, with the runs it derived to.
+
+    What a dry run produces where a real one produces a verdict: the plan is the answer to the
+    question the dry run asks, so it is carried rather than only narrated.
+    """
+
+    case: Case
+    runs: tuple[Run, ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class RunOutcome:
     """Everything one run produced, partitioned into the three registers."""
 
     cases: tuple[CaseOutcome, ...]
     errors: tuple[ErrorRecord, ...]
     hygiene: tuple[HygieneRecord, ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PlanOutcome:
+    """Everything one dry run produced, partitioned the same way.
+
+    A dry run decides nothing, so where a run has verdicts this has the plans they would have come
+    from. The other two registers are the same registers and mean the same things — a plan that
+    could not be built is an error exactly as a case that could not be solved is, and both are
+    elenctic's own fault when the reason is a misroute.
+    """
+
+    plans: tuple[CasePlan, ...]
+    errors: tuple[ErrorRecord, ...]
+    hygiene: tuple[HygieneRecord, ...]
+
+
+type Outcome = RunOutcome | PlanOutcome
+"""What an invocation produced, whichever mode it was asked for.
+
+The two share the registers that say what went wrong and what was observed, and differ only in what
+they made: verdicts, or the plans behind them. Reading a status is therefore one function over both
+rather than a ladder written twice, which is how the two modes came to disagree once already."""
 
 
 def error_kind(exc: Exception) -> ErrorKind:
