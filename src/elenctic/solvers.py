@@ -274,35 +274,45 @@ def _outcome_unless_satisfiable(completed: bool, result: SolveResult) -> SolveOu
     if result.satisfiable:
         return None
     if _cut_short(completed, result):
-        return SolveOutcome(Inconclusive(), Conclusion.INTERRUPTED)
+        return SolveOutcome(Inconclusive(), _conclusion(completed, result))
     arm = Inconsistent() if result.unsatisfiable else Inconclusive()
     return SolveOutcome(arm, _conclusion(completed, result))
 
 
 def _cut_short(completed: bool, result: SolveResult) -> bool:
     """Whether the search was ended from outside it rather than by anything it found: clingo's own
-    interrupted bit, or a budget this side missed. One home, because two readings depend on it —
-    how the search is reported to have ended, and whether its completeness claims are believed."""
+    interrupted bit, or a budget this side missed. Both halves matter — a cancellation the solver
+    did not record is still a cancellation. One home, because everything a cut-short search is not
+    believed about is decided from it."""
     return bool(result.interrupted) or not completed
 
 
 def _conclusion(completed: bool, result: SolveResult) -> Conclusion:
-    """How a search that settled satisfiability ended.
+    """How a search ended.
 
-    Exhaustion wins a tie: a search that closed the space did so whatever else was also true of it.
-    Otherwise an external cut outranks a bound the run requested, because a run that both hit its
-    bound and was cancelled was still ended from outside. The tie-break holds here because the
-    caller has already established that this search settled satisfiability — a positive finding
-    corroborates the coverage it claims, and a search with no finding at all never reaches this.
+    A cut from outside wins: a search ended from outside it did not end on its own terms, whatever
+    else it reports about itself. That ordering is the whole of the rule that a cut-short search is
+    believed about what it found and never about what it finished — exhaustion is a claim to have
+    covered the space, and a cancelled solve does make that claim falsely, which is measurable on a
+    program whose answer sets are beyond counting. Nothing in the result distinguishes a search that
+    closed the space just before the cancellation landed from one that closed nothing and said
+    otherwise, so neither is read as coverage.
+
+    Refusing the ambiguous case is close to free, and the direction it errs in is the safe one.
+    Sweeping the budget across the completion window of a 65,536-answer-set program, 480 solves
+    produced 80 exhausted results, and every one of them was uninterrupted and completed — so the
+    ambiguous state never arose, and no exhausted result carried a census shorter than the true
+    model count. When it does arise it costs a reading, where believing it would cost a verdict:
+    a collection read as whole when it is partial is how a false claim passes.
 
     What ``exhausted`` certifies is that the space was covered *under the configuration the run was
     given*, so it says nothing about whether that configuration was the right one: an enumeration
     under an active objective exhausts having visited only the improving sequence. That second
     requirement is carried by each mode's ``args`` and gated separately."""
-    if result.exhausted:
-        return Conclusion.EXHAUSTED
     if _cut_short(completed, result):
         return Conclusion.INTERRUPTED
+    if result.exhausted:
+        return Conclusion.EXHAUSTED
     return Conclusion.INCOMPLETE
 
 

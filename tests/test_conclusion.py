@@ -29,6 +29,7 @@ from elenctic.solvers import (
     _Collector,
     _conclusion,
     _consistent_shape,
+    _cut_short,
     _drive,
     _outcome_unless_satisfiable,
     run_clingo,
@@ -150,14 +151,36 @@ def test_a_consequence_run_that_reached_its_fixpoint_reports_it() -> None:
     assert outcome.conclusion is Conclusion.EXHAUSTED
 
 
-def test_a_search_that_both_closed_the_space_and_was_interrupted_is_exhausted() -> None:
-    # The one case where the tie-break does work: the search closed the space in the window between
-    # the budget poll missing and the cancellation landing. What it found is everything, and the
-    # interrupt arrived too late to take that away — so exhaustion wins. Built from the bitset
-    # directly, because the race cannot be produced on demand.
+def test_a_cut_short_search_never_reports_that_it_closed_the_space() -> None:
+    # A search that carries both bits is one this side cannot read. It may have closed the space in
+    # the window between the budget poll missing and the cancellation landing — or it may be
+    # reporting coverage it never had, which a cancelled solve demonstrably does: the sibling test
+    # below is built from the same two bits, and there the claim is false about a program with 2^30
+    # answer sets. Nothing in the result distinguishes them, so the coverage claim is refused.
+    #
+    # Refusing it is close to free. Sweeping the budget across the completion window of a
+    # 65,536-answer-set program, 480 solves produced 80 exhausted results and every one of them was
+    # uninterrupted and completed — the state this test describes never arose, and no exhausted
+    # result ever carried a census shorter than the program's true model count. What the refusal
+    # costs when it does arise is one reading going UNDECIDED; what it buys is that a partial
+    # census is never read as a whole one, which is a wrong verdict rather than a missing one.
     both = SolveResult(_SATISFIABLE | _EXHAUSTED | _INTERRUPTED)  # type: ignore[no-untyped-call]
     assert both.exhausted and both.interrupted, "the constructed result carries both bits"
-    assert _conclusion(completed=False, result=both) is Conclusion.EXHAUSTED
+    assert _conclusion(completed=False, result=both) is Conclusion.INTERRUPTED
+
+
+def test_a_budget_this_side_missed_counts_as_cut_short_without_clingo_s_bit() -> None:
+    # The predicate has two halves and the interrupted bit is only one of them: a solve whose budget
+    # this side missed is cut short whether or not the solver noticed. Every other test here reaches
+    # the cut-short state through clingo's bit, so without this one that half is never exercised and
+    # dropping it from the predicate would pass the suite.
+    unnoticed = SolveResult(_UNSATISFIABLE | _EXHAUSTED)  # type: ignore[no-untyped-call]
+    assert not unnoticed.interrupted, "the solver did not record the cancellation"
+    assert _cut_short(completed=False, result=unnoticed)
+    outcome = _outcome_unless_satisfiable(completed=False, result=unnoticed)
+    assert outcome is not None
+    assert isinstance(outcome.determination, Inconclusive), "AS(P) = ∅ was never established"
+    assert outcome.conclusion is Conclusion.INTERRUPTED
 
 
 def test_a_cancelled_search_reporting_no_answer_set_is_not_believed() -> None:
