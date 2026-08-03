@@ -87,7 +87,7 @@ def test_a_declared_solver_this_environment_lacks_is_filed_against_the_environme
     assert record.source == target / "theory.lp"
 
 
-def test_a_case_that_exhausts_a_resource_is_filed_apart_from_a_broken_program(
+def test_a_case_that_runs_out_of_a_resource_is_filed_apart_from_a_broken_program(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Raised where the solver raises it. Its own locus rather than the program's: nothing about the

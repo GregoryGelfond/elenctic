@@ -1,7 +1,7 @@
 """The budget bounds time; it does not bound memory.
 
 A solve accumulates every model it is shown, and the time budget says nothing about how fast they
-arrive — a program controls that. So a corpus can exhaust memory inside a budget that never
+arrive — a program controls that. So a corpus can run out of memory inside a budget that never
 expires, which makes the advertised hang protection something other than what a reader takes it
 for.
 

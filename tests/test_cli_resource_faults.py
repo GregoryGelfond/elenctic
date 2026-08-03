@@ -1,7 +1,8 @@
-"""A resource the run exhausts is reported, not dumped as a traceback.
+"""A resource the run uses up is reported, not dumped as a traceback.
 
 Grounding is unbounded — clingo's own API offers no clock and no size limit on it — so a program
-small enough to write in one line can exhaust memory. clingo raises that as ``MemoryError``, which
+small enough to write in one line can run out of memory. clingo raises that as ``MemoryError``,
+which
 is not a ``RuntimeError`` and so was named by no ``except`` clause in the package: it escaped every
 register and reached the user as a stack trace, past the bar the rest of the CLI holds to.
 
@@ -29,7 +30,7 @@ def _corpus(root: Path, *names: str) -> None:
         (root / f"{name}.lp").write_text(_GOOD, encoding="utf-8")
 
 
-def test_exhausting_memory_is_reported_as_an_error_not_a_traceback(
+def test_running_out_of_memory_is_reported_as_an_error_not_a_traceback(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Raised where clingo raises it — from the solve path, during a case. A real grounding bomb
@@ -43,12 +44,12 @@ def test_exhausting_memory_is_reported_as_an_error_not_a_traceback(
     monkeypatch.setattr(cli, "run_case", out_of_memory)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
-    assert status == 2, "an exhausted resource is the error register, never a verdict"
+    assert status == 2, "a resource run out of is the error register, never a verdict"
     assert "Traceback" not in captured.err
     assert "memory" in captured.err.lower()
 
 
-def test_a_case_that_exhausts_memory_costs_only_its_own_result(
+def test_a_case_that_runs_out_of_memory_costs_only_its_own_result(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Every other way a case can fail to run is reported against its own file while the rest of the
@@ -65,14 +66,14 @@ def test_a_case_that_exhausts_memory_costs_only_its_own_result(
     monkeypatch.setattr(cli, "run_case", greedy)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
-    assert status == 2, "a resource the run exhausted is the error register, never a verdict"
+    assert status == 2, "a resource the run used up is the error register, never a verdict"
     assert "greedy.lp" in captured.err, "the reader has to be told which case it was"
     assert "2/3 passed, 1 could not be run" in captured.out, (
         "the other two cases keep their results, and the one that did not run is accounted for"
     )
 
 
-def test_memory_exhausted_outside_a_case_is_still_reported(
+def test_memory_run_out_of_outside_a_case_is_still_reported(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The outermost handler stays the backstop it was meant to be: an allocation that fails where
