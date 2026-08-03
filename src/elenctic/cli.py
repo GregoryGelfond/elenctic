@@ -178,10 +178,10 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         metavar="SECONDS",
-        help="stop starting new cases once the run has taken this long, a positive finite number "
-        "of seconds; cases not reached are reported as not run. It is checked between cases, so a "
-        "solve already under way runs to its own --budget (off by default — --budget bounds one "
-        "solve, this bounds the whole corpus)",
+        help="stop starting new cases once solving has taken this long, a positive finite number "
+        "of seconds; cases not reached are reported as not run. The clock starts after discovery, "
+        "and it is checked between cases, so a solve already under way runs to its own --budget "
+        "(off by default — --budget bounds one solve, this bounds the solving of the corpus)",
     )
     parser.add_argument(
         "--print-schema",

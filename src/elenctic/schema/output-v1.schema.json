@@ -33,7 +33,7 @@
     "verdict": {
       "type": "string",
       "enum": ["pass", "fail", "undecided"],
-      "description": "A three-valued judgment. `undecided` is not a failure and must not be shown as one: it is an absence of knowledge rather than a wrong answer, and it arises two ways — the solve settled nothing, or the solve settled what it was asked and the search behind it was too partial for what this particular claim reads. `conclusion` is what tells those apart."
+      "description": "A three-valued judgment. `undecided` is not a failure and must not be shown as one: it is an absence of knowledge rather than a wrong answer, and it arises two ways — the solve settled nothing, or the solve settled what it was asked and the search behind it was too partial for what this particular claim reads. No field tells those two apart in general: `conclusion` of `exhausted` implies the first, but the other two conclusions occur on both, and `message` is the only place the difference is stated — which is opaque, so display it rather than parsing it."
     },
     "invocation": {
       "type": "object",
@@ -43,7 +43,7 @@
       "properties": {
         "target": {
           "type": "string",
-          "description": "The file or directory that was run, as the invocation named it — with anything a reader's tooling would act on rather than display escaped, which is the one way it can differ from what was typed. Every path in this document follows it, so a relative target yields relative paths: resolve them against the working directory the run was made from, because nothing in this document records what that was."
+          "description": "The file or directory that was run, as the invocation named it. Two things can make it differ from what was typed: anything a reader's tooling would act on rather than display is escaped, and the path is normalized as this language normalizes one, so a trailing separator or a leading `./` is not preserved. Every path in this document follows it, so a relative target yields relative paths: resolve them against the working directory the run was made from, because nothing in this document records what that was."
         },
         "strict": {
           "type": "boolean",
@@ -57,7 +57,7 @@
         "deadline": {
           "type": ["number", "null"],
           "exclusiveMinimum": 0,
-          "description": "The whole-run time limit in seconds, or null when none was set (the default). Cases not reached before it appear as errors, not as verdicts. When it is set it is a positive finite number, on the same footing and for the same reason as `budget`."
+          "description": "The limit in seconds on how long solving may go on, or null when none was set (the default). Its clock starts after discovery, so it does not bound the whole run; and it stops elenctic starting a case rather than interrupting one under way. Cases not reached before it appear as errors, not as verdicts. When it is set it is a positive finite number, on the same footing and for the same reason as `budget`."
         }
       }
     },
@@ -65,7 +65,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["total", "passed", "failed", "undecided", "errors", "hygiene"],
-      "description": "Counts computed from the registers below, provided so a consumer need not walk the arrays. Each is the length of the register it names, and none of them omits anything the register holds. A `total` of 0 with a non-empty `errors` means no case reached a verdict — the fault stopped the whole corpus rather than any one case, so do not read it as an empty corpus; with an empty `errors` it means the corpus genuinely held no cases, which is a run with nothing to do rather than a run that went wrong.",
+      "description": "Counts computed from the registers below, provided so a consumer need not walk the arrays. Only `errors` and `hygiene` are the lengths of the registers they name; `total` names no register, and `passed`, `failed` and `undecided` tally verdicts within `cases`. Read each property's own description rather than assuming, because the one that most invites the assumption is `total`: reading it as `cases.length` under-counts by exactly the cases that could not be run, which is what it exists to include. A `total` of 0 with a non-empty `errors` means no case reached a verdict — the fault stopped the whole corpus rather than any one case, so do not read it as an empty corpus; with an empty `errors` it means the corpus genuinely held no cases, which is a run with nothing to do rather than a run that went wrong.",
       "properties": {
         "total": {
           "type": "integer",
@@ -80,7 +80,7 @@
         "failed": {
           "type": "integer",
           "minimum": 0,
-          "description": "Cases where a check decided wrong. This is the count a gate fails on, not `errors`."
+          "description": "Cases where a check decided wrong. Draw a failure indicator on this rather than on `errors` — but do not *gate* on it: a run in which every case could not be run has a `failed` of 0 and is not a passing run. Gate on the exit-status ladder described under `invocation`."
         },
         "undecided": {
           "type": "integer",
@@ -133,7 +133,7 @@
       "properties": {
         "tag": {
           "type": "string",
-          "description": "The contract tag this claim was written with, such as `@cautious` or `@query`. The tag vocabulary belongs to the contract language rather than to this document, and is documented with that language rather than enumerated here. Open-valued: tags may be added."
+          "description": "The contract tag this claim was written with, such as `@cautious` or `@query` — normalized in two places, so do not expect to recover the author's text from it: `@expect` carries its value (`@expect sat`), and `@model optimal` reports as `@optimal`, which is the same cell written two ways. The tag vocabulary belongs to the contract language rather than to this document, and is documented with that language rather than enumerated here. Open-valued: tags may be added."
         },
         "subject": {
           "type": "string",
@@ -155,7 +155,7 @@
         "conclusion": {
           "type": "string",
           "enum": ["exhausted", "incomplete", "interrupted"],
-          "description": "How the search behind this verdict ended. Always present and never null: every verdict comes from a search that ran, and for a solve that settled nothing how the search ended is the whole of what there is to report. `exhausted` means the search covered the space it was configured to cover; `incomplete` means it stopped short of that without being interrupted, ending on a bound it ran into rather than on an answer — and not every such bound was asked for, since a search nobody asked to enumerate carries one of the solver's own; `interrupted` means it was cut short from outside the search, which from the command line is the per-solve time budget. This is what tells an unsettled question apart from a reading that outran its search: a status of `undecided` with a conclusion of `interrupted` usually means the budget was too small, not that the program is wrong."
+          "description": "How the search behind this verdict ended. Always present and never null: every verdict comes from a search that ran, and for a solve that settled nothing how the search ended is the whole of what there is to report. `exhausted` means the search covered the space it was configured to cover; `incomplete` means it stopped short of that without being interrupted, ending on a bound it ran into rather than on an answer — and not every such bound was asked for, since a search nobody asked to enumerate carries one of the solver's own; `interrupted` means it was cut short from outside the search, which from the command line is the per-solve time budget. This tells a search that ran out of room from one that ran to its own end — not which kind of not-knowing an `undecided` met, which it cannot: a status of `undecided` with a conclusion of `interrupted` usually means the budget was too small, not that the program is wrong."
         }
       }
     },

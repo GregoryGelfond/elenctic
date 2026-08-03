@@ -26,7 +26,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from elenctic.json_report import dumps, schema_text
-from support import Streams, document_of, run_cli
+from support import Streams, child_environment, document_of, run_cli
 
 _PASSES = (
     "% @elenctic solver clingo\n% @expect sat\n% @count 2\n\n"
@@ -35,6 +35,21 @@ _PASSES = (
 _FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit.\n#show biscuit/0.\n"
 _WILL_NOT_GROUND = "% @expect sat\n% @count 1\n\nq(1).\np(X) :- q(Y).\n"
 _ORPHAN = "% a contract-free file nothing includes.\nhelper(1).\n"
+_DECLARES_THE_THEORY_SOLVER = (
+    "% @elenctic solver clingcon\n% @expect sat\n% @assign { x=1 }\n\n&sum { x } = 1.\n"
+)
+# Three derived runs, so the order the checks come back in is neither alphabetical nor its own
+# reverse — which is what makes an order assertion over it able to notice either.
+_FOUR_CLAIMS = (
+    "% @elenctic solver clingo\n% @expect sat\n% @count 2\n"
+    "% @cautious { biscuit }\n% @brave { tea }\n\n"
+    "1 { tea; coffee } 1.\nbiscuit.\n#show tea/0.\n#show coffee/0.\n#show biscuit/0.\n"
+)
+_OPTIMAL_CONSEQUENCES = (
+    "% @elenctic solver clingo\n% @expect sat\n"
+    "% @cautious optimal { a }\n% @brave optimal { a }\n\n"
+    "{ a; b }.\n#minimize { 1,b : b }.\n#show a/0.\n#show b/0.\n"
+)
 
 # An environment whose standard output cannot encode the report. Reproducing it takes saying so
 # three times, because this interpreter works hard not to be left in it — which is why the defect
@@ -99,12 +114,18 @@ def _corpus(root: Path, **cases: str) -> Path:
 
 
 def _reported(
-    target: Path, *flags: str, prelude: str = "", env: dict[str, str] | None = None
+    target: Path,
+    *flags: str,
+    prelude: str = "",
+    env: dict[str, str] | None = None,
+    hash_seed: str | None = None,
 ) -> Streams:
-    return run_cli(target, "--format", "json", *flags, prelude=prelude, env=env)
+    return run_cli(
+        target, "--format", "json", *flags, prelude=prelude, env=env, hash_seed=hash_seed
+    )
 
 
-def _status_off_thedocument_of(document: dict[str, Any]) -> int:
+def _status_off_the_document(document: dict[str, Any]) -> int:
     """The exit status as a consumer holding only the document reconstructs it.
 
     The document promises this ladder is readable from its own fields, which is what lets a stored
@@ -148,7 +169,7 @@ def test_standard_output_carries_one_document_and_nothing_else(tmp_path: Path) -
     assert "1/2 passed" in streams.err, "including the summary the run writes at the end"
 
 
-def test_a_write_beneath_the_python_stream_never_reaches_thedocument_of(tmp_path: Path) -> None:
+def test_a_write_beneath_the_python_stream_never_reaches_the_document(tmp_path: Path) -> None:
     # The guarantee the redirect exists for, and the only test that can tell it apart from
     # rebinding this language's standard output: a writer that goes to the descriptor directly, as
     # the grounder does, inside a real run. Rebinding would let both of these land beside the
@@ -244,10 +265,10 @@ def test_the_status_a_consumer_reads_off_the_document_is_the_status_the_process_
     streams = _reported(_corpus(tmp_path, **cases), *flags, prelude=prelude)
 
     assert streams.status == expected, described
-    assert _status_off_thedocument_of(document_of(streams)) == streams.status, described
+    assert _status_off_the_document(document_of(streams)) == streams.status, described
 
 
-def test_a_corpus_that_could_not_be_discovered_still_produces_adocument_of(tmp_path: Path) -> None:
+def test_a_corpus_that_could_not_be_discovered_still_produces_a_document(tmp_path: Path) -> None:
     # Nothing ran, so there is no verdict to report — but a consumer handed nothing at all cannot
     # tell a corpus that could not be found from a run that died before writing anything.
     streams = _reported(tmp_path / "no_such_directory")
@@ -289,7 +310,7 @@ def test_a_case_that_will_not_ground_costs_only_its_own_verdict(tmp_path: Path) 
     assert document["summary"]["total"] == 2, "both files were discovered, and both are accounted"
 
 
-def test_hygiene_this_run_graded_an_error_reaches_thedocument_of(tmp_path: Path) -> None:
+def test_hygiene_this_run_graded_an_error_reaches_the_document(tmp_path: Path) -> None:
     target = _corpus(tmp_path, fails=_FAILS, orphan_library=_ORPHAN)
 
     streams = _reported(target, "--strict")
@@ -324,12 +345,13 @@ def test_an_observation_this_run_stayed_quiet_about_is_still_recorded(tmp_path: 
 
 def test_the_same_corpus_serializes_identically_twice(tmp_path: Path) -> None:
     # No case here is bounded by time, so nothing in the document depends on how fast the machine
-    # is. A consumer diffing two reports of an unchanged corpus must see no diff — and because
-    # these are two processes with two hash seeds, anything ordered by a hash would show.
+    # is. A consumer diffing two reports of an unchanged corpus must see no diff — and the two seeds
+    # are named here rather than left to the environment, because two runs under one seed would
+    # compare a hash-ordered document against itself and see nothing.
     target = _corpus(tmp_path, passes=_PASSES, fails=_FAILS, broken=_WILL_NOT_GROUND)
 
-    first = _reported(target)
-    second = _reported(target)
+    first = _reported(target, hash_seed="0")
+    second = _reported(target, hash_seed="1")
 
     assert first.status == 2, "and the runs behind the comparison actually happened"
     assert document_of(first)["summary"]["total"] == 3
@@ -382,7 +404,7 @@ def test_a_dry_run_has_no_machine_readable_form_and_says_so(tmp_path: Path) -> N
     assert "alone" in streams.err, "and it says what to ask for instead, which is why it is refused"
 
 
-def test_a_budget_that_is_not_a_positive_finite_number_of_seconds_leaves_nodocument_of(
+def test_a_budget_that_is_not_a_positive_finite_number_of_seconds_leaves_no_document(
     tmp_path: Path,
 ) -> None:
     # Refused the same way and at the same point as the pairing above, and asserted here for the
@@ -426,7 +448,7 @@ def test_a_run_given_no_deadline_says_so_rather_than_inventing_one(tmp_path: Pat
     ],
     ids=["out-of-memory", "internal-error"],
 )
-def test_a_fault_that_reaches_the_console_entry_still_produces_adocument_of(
+def test_a_fault_that_reaches_the_console_entry_still_produces_a_document(
     tmp_path: Path, described: str, prelude: str, kind: str, expected: int
 ) -> None:
     # The register a consumer needs most, because it is the one it cannot infer: handed nothing, it
@@ -463,7 +485,7 @@ def test_an_allocation_failure_with_no_case_to_name_says_so_in_the_record(tmp_pa
     assert "resource error" in streams.err, "and the reader is told in prose as well"
 
 
-def test_a_fault_while_printing_the_description_produces_nodocument_of(tmp_path: Path) -> None:
+def test_a_fault_while_printing_the_description_produces_no_document(tmp_path: Path) -> None:
     # A document reports a run, and printing the description asks for none — so a fault there is
     # reported as prose and a status, the same way its readable-environment sibling already is.
     # A run report here would describe a corpus that was never looked at.
@@ -541,3 +563,76 @@ def test_the_description_is_utf8_whatever_the_environment_would_have_chosen(tmp_
     assert streams.status == 0
     assert streams.out == schema_text()
     assert not streams.out.isascii(), "the description is what makes this test say anything"
+
+
+def test_each_run_is_given_the_hash_seed_it_was_asked_for(tmp_path: Path) -> None:
+    # The instrument behind the check above, asserted rather than believed. Clearing the seed is
+    # what makes an unasked-for run pick its own; setting it is what lets two runs be given two.
+    # Inheriting the parent's would make every "two runs" comparison one run against itself.
+    assert child_environment(hash_seed="0")["PYTHONHASHSEED"] == "0"
+    assert child_environment(hash_seed="1")["PYTHONHASHSEED"] == "1"
+    assert "PYTHONHASHSEED" not in child_environment()
+
+
+def test_a_case_is_named_by_the_path_a_reader_would_open(tmp_path: Path) -> None:
+    # The whole of the path, not its last segment. An editor placing a diagnostic opens this
+    # string, and a bare file name is one it cannot resolve — while every assertion that only
+    # checks the ending would go on passing.
+    target = _corpus(tmp_path, passes=_PASSES)
+
+    (case,) = document_of(_reported(target))["cases"]
+
+    assert case["source"] == str(target / "passes.lp")
+
+
+def test_a_case_says_which_solver_actually_ran_it(tmp_path: Path) -> None:
+    # Two cases declaring two solvers, so the field has to carry the case's own answer rather than
+    # the one this version happens to default to.
+    target = _corpus(tmp_path, plain=_PASSES, theory=_DECLARES_THE_THEORY_SOLVER)
+
+    document = document_of(_reported(target))
+
+    assert {case["source"].split("/")[-1]: case["solver"] for case in document["cases"]} == {
+        "plain.lp": "clingo",
+        "theory.lp": "clingcon",
+    }
+
+
+def test_a_run_that_was_not_strict_says_it_was_not(tmp_path: Path) -> None:
+    # The dial's other footing. Asserted because every other assertion about it is against a run
+    # that passed --strict, so a document hardcoding "strict": true would tell every reader of
+    # every ordinary stored report that the run had been a gate.
+    streams = _reported(_corpus(tmp_path, passes=_PASSES))
+
+    assert document_of(streams)["invocation"]["strict"] is False
+
+
+def test_a_cases_checks_come_back_in_the_order_the_run_derived_them(tmp_path: Path) -> None:
+    # Nothing is sorted: the order is the run's own, and a check's position in the array is its
+    # identity within the document. This contract derives three runs, so the order it produces is
+    # neither alphabetical nor its own reverse — which is what lets this notice either.
+    target = _corpus(tmp_path, menu=_FOUR_CLAIMS)
+
+    (case,) = document_of(_reported(target))["cases"]
+
+    assert [check["tag"] for check in case["checks"]] == [
+        "@count",
+        "@expect sat",
+        "@cautious",
+        "@brave",
+    ]
+
+
+def test_a_repeatable_tag_on_an_optimal_base_still_says_which_claim_it_judged(
+    tmp_path: Path,
+) -> None:
+    # The published description promises a subject for all four consequence tags, and the two
+    # optimal-base ones are the pair nothing else observes — so two `@brave optimal` lines could
+    # become indistinguishable in the document while the description went on promising otherwise.
+    target = _corpus(tmp_path, opt=_OPTIMAL_CONSEQUENCES)
+
+    (case,) = document_of(_reported(target))["cases"]
+
+    subjects = {check["tag"]: check["subject"] for check in case["checks"]}
+    assert subjects["@cautious optimal"] == "{ a }"
+    assert subjects["@brave optimal"] == "{ a }"

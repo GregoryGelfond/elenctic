@@ -11,10 +11,15 @@ import sys
 from pathlib import Path
 from typing import Any, NamedTuple
 
-import elenctic.cli
 from elenctic.result import Conclusion, Determination, SolveOutcome
 
-__all__ = ["Streams", "decided", "document_of", "run_cli"]
+__all__ = ["Streams", "child_environment", "decided", "document_of", "run_cli"]
+
+# How long a child may take before it is a hang rather than a slow run. It has to exceed the largest
+# ``--budget`` any test asks for, multiplied by the largest corpus any test builds, with room for
+# the interpreter to start; a number without that reasoning beside it is one nobody can safely
+# change.
+_CHILD_TIMEOUT_SECONDS = 300
 
 
 def decided(determination: Determination) -> SolveOutcome:
@@ -52,8 +57,31 @@ class Streams(NamedTuple):
     status: int
 
 
+def child_environment(
+    env: dict[str, str] | None = None, hash_seed: str | None = None
+) -> dict[str, str]:
+    """The environment a child is given, as a value, so that what it does to the hash seed is
+    something a test can look at rather than something it has to believe.
+
+    ``hash_seed`` is set explicitly when given and cleared otherwise. Clearing it means the child
+    picks its own, which is what makes two runs two seeds; *inheriting* it would mean two runs under
+    whatever single seed the parent happened to have, and a comparison of two such runs is a run
+    compared against itself — anything ordered by a hash would survive it.
+    """
+    environment = {**os.environ, **(env or {})}
+    if hash_seed is None:
+        environment.pop("PYTHONHASHSEED", None)
+    else:
+        environment["PYTHONHASHSEED"] = hash_seed
+    return environment
+
+
 def run_cli(
-    target: Path, *flags: str, prelude: str = "", env: dict[str, str] | None = None
+    target: Path,
+    *flags: str,
+    prelude: str = "",
+    env: dict[str, str] | None = None,
+    hash_seed: str | None = None,
 ) -> Streams:
     """One invocation of elenctic, **as a process**, with its two streams kept apart.
 
@@ -64,13 +92,18 @@ def run_cli(
     in-process test therefore watches a stream the guarantee never touches, and reports a clean
     standard output whether or not the guarantee holds. Both capture fixtures share that blind spot.
 
-    The hash seed is cleared rather than inherited, so that two runs really are two seeds: anything
-    hash-ordered would otherwise be compared against itself. Both streams are
-    decoded as UTF-8 here whatever the child was asked to encode in, because what the child encodes
-    in is itself under test in places.
+    Both streams are decoded as UTF-8 here whatever the child was asked to encode in, because what
+    the child encodes in is itself under test in places. Decoding strictly is safe for standard
+    error only because this interpreter fixes that stream's error handler to ``backslashreplace``;
+    without that, a child writing a diagnostic it could not encode would take the runner down
+    instead of failing the test.
+
+    ``elenctic.cli`` is imported here rather than at module scope so that the helpers above, which
+    need nothing from the console entry, do not drag its whole import graph — and the package's
+    lazy attribute resolution — into every test session that wants them.
     """
-    environment = {**os.environ, **(env or {})}
-    environment.pop("PYTHONHASHSEED", None)
+    import elenctic.cli
+
     finished = subprocess.run(
         [
             sys.executable,
@@ -82,9 +115,9 @@ def run_cli(
         capture_output=True,
         text=True,
         encoding="utf-8",
-        timeout=300,
+        timeout=_CHILD_TIMEOUT_SECONDS,
         check=False,
-        env=environment,
+        env=child_environment(env, hash_seed),
     )
     return Streams(finished.stdout, finished.stderr, finished.returncode)
 
@@ -94,10 +127,15 @@ def document_of(streams: Streams) -> dict[str, Any]:
     document, since a child that died for an unrelated reason otherwise reports only that something
     was not JSON."""
     try:
-        parsed: dict[str, Any] = json.loads(streams.out)
+        parsed = json.loads(streams.out)
     except json.JSONDecodeError as broken:
         raise AssertionError(
             f"standard output carried no document ({broken}). The run exited "
             f"{streams.status} and said:\n{streams.err}"
         ) from broken
-    return parsed
+    if not isinstance(parsed, dict):
+        # JSON, but not a document. Caught here rather than left to fail on the first subscript,
+        # where it arrives as a TypeError about the wrong thing.
+        raise AssertionError(f"standard output carried {parsed!r}, which is JSON but not an object")
+    document: dict[str, Any] = parsed
+    return document

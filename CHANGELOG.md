@@ -21,10 +21,12 @@ means for them — a reader deciding whether to upgrade should not have to read 
   `conclusion` saying how the search behind the verdict ended — which is what tells "the budget was
   too small" apart from "the program is wrong". The exit status is readable off the document alone.
 
-  The default is `--format human`, which is also spellable, and which is byte-for-byte what earlier
-  versions printed. A format this version does not know is refused rather than quietly rendered as
-  prose — being handed prose where a document was expected is the failure a machine consumer would
-  find hardest to notice.
+  The default is `--format human`, which is also spellable, so a script can be explicit and get
+  exactly what it gets by saying nothing. That is *not* what earlier versions printed: the
+  diagnostic rows themselves changed on this release — see the per-line entry under Changed — so a
+  job scraping standard output needs re-checking whichever way it spells the format. A format this
+  version does not know is refused rather than quietly rendered as prose, since being handed prose
+  where a document was expected is the failure a machine consumer would find hardest to notice.
 
 - **`--print-schema`** writes the JSON Schema of that document and exits, without looking for a
   corpus. The schema ships inside the package, so it describes the version you have rather than
@@ -153,8 +155,9 @@ means for them — a reader deciding whether to upgrade should not have to read 
   `L₁ ∪ L₂ ⊆ S` says — but a failure now names which line was false instead of the union.
 
 - **`Sat` and `Unsat` no longer construct without a line.** Both now require `expect_line`, and
-  every contract cell carries a `Claimed` value pairing what was claimed with the line it was
-  claimed on. `CheckReport` likewise gained the claim's subject, its line, and how the search
+  every contract cell but the prose one carries a `Claimed` value pairing what was claimed with the
+  line it was claimed on — `@note` holds documentation rather than a claim, so it holds bare
+  strings. `CheckReport` likewise gained the claim's subject, its line, and how the search
   behind the verdict ended. Code that builds these directly — rather than through `parse` and
   `run_case`, which is the ordinary path — must pass the coordinate.
 

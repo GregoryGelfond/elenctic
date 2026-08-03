@@ -66,3 +66,11 @@ def test_an_ordinary_run_never_meets_the_cap() -> None:
     assert isinstance(outcome.determination, Consistent)
     assert outcome.conclusion is Conclusion.EXHAUSTED
     assert count_is(2, line=1)(outcome).verdict is Verdict.PASS, "an uncapped reading still decides"
+
+
+def test_the_cap_is_the_number_the_documentation_states() -> None:
+    # The bound has no flag, so the only way a reader learns it is that the README states it. Every
+    # other test here supplies its own cap or asserts a relation that holds for any positive value,
+    # so the shipped number itself is otherwise pinned by nothing and can drift away from the
+    # sentence describing it without a single test noticing.
+    assert MODEL_CAP == 1_000_000, "the README says a solve holds at most a million answer sets"

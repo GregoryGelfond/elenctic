@@ -11,8 +11,9 @@ reader can act on, text that can rewrite the report is a defect in the product i
 cosmetic one.
 
 So corpus-controlled text passes through :func:`legible` before it is shown. This module has no
-elenctic dependencies, so every renderer can reach it — the human one today, and the machine-
-readable one that will need exactly the same guarantee.
+elenctic dependencies, so every renderer reaches it — the human one, and the machine-
+readable one, which needs exactly the same guarantee for a related reason: text a parser would act
+on can break the document it appears in as surely as text a terminal acts on can rewrite a report.
 """
 
 __all__ = ["legible"]

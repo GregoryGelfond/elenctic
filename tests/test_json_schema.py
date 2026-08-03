@@ -26,6 +26,7 @@ from — so the two cannot come to read different files.
 """
 
 import json
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -556,3 +557,62 @@ def test_a_copy_of_the_package_carrying_no_description_says_so(
     assert captured.out == "", "half a description is worse than none"
     assert "Traceback" not in captured.err, "an actionable fault is never delivered as a traceback"
     assert "elenctic/schema/" in captured.err, "and it says where the missing thing belongs"
+
+
+# What each conclusion value must be glossed as. The pairing cannot be derived from the code — it is
+# the meaning of the value rather than anything the value computes — so it is stated here, which is
+# what makes exchanging two glosses in the published description a failing test rather than a
+# document that confidently says the opposite of the truth.
+_CONCLUSION_GLOSS = {
+    "exhausted": "covered the space",
+    "incomplete": "stopped short",
+    "interrupted": "cut short from outside",
+}
+
+
+def test_the_description_of_each_conclusion_says_which_ending_it_names() -> None:
+    # Every other test of this file's prose asks only whether there is any. A description is the
+    # whole of what a consumer outside this project has to go on, so one that names the right values
+    # and glosses them wrongly is worse than one that says nothing: it is confidently misleading,
+    # and nothing about the document would look wrong.
+    described = _schema()["$defs"]["check"]["properties"]["conclusion"]
+    assert set(described["enum"]) == set(_CONCLUSION_GLOSS), (
+        "a value gained or lost here needs its gloss written down beside it"
+    )
+    for value, gloss in _CONCLUSION_GLOSS.items():
+        stated = re.search(rf"`{value}` means ([^;.]*)", described["description"])
+        assert stated is not None, f"the description does not say what `{value}` means"
+        assert gloss in stated.group(1), (
+            f"`{value}` is glossed as {stated.group(1)!r}, which does not say {gloss!r}"
+        )
+
+
+def test_the_description_of_a_grade_states_the_footing_this_version_gives_each_kind() -> None:
+    # Derived from the code that decides it, rather than restated: the default footing differs by
+    # kind, and the whole point of the field is that a consumer is told what this run based its
+    # status on. A description that swapped the two would contradict, in the published contract,
+    # something the suite verifies in code — and nothing else here would notice.
+    prose = _schema()["$defs"]["hygiene"]["properties"]["grade"]["description"]
+    for kind in HygieneKind:
+        phrase = kind.value.replace("_", " ")
+        default = kind.grade_under(strict=False).value
+        assert re.search(rf"{phrase} is (?:a )?`{default}`", prose), (
+            f"the description does not say that an {phrase} defaults to `{default}`"
+        )
+
+
+def test_the_summary_description_does_not_claim_a_count_is_a_length_when_it_is_not(
+    document: dict[str, Any],
+) -> None:
+    # Four of the six counts are not the length of anything, and the one that most invites the
+    # assumption is `total`: reading it as the size of `cases` under-counts by exactly the cases
+    # that could not be run, which is what it exists to include. The fact is measured here first, so
+    # the sentence is tied to something rather than merely to itself.
+    prose = _schema()["$defs"]["summary"]["description"]
+    for register in ("errors", "hygiene"):
+        assert document["summary"][register] == len(document[register])
+    assert document["summary"]["total"] != len(document["cases"]), (
+        "the corpus behind this fixture must hold a case that produced no verdict, or there is "
+        "nothing here for the description to get wrong"
+    )
+    assert "Only `errors` and `hygiene` are the lengths" in prose

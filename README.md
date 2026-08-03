@@ -63,7 +63,8 @@ $ elenctic encodings/
 ```
 
 `--explain` shows how each tag is routed to a solver run and the fields it reads, *without solving*,
-and whether the run projects its census onto the shown atoms. This contract needs three runs (a full
+and whether projecting onto the shown atoms would erase anything the run's checks read. This
+contract needs three runs (a full
 enumeration for `@count`, and the native cautious and brave runs):
 
 ```console
@@ -197,8 +198,13 @@ base qualifier: `all` (the default — every answer set `AS(P)`) or `optimal` (t
 and `@query` may each appear on several lines of one contract; `@note` may too. Each writing is an
 **independent claim**, with its own verdict, its own diagnostic and its own line — writing
 `@cautious { a }` and `@cautious { b }` on two lines says exactly what `@cautious { a, b }` says on
-one, but a failure names the line whose claim was false rather than the union. Every other tag may
-appear at most once.
+one, but a failure names the line whose claim was false rather than the union.
+
+Every other tag may appear at most once **per `(mode, base)` cell**, which is not the same as at
+most once: `@model`, `@count` and `@assign` each have an `all` cell and an `optimal` cell, so
+`@count 12` and `@count optimal 3` may be written together (and are then cross-checked, since an
+optimal class cannot be larger than the whole). `@optimal { L }` is sugar for `@model optimal { L }`
+and shares its cell. Only `@expect` and `@cost` are one to a contract outright.
 
 A litset `{ … }` is comma-separated and paren-aware (an atom may contain commas, e.g.
 `included(s,a,2,1)`), and may span continuation `%` lines while a brace stays open. An `@`-tag's
@@ -245,8 +251,10 @@ reported loudly and distinctly rather than as a costumed `FAIL`. They divide by 
 are: a bad contract (`ContractError`), a mis-shaped corpus or a missing declared solver
 (`DiscoveryError`), or a program that cannot be run at all — one that will not ground, or whose
 `#include` does not resolve (`ProgramError`) — are yours to fix; an `elenctic` bug
-(`HarnessError`) is ours. A case that cannot be run does not stop the others: it is reported on its
-own and the rest of the corpus still runs.
+(`HarnessError`) is ours. Two more are yours to fix and are named for where the fault lies rather
+than for an exception, because neither is one this package defines: a case the run's `--deadline`
+never reached, and a case that ran out of memory. A case that cannot be run does not stop the
+others: it is reported on its own and the rest of the corpus still runs.
 
 ## Worked examples
 
@@ -309,7 +317,7 @@ $ elenctic tests/feasible.lp   # run a single case file
 $ elenctic tests/ --explain    # narrate the derived run plan, without solving
 $ elenctic tests/ --strict     # fail the run on any corpus-hygiene issue (the CI gate)
 $ elenctic tests/ --budget 60      # per-solve time limit (default 30s)
-$ elenctic tests/ --deadline 600   # stop starting cases after 10 minutes; those not reached are reported as not run
+$ elenctic tests/ --deadline 600   # once solving has run 10 minutes, start no more cases; those not reached are reported as not run
 $ elenctic tests/ --format json    # the machine-readable report (below)
 $ elenctic --print-schema          # the JSON schema of that report, without running anything
 ```
@@ -326,14 +334,14 @@ output carries a whole document or nothing at all, so a consumer can parse it wi
 Running a single case file:
 
 ```console
-$ elenctic drinks.lp --format json
+$ elenctic menu.lp --format json
 {
   "schema_version": 1,
-  "invocation": { "target": "drinks.lp", "strict": false, "budget": 30.0, "deadline": null },
+  "invocation": { "target": "menu.lp", "strict": false, "budget": 30.0, "deadline": null },
   "summary": { "total": 1, "passed": 0, "failed": 1, "undecided": 0, "errors": 0, "hygiene": 0 },
   "cases": [
     {
-      "source": "drinks.lp",
+      "source": "menu.lp",
       "solver": "clingo",
       "verdict": "fail",
       "checks": [
@@ -388,9 +396,10 @@ Paths in the document follow the target as you named it, so a relative target yi
 resolve them against the directory you ran from, which the document does not record.
 
 `elenctic --print-schema` writes the JSON Schema of this document and exits, without looking for a
-corpus. Two combinations are refused rather than guessed at: `--explain --format json` (a dry run
-narrates a plan, and this version describes no document for one), and a `--budget` or `--deadline`
-that is not a positive finite number of seconds. A refused command line produces **no** document, so
+corpus. Three things are refused rather than guessed at: a `--format` this version does not know;
+`--explain --format json` (a dry run narrates a plan, and this version describes no document for
+one); and a `--budget` or `--deadline` that is not a positive finite number of seconds. A refused
+command line produces **no** document, so
 check the exit status before parsing — and note that `--print-schema` puts the *schema* on that
 stream, which parses as JSON and has none of the fields above.
 
@@ -406,7 +415,12 @@ its own result and no other's — but two limits are worth stating plainly rathe
 discovered.
 
 **`--budget` bounds a solve, not a run.** It is per solve, and a case can route to several. Use
-`--deadline` to bound the whole run.
+`--deadline` to bound the solving.
+
+**`--deadline` bounds the solving, not everything the run does.** Its clock starts once discovery
+has finished, and discovery is not free — it parses every case and its transitive `#include`s. It
+also stops elenctic *starting* a case rather than interrupting one under way, so a solve already
+running finishes on its own `--budget`.
 
 **Grounding is not bounded at all.** A program can be small and still ground to something enormous,
 and clingo offers no way to cap that — it is not a limit elenctic can lift. Running an untrusted
@@ -417,8 +431,12 @@ costs that case's result rather than the whole run's — but it cannot be preven
 **An enumerating solve holds at most a million answer sets.** Past that the search stops, and every
 check whose reading ranges over the whole collection is `UNDECIDED` — a census of part of a
 collection is not the census. The bound is fixed and has no flag: a case that meets it is asking for
-a reading nobody can hold, and the encoding is where that is fixed. Consequence and optimum runs are
-not affected, since clingo hands those back a single answer rather than a stream of models.
+a reading nobody can hold, and the encoding is where that is fixed. **Consequence runs are not
+affected**, because clingo hands those back a refining sequence of consequence sets rather than a
+stream of models, and only the latest is kept — nothing accumulates to bound. The **optimal-class
+enumeration is a stream of models like any other** and meets the same bound: an optimal class of
+more than a million members is truncated exactly as `AS(P)` is, and every optimal-base tag reading
+over it is then `UNDECIDED`.
 
 Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation <file.lp>`
 (the parsed contract), `python -m elenctic.run <file.lp>` (the derived run plan),
