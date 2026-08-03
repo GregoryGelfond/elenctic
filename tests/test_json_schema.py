@@ -76,8 +76,8 @@ _CLOSED: list[tuple[str, tuple[str | int, ...], frozenset[str]]] = [
     ),
     ("scope", ("$defs", "error", "properties", "scope"), frozenset({"corpus", "case"})),
     (
-        "severity",
-        ("$defs", "hygiene", "properties", "severity"),
+        "grade",
+        ("$defs", "hygiene", "properties", "grade"),
         frozenset({"silent", "warning", "error"}),
     ),
 ]
@@ -227,7 +227,7 @@ def test_the_corpus_these_tests_rest_on_reaches_every_register(document: dict[st
     # document would quietly become claims about something else.
     assert [case["verdict"] for case in document["cases"]] == ["pass", "fail"]
     assert [error["kind"] for error in document["errors"]] == ["contract"]
-    assert {record["severity"] for record in document["hygiene"]} == {"warning", "silent"}
+    assert {record["grade"] for record in document["hygiene"]} == {"warning", "silent"}
 
 
 @pytest.mark.parametrize(
@@ -405,9 +405,9 @@ def test_a_document_that_is_wrong_in_a_way_no_valid_document_shows_is_refused(
         (("cases", 0, "checks", 0, "status"), "PASS"),
         (("cases", 0, "checks", 0, "conclusion"), "EXHAUSTED"),
         (("errors", 0, "scope"), "CASE"),
-        (("hygiene", 0, "severity"), "WARNING"),
+        (("hygiene", 0, "grade"), "WARNING"),
     ],
-    ids=["verdict", "status", "conclusion", "scope", "severity"],
+    ids=["verdict", "status", "conclusion", "scope", "grade"],
 )
 def test_a_closed_vocabulary_refuses_the_member_name_where_its_value_belongs(
     document: dict[str, Any], path: tuple[str | int, ...], name: str

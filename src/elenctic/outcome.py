@@ -39,6 +39,7 @@ __all__ = [
     "CasePlan",
     "ErrorKind",
     "ErrorRecord",
+    "Grade",
     "HygieneKind",
     "HygieneRecord",
     "Invocation",
@@ -46,7 +47,6 @@ __all__ = [
     "PlanOutcome",
     "RunOutcome",
     "Scope",
-    "Severity",
     "error_kind",
     "summary",
 ]
@@ -90,7 +90,7 @@ class Scope(Enum):
     CASE = "case"
 
 
-class Severity(Enum):
+class Grade(Enum):
     """How loudly a run graded a corpus-health observation — the closed vocabulary every reading of
     that grade shares.
 
@@ -99,6 +99,16 @@ class Severity(Enum):
     is printed and what fails the run, so those two cannot come to disagree — and a consumer is told
     the grade rather than made to re-derive it from a table of kinds it would have to keep in step
     with this one.
+
+    A grade rather than a severity, and the difference is not a preference. This language keeps the
+    two apart: its severity ladder runs from debug to critical and has no member meaning *do not
+    show this*, because suppression there is a filter and not a level. A reader who meets a field
+    called a severity will map it onto a scale of severities, and the first of these three has no
+    place on such a scale — so the obvious reading of the field would work for two values and fail
+    quietly on the third, drawing attention to the one observation whose grade exists in order not
+    to draw any. Naming it for what it is also settles how closed it is: a severity invites a fourth
+    member, since an informational one is easy to imagine, while recorded, reported and fatal are
+    the whole of what a dial can say.
     """
 
     SILENT = "silent"
@@ -120,13 +130,13 @@ class HygieneKind(Enum):
     ORPHAN_LIBRARY = "orphan_library"
     UNDECLARED_SOLVER = "undeclared_solver"
 
-    def severity_under(self, *, strict: bool) -> Severity:
+    def grade_under(self, *, strict: bool) -> Grade:
         """How loudly this observation is graded under the strictness dial — the one place the
         default footing of each kind is decided.
 
-        Named apart from the graded record's own ``severity`` so that the two are not one word for a
-        value and a way of computing one; reached from a record, ``kind.severity_under(...)`` asks a
-        question and ``severity`` is the answer this run already gave.
+        Named apart from the graded record's own ``grade`` so that the two are not one word for a
+        value and a way of computing one; reached from a record, ``kind.grade_under(...)`` asks a
+        question and ``grade`` is the answer this run already gave.
 
         Strictness grades everything an error; that is the whole of what it asks for. Without it the
         two differ, because they are not the same news. A library nothing includes is a real smell —
@@ -136,12 +146,12 @@ class HygieneKind(Enum):
         opt into explicitness.
         """
         if strict:
-            return Severity.ERROR
+            return Grade.ERROR
         match self:
             case HygieneKind.ORPHAN_LIBRARY:
-                return Severity.WARNING
+                return Grade.WARNING
             case HygieneKind.UNDECLARED_SOLVER:
-                return Severity.SILENT
+                return Grade.SILENT
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -189,14 +199,14 @@ class HygieneRecord:
     """One corpus-health observation, against the file it concerns, at the footing this run put it
     on.
 
-    ``severity`` is the observation as graded, not the observation itself: ``kind`` still says what
+    ``grade`` is the observation as graded, not the observation itself: ``kind`` still says what
     was seen, so a consumer that disagrees with this run's grading can apply its own policy to the
     same fact. What it must not have to do is reconstruct *this* run's policy from the kind, which
     is the only way it could learn why the process exited as it did.
     """
 
     kind: HygieneKind
-    severity: Severity
+    grade: Grade
     source: Path
     message: str
 

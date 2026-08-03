@@ -93,7 +93,7 @@
         "hygiene": {
           "type": "integer",
           "minimum": 0,
-          "description": "The length of `hygiene`, counting every observation this run recorded — including those graded `silent`, which are recorded and not reported. A consumer wanting the number a reader was shown filters on `severity` itself."
+          "description": "The length of `hygiene`, counting every observation this run recorded — including those graded `silent`, which are recorded and not reported. A consumer wanting the number a reader was shown filters on `grade` itself."
         }
       }
     },
@@ -189,17 +189,17 @@
     "hygiene": {
       "type": "object",
       "additionalProperties": false,
-      "description": "One observation about the corpus's own health, together with the footing this run put it on. It is neither a verdict nor an error: nothing was decided and nothing was prevented, which is why a consumer drawing failures should draw none of these unless the severity says otherwise.",
-      "required": ["kind", "severity", "source", "message"],
+      "description": "One observation about the corpus's own health, together with the footing this run put it on. It is neither a verdict nor an error: nothing was decided and nothing was prevented, which is why a consumer drawing failures should draw none of these unless the grade says otherwise.",
+      "required": ["kind", "grade", "source", "message"],
       "properties": {
         "kind": {
           "type": "string",
           "description": "Known values: `orphan_library` (a contract-free file nothing includes) and `undeclared_solver` (a case that did not name the solver it runs under). Open-valued."
         },
-        "severity": {
+        "grade": {
           "type": "string",
           "enum": ["silent", "warning", "error"],
-          "description": "How loudly this run graded the observation, which is a policy of the invocation rather than a property of what was seen: `--strict` grades every observation `error`, and without it an orphan library is a `warning` while an undeclared solver is `silent`. `error` means the run failed on it. `silent` means the observation was recorded but not reported, so a consumer drawing diagnostics should draw nothing for it — it is here so that a consumer applying its own policy still has the fact. Read this rather than deriving a footing from `kind`: `kind` is open-valued, so a table of kinds cannot stay complete, and this field is what says what the exit status was based on."
+          "description": "How loudly this run graded the observation, which is a policy of the invocation rather than a property of what was seen: `--strict` grades every observation `error`, and without it an orphan library is a `warning` while an undeclared solver is `silent`. `error` means the run failed on it. `silent` means the observation was recorded but not reported, so a consumer drawing diagnostics should draw nothing for it — it is here so that a consumer applying its own policy still has the fact. Read this rather than deriving a footing from `kind`: `kind` is open-valued, so a table of kinds cannot stay complete, and this field is what says what the exit status was based on. If you came here looking for a severity, this is the field — but do not map it onto a scale of severities, because `silent` is not a severity and has no place on one. It is a policy dial, of the kind a linter's lint levels are, and the value that means the observation was deliberately not shown is the one such a mapping gets wrong."
         },
         "source": {
           "type": "string",

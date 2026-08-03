@@ -24,11 +24,11 @@ from elenctic.outcome import (
     CaseOutcome,
     ErrorKind,
     ErrorRecord,
+    Grade,
     HygieneKind,
     HygieneRecord,
     RunOutcome,
     Scope,
-    Severity,
 )
 from elenctic.result import Conclusion, Verdict
 
@@ -55,10 +55,10 @@ def _error(kind: ErrorKind) -> ErrorRecord:
     )
 
 
-def _observation(severity: Severity) -> HygieneRecord:
+def _observation(grade: Grade) -> HygieneRecord:
     return HygieneRecord(
         kind=HygieneKind.ORPHAN_LIBRARY,
-        severity=severity,
+        grade=grade,
         source=Path("lib.lp"),
         message="nothing includes it",
     )
@@ -104,7 +104,7 @@ def test_a_harness_fault_outranks_every_other_signal() -> None:
     outcome = _outcome(
         cases=(_case(Verdict.FAIL),),
         errors=(_error(ErrorKind.PROGRAM), _error(ErrorKind.HARNESS)),
-        hygiene=(_observation(Severity.ERROR),),
+        hygiene=(_observation(Grade.ERROR),),
     )
     assert exit_status(outcome) == 3
 
@@ -117,17 +117,17 @@ def test_a_locus_that_is_not_a_harness_fault_stays_the_user_s_to_fix() -> None:
 
 def test_an_observation_graded_an_error_fails_the_run() -> None:
     # Hygiene reaches the status by exactly one route: the grade the run put on the observation.
-    outcome = _outcome(cases=(_case(Verdict.PASS),), hygiene=(_observation(Severity.ERROR),))
+    outcome = _outcome(cases=(_case(Verdict.PASS),), hygiene=(_observation(Grade.ERROR),))
     assert exit_status(outcome) == 2
 
 
-@pytest.mark.parametrize("severity", [Severity.WARNING, Severity.SILENT])
+@pytest.mark.parametrize("grade", [Grade.WARNING, Grade.SILENT])
 def test_an_observation_graded_below_an_error_leaves_the_status_alone(
-    severity: Severity,
+    grade: Grade,
 ) -> None:
     # Hygiene is never a verdict, so an observation this run did not grade an error must not reach
     # the status by some other route: a corpus that passes with a warning has passed.
-    outcome = _outcome(cases=(_case(Verdict.PASS),), hygiene=(_observation(severity),))
+    outcome = _outcome(cases=(_case(Verdict.PASS),), hygiene=(_observation(grade),))
     assert exit_status(outcome) == 0
 
 

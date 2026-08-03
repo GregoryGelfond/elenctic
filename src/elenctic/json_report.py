@@ -142,7 +142,7 @@ def _error(record: ErrorRecord) -> dict[str, object]:
 def _hygiene(record: HygieneRecord) -> dict[str, object]:
     return {
         "kind": record.kind.value,
-        "severity": record.severity.value,
+        "grade": record.grade.value,
         "source": _text(record.source),
         "message": _text(record.message),
     }

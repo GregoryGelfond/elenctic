@@ -49,6 +49,7 @@ from elenctic.outcome import (
     CasePlan,
     ErrorKind,
     ErrorRecord,
+    Grade,
     HygieneKind,
     HygieneRecord,
     Invocation,
@@ -56,7 +57,6 @@ from elenctic.outcome import (
     PlanOutcome,
     RunOutcome,
     Scope,
-    Severity,
     error_kind,
     summary,
 )
@@ -340,7 +340,7 @@ def exit_status(outcome: Outcome) -> int:
     """
     if any(error.kind.is_elenctic_bug for error in outcome.errors):
         return 3
-    if outcome.errors or any(record.severity is Severity.ERROR for record in outcome.hygiene):
+    if outcome.errors or any(record.grade is Grade.ERROR for record in outcome.hygiene):
         return 2
     match outcome:
         case RunOutcome():
@@ -383,7 +383,7 @@ def _hygiene_records(hygiene: HygieneReport, *, strict: bool) -> tuple[HygieneRe
         *(
             HygieneRecord(
                 kind=HygieneKind.ORPHAN_LIBRARY,
-                severity=HygieneKind.ORPHAN_LIBRARY.severity_under(strict=strict),
+                grade=HygieneKind.ORPHAN_LIBRARY.grade_under(strict=strict),
                 source=path,
                 message=ORPHAN_LIBRARY,
             )
@@ -392,7 +392,7 @@ def _hygiene_records(hygiene: HygieneReport, *, strict: bool) -> tuple[HygieneRe
         *(
             HygieneRecord(
                 kind=HygieneKind.UNDECLARED_SOLVER,
-                severity=HygieneKind.UNDECLARED_SOLVER.severity_under(strict=strict),
+                grade=HygieneKind.UNDECLARED_SOLVER.grade_under(strict=strict),
                 source=path,
                 message=UNDECLARED_SOLVER,
             )
@@ -462,7 +462,7 @@ def _report_hygiene(hygiene: tuple[HygieneRecord, ...]) -> None:
     and what fails the run cannot disagree about a single observation. Every kind is walked and the
     match over them is exhaustive, because a kind that reached the grading but not the rendering
     would fail a run under ``--strict`` and print nothing to say why."""
-    reported = [record for record in hygiene if record.severity is not Severity.SILENT]
+    reported = [record for record in hygiene if record.grade is not Grade.SILENT]
     lines: list[str] = []
     for kind in HygieneKind:
         observed = [record for record in reported if record.kind is kind]
@@ -487,7 +487,7 @@ def _report_hygiene(hygiene: tuple[HygieneRecord, ...]) -> None:
                 assert_never(kind)
     if not lines:
         return
-    failing = any(record.severity is Severity.ERROR for record in reported)
+    failing = any(record.grade is Grade.ERROR for record in reported)
     print(f"\nhygiene {'errors (--strict)' if failing else 'warnings'}:", file=sys.stderr)
     for line in lines:
         print(f"  {line}", file=sys.stderr)

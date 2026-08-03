@@ -17,11 +17,11 @@ from elenctic import cli, discovery
 from elenctic.cli import exit_status, explain_corpus, main, run_corpus
 from elenctic.outcome import (
     ErrorKind,
+    Grade,
     HygieneKind,
     Invocation,
     RunOutcome,
     Scope,
-    Severity,
 )
 from elenctic.result import Verdict
 from elenctic.run import RoutingError
@@ -211,9 +211,9 @@ def test_an_observation_the_run_stayed_silent_about_is_still_recorded(
     # already dropped the ones this invocation chose to stay quiet about.
     target = _mixed_hygiene(tmp_path)
     graded = {record.kind: record for record in run_corpus(_asked(target)).hygiene}
-    assert graded[HygieneKind.UNDECLARED_SOLVER].severity is Severity.SILENT
+    assert graded[HygieneKind.UNDECLARED_SOLVER].grade is Grade.SILENT
     assert graded[HygieneKind.UNDECLARED_SOLVER].source == target / "case.lp"
-    assert graded[HygieneKind.ORPHAN_LIBRARY].severity is Severity.WARNING
+    assert graded[HygieneKind.ORPHAN_LIBRARY].grade is Grade.WARNING
     assert graded[HygieneKind.ORPHAN_LIBRARY].source == target / "lib.lp"
     reported = capsys.readouterr().err
     assert "lib.lp" in reported, "the warned one is said once"
@@ -223,7 +223,7 @@ def test_an_observation_the_run_stayed_silent_about_is_still_recorded(
 def test_the_strictness_dial_regrades_the_same_observations(tmp_path: Path) -> None:
     target = _mixed_hygiene(tmp_path)
     strictly = run_corpus(_asked(target, strict=True)).hygiene
-    assert {record.severity for record in strictly} == {Severity.ERROR}
+    assert {record.grade for record in strictly} == {Grade.ERROR}
     assert {record.kind for record in strictly} == {
         HygieneKind.ORPHAN_LIBRARY,
         HygieneKind.UNDECLARED_SOLVER,

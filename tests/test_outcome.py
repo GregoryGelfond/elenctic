@@ -20,11 +20,11 @@ from elenctic.outcome import (
     CaseOutcome,
     ErrorKind,
     ErrorRecord,
+    Grade,
     HygieneKind,
     HygieneRecord,
     RunOutcome,
     Scope,
-    Severity,
     error_kind,
     summary,
 )
@@ -104,7 +104,7 @@ def test_only_a_harness_fault_is_elenctic_s_to_fix() -> None:
             },
         ),
         (Scope, {"CORPUS": "corpus", "CASE": "case"}),
-        (Severity, {"SILENT": "silent", "WARNING": "warning", "ERROR": "error"}),
+        (Grade, {"SILENT": "silent", "WARNING": "warning", "ERROR": "error"}),
         (
             HygieneKind,
             {"ORPHAN_LIBRARY": "orphan_library", "UNDECLARED_SOLVER": "undeclared_solver"},
@@ -125,7 +125,7 @@ def test_each_vocabulary_spells_its_members_as_a_reader_outside_will_meet_them(
 def test_the_strictness_dial_grades_every_observation_an_error() -> None:
     # What strictness asks for, and the whole of it: corpus health becomes something to fix rather
     # than something to notice, whatever footing an observation has by default.
-    assert all(kind.severity_under(strict=True) is Severity.ERROR for kind in HygieneKind)
+    assert all(kind.grade_under(strict=True) is Grade.ERROR for kind in HygieneKind)
 
 
 def test_the_two_observations_have_different_footing_by_default() -> None:
@@ -133,8 +133,8 @@ def test_the_two_observations_have_different_footing_by_default() -> None:
     # dead code — so it is said once. Relying on the stated default solver is legitimate, so saying
     # it unasked would nag about the expected case, and a report a reader learns to skip is worse
     # than one that was never made.
-    assert HygieneKind.ORPHAN_LIBRARY.severity_under(strict=False) is Severity.WARNING
-    assert HygieneKind.UNDECLARED_SOLVER.severity_under(strict=False) is Severity.SILENT
+    assert HygieneKind.ORPHAN_LIBRARY.grade_under(strict=False) is Grade.WARNING
+    assert HygieneKind.UNDECLARED_SOLVER.grade_under(strict=False) is Grade.SILENT
 
 
 def test_the_summary_is_a_projection_of_the_registers() -> None:
@@ -154,7 +154,7 @@ def test_the_summary_is_a_projection_of_the_registers() -> None:
         hygiene=(
             HygieneRecord(
                 kind=HygieneKind.ORPHAN_LIBRARY,
-                severity=Severity.WARNING,
+                grade=Grade.WARNING,
                 source=Path("lib.lp"),
                 message="unused",
             ),
@@ -232,7 +232,7 @@ _ERRORS = st.builds(
 _HYGIENE = st.builds(
     HygieneRecord,
     kind=st.sampled_from(HygieneKind),
-    severity=st.sampled_from(Severity),
+    grade=st.sampled_from(Grade),
     source=_PATHS,
     message=_TEXT,
 )

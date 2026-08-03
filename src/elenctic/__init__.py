@@ -35,7 +35,7 @@ is not a ``HarnessError``: a broken program under test is not evidence of a brok
 **The three registers.** A whole run lands in a :class:`RunOutcome`, which keeps apart the three
 kinds of thing a run produces: a :class:`CaseOutcome` per case that reached a verdict, an
 :class:`ErrorRecord` per reason a verdict could not be produced, and a :class:`HygieneRecord` per
-observation about the corpus's health — that one carrying the :class:`Severity` the run graded it,
+observation about the corpus's health — that one carrying the :class:`Grade` the run graded it,
 since how loudly an observation is taken is a policy the caller sets and a consumer should be told
 rather than left to re-derive. Every discovered case has exactly one home among the first two, and
 :func:`summary` projects the counts out of them rather than tallying beside them — so a reader is
@@ -65,11 +65,11 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         CaseOutcome,
         ErrorKind,
         ErrorRecord,
+        Grade,
         HygieneKind,
         HygieneRecord,
         RunOutcome,
         Scope,
-        Severity,
         summary,
     )
     from elenctic.program import ProgramError
@@ -118,7 +118,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "HygieneRecord",
         "RunOutcome",
         "Scope",
-        "Severity",
+        "Grade",
         "summary",
     ),
     "elenctic.program": ("ProgramError",),

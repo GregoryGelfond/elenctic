@@ -22,12 +22,12 @@ from elenctic.outcome import (
     CaseOutcome,
     ErrorKind,
     ErrorRecord,
+    Grade,
     HygieneKind,
     HygieneRecord,
     Invocation,
     RunOutcome,
     Scope,
-    Severity,
 )
 from elenctic.result import Conclusion, Verdict
 
@@ -68,12 +68,12 @@ def _error(
 
 
 def _observation(
-    severity: Severity = Severity.WARNING,
+    grade: Grade = Grade.WARNING,
     *,
     kind: HygieneKind = HygieneKind.ORPHAN_LIBRARY,
     message: str = "nothing includes it",
 ) -> HygieneRecord:
-    return HygieneRecord(kind=kind, severity=severity, source=Path("lib.lp"), message=message)
+    return HygieneRecord(kind=kind, grade=grade, source=Path("lib.lp"), message=message)
 
 
 def _run(
@@ -128,7 +128,7 @@ def test_an_error_and_an_observation_carry_exactly_the_promised_fields() -> None
     (error,) = document["errors"]
     (observation,) = document["hygiene"]
     assert set(error) == {"kind", "is_elenctic_bug", "scope", "source", "message"}
-    assert set(observation) == {"kind", "severity", "source", "message"}
+    assert set(observation) == {"kind", "grade", "source", "message"}
     assert error["source"] == "a.lp"
     assert error["message"] == "the program will not ground"
     assert observation["source"] == "lib.lp"
@@ -227,14 +227,14 @@ def test_what_a_fault_stopped_is_written_the_way_a_consumer_was_promised(
 
 
 @pytest.mark.parametrize(
-    ("severity", "written"),
-    [(Severity.SILENT, "silent"), (Severity.WARNING, "warning"), (Severity.ERROR, "error")],
+    ("grade", "written"),
+    [(Grade.SILENT, "silent"), (Grade.WARNING, "warning"), (Grade.ERROR, "error")],
 )
 def test_how_loudly_an_observation_was_graded_is_written_the_way_a_consumer_was_promised(
-    severity: Severity, written: str
+    grade: Grade, written: str
 ) -> None:
-    (observation,) = _document(_run(hygiene=(_observation(severity),)))["hygiene"]
-    assert observation["severity"] == written
+    (observation,) = _document(_run(hygiene=(_observation(grade),)))["hygiene"]
+    assert observation["grade"] == written
 
 
 @pytest.mark.parametrize(
