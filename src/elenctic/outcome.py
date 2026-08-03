@@ -93,6 +93,14 @@ class CaseOutcome:
     case: Case
     reports: tuple[CheckReport, ...]
 
+    def __post_init__(self) -> None:
+        if not self.reports:
+            raise ValueError(
+                "a case outcome carries the reports its verdict was folded from, and this one "
+                "carries none. The fold over no reports meets neither FAIL nor UNDECIDED and so "
+                "answers PASS — a case reported as passing that was never checked"
+            )
+
     @property
     def verdict(self) -> Verdict:
         return case_verdict(self.reports)

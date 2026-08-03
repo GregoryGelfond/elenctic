@@ -159,3 +159,39 @@ def test_cli_explain_glosses_an_unsat_note(
     status = main([str(case), "--explain"])
     assert status == 0
     assert "no schedule fits the budget" in capsys.readouterr().out
+
+
+def test_the_dry_run_reports_a_misroute_it_meets_and_names_the_case(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Surfacing a plan that cannot be built is what the dry run is for, so it is the mode where a
+    # misroute matters most — and the one where it went untested. The diagnostic goes to standard
+    # error, so it names the case there rather than relying on the narration beside it.
+    write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
+    write(tmp_path / "encodings/bad/e.lp", "a. #show a/0.\n% @expect sat\n% @note BOOM\n")
+
+    def selectively_misroute(expectation: object, theory_in_force: bool = False) -> object:
+        if "BOOM" in getattr(expectation, "notes", ()):
+            raise RoutingError("a stale route")
+        return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(cli, "runs_for", selectively_misroute)
+    status = main([str(tmp_path / "encodings"), "--explain"])
+    captured = capsys.readouterr()
+    assert status == 2, "a plan that cannot be built is a harness error, never a clean dry run"
+    assert "HARNESS ERROR" in captured.err
+    assert "bad" in captured.err, "standard error names the case on its own"
+
+
+def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The dry run narrates a plan; it produces no verdicts, so it has no cases to count. A tally
+    # here could only be read as a result, and the honest number would be zero passed out of a
+    # corpus of several — which is worse than saying nothing.
+    write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
+    write(tmp_path / "encodings/more/e.lp", "b. #show b/0.\n% @expect sat\n% @model { b }\n")
+    status = main([str(tmp_path / "encodings"), "--explain"])
+    captured = capsys.readouterr()
+    assert status == 0
+    assert "passed" not in captured.out, "a dry run reports a plan, never a score"

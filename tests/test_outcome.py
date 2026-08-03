@@ -14,6 +14,7 @@ from hypothesis import strategies as st
 from elenctic.checks import CheckReport
 from elenctic.discovery import Case, DiscoveryError, SolverUnavailableError
 from elenctic.expectation import ContractError, Unsat
+from elenctic.harness import case_verdict
 from elenctic.outcome import (
     CaseOutcome,
     ErrorKind,
@@ -29,6 +30,21 @@ from elenctic.program import ProgramError
 from elenctic.registry import SOLVERS
 from elenctic.result import Conclusion, HarnessError, SeamError, Verdict
 from elenctic.run import RoutingError
+
+
+def _a_case() -> Case:
+    return Case(Path("a.lp"), "clingo", Unsat(expect_line=1), frozenset())
+
+
+def _a_report(verdict: Verdict) -> CheckReport:
+    return CheckReport(
+        verdict=verdict,
+        label="@expect unsat",
+        message="m",
+        subject="",
+        line=1,
+        conclusion=Conclusion.EXHAUSTED,
+    )
 
 
 @pytest.mark.parametrize(
@@ -114,6 +130,23 @@ def test_a_corpus_scoped_error_is_not_counted_as_a_case() -> None:
 def test_an_error_record_always_carries_a_message() -> None:
     with pytest.raises(ValueError):
         ErrorRecord(kind=ErrorKind.PROGRAM, scope=Scope.CASE, source=Path("a.lp"), message="")
+
+
+def test_a_case_outcome_carries_the_reports_its_verdict_was_folded_from() -> None:
+    # A case that checked nothing has not passed; it has not been tested. The fold over an empty set
+    # meets neither FAIL nor UNDECIDED and so answers PASS, which would let a run report a clean
+    # corpus it never examined — the vacuous pass this codebase refuses at every other boundary.
+    with pytest.raises(ValueError):
+        CaseOutcome(case=_a_case(), reports=())
+
+
+def test_a_case_outcome_never_disagrees_with_the_fold_it_reports() -> None:
+    # The verdict is derived, not stored, and this is what says so: a stored one could drift from
+    # the reports beside it, and a derived one that did not call the fold would be a second, silent
+    # definition of what a case verdict is.
+    for verdict in Verdict:
+        reports = (_a_report(verdict), _a_report(Verdict.PASS))
+        assert CaseOutcome(case=_a_case(), reports=reports).verdict is case_verdict(reports)
 
 
 @pytest.mark.parametrize(

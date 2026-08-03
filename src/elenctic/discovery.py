@@ -31,7 +31,6 @@ from pathlib import Path
 
 from clingo import Symbol
 
-from elenctic.display import legible
 from elenctic.expectation import ContractError, Expectation, Sat, has_contract, parse_contract
 from elenctic.program import ProgramError, ProgramFacts, inspect
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
@@ -96,6 +95,15 @@ class Case:
         return (self.path,)
 
 
+# What each hygiene observation says about the file it concerns. One home per observation, because
+# a run states them twice — once in the end-of-run summary a reader sees, once in the record a
+# consumer reads — and two copies of a sentence drift the first time either is edited.
+ORPHAN_LIBRARY = (
+    "carries no contract and no case #includes it (a forgotten case, or a dead library?)"
+)
+UNDECLARED_SOLVER = "defaulted to clingo (declare @elenctic solver for reproducibility)"
+
+
 @dataclass(frozen=True, slots=True)
 class HygieneReport:
     """Corpus hygiene — the third strictness axis, distinct from the always-error closed
@@ -105,7 +113,9 @@ class HygieneReport:
     solver** is a mere explicitness nudge — relying on the stated ``clingo`` default is legitimate,
     so it is *silent* by default and an *error* only under ``--strict`` (the ``mypy --strict`` /
     ``pytest --strict-markers`` posture: a default is fine until you opt into explicitness, and the
-    Unix rule of silence says do not nag about the expected case). :func:`render` applies this.
+    Unix rule of silence says do not nag about the expected case). What this shape carries is the
+    observation; the runner decides what a given invocation makes of it, reading the same records
+    for what it prints and for what it does to the exit status.
 
     ``orphan_libraries`` — contract-free ``.lp`` files in the walked tree that no case loads (the
     backstop: a forgotten case, or a dead library). ``undeclared_solvers`` — case files that did not
@@ -119,26 +129,8 @@ class HygieneReport:
     @property
     def clean(self) -> bool:
         """Whether the corpus carries no hygiene observations at all (no orphans, no undeclared
-        solvers) — the raw detection state, independent of the mode-aware :func:`render`."""
+        solvers) — the raw detection state, independent of what any invocation makes of it."""
         return not (self.orphan_libraries or self.undeclared_solvers)
-
-    def render(self, *, strict: bool) -> tuple[str, ...]:
-        """The hygiene lines to report in this mode (empty when there is nothing to show). Orphan
-        libraries are always reported (warned by default, error under ``--strict``); undeclared
-        solvers only under ``--strict`` (silent by default — the stated ``clingo`` default is
-        legitimate). Aggregated and reported together."""
-        lines = [
-            f"orphan library: {legible(str(path))} carries no contract and no case #includes it "
-            "(a forgotten case, or a dead library?)"
-            for path in self.orphan_libraries
-        ]
-        if strict and self.undeclared_solvers:
-            listed = ", ".join(legible(str(path)) for path in self.undeclared_solvers)
-            lines.append(
-                f"undeclared solver: {len(self.undeclared_solvers)} case(s) defaulted to clingo "
-                f"(declare @elenctic solver for reproducibility): {listed}"
-            )
-        return tuple(lines)
 
 
 @dataclass(frozen=True, slots=True)

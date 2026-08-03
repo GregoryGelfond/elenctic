@@ -8,8 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from elenctic import discovery
+from elenctic import cli, discovery
+from elenctic.checks import CheckReport
 from elenctic.cli import main
+from elenctic.discovery import Case
+from elenctic.harness import run_case
+from elenctic.result import SeamError
+from elenctic.solvers import TIME_BUDGET
 
 _GOOD = "% @expect sat\n% @count  2\n\n1 { tea; coffee } 1.\n#show tea/0.\n#show coffee/0.\n"
 _UNSAFE = "% @expect sat\n% @count  1\n\nq(1).\np(X) :- q(Y).\n"
@@ -113,3 +118,26 @@ def test_a_dry_run_does_not_require_the_declared_solver(
     captured = capsys.readouterr()
     assert status == 0
     assert "clingcon" in captured.out, "the plan still names the declared solver"
+
+
+def test_a_harness_fault_at_solve_time_costs_only_the_case_that_met_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The reason elenctic's own invariants raise elenctic's own root rather than a bare ValueError:
+    # HarnessError is a family the per-case region catches, so a result that cannot be right costs
+    # one case its verdict. An exception outside the taxonomy reaches the outermost frame instead
+    # and ends the run, discarding every case still to come — including ones that had already
+    # passed. Raised from the solve path, which is where those invariants live.
+    def broken(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]:
+        if case.contract_source.name == "mmm_broken.lp":
+            raise SeamError("narrowing seam: a shape that does not populate what a check reads")
+        return run_case(case, budget=budget)
+
+    monkeypatch.setattr(cli, "run_case", broken)
+    status = main([_corpus(tmp_path, aaa_good=_GOOD, mmm_broken=_GOOD, zzz_good=_GOOD)])
+    captured = capsys.readouterr()
+    assert status == 2, "a harness fault is the error register, never a verdict"
+    assert "mmm_broken.lp" in captured.err, "the reader has to be told which case it was"
+    assert "2/3 passed, 1 harness error(s)" in captured.out, (
+        "the cases either side of it keep their results, and the one that broke is accounted for"
+    )
