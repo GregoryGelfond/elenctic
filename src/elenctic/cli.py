@@ -34,6 +34,7 @@ from elenctic.discovery import (
     ORPHAN_LIBRARY,
     UNDECLARED_SOLVER,
     Case,
+    Corpus,
     DiscoveryError,
     HygieneReport,
     check_solver_available,
@@ -135,9 +136,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     The two outermost handlers are here because a fault that reaches this frame is by definition one
     no inner register anticipated, and the user still has to be told something they can act on. Each
     files the fault it met into an outcome of its own and reads the status off that, so the status
-    follows from a record rather than being chosen beside one."""
+    follows from a record rather than being chosen beside one.
+
+    The invocation is parsed in this frame rather than one below it, so that a handler meeting a
+    fault still knows what the run was asked to produce."""
     try:
-        return _dispatch(argv)
+        args = _build_parser().parse_args(argv)
+        if args.explain:
+            return _explain_status(args)
+        return exit_status(_run_from(args))
     except MemoryError:
         # The backstop, for an allocation that fails where no case owns it. A case that exhausts
         # memory is caught in the run loop and costs only its own result; reaching this frame means
@@ -161,22 +168,87 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
 
-def _dispatch(argv: Sequence[str] | None) -> int:
-    """Parse the invocation, discover the corpus, and run or explain it."""
+def run(argv: Sequence[str] | None = None) -> RunOutcome:
+    """Run the corpus an invocation names, and return everything the run produced.
+
+    The seam the process status is read off and the machine-readable report is built from, so that
+    the number a shell sees and the document a consumer stores are two readings of one value and
+    cannot come to disagree about the same run. It is also what makes a record observable at all: a
+    status carries one closed bit of one, and the diagnostics are written where each fault is met,
+    so without this the locus a fault was filed under would be asserted nowhere.
+
+    Faults the run anticipates are recorded, not raised — that is what the error register is. What
+    still escapes is what no register anticipated, which the console entry backstops.
+    """
     args = _build_parser().parse_args(argv)
-    try:
-        corpus = inspect_corpus(args.target)
-    except (DiscoveryError, ContractError, ProgramError) as exc:
-        # Nothing was discovered, so this fault belongs to no case — it is the corpus's, and it is
-        # the whole of what the invocation produced.
-        print(f"corpus error: {legible(str(exc))}", file=sys.stderr)
-        return exit_status(
-            _fault_outcome(
-                error_kind(exc),
-                str(exc),
-                source=args.target if args.target.is_file() else None,
-            )
+    if args.explain:
+        raise ValueError(
+            "the dry run decides nothing and so produces no run to hand back; it narrates a plan, "
+            "and what it can report is a plan that could not be built"
         )
+    return _run_from(args)
+
+
+def _run_from(args: argparse.Namespace) -> RunOutcome:
+    """Discover the corpus this invocation names and run it, reporting as it goes."""
+    match _discover(args.target):
+        case RunOutcome() as fault:
+            return fault
+        case corpus:
+            unrunnable, hygiene = _record_discovered(corpus, strict=args.strict)
+            outcome = _run(
+                corpus.cases,
+                args.budget,
+                unrunnable=unrunnable,
+                hygiene=hygiene,
+                deadline=args.deadline,
+            )
+            # The tally is composed here rather than where the cases are solved, so that the run
+            # loop hands back a value and every rendering of it is decided in one place.
+            print(f"\n{_summary_line(outcome)}")
+            _report_hygiene(hygiene)
+            return outcome
+
+
+def _explain_status(args: argparse.Namespace) -> int:
+    """Narrate the run plan this invocation would follow, and return the status of what that met.
+
+    The dry run decides nothing, so it has no case register to fill and builds no run outcome.
+    Giving it one would report a corpus of cases as a run of none — the very accounting the
+    registers exist to make impossible. What can still go wrong is a plan that cannot be built,
+    which is what this mode exists to surface, and it is the same fault here as in a run: a misroute
+    reports elenctic's bug whichever mode met it."""
+    match _discover(args.target):
+        case RunOutcome() as fault:
+            return exit_status(fault)
+        case corpus:
+            unrunnable, hygiene = _record_discovered(corpus, strict=args.strict)
+            misroutes = _explain(corpus.cases)
+            _report_hygiene(hygiene)
+            return _fault_status((*unrunnable, *misroutes), hygiene)
+
+
+def _discover(target: Path) -> Corpus | RunOutcome:
+    """The corpus a target holds, or — when discovery could not read one — the whole of what the
+    invocation produced.
+
+    A fault here belongs to no case, because there are none: it is the corpus's. That makes it an
+    outcome rather than a record, and the modes below then read a status off it the same way they
+    read one off a run."""
+    try:
+        return inspect_corpus(target)
+    except (DiscoveryError, ContractError, ProgramError) as exc:
+        print(f"corpus error: {legible(str(exc))}", file=sys.stderr)
+        return _fault_outcome(
+            error_kind(exc), str(exc), source=target if target.is_file() else None
+        )
+
+
+def _record_discovered(
+    corpus: Corpus, *, strict: bool
+) -> tuple[tuple[ErrorRecord, ...], tuple[HygieneRecord, ...]]:
+    """The contract-bearing files discovery could not use, reported and recorded, together with
+    what it observed about the corpus around them — the two things every mode starts from."""
     unrunnable = _unrunnable_records(corpus.unrunnable)
     for record in unrunnable:
         # Discovered but unusable — an unresolvable #include, an undecodable byte, a malformed
@@ -184,25 +256,7 @@ def _dispatch(argv: Sequence[str] | None) -> int:
         # runner could not run, so one bad file never costs the corpus its other results.
         # Every discovery diagnostic carries its own provenance, so the path is not repeated here.
         print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
-    hygiene = _hygiene_records(corpus.hygiene, strict=args.strict)
-    if args.explain:
-        # The dry run narrates a plan; it decides nothing, so it has no case register to fill and
-        # builds no run outcome. Giving it one would report a corpus of cases as a run of none —
-        # the very accounting the registers exist to make impossible. What can still go wrong is a
-        # plan that cannot be built, which is what this mode exists to surface, and it is the same
-        # fault here as in a run: a misroute reports elenctic's bug whichever mode met it.
-        misroutes = _explain(corpus.cases)
-        _report_hygiene(hygiene)
-        return _fault_status((*unrunnable, *misroutes), hygiene)
-    outcome = _run(
-        corpus.cases,
-        args.budget,
-        unrunnable=unrunnable,
-        hygiene=hygiene,
-        deadline=args.deadline,
-    )
-    _report_hygiene(hygiene)
-    return exit_status(outcome)
+    return unrunnable, _hygiene_records(corpus.hygiene, strict=strict)
 
 
 def exit_status(outcome: RunOutcome) -> int:
@@ -392,10 +446,10 @@ def _explain(cases: tuple[Case, ...]) -> tuple[ErrorRecord, ...]:
         for note in case.expectation.notes:
             print(f"    note: {legible(note)}")
         try:
-            for run in runs_for(case.expectation, provides_theory(case.solver)):
-                projects = "yes" if run.projects_to_shown else "no"
-                print(f"    {run.mode.name} (projects: {projects}):")
-                for check in run.checks:
+            for plan in runs_for(case.expectation, provides_theory(case.solver)):
+                projects = "yes" if plan.projects_to_shown else "no"
+                print(f"    {plan.mode.name} (projects: {projects}):")
+                for check in plan.checks:
                     # subject discerns the repeatable @query tag before any solve.
                     name = f"{check.label} ({check.subject})" if check.subject else check.label
                     reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
@@ -508,9 +562,7 @@ def _run(
         if outcome.verdict is not Verdict.PASS:
             print(render(case, reports))
         outcomes.append(outcome)
-    run = RunOutcome(cases=tuple(outcomes), errors=tuple(errors), hygiene=hygiene)
-    print(f"\n{_summary_line(run)}")
-    return run
+    return RunOutcome(cases=tuple(outcomes), errors=tuple(errors), hygiene=hygiene)
 
 
 def _case_error(kind: ErrorKind, case: Case, message: str) -> ErrorRecord:
