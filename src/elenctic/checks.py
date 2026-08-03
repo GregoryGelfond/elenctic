@@ -1,8 +1,10 @@
 """Pure per-tag checks: each is a :class:`Check`, a labelled callable.
 
 A check reads one :class:`~elenctic.result.SolveOutcome` and returns a :class:`CheckReport` — a
-three-valued :class:`~elenctic.result.Verdict` *plus the diagnostic*: the contract ``label``
-and an expected-vs-actual ``message``. A check **dispatches on the arm**: ``Inconclusive`` →
+three-valued :class:`~elenctic.result.Verdict`, *the diagnostic* (the contract ``label`` and an
+expected-vs-actual ``message``), and *enough to place it*: the claim's own ``subject``, the
+``line`` it was written on, and how the search behind the verdict ended. A check **dispatches on
+the arm**: ``Inconclusive`` →
 ``UNDECIDED`` (a timeout is never FAIL); ``Inconsistent`` (AS(P)=∅) → the tag's static
 verdict (``@expect unsat`` PASSes, every other tag FAILs); ``Consistent`` → the per-tag decision,
 reading the fields it declared via the accessor seam (``result.*_of``).
@@ -30,7 +32,7 @@ from typing import Final, assert_never
 
 from clingo import Symbol
 
-from elenctic.expectation import WitnessClaim, _require_line
+from elenctic.expectation import WitnessClaim, require_line
 from elenctic.query import (
     Answer,
     BindingQuery,
@@ -92,17 +94,20 @@ class CheckReport:
     conclusion: Conclusion
 
     def __post_init__(self) -> None:
-        _require_line(self.line)
+        require_line(self.line)
 
 
-# Why a solve settled nothing, in terms of how its search ended. Total over the conclusions,
-# unlike its partial-reading sibling: an exhausted search reaches this arm too, when it closed the
-# space and still left the mode without what its shape is made of.
+# Why a solve settled nothing, in terms of how its search ended. Total over the conclusions, unlike
+# its partial-reading sibling, and the exhausted entry is the one with no demonstrated path to it: a
+# search that covers the space normally settles satisfiability by doing so. It is written rather
+# than refused because the two axes are independent by construction, and because refusing an input
+# here would raise inside a check at verdict time rather than say the little that is known. For the
+# same reason it claims nothing about what would help — the way such a pairing could arise is a
+# search cancelled just as it finished, and there a larger budget is exactly what would help.
 _UNDECIDED_MESSAGE: Final[dict[Conclusion, str]] = {
     Conclusion.EXHAUSTED: (
-        "the solve did not settle the question — UNDECIDED, never FAIL. The search finished, so a "
-        "larger budget will not change this: the solver reported nothing this reading could be "
-        "made of"
+        "the solve did not settle the question — UNDECIDED, never FAIL. The search covered the "
+        "space and still reported nothing this reading could be made of"
     ),
     Conclusion.INCOMPLETE: (
         "the solve did not settle the question — UNDECIDED, never FAIL. The search stopped short "
@@ -195,7 +200,7 @@ class Check:
     def __post_init__(self) -> None:
         if not self.label.startswith("@"):
             raise ValueError(f"a check label must be a contract tag, got {self.label!r}")
-        _require_line(self.line)
+        require_line(self.line)
 
     @property
     def needs_exhausted_search(self) -> bool:
@@ -252,7 +257,7 @@ def _check(
     decide: Callable[[Consistent], tuple[Verdict, str]],
     subject: str = "",
 ) -> Check:
-    """The single construction site for a check (the arm dispatch lives in ``Check.__call__``)."""
+    """The single construction site for a check (the arm dispatch lives in ``Check._judge``)."""
     return Check(label, reads, line, inconsistent, decide, subject)
 
 

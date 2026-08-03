@@ -15,6 +15,7 @@ from elenctic.result import (
     Conclusion,
     Consistent,
     ConsistentWitness,
+    Determination,
     HarnessError,
     Inconclusive,
     Inconsistent,
@@ -210,13 +211,22 @@ def test_an_unsatisfiable_result_from_an_unfinished_search_is_refused(
     "determination",
     [Inconclusive(), Inconsistent(), ConsistentWitness(Observable(frozenset()))],
 )
-def test_every_arm_reports_the_search_behind_it(determination: object) -> None:
-    # Totality is what lets `Check.__call__` read the conclusion on any arm without a missing case,
-    # and it is why the diagnostic for a solve that settled nothing can name a remedy at all. An
-    # exhausted search reaching the undecided arm is not a contradiction: it closed the space and
-    # still left the mode without what its shape is made of.
-    outcome = SolveOutcome(determination, Conclusion.EXHAUSTED)  # type: ignore[arg-type]
-    assert outcome.conclusion is Conclusion.EXHAUSTED
+def test_no_arm_may_be_built_without_the_search_behind_it(determination: Determination) -> None:
+    # Totality is what lets a check read the conclusion on any arm without a missing case, and it
+    # is why the diagnostic for a solve that settled nothing can name a remedy at all. Totality is
+    # a claim that the value cannot be LEFT OUT, so it is tested by leaving it out — reading back
+    # what was just passed in would hold on a field that was still optional.
+    #
+    # The undecided arm is the one this opened: it used to be refused a conclusion outright. The
+    # absence is still refused, because it once meant something here and a caller working from the
+    # old shape would otherwise build a result whose failure surfaces as a bare lookup miss inside
+    # a check — which the per-case handler does not recognise, so it would cost every case still to
+    # come.
+    with pytest.raises(TypeError):
+        SolveOutcome(determination)  # type: ignore[call-arg]
+    with pytest.raises(HarnessError):
+        SolveOutcome(determination, None)  # type: ignore[arg-type]
+    assert SolveOutcome(determination, Conclusion.EXHAUSTED).conclusion is Conclusion.EXHAUSTED
 
 
 def test_a_cancelled_theory_solve_also_keeps_what_it_settled() -> None:

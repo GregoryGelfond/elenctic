@@ -22,6 +22,7 @@ from elenctic.result import (
     ConsistentEnumeration,
     HarnessError,
     Inconclusive,
+    Inconsistent,
     Observable,
     SolveOutcome,
     Verdict,
@@ -179,13 +180,37 @@ def test_the_undecided_arm_says_which_way_the_search_ended() -> None:
     # same thing. @cost lands here whenever an optimal search runs out of budget — the reading most
     # likely to be short of time was the one that could not say so, while a @count over the same
     # program named the remedy.
+    #
+    # Each conclusion is tied to its OWN wording, not merely to a distinct one: three messages that
+    # are pairwise different would survive being dealt to the wrong conclusions, and that failure
+    # tells a user whose search stopped short that a larger budget cannot help — the inverse of the
+    # advice this diagnostic exists to give.
     check = checks.cost_is((1,), line=1)
     messages = {
         conclusion: check(SolveOutcome(Inconclusive(), conclusion)).message
         for conclusion in Conclusion
     }
     assert "--budget" in messages[Conclusion.INTERRUPTED], "it names the remedy"
+    assert "stopped short" in messages[Conclusion.INCOMPLETE], "it names a bound run into"
+    assert "covered the space" in messages[Conclusion.EXHAUSTED], "it claims no remedy it cannot"
     assert len(set(messages.values())) == len(Conclusion), "each way of ending reads differently"
+
+
+@pytest.mark.parametrize("conclusion", list(Conclusion))
+def test_a_report_carries_the_search_behind_it_rather_than_assuming_one(
+    conclusion: Conclusion,
+) -> None:
+    # Over every arm and every conclusion, because the report's own field is what a consumer reads
+    # and no reader in this process does: the human render shows the verdict and the message, so a
+    # report that hard-coded one conclusion would look right everywhere the eye can reach and be
+    # wrong in the document. A cancelled search claiming it closed the space is the exact reading
+    # this vocabulary exists to prevent, one layer out.
+    check = checks.expect_sat(line=1)  # reads nothing, so it decides on every arm and conclusion
+    for determination in (Inconclusive(), _census("a")):
+        assert check(SolveOutcome(determination, conclusion)).conclusion is conclusion
+    assert (
+        check(SolveOutcome(Inconsistent(), Conclusion.EXHAUSTED)).conclusion is Conclusion.EXHAUSTED
+    )
 
 
 def test_an_undecided_solve_is_undecided_however_its_search_ended() -> None:

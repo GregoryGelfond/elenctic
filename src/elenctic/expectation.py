@@ -39,9 +39,12 @@ class ContractError(Exception):
     """An ill-formed or inconsistent contract block. Carries source:line provenance."""
 
 
-def _require_line(line: int) -> None:
+def require_line(line: int) -> None:
     """Reject a line that is not 1-based. The one home for the invariant every carrier of a
-    contract coordinate shares, so the three of them cannot come to disagree about it."""
+    contract coordinate shares — the claim, the two contract shapes, the check and the report it
+    produces — so they cannot come to disagree about it. Public because the last two of those live
+    in another module: the coordinate is a contract fact, so the predicate stays where the
+    tokenizer that computes one does."""
     if line < 1:
         raise ValueError(f"a contract line is 1-based, got {line}")
 
@@ -70,7 +73,7 @@ class Claimed[T]:
     line: int
 
     def __post_init__(self) -> None:
-        _require_line(self.line)
+        require_line(self.line)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +100,7 @@ class Unsat:
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
 
     def __post_init__(self) -> None:
-        _require_line(self.expect_line)
+        require_line(self.expect_line)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +138,7 @@ class Sat:
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
 
     def __post_init__(self) -> None:
-        _require_line(self.expect_line)
+        require_line(self.expect_line)
 
     @property
     def has_optimal_base(self) -> bool:

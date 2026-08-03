@@ -186,15 +186,39 @@ def test_render_places_each_failure_at_the_line_it_judged() -> None:
     assert "[FAIL] line 3 @cautious ({ b }): { b } ⊄ ⋂ AS(P)" in out
 
 
-def test_render_makes_a_subject_legible_before_showing_it() -> None:
-    # A subject is a corpus surface, exactly as a message is: it is the claim's own text, echoed
-    # back into the verdict a reader acts on. Text that could rewrite that verdict must not survive.
-    out = render(
-        synthetic(Sat(expect_line=1)),
-        (report(Verdict.FAIL, "@query", "computed no", subject="yes \x1b[2J{ a }", line=2),),
+_ESCAPE = "\x1b[2J"
+
+
+def _rendered_with_an_escape_in(surface: str) -> str:
+    """One render in which exactly ``surface`` carries a terminal escape sequence."""
+    case = Case(
+        Path(f"tests/cases/{_ESCAPE}x.lp" if surface == "path" else "tests/cases/x.lp"),
+        "clingo",
+        Sat(
+            expect_line=1,
+            notes=(f"a note with {_ESCAPE} in it" if surface == "note" else "an ordinary note",),
+        ),
+        frozenset(),
     )
-    assert "\x1b" not in out
-    assert "\\x1b" in out
+    failure = report(
+        Verdict.FAIL,
+        "@query",
+        f"computed {_ESCAPE} no" if surface == "message" else "computed no",
+        subject=f"yes {_ESCAPE}{{ a }}" if surface == "subject" else "yes { a }",
+        line=2,
+    )
+    return render(case, (failure,))
+
+
+@pytest.mark.parametrize("surface", ["path", "note", "message", "subject"])
+def test_render_makes_every_corpus_surface_legible(surface: str) -> None:
+    # Four of the strings this render is built from come from the corpus, and a terminal acts on
+    # some of that text rather than showing it — so a case could clear the screen or overwrite the
+    # verdict just printed. Each surface is asserted rather than assumed: only the subject was
+    # covered, and an implementation that dropped the escaping from any of the other three passed.
+    out = _rendered_with_an_escape_in(surface)
+    assert "\x1b" not in out, f"the {surface} reached the terminal able to act on it"
+    assert "\\x1b" in out, f"the {surface} was dropped rather than shown"
 
 
 def test_render_omits_the_parentheses_for_a_tag_that_has_no_subject() -> None:

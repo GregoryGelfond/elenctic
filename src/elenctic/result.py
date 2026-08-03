@@ -225,7 +225,10 @@ class Inconclusive:
     No fields — but the solve still *ran*, and how its search ended rides beside this arm as a
     :class:`Conclusion` like any other. That is what lets a report say which kind of not-knowing it
     met: raising a budget and shrinking a program are different remedies, and the reading most
-    likely to be short of time is the one that lands here.
+    likely to be short of time is the one that lands here. The searches that arrive are the ones
+    that stopped short or were cut short; a search that covered the space settles satisfiability by
+    doing so, so ``EXHAUSTED`` beside this arm is admitted by the type rather than produced by any
+    path this project can demonstrate.
 
     A search that *did* settle satisfiability and then stopped early usually lands elsewhere: it
     keeps what it settled. Three narrower states still arrive here, because the solve produced
@@ -394,12 +397,30 @@ class SolveOutcome:
     reader has to act on. The two axes are otherwise free of each other, with one exception: an
     :class:`Inconsistent` result always closed the space, since no search can report that a program
     has no answer set without covering it.
+
+    "One solve" is one *reduction*: the two-phase optimal driver runs two solves and reports the
+    second, which is sound because a shortfall in the first yields no shape at all. So a
+    ``Consistent`` optimal-class result that did not close its space means the optimum was proven
+    and the class around it is partial, never the reverse.
     """
 
     determination: Determination
     conclusion: Conclusion
 
     def __post_init__(self) -> None:
+        if not isinstance(self.conclusion, Conclusion):
+            # Checked although the annotation says it cannot happen, because this type is part of
+            # the published surface and the absence it rejects used to be *meaningful* here — an
+            # undecided solve carried no conclusion. A caller working from the old shape would
+            # otherwise build one that no reader can use, and the failure would surface as a bare
+            # lookup miss inside a check, at verdict time, on someone's corpus: not an exception
+            # the per-case handler recognises, so it would cost the run every case still to come.
+            raise HarnessError(
+                "every solve reports how its search ended, and this one reports "
+                f"{self.conclusion!r}. Absence once meant a solve that settled nothing; it now "
+                "means only that a result was built without one — a fault in whoever built it, "
+                "never a verdict"
+            )
         if isinstance(self.determination, Inconsistent) and self.conclusion is not (
             Conclusion.EXHAUSTED
         ):
