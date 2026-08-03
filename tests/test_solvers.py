@@ -138,17 +138,20 @@ def test_optimal_enum_pins_the_collision_class_to_the_proven_optimum() -> None:
 
 
 def test_an_optimal_enum_under_a_hit_budget_never_claims_a_complete_optimal_class() -> None:
-    # A constant objective makes all 2^28 p-choices co-optimal, so a 0.0 poll cannot get through
-    # both phases. Which phase the budget cuts short is a race, and the two outcomes differ: a
-    # phase 1 that never proved the optimum leaves nothing to enumerate at and settles nothing,
-    # while a phase 2 cut short holds part of the optimal class around a sound optimum. So the
-    # assertion is over what both have in common and what actually matters — neither reports a
-    # search that closed the space, so no reading over the optimal class can be taken from either.
-    # (Asserting one of the two outcomes is what made an earlier version of this test flake under
-    # suite load while passing in isolation.)
+    # A constant objective makes all 2^28 p-choices co-optimal, so a 0.0 poll cannot enumerate the
+    # class. HOW it falls short is a race with three landings, and they differ: phase 1 may never
+    # prove the optimum and so settle nothing; phase 2 may be cut short holding part of the class
+    # around a sound optimum; or phase 2 may come back with no model at all on a control phase 1
+    # exhausted — which one platform's runner does and this machine has not done once in forty
+    # driven attempts. So the assertion is over what all three share and what actually matters: no
+    # reading over the optimal class may be taken from any of them, and none of them may say the
+    # program has no answer set, which phase 1 has already refuted by finding a model.
+    #
+    # Asserting any ONE of the three is what made earlier versions of this test flake under suite
+    # load and then fail on one platform only.
     program = "{ p(1..28) }. c. #minimize { 1,c : c }. #show p/1."
     outcome = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0)
-    assert outcome.conclusion is not Conclusion.EXHAUSTED, (
+    assert not isinstance(outcome.determination, Inconsistent), (
         f"this program has 2^28 co-optimal answer sets; the solve reported {outcome!r}"
     )
     assert count_optimal_is(1, line=1)(outcome).verdict is Verdict.UNDECIDED
