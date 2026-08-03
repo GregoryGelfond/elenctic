@@ -222,9 +222,10 @@ def test_an_undecided_solve_is_undecided_however_its_search_ended() -> None:
 
 
 def test_every_conclusion_has_an_undecided_diagnostic() -> None:
-    # Closed like the partition beside it. Unlike the partial-reading message this one is total:
-    # an exhausted search reaches it too, when it closed the space and still left the mode without
-    # what its shape is made of, and refusing that input would raise inside a check at verdict time.
+    # Closed like the partition beside it. Unlike the partial-reading message this one is total: an
+    # exhausted search reaches this arm too, by way of the optimal-class driver's second phase
+    # returning no model on a control the first already exhausted, and refusing that input would
+    # raise inside a check at verdict time instead of saying the little that is known.
     for conclusion in Conclusion:
         assert _undecided_message(conclusion), f"{conclusion.name} has no diagnostic"
 

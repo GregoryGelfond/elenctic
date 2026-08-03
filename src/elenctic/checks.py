@@ -98,12 +98,12 @@ class CheckReport:
 
 
 # Why a solve settled nothing, in terms of how its search ended. Total over the conclusions, unlike
-# its partial-reading sibling, and the exhausted entry is the one with no demonstrated path to it: a
-# search that covers the space normally settles satisfiability by doing so. It is written rather
-# than refused because the two axes are independent by construction, and because refusing an input
-# here would raise inside a check at verdict time rather than say the little that is known. For the
-# same reason it claims nothing about what would help — the way such a pairing could arise is a
-# search cancelled just as it finished, and there a larger budget is exactly what would help.
+# its partial-reading sibling: a search that closed its space reaches this arm too, when it closed
+# it and still left the mode without what its shape is made of — the optimal-class driver's second
+# phase does exactly that when it returns no model. The exhausted entry claims nothing about what
+# would help, because on that path nothing about the budget was the problem, and on the other way
+# such a pairing could arise — a search cancelled just as it finished — a larger budget is exactly
+# what would help.
 _UNDECIDED_MESSAGE: Final[dict[Conclusion, str]] = {
     Conclusion.EXHAUSTED: (
         "the solve did not settle the question — UNDECIDED, never FAIL. The search covered the "

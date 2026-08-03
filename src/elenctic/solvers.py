@@ -463,10 +463,17 @@ def _optimal_enum_two_phase(
     enumerator = _Collector()
     with faults():
         completed, result = _solve_under_budget(control, make_on_model(enumerator), budget)
-    decided = _outcome_unless_satisfiable(completed, result)
-    if decided is not None:
-        return decided
     conclusion = _conclusion(completed, result)
+    if not result.satisfiable:
+        # Not `_outcome_unless_satisfiable`, because this phase may not answer the satisfiability
+        # question at all: phase 1 already answered it by finding a model, and nothing here can
+        # take that back. clingo's unsatisfiable bit reports the solve step that produced it, and
+        # this is a second step on the control the first one exhausted — so a phase that comes back
+        # without a model has failed to enumerate the class, not discovered there was nothing to
+        # enumerate. Routed to the unsatisfiable arm it would say the program has no answer set,
+        # and every tag that PASSes on an empty AS(P) would be satisfied by a program that
+        # satisfies none of them.
+        return SolveOutcome(Inconclusive(), conclusion)
     shape = _consistent_shape(Mode.OPTIMAL_ENUM, enumerator, projects_to_shown, conclusion)
     if shape is None:
         # Unreachable: the optimal-enumeration arm always builds, because phase 1 proved the

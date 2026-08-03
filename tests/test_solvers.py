@@ -10,11 +10,14 @@ property — ``type(solve(mode)) is shape_for(mode)`` and its readable fields ar
 ``populates(mode)`` — closes the accessor seam's second premise empirically (the postcondition).
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from clingo import Function, Symbol
+from clingo import Control, Function, Model, Symbol
+from clingo.solving import SolveResult
 
+from elenctic import solvers
 from elenctic.checks import count_is, count_optimal_is
 from elenctic.program import ProgramError
 from elenctic.result import (
@@ -43,6 +46,10 @@ from elenctic.result import (
 )
 from elenctic.run import Mode, populates, shape_for
 from elenctic.solvers import run_clingo, solve
+
+# clingo's own solve-result bitset, for constructing a result a race would otherwise have to win.
+_UNSATISFIABLE = 2
+_EXHAUSTED = 4
 
 _CHOICE = "1 {a; b} 1. #show a/0. #show b/0."  # answer sets {a}, {b}
 _CHOICE_WITH_FACT = "1 {a; b} 1. c. #show a/0. #show b/0. #show c/0."  # ⋂={c}, ⋃={a,b,c}
@@ -141,8 +148,48 @@ def test_an_optimal_enum_under_a_hit_budget_never_claims_a_complete_optimal_clas
     # suite load while passing in isolation.)
     program = "{ p(1..28) }. c. #minimize { 1,c : c }. #show p/1."
     outcome = run_clingo(Mode.OPTIMAL_ENUM, program, budget=0.0)
-    assert outcome.conclusion is not Conclusion.EXHAUSTED
+    assert outcome.conclusion is not Conclusion.EXHAUSTED, (
+        f"this program has 2^28 co-optimal answer sets; the solve reported {outcome!r}"
+    )
     assert count_optimal_is(1, line=1)(outcome).verdict is Verdict.UNDECIDED
+
+
+def test_a_second_phase_that_reports_no_model_never_calls_the_program_unsatisfiable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Phase 1 proves the optimum, which it can only do by finding a model — so the program HAS an
+    # answer set, and nothing phase 2 reports can take that back. clingo's unsatisfiable bit says
+    # "no model in this solve step", and phase 2 is a second step on the control the first one just
+    # exhausted; reading it as a statement about the program lets a satisfiable program be reported
+    # as having none. That is a false PASS and not merely a wrong diagnostic: every tag that PASSes
+    # on an empty AS(P) — `@expect unsat`, `@count 0`, `@count optimal 0` — would be satisfied by
+    # a program that satisfies none of them.
+    #
+    # Forced rather than waited for. The state showed up on one platform's continuous integration
+    # and not on the other's, and a test that can only be reached by losing a race is a test that
+    # reports the race.
+    real = solvers._solve_under_budget
+    solves = 0
+
+    def no_model_in_the_second_phase(
+        control: Control, on_model: Callable[[Model], bool], budget: float
+    ) -> tuple[bool, SolveResult]:
+        nonlocal solves
+        solves += 1
+        completed, result = real(control, on_model, budget)
+        if solves == 1:
+            return completed, result
+        return True, SolveResult(_UNSATISFIABLE | _EXHAUSTED)  # type: ignore[no-untyped-call]
+
+    monkeypatch.setattr(solvers, "_solve_under_budget", no_model_in_the_second_phase)
+    outcome = run_clingo(Mode.OPTIMAL_ENUM, "1 {a; b} 1. c. #minimize { 1,c : c }. #show a/0.")
+    assert solves == 2, "the two-phase driver is expected to solve twice"
+    assert not isinstance(outcome.determination, Inconsistent), (
+        "phase 1 found a model, so the program has an answer set"
+    )
+    assert count_optimal_is(0, line=1)(outcome).verdict is not Verdict.PASS, (
+        "a tag that PASSes on an empty AS(P) must not be satisfied by a program with models"
+    )
 
 
 def test_clingcon_optimal_enum_two_phase_yields_the_optimal_class() -> None:

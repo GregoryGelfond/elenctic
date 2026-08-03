@@ -225,10 +225,12 @@ class Inconclusive:
     No fields — but the solve still *ran*, and how its search ended rides beside this arm as a
     :class:`Conclusion` like any other. That is what lets a report say which kind of not-knowing it
     met: raising a budget and shrinking a program are different remedies, and the reading most
-    likely to be short of time is the one that lands here. The searches that arrive are the ones
-    that stopped short or were cut short; a search that covered the space settles satisfiability by
-    doing so, so ``EXHAUSTED`` beside this arm is admitted by the type rather than produced by any
-    path this project can demonstrate.
+    likely to be short of time is the one that lands here. Mostly the searches that arrive are the
+    ones that stopped short or were cut short — but not only: a search can close its own space and
+    still leave a mode without what its shape is made of, which is what the second phase of the
+    optimal-class driver does when it comes back with no model on a control the first phase already
+    exhausted. That phase cannot be reporting the program unsatisfiable, since the first found a
+    model, so it reports a reading it could not make.
 
     A search that *did* settle satisfiability and then stopped early usually lands elsewhere: it
     keeps what it settled. Three narrower states still arrive here, because the solve produced
