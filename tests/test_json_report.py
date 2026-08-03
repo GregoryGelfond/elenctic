@@ -127,7 +127,7 @@ def test_an_error_and_an_observation_carry_exactly_the_promised_fields() -> None
     document = _document(_run(errors=(_error(),), hygiene=(_observation(),)))
     (error,) = document["errors"]
     (observation,) = document["hygiene"]
-    assert set(error) == {"kind", "scope", "source", "message"}
+    assert set(error) == {"kind", "is_elenctic_bug", "scope", "source", "message"}
     assert set(observation) == {"kind", "severity", "source", "message"}
     assert error["source"] == "a.lp"
     assert error["message"] == "the program will not ground"
@@ -195,6 +195,27 @@ def test_where_a_fault_lies_is_written_the_way_a_consumer_was_promised(
 ) -> None:
     (error,) = _document(_run(errors=(_error(kind),)))["errors"]
     assert error["kind"] == written
+
+
+@pytest.mark.parametrize(
+    ("kind", "ours"),
+    [
+        (ErrorKind.HARNESS, True),
+        (ErrorKind.CONTRACT, False),
+        (ErrorKind.DISCOVERY, False),
+        (ErrorKind.PROGRAM, False),
+        (ErrorKind.DEADLINE, False),
+        (ErrorKind.RESOURCE, False),
+    ],
+)
+def test_whether_a_fault_is_ours_to_fix_is_stated_rather_than_derived(
+    kind: ErrorKind, ours: bool
+) -> None:
+    # The one closed question in the document, and the one the exit status turns on. Since `kind`
+    # is the growable tier, a consumer meeting a locus added in a later version could otherwise
+    # answer it only by keeping a list of kinds in step with a version it does not have.
+    (error,) = _document(_run(errors=(_error(kind),)))["errors"]
+    assert error["is_elenctic_bug"] is ours
 
 
 @pytest.mark.parametrize(("scope", "written"), [(Scope.CORPUS, "corpus"), (Scope.CASE, "case")])

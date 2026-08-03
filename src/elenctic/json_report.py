@@ -101,6 +101,11 @@ def _check(report: CheckReport) -> dict[str, object]:
 def _error(record: ErrorRecord) -> dict[str, object]:
     return {
         "kind": record.kind.value,
+        # Stated rather than left to be derived. This is the closed, two-valued question the exit
+        # status turns on, while the locus beside it is the growable tier — so a consumer meeting a
+        # locus added in a later version could otherwise answer it only by keeping a table of loci
+        # in step with a version it does not have.
+        "is_elenctic_bug": record.kind.is_elenctic_bug,
         "scope": record.scope.value,
         "source": None if record.source is None else _text(record.source),
         "message": _text(record.message),
