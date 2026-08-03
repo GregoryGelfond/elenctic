@@ -17,6 +17,7 @@ required to be exactly one.
 """
 
 import json
+from importlib.resources import files
 from pathlib import Path
 from typing import Final
 
@@ -31,7 +32,7 @@ from elenctic.outcome import (
     summary,
 )
 
-__all__ = ["SCHEMA_VERSION", "as_json", "dumps"]
+__all__ = ["SCHEMA_VERSION", "as_json", "dumps", "schema_text"]
 
 SCHEMA_VERSION: Final = 1
 """The version of the document's shape.
@@ -76,6 +77,24 @@ def dumps(document: dict[str, object]) -> str:
     the program wrote them.
     """
     return json.dumps(document, ensure_ascii=False, indent=2) + "\n"
+
+
+def schema_text() -> str:
+    """The packaged description of the document's shape, exactly as it ships.
+
+    Text rather than a parsed object: the caller that is not a test writes it to standard output,
+    and someone redirecting that into a file should get the file. Parsing and re-rendering it would
+    hand them something that says the same thing in a different shape, and the whitespace of a
+    published document is part of what people diff.
+
+    The version is in the resource's name rather than beside it, because the shape of a document and
+    the description of that shape are one fact. A bump that renamed the constant and not the file
+    would otherwise go on printing the description of a document the package no longer produces;
+    this way it finds nothing, and a copy of the package missing the file at all is reported the
+    same way — as elenctic's own fault, which is what a packaging fault is.
+    """
+    resource = files("elenctic") / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
+    return resource.read_text(encoding="utf-8")
 
 
 def _case(outcome: CaseOutcome) -> dict[str, object]:

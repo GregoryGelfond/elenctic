@@ -32,7 +32,11 @@ elenctic = "elenctic.cli:main"  # the standalone corpus runner (`elenctic <encod
 path = "src/elenctic/__init__.py"  # single source of truth for the version (read from __version__)
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/elenctic"]
+packages = ["src/elenctic"]  # everything under here ships, including schema/output-v*.schema.json,
+                             # which `--print-schema` reads back as a package resource. Verified on
+                             # a built wheel, not assumed: narrowing this to *.py would leave that
+                             # flag with nothing to print in an installed copy and nothing here to
+                             # say so.
 
 [tool.ruff]
 # Formatter is `ruff format` — black-compatible.

@@ -17,6 +17,11 @@ pytest-cov = "*"
 hypothesis = "*"
 mypy = "*"
 ruff = "*"
+# Checks the packaged output schema against the documents the package produces. A test-only tool:
+# elenctic prints its schema and never validates against it, so this must not become a runtime
+# dependency in pyproject.toml — a consumer installing elenctic is not installing a validator.
+jsonschema = "*"
+types-jsonschema = "*"  # it ships no types of its own, and the gate is mypy --strict
 
 [pypi-dependencies]
 elenctic = { path = ".", editable = true }

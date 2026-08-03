@@ -43,6 +43,7 @@ from elenctic.discovery import (
 from elenctic.display import legible
 from elenctic.expectation import ContractError
 from elenctic.harness import render, run_case
+from elenctic.json_report import schema_text
 from elenctic.outcome import (
     CaseOutcome,
     CasePlan,
@@ -130,6 +131,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="stop the run once it has taken this long; cases not reached are reported as not run "
         "(off by default — --budget bounds one solve, this bounds the whole corpus)",
     )
+    parser.add_argument(
+        "--print-schema",
+        action="store_true",
+        help="write the JSON schema of the machine-readable report to standard output and exit, "
+        "without running anything",
+    )
     return parser
 
 
@@ -147,6 +154,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     rather than something that has to refuse."""
     try:
         args = _build_parser().parse_args(argv)
+        if args.print_schema:
+            # Answered from the package alone, so it is answered before anything is looked for on
+            # disk: someone asking what the output looks like need not have a corpus, and a target
+            # that does not exist must not turn the question into a fault. Written rather than
+            # printed, so what a reader redirects into a file is the file.
+            sys.stdout.write(schema_text())
+            return 0
         invocation = Invocation(
             target=args.target,
             strict=args.strict,

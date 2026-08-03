@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/main/src/elenctic/schema/output-v1.schema.json",
+  "title": "elenctic run report",
+  "description": "The result of running a corpus of @-contracts over Answer Set Programs, as one JSON object on standard output. Results are kept in three registers that must not be confused: a case in `cases` received a judgment about the program under test; an entry in `errors` says no judgment could be made and why; an entry in `hygiene` is an observation about the corpus's health and is neither. A consumer drawing a failure indicator should draw it for a non-passing case, never for an error — an error is usually not a fault in the contract at all.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "invocation", "summary", "cases", "errors", "hygiene"],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "The version of this contract. It changes when a field is added or removed, or when one of the closed enumerations gains a member — never when a new value appears in one of the open-valued string fields."
+    },
+    "invocation": { "$ref": "#/$defs/invocation" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "cases": {
+      "type": "array",
+      "description": "One entry per case that produced a verdict, in a stable order: the same input yields the same order, and a case's position in this array is its identity within the document.",
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "errors": {
+      "type": "array",
+      "description": "One entry per reason a verdict could not be produced. Never a statement about a program's answer sets.",
+      "items": { "$ref": "#/$defs/error" }
+    },
+    "hygiene": {
+      "type": "array",
+      "description": "Observations about the corpus itself rather than about any program's behaviour. Warnings by default; `--strict` promotes them to failures.",
+      "items": { "$ref": "#/$defs/hygiene" }
+    }
+  },
+  "$defs": {
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "fail", "undecided"],
+      "description": "A three-valued judgment. `undecided` is not a failure and must not be shown as one: it says the solver did not settle the question, which is an absence of knowledge rather than a wrong answer."
+    },
+    "invocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "strict", "budget", "deadline"],
+      "description": "The flags this run was given, so a stored report can be reproduced and so its exit status can be reconstructed.",
+      "properties": {
+        "target": {
+          "type": "string",
+          "description": "The file or directory that was run."
+        },
+        "strict": {
+          "type": "boolean",
+          "description": "Whether hygiene observations were treated as failures. Provenance: what each observation was actually graded is on the observation, so this says how the run was asked to behave rather than what it did."
+        },
+        "budget": {
+          "type": "number",
+          "description": "The per-solve time budget in seconds. A solve that reaches it is reported as not having finished, which is why a check may be `undecided` here and decided under a larger budget."
+        },
+        "deadline": {
+          "type": ["number", "null"],
+          "description": "The whole-run time limit in seconds, or null when none was set (the default). Cases not reached before it appear as errors, not as verdicts."
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "passed", "failed", "undecided", "errors", "hygiene"],
+      "description": "Counts computed from the registers below, provided so a consumer need not walk the arrays. `total` counts every case discovered — those with a verdict plus those that could not be run — so `total` equals `passed + failed + undecided` plus the number of case-scoped errors. A `total` of 0 with a non-empty `errors` means discovery itself failed; with an empty `errors` it means the corpus held no cases.",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "undecided": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "hygiene": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "solver", "verdict", "checks"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "The case file, as it was named on the command line or found beneath the target. Do not parse a line number out of it; each check carries its own."
+        },
+        "solver": {
+          "type": "string",
+          "description": "The solver the case declared or defaulted to. An open-valued field: more may be supported later, so treat an unfamiliar name as a name, not as an error."
+        },
+        "verdict": {
+          "$ref": "#/$defs/verdict",
+          "description": "The case's verdict, folded from its checks: it passes only if every check passes, a check that decided wrong outranks one that could not decide."
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "description": "One entry per contract claim, in a stable order; a check's position in this array is its identity.",
+          "items": { "$ref": "#/$defs/check" }
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "subject", "status", "message", "line", "conclusion"],
+      "properties": {
+        "tag": {
+          "type": "string",
+          "description": "The contract tag this claim was written with, such as `@cautious` or `@query`. Open-valued: tags may be added."
+        },
+        "subject": {
+          "type": "string",
+          "description": "What distinguishes one instance of a repeatable tag from another — the query's surface form for `@query`, and the empty string for every tag that may appear only once. Together with `tag` it names the check; it does not identify it, because two instances can render alike."
+        },
+        "status": {
+          "$ref": "#/$defs/verdict",
+          "description": "This claim's own verdict. The case's verdict is folded from these, so a consumer drawing one indicator per claim reads this one and a consumer drawing one per file reads the case's."
+        },
+        "message": {
+          "type": "string",
+          "description": "The human-readable diagnostic: what was expected and what was found. Opaque — its wording may change without a version bump, so display it, do not parse it."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The 1-based line of `source` on which this claim was written, so a diagnostic can be placed where the claim is. A claim spread over several lines by an unclosed brace reports the line its tag opened on; a tag repeated on several lines is several claims, each with its own line. Editors counting lines from zero must subtract one."
+        },
+        "conclusion": {
+          "type": "string",
+          "enum": ["exhausted", "incomplete", "interrupted"],
+          "description": "How the search behind this verdict ended. Always present and never null: every verdict comes from a search that ran, and for a solve that settled nothing how the search ended is the whole of what there is to report. `exhausted` means the search covered the space it was configured to cover; `incomplete` means it stopped short of that without being interrupted, ending on a bound it ran into rather than on an answer — and not every such bound was asked for, since a search nobody asked to enumerate carries one of the solver's own; `interrupted` means it was cut short from outside the search, which from the command line is the per-solve time budget. This is what tells an unsettled question apart from a reading that outran its search: a status of `undecided` with a conclusion of `interrupted` usually means the budget was too small, not that the program is wrong."
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "is_elenctic_bug", "scope", "source", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Where the fault lies. Known values: `contract` (the @-contract is ill-formed), `discovery` (the corpus or the environment is mis-shaped, including a declared solver that is not installed), `program` (the program under test will not load, ground, or solve), `deadline` (the run's time limit was reached before this case was tried), `resource` (the case ran out of a resource — memory — that only you can bound), `harness` (elenctic violated one of its own invariants — the only kind that is ours to fix rather than yours). These name loci rather than exception classes; two of them arrive as no exception at all. Open-valued: treat an unfamiliar kind as one you cannot act on specifically, and read `is_elenctic_bug` for the one question about it that is closed."
+        },
+        "is_elenctic_bug": {
+          "type": "boolean",
+          "description": "Whether this is ours to fix rather than yours to report — the closed, two-valued question the exit status turns on, stated rather than left to be derived. It is `true` for exactly the `harness` kind today, but read it rather than comparing `kind`: `kind` is the growable tier, so a table of loci kept in step by hand would answer a later version's fault wrongly, and this field is what a consumer meeting an unfamiliar kind can still act on."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["corpus", "case"],
+          "description": "What the error stopped: a single case, or the whole run. A corpus-scoped error means no case produced a verdict."
+        },
+        "source": {
+          "type": ["string", "null"],
+          "description": "The file the error belongs to, or null for a corpus-level fault that belongs to no single file."
+        },
+        "message": {
+          "type": "string",
+          "description": "The human-readable reason, including whatever provenance the underlying tool reported. Opaque, like every message here."
+        }
+      }
+    },
+    "hygiene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "severity", "source", "message"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Known values: `orphan_library` (a contract-free file nothing includes) and `undeclared_solver` (a case that did not name the solver it runs under). Open-valued."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["silent", "warning", "error"],
+          "description": "How loudly this run graded the observation, which is a policy of the invocation rather than a property of what was seen: `--strict` grades every observation `error`, and without it an orphan library is a `warning` while an undeclared solver is `silent`. `error` means the run failed on it. `silent` means the observation was recorded but not reported, so a consumer drawing diagnostics should draw nothing for it — it is here so that a consumer applying its own policy still has the fact. Read this rather than deriving a footing from `kind`: `kind` is open-valued, so a table of kinds cannot stay complete, and this field is what says what the exit status was based on."
+        },
+        "source": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}
