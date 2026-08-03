@@ -15,6 +15,7 @@ from elenctic.query import (
     singleton_answer,
     unify,
 )
+from elenctic.result import HarnessError
 
 
 def atoms(*names: str) -> frozenset[Symbol]:
@@ -126,7 +127,10 @@ def test_conjunctive_answer(
 
 def test_conjunctive_answer_rejects_empty_census() -> None:
     # AS(P)=∅ is the Inconsistent arm upstream; an empty census fails loud, never a vacuous "yes".
-    with pytest.raises(ValueError, match="census"):
+    # Loud as a harness error, because the census it reads is a solve result and the caller that
+    # handed it one is elenctic: this runs inside a case, where an exception outside the taxonomy
+    # would end the run rather than cost the one case that met it.
+    with pytest.raises(HarnessError, match="census"):
         conjunctive_answer((parse_term("a"), parse_term("b")), frozenset())
 
 

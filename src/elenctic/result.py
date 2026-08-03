@@ -188,6 +188,20 @@ def collection_of(fields: frozenset[Field]) -> Collection:
     return collections.pop()
 
 
+def _empty_collection(shape: str, item: str, nonempty: str) -> NoReturn:
+    """The one refusal shared by every ``Consistent`` shape built around an empty collection.
+
+    Centralised for the same reason the narrowing seam is: the four shapes say the same thing, and
+    the thing they say is a policy — whose fault this is — that must not come to differ between
+    copies of it.
+    """
+    raise HarnessError(
+        f"a {shape} carries ≥1 {item} ({nonempty}), and this one carries none. A consistent result "
+        "says the program has an answer set, so a shape built around none of them contradicts the "
+        "arm it is on — an elenctic bug, never a verdict."
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Optimum:
     """The proven optimum of an optimisation run. ``cost`` is the
@@ -207,7 +221,11 @@ class Optimum:
 
     def __post_init__(self) -> None:
         if not self.cost:
-            raise ValueError("an Optimum carries a non-empty priority-ordered cost vector")
+            raise HarnessError(
+                "an Optimum carries a non-empty priority-ordered cost vector, and this one carries "
+                "none. The token asserts a proven optimum, so an empty cost vector proves nothing "
+                "under a name that says otherwise — an elenctic bug, never a verdict."
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,7 +295,7 @@ class ConsistentEnumeration(Consistent):
 
     def __post_init__(self) -> None:
         if not self.observables:
-            raise ValueError("a ConsistentEnumeration carries ≥1 observable (AS(P) ≠ ∅)")
+            _empty_collection("ConsistentEnumeration", "observable", "AS(P) ≠ ∅")
 
 
 @final
@@ -292,7 +310,7 @@ class ConsistentShownCensus(Consistent):
 
     def __post_init__(self) -> None:
         if not self.shown_census:
-            raise ValueError("a ConsistentShownCensus carries ≥1 shown class (AS(P) ≠ ∅)")
+            _empty_collection("ConsistentShownCensus", "shown class", "AS(P) ≠ ∅")
 
 
 @final
@@ -335,7 +353,7 @@ class ConsistentOptimalEnumeration(Consistent):
 
     def __post_init__(self) -> None:
         if not self.optimal_observables:
-            raise ValueError("a ConsistentOptimalEnumeration carries ≥1 optimal model (Opt(P) ≠ ∅)")
+            _empty_collection("ConsistentOptimalEnumeration", "optimal model", "Opt(P) ≠ ∅")
 
 
 @final
@@ -351,7 +369,7 @@ class ConsistentShownOptimalCensus(Consistent):
 
     def __post_init__(self) -> None:
         if not self.shown_census:
-            raise ValueError("a ConsistentShownOptimalCensus carries ≥1 shown class (Opt(P) ≠ ∅)")
+            _empty_collection("ConsistentShownOptimalCensus", "shown class", "Opt(P) ≠ ∅")
 
 
 @final
