@@ -19,17 +19,14 @@ changed, and says nothing while doing it.
 """
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
 
-import elenctic.cli
 from elenctic.json_report import dumps, schema_text
+from support import Streams, document_of, run_cli
 
 _PASSES = (
     "% @elenctic solver clingo\n% @expect sat\n% @count 2\n\n"
@@ -43,21 +40,6 @@ _ORPHAN = "% a contract-free file nothing includes.\nhelper(1).\n"
 # three times, because this interpreter works hard not to be left in it — which is why the defect
 # it exposes is easy to ship and hard to meet by accident.
 _STDOUT_CANNOT_ENCODE = {"LC_ALL": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8": "0"}
-
-# The child: elenctic's own console entry, given the arguments this process passes after the program
-# text, and made to prove first that it is the same copy of the package this process is testing. A
-# prelude may stand a fault in front of it, which is how a register only a fault can reach gets
-# exercised without one being contrived inside the corpus.
-_CHILD = """
-import sys
-{prelude}
-import elenctic.cli
-from elenctic.cli import main
-
-if elenctic.cli.__file__ != {loaded!r}:
-    raise SystemExit("the child loaded " + str(elenctic.cli.__file__) + ", not the tree under test")
-sys.exit(main(sys.argv[1:]))
-"""
 
 _ALLOCATION_FAILS = """
 import elenctic.cli
@@ -110,69 +92,19 @@ elenctic.cli.schema_text = _unreadable
 """
 
 
-class _Streams(NamedTuple):
-    out: str
-    err: str
-    status: int
-
-
 def _corpus(root: Path, **cases: str) -> Path:
     for name, text in cases.items():
         (root / f"{name}.lp").write_text(text, encoding="utf-8")
     return root
 
 
-def _run(
-    target: Path, *flags: str, prelude: str = "", env: dict[str, str] | None = None
-) -> _Streams:
-    """One invocation of elenctic, as a process, with its two streams kept apart.
-
-    The hash seed is cleared rather than inherited, so that two runs really are two seeds: a
-    document ordered by anything hash-derived would otherwise be compared against itself. Both
-    streams are decoded as UTF-8 here whatever the child was asked to encode in, because what the
-    child encodes in is the thing under test in two of these.
-    """
-    environment = {**os.environ, **(env or {})}
-    environment.pop("PYTHONHASHSEED", None)
-    finished = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            _CHILD.format(prelude=prelude, loaded=elenctic.cli.__file__),
-            str(target),
-            *flags,
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=300,
-        check=False,
-        env=environment,
-    )
-    return _Streams(finished.stdout, finished.stderr, finished.returncode)
-
-
 def _reported(
     target: Path, *flags: str, prelude: str = "", env: dict[str, str] | None = None
-) -> _Streams:
-    return _run(target, "--format", "json", *flags, prelude=prelude, env=env)
+) -> Streams:
+    return run_cli(target, "--format", "json", *flags, prelude=prelude, env=env)
 
 
-def _document(streams: _Streams) -> dict[str, Any]:
-    """What standard output carried, parsed — with the child's own account of itself if it did not
-    carry a document, since a child that died for an unrelated reason otherwise reports only that
-    something was not JSON."""
-    try:
-        parsed: dict[str, Any] = json.loads(streams.out)
-    except json.JSONDecodeError as broken:
-        raise AssertionError(
-            f"standard output carried no document ({broken}). The run exited "
-            f"{streams.status} and said:\n{streams.err}"
-        ) from broken
-    return parsed
-
-
-def _status_off_the_document(document: dict[str, Any]) -> int:
+def _status_off_thedocument_of(document: dict[str, Any]) -> int:
     """The exit status as a consumer holding only the document reconstructs it.
 
     The document promises this ladder is readable from its own fields, which is what lets a stored
@@ -196,7 +128,7 @@ def test_standard_output_carries_one_document_and_nothing_else(tmp_path: Path) -
     target = _corpus(tmp_path, passes=_PASSES, fails=_FAILS, orphan_library=_ORPHAN)
 
     streams = _reported(target)
-    document = _document(streams)
+    document = document_of(streams)
 
     assert streams.out == dumps(document), (
         "standard output is exactly the document, rendered as the package renders it — no prose "
@@ -216,7 +148,7 @@ def test_standard_output_carries_one_document_and_nothing_else(tmp_path: Path) -
     assert "1/2 passed" in streams.err, "including the summary the run writes at the end"
 
 
-def test_a_write_beneath_the_python_stream_never_reaches_the_document(tmp_path: Path) -> None:
+def test_a_write_beneath_the_python_stream_never_reaches_thedocument_of(tmp_path: Path) -> None:
     # The guarantee the redirect exists for, and the only test that can tell it apart from
     # rebinding this language's standard output: a writer that goes to the descriptor directly, as
     # the grounder does, inside a real run. Rebinding would let both of these land beside the
@@ -225,7 +157,7 @@ def test_a_write_beneath_the_python_stream_never_reaches_the_document(tmp_path: 
 
     streams = _reported(target, prelude=_WRITES_BENEATH_THE_PYTHON_STREAM)
 
-    assert streams.out == dumps(_document(streams)), "a byte written past the stream is not here"
+    assert streams.out == dumps(document_of(streams)), "a byte written past the stream is not here"
     assert "a byte written past sys.stdout" in streams.err, "it is shown, not discarded"
     assert "and another once the run is done" in streams.err, (
         "including one written after the run returned, since the region covers the whole of it"
@@ -267,7 +199,7 @@ def test_every_document_the_command_line_emits_is_one_the_published_description_
     streams = _reported(target, *flags, prelude=prelude)
 
     errors = sorted(
-        Draft202012Validator(json.loads(schema_text())).iter_errors(_document(streams)),
+        Draft202012Validator(json.loads(schema_text())).iter_errors(document_of(streams)),
         key=lambda error: list(error.absolute_path),
     )
     assert not errors, f"{described}: " + "; ".join(
@@ -312,14 +244,14 @@ def test_the_status_a_consumer_reads_off_the_document_is_the_status_the_process_
     streams = _reported(_corpus(tmp_path, **cases), *flags, prelude=prelude)
 
     assert streams.status == expected, described
-    assert _status_off_the_document(_document(streams)) == streams.status, described
+    assert _status_off_thedocument_of(document_of(streams)) == streams.status, described
 
 
-def test_a_corpus_that_could_not_be_discovered_still_produces_a_document(tmp_path: Path) -> None:
+def test_a_corpus_that_could_not_be_discovered_still_produces_adocument_of(tmp_path: Path) -> None:
     # Nothing ran, so there is no verdict to report — but a consumer handed nothing at all cannot
     # tell a corpus that could not be found from a run that died before writing anything.
     streams = _reported(tmp_path / "no_such_directory")
-    document = _document(streams)
+    document = document_of(streams)
 
     assert streams.status == 2
     assert document["cases"] == [], "nothing was tested, so nothing belongs in that register"
@@ -334,7 +266,7 @@ def test_a_case_that_will_not_ground_costs_only_its_own_verdict(tmp_path: Path) 
     target = _corpus(tmp_path, passes=_PASSES, broken=_WILL_NOT_GROUND)
 
     streams = _reported(target)
-    document = _document(streams)
+    document = document_of(streams)
 
     assert streams.status == 2
     (case,) = document["cases"]
@@ -357,11 +289,11 @@ def test_a_case_that_will_not_ground_costs_only_its_own_verdict(tmp_path: Path) 
     assert document["summary"]["total"] == 2, "both files were discovered, and both are accounted"
 
 
-def test_hygiene_this_run_graded_an_error_reaches_the_document(tmp_path: Path) -> None:
+def test_hygiene_this_run_graded_an_error_reaches_thedocument_of(tmp_path: Path) -> None:
     target = _corpus(tmp_path, fails=_FAILS, orphan_library=_ORPHAN)
 
     streams = _reported(target, "--strict")
-    document = _document(streams)
+    document = document_of(streams)
 
     assert streams.status == 2, "the gate fails on a corpus-health observation under --strict"
     graded = {record["kind"]: record for record in document["hygiene"]}
@@ -381,7 +313,7 @@ def test_an_observation_this_run_stayed_quiet_about_is_still_recorded(tmp_path: 
     target = _corpus(tmp_path, fails=_FAILS)
 
     streams = _reported(target)
-    document = _document(streams)
+    document = document_of(streams)
 
     (observation,) = document["hygiene"]
     assert observation["kind"] == "undeclared_solver"
@@ -400,7 +332,7 @@ def test_the_same_corpus_serializes_identically_twice(tmp_path: Path) -> None:
     second = _reported(target)
 
     assert first.status == 2, "and the runs behind the comparison actually happened"
-    assert _document(first)["summary"]["total"] == 3
+    assert document_of(first)["summary"]["total"] == 3
     assert first.out == second.out
 
 
@@ -409,8 +341,8 @@ def test_the_human_format_is_the_default_and_is_also_spellable(tmp_path: Path) -
     # explicit spelling is a second format nobody documented.
     target = _corpus(tmp_path, passes=_PASSES, fails=_FAILS)
 
-    implicit = _run(target)
-    explicit = _run(target, "--format", "human")
+    implicit = run_cli(target)
+    explicit = run_cli(target, "--format", "human")
 
     assert implicit == explicit
     assert "1/2 passed" in implicit.out, "and it is the report on standard output, not a document"
@@ -421,7 +353,7 @@ def test_the_human_format_writes_no_document_even_when_the_run_dies(tmp_path: Pa
     # ask gets prose and a status, and never a document dumped after the traceback.
     target = _corpus(tmp_path, passes=_PASSES)
 
-    streams = _run(target, prelude=_NO_REGISTER_ANTICIPATED_THIS)
+    streams = run_cli(target, prelude=_NO_REGISTER_ANTICIPATED_THIS)
 
     assert streams.status == 3
     assert streams.out == "", "nothing was asked for on this stream, so nothing is put there"
@@ -431,7 +363,7 @@ def test_the_human_format_writes_no_document_even_when_the_run_dies(tmp_path: Pa
 def test_a_format_this_version_does_not_know_is_refused(tmp_path: Path) -> None:
     # The failure a machine consumer would find hardest to notice: asking for a format that does
     # not exist and being handed prose, which parses as nothing and reads as a broken run.
-    streams = _run(_corpus(tmp_path, passes=_PASSES), "--format", "sarif")
+    streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--format", "sarif")
 
     assert streams.status == 2
     assert streams.out == "", "an unknown format falls through to no report at all"
@@ -450,7 +382,7 @@ def test_a_dry_run_has_no_machine_readable_form_and_says_so(tmp_path: Path) -> N
     assert "alone" in streams.err, "and it says what to ask for instead, which is why it is refused"
 
 
-def test_a_budget_that_is_not_a_positive_finite_number_of_seconds_leaves_no_document(
+def test_a_budget_that_is_not_a_positive_finite_number_of_seconds_leaves_nodocument_of(
     tmp_path: Path,
 ) -> None:
     # Refused the same way and at the same point as the pairing above, and asserted here for the
@@ -472,7 +404,7 @@ def test_what_the_command_line_asked_for_is_what_the_document_says_was_asked_for
 
     streams = _reported(target, "--budget", "7.5", "--deadline", "900", "--strict")
 
-    assert _document(streams)["invocation"] == {
+    assert document_of(streams)["invocation"] == {
         "target": str(target),
         "strict": True,
         "budget": 7.5,
@@ -483,7 +415,7 @@ def test_what_the_command_line_asked_for_is_what_the_document_says_was_asked_for
 def test_a_run_given_no_deadline_says_so_rather_than_inventing_one(tmp_path: Path) -> None:
     streams = _reported(_corpus(tmp_path, passes=_PASSES))
 
-    assert _document(streams)["invocation"]["deadline"] is None
+    assert document_of(streams)["invocation"]["deadline"] is None
 
 
 @pytest.mark.parametrize(
@@ -494,7 +426,7 @@ def test_a_run_given_no_deadline_says_so_rather_than_inventing_one(tmp_path: Pat
     ],
     ids=["out-of-memory", "internal-error"],
 )
-def test_a_fault_that_reaches_the_console_entry_still_produces_a_document(
+def test_a_fault_that_reaches_the_console_entry_still_produces_adocument_of(
     tmp_path: Path, described: str, prelude: str, kind: str, expected: int
 ) -> None:
     # The register a consumer needs most, because it is the one it cannot infer: handed nothing, it
@@ -504,7 +436,7 @@ def test_a_fault_that_reaches_the_console_entry_still_produces_a_document(
     target = _corpus(tmp_path, passes=_PASSES)
 
     streams = _reported(target, prelude=prelude)
-    document = _document(streams)
+    document = document_of(streams)
 
     assert streams.status == expected, described
     (error,) = document["errors"]
@@ -525,13 +457,13 @@ def test_an_allocation_failure_with_no_case_to_name_says_so_in_the_record(tmp_pa
     # sentence would tell a reader to reduce a case nobody can identify.
     streams = _reported(_corpus(tmp_path, passes=_PASSES), prelude=_ALLOCATION_FAILS)
 
-    (error,) = _document(streams)["errors"]
+    (error,) = document_of(streams)["errors"]
     assert "this corpus" in error["message"]
     assert "this case" not in error["message"]
     assert "resource error" in streams.err, "and the reader is told in prose as well"
 
 
-def test_a_fault_while_printing_the_description_produces_no_document(tmp_path: Path) -> None:
+def test_a_fault_while_printing_the_description_produces_nodocument_of(tmp_path: Path) -> None:
     # A document reports a run, and printing the description asks for none — so a fault there is
     # reported as prose and a status, the same way its readable-environment sibling already is.
     # A run report here would describe a corpus that was never looked at.
@@ -554,7 +486,7 @@ def test_printing_the_description_is_not_a_document_and_asks_nothing_of_a_corpus
 
     assert streams.status == 0
     assert streams.err == ""
-    assert _document(streams)["title"] == "elenctic run report", "the description, not a report"
+    assert document_of(streams)["title"] == "elenctic run report", "the description, not a report"
 
 
 def test_the_description_outranks_the_dry_run_rather_than_being_dropped_by_it(
@@ -563,10 +495,10 @@ def test_the_description_outranks_the_dry_run_rather_than_being_dropped_by_it(
     # Two actions asked for at once, each of which is the whole of what an invocation does. The
     # description wins, because it is the one that reads nothing about the run — and which wins is
     # written down here so that it is a decision rather than a consequence of statement order.
-    streams = _run(_corpus(tmp_path, passes=_PASSES), "--explain", "--print-schema")
+    streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--explain", "--print-schema")
 
     assert streams.status == 0
-    assert _document(streams)["title"] == "elenctic run report"
+    assert document_of(streams)["title"] == "elenctic run report"
     assert streams.err == "", "and no plan was narrated"
 
 
@@ -577,7 +509,7 @@ def test_a_command_line_that_cannot_be_run_is_refused_even_when_it_asks_only_for
     # refuses one it can convert but cannot use, at the same point and for the same reason. A
     # command line answered by one and accepted by the other would be refused or not depending on
     # which flag it was paired with.
-    streams = _run(_corpus(tmp_path, passes=_PASSES), "--print-schema", "--budget", "0")
+    streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--print-schema", "--budget", "0")
 
     assert streams.status == 2
     assert streams.out == "", "the description is not written for a command line that was refused"
@@ -592,7 +524,7 @@ def test_the_document_is_utf8_whatever_the_environment_would_have_chosen(tmp_pat
     target = _corpus(tmp_path, passes=_PASSES)
 
     streams = _reported(target, env=_STDOUT_CANNOT_ENCODE)
-    document = _document(streams)
+    document = document_of(streams)
 
     assert streams.status == 0
     (case,) = document["cases"]
