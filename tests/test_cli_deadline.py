@@ -25,10 +25,6 @@ def _corpus(root: Path, count: int) -> str:
     return str(root)
 
 
-def test_without_a_deadline_every_case_runs() -> None:
-    """The default is unchanged behaviour — the bound exists only when it is asked for."""
-
-
 def test_a_run_without_a_deadline_is_unchanged(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

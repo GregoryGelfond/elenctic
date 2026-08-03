@@ -136,8 +136,8 @@ class HygieneReport:
 @dataclass(frozen=True, slots=True)
 class Corpus:
     """The result of hygiene-aware discovery (:func:`inspect_corpus`): the cases to run and
-    the corpus :class:`HygieneReport`. The CLI runs ``cases`` and reports ``hygiene`` (warn-by-
-    default / error-under-``--strict``); issue #2 (``--json``) will serialize the same pair."""
+    the corpus :class:`HygieneReport`. This is what a run starts from; what it produced is the
+    runner's :class:`~elenctic.outcome.RunOutcome`, which is the shape a report is built from."""
 
     cases: tuple[Case, ...]
     hygiene: HygieneReport
