@@ -32,12 +32,32 @@ from elenctic.discovery import (
 )
 from elenctic.display import legible
 from elenctic.expectation import ContractError
-from elenctic.harness import case_verdict, render, run_case
+from elenctic.harness import render, run_case
+from elenctic.outcome import (
+    CaseOutcome,
+    ErrorKind,
+    ErrorRecord,
+    HygieneKind,
+    HygieneRecord,
+    RunOutcome,
+    Scope,
+    error_kind,
+    summary,
+)
 from elenctic.program import ProgramError
 from elenctic.registry import provides_theory
 from elenctic.result import HarnessError, Verdict
 from elenctic.run import runs_for
 from elenctic.solvers import TIME_BUDGET
+
+# What an allocation failure has to say, wherever it is reported from. Where the memory went is not
+# knowable from the frame that catches it: grounding is the usual answer, and a solve holds every
+# model it is shown, so both are named rather than the likelier one asserted.
+_OUT_OF_MEMORY = (
+    "elenctic ran out of memory running this case. Grounding has no size limit available to it, "
+    "and a solve holds every model it is shown — reduce what this case grounds or enumerates, or "
+    "run the corpus under a memory limit. No verdict was produced for it."
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -121,49 +141,105 @@ def _dispatch(argv: Sequence[str] | None) -> int:
     try:
         corpus = inspect_corpus(args.target)
     except (DiscoveryError, ContractError, ProgramError) as exc:
+        # Nothing was discovered, so this fault belongs to no case — it is the corpus's, and it is
+        # the whole of what the invocation produced.
         print(f"corpus error: {legible(str(exc))}", file=sys.stderr)
-        return 2
-    for _path, fault in corpus.unrunnable:
+        corpus_fault = ErrorRecord(
+            kind=error_kind(exc), scope=Scope.CORPUS, source=None, message=str(exc)
+        )
+        return _status(RunOutcome(cases=(), errors=(corpus_fault,), hygiene=()), strict=args.strict)
+    unrunnable = _unrunnable_records(corpus.unrunnable)
+    for record in unrunnable:
         # Discovered but unusable — an unresolvable #include, an undecodable byte, a malformed
         # contract. Reported against the file it belongs to, in the same register as a case the
         # runner could not run, so one bad file never costs the corpus its other results.
         # Every discovery diagnostic carries its own provenance, so the path is not repeated here.
-        print(f"CASE ERROR — {legible(str(fault))}", file=sys.stderr)
-    status = (
-        _explain(corpus.cases)
+        print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
+    hygiene = _hygiene_records(corpus.hygiene)
+    outcome = (
+        RunOutcome(cases=(), errors=(*unrunnable, *_explain(corpus.cases)), hygiene=hygiene)
         if args.explain
         else _run(
             corpus.cases,
             args.budget,
-            undiscoverable=len(corpus.unrunnable),
+            unrunnable=unrunnable,
+            hygiene=hygiene,
             deadline=args.deadline,
         )
     )
-    if corpus.unrunnable:
-        status = 2
-    return _report_hygiene(corpus.hygiene, strict=args.strict, status=status)
+    _report_hygiene(corpus.hygiene, strict=args.strict)
+    return _status(outcome, strict=args.strict)
 
 
-def _report_hygiene(hygiene: HygieneReport, *, strict: bool, status: int) -> int:
+def _status(outcome: RunOutcome, *, strict: bool) -> int:
+    """The process status for a completed run, highest signal winning: ``2`` a fault that stopped
+    something from being decided, or a hygiene observation the caller asked to be strict about;
+    ``1`` a case decided wrong or could not be decided; ``0`` every case passed. Hygiene is never a
+    verdict, which is why it can only reach the error level and only when asked to."""
+    if outcome.errors or (strict and outcome.hygiene):
+        return 2
+    if any(case.verdict is not Verdict.PASS for case in outcome.cases):
+        return 1
+    return 0
+
+
+def _hygiene_records(hygiene: HygieneReport) -> tuple[HygieneRecord, ...]:
+    """Every corpus-health observation, whatever the strictness dial says about reporting it.
+
+    The dial decides what is *printed* and what fails the run; it does not decide what was
+    *observed*. A consumer reading the run's output is owed the observations themselves and applies
+    its own policy to them, which it cannot do if the run has already dropped the ones this
+    invocation chose to stay silent about."""
+    return (
+        *(
+            HygieneRecord(
+                kind=HygieneKind.ORPHAN_LIBRARY,
+                source=path,
+                message="carries no contract and no case #includes it (a forgotten case, or a "
+                "dead library?)",
+            )
+            for path in hygiene.orphan_libraries
+        ),
+        *(
+            HygieneRecord(
+                kind=HygieneKind.UNDECLARED_SOLVER,
+                source=path,
+                message="defaulted to clingo (declare @elenctic solver for reproducibility)",
+            )
+            for path in hygiene.undeclared_solvers
+        ),
+    )
+
+
+def _unrunnable_records(unrunnable: tuple[tuple[Path, Exception], ...]) -> tuple[ErrorRecord, ...]:
+    """The contract-bearing files discovery could not turn into cases, in the same register as a
+    case the runner could not run: both are a file that will produce no verdict, and the reader
+    does not care which side of discovery it failed on."""
+    return tuple(
+        ErrorRecord(kind=error_kind(fault), scope=Scope.CASE, source=path, message=str(fault))
+        for path, fault in unrunnable
+    )
+
+
+def _report_hygiene(hygiene: HygieneReport, *, strict: bool) -> None:
     """Report corpus hygiene (the ``--strict`` dial) as an aggregated end-of-run stderr
-    summary. Orphan libraries warn by default and leave the exit ``status`` (a verdict register)
-    unchanged; under ``--strict`` they — plus the otherwise-silent undeclared solvers — become
-    errors that fail the run (exit ``2``, the CI gate, dominating the verdict register). Hygiene is
-    never a verdict; with nothing to report in this mode, the ``status`` is unchanged."""
+    summary. Orphan libraries warn by default; under ``--strict`` they — plus the otherwise-silent
+    undeclared solvers — become errors that fail the run (the CI gate). Hygiene is never a verdict;
+    what a reported observation does to the exit status is decided with the rest of it."""
     records = hygiene.render(strict=strict)
     if not records:
-        return status
+        return
     print(f"\nhygiene {'errors (--strict)' if strict else 'warnings'}:", file=sys.stderr)
     for line in records:
         print(f"  {line}", file=sys.stderr)
-    return 2 if strict else status
 
 
-def _explain(cases: tuple[Case, ...]) -> int:
+def _explain(cases: tuple[Case, ...]) -> tuple[ErrorRecord, ...]:
     """Narrate the derived run plan per case without solving (the dry-run): each run's mode and the
     projection decision (which the contract's reads induce), and each check with the fields it
-    reads. 0, or 2 on a misroute."""
-    status = 0
+    reads. Returns the misroutes it met — a plan that cannot be built is a harness fault, and this
+    is the mode whose whole purpose is to surface one before any solving."""
+    misroutes: list[ErrorRecord] = []
     for case in cases:
         print(f"{legible(str(case.contract_source))} [{case.solver}]")
         # The @note prose leads the narration — the author's what/why above the harness's how.
@@ -181,42 +257,65 @@ def _explain(cases: tuple[Case, ...]) -> int:
                     print(f"        {name} — reads {{{reads}}}")
         except HarnessError as exc:
             print(f"    HARNESS ERROR: {legible(str(exc))}", file=sys.stderr)
-            status = 2
-    return status
+            misroutes.append(
+                ErrorRecord(
+                    kind=ErrorKind.HARNESS,
+                    scope=Scope.CASE,
+                    source=case.contract_source,
+                    message=str(exc),
+                )
+            )
+    return tuple(misroutes)
 
 
 def _run(
     cases: tuple[Case, ...],
     budget: float,
-    undiscoverable: int = 0,
+    *,
+    unrunnable: tuple[ErrorRecord, ...] = (),
+    hygiene: tuple[HygieneRecord, ...] = (),
     deadline: float | None = None,
-) -> int:
+) -> RunOutcome:
     """Validate every plan up front, then solve + check each case; render non-PASS outcomes.
 
-    ``undiscoverable`` counts the contract-bearing files discovery could not turn into cases. They
-    are counted into the corpus total and the not-run register here rather than omitted, so the
-    summary never accounts for a file by leaving it out.
+    Every discovered case leaves here in exactly one register: a verdict it produced, or the reason
+    it produced none. Nothing is counted by subtracting one register from another, so there is no
+    arrangement in which a case is accounted for by being left out.
+
+    ``unrunnable`` carries the contract-bearing files discovery could not turn into cases, and
+    ``hygiene`` what discovery observed about the corpus around them. Both are passed through rather
+    than recomputed: they were established before the run began, and the outcome is the whole of
+    what the invocation produced.
 
     ``deadline`` bounds the run rather than a solve. ``budget`` bounds one solve, and a case can
     route to several, so a corpus costs a product of three numbers of which only one was bounded.
     It is off unless asked for: unlike a model cap there is no run duration obviously beyond
     legitimate use, and a default low enough to bound a hostile corpus would turn a large honest
     one into cases that could not be run — a worse failure than the one it prevents."""
-    valid, harness_errors = _validate_plans(cases)
+    valid, misroutes = _validate_plans(cases)
+    errors = [*unrunnable, *misroutes]
+    outcomes: list[CaseOutcome] = []
     started = monotonic()
-    nonpassing = 0
-    case_errors: list[Case] = []
     for reached, case in enumerate(valid):
         if deadline is not None and monotonic() - started >= deadline:
             # Stop dispatching, and account for every case that will not run. Reporting them one
-            # by one would bury the reason under its own consequences, so they are counted once.
+            # by one would bury the reason under its own consequences, so the reader is told once
+            # while each case still gets its own record — a count cannot say which case is missing.
             unreached = valid[reached:]
             print(
                 f"DEADLINE — the run passed its {deadline}s deadline; "
                 f"{len(unreached)} case(s) were not reached",
                 file=sys.stderr,
             )
-            case_errors.extend(unreached)
+            errors.extend(
+                ErrorRecord(
+                    kind=ErrorKind.DEADLINE,
+                    scope=Scope.CASE,
+                    source=unreached_case.contract_source,
+                    message=f"the run passed its {deadline}s deadline before reaching this case",
+                )
+                for unreached_case in unreached
+            )
             break
         try:
             # The declared solver is checked here, per case, so an absent optional backend costs
@@ -227,7 +326,7 @@ def _run(
             # the environment cannot run this case (its declared solver is not installed). The
             # message carries its own provenance, as every discovery diagnostic does.
             print(f"SOLVER ERROR — {legible(str(exc))}", file=sys.stderr)
-            case_errors.append(case)
+            errors.append(_case_error(ErrorKind.DISCOVERY, case, str(exc)))
             continue
         except ProgramError as exc:
             # the program under test cannot be run (it will not ground, an #include is unresolvable)
@@ -237,59 +336,69 @@ def _run(
                 f"PROGRAM ERROR — {legible(str(case.contract_source))}: {legible(str(exc))}",
                 file=sys.stderr,
             )
-            case_errors.append(case)
+            errors.append(_case_error(ErrorKind.PROGRAM, case, str(exc)))
             continue
         except MemoryError:
-            # Reported against the case that exhausted it, and counted with the other cases that
+            # Reported against the case that exhausted it, and filed with the other cases that
             # could not be run, so the corpus keeps every result it had already earned. Nothing is
             # bounded by this — the grounder offers no size limit and so neither can elenctic —
-            # but what it costs is one case's result rather than the whole run's.
-            #
-            # Where the memory went is not something this frame can know: grounding is the usual
-            # answer, and a solve holds every model it is shown, so the message names both rather
-            # than asserting the likelier one.
+            # but what it costs is one case's result rather than the whole run's. A resource the
+            # caller is the one able to bound, so not elenctic's own fault to report.
             print(
-                f"RESOURCE ERROR — {legible(str(case.contract_source))}: elenctic ran out of "
-                "memory running this case. Grounding has no size limit available to it, and a "
-                "solve holds every model it is shown — reduce what this case grounds or "
-                "enumerates, or run the corpus under a memory limit. No verdict was produced "
-                "for it.",
+                f"RESOURCE ERROR — {legible(str(case.contract_source))}: {_OUT_OF_MEMORY}",
                 file=sys.stderr,
             )
-            case_errors.append(case)
+            errors.append(_case_error(ErrorKind.RESOURCE, case, _OUT_OF_MEMORY))
             continue
         except HarnessError as exc:
             # a solve-time invariant breach (a seam, a missing cost) is a harness bug too, never a
-            # verdict — report it like a misroute (exit 2) and keep testing the other cases.
+            # verdict — report it like a misroute and keep testing the other cases.
             print(
                 f"HARNESS ERROR — {legible(str(case.contract_source))}: {legible(str(exc))}",
                 file=sys.stderr,
             )
-            harness_errors.append(case)
+            errors.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
             continue
-        if case_verdict(reports) is not Verdict.PASS:
+        outcome = CaseOutcome(case=case, reports=reports)
+        if outcome.verdict is not Verdict.PASS:
             print(render(case, reports))
-            nonpassing += 1
-    total = len(cases) + undiscoverable
-    not_run = len(case_errors) + undiscoverable
-    passed = len(cases) - nonpassing - len(harness_errors) - len(case_errors)
-    summary = f"{passed}/{total} passed"
-    if not_run:
-        summary += f", {not_run} could not be run"
-    if harness_errors:
-        summary += f", {len(harness_errors)} harness error(s)"
-    print(f"\n{summary}")
-    if harness_errors or case_errors:
-        return 2
-    return 1 if nonpassing else 0
+        outcomes.append(outcome)
+    run = RunOutcome(cases=tuple(outcomes), errors=tuple(errors), hygiene=hygiene)
+    print(f"\n{_summary_line(run)}")
+    return run
 
 
-def _validate_plans(cases: tuple[Case, ...]) -> tuple[list[Case], list[Case]]:
+def _case_error(kind: ErrorKind, case: Case, message: str) -> ErrorRecord:
+    """One case's reason for producing no verdict, against the file it belongs to."""
+    return ErrorRecord(kind=kind, scope=Scope.CASE, source=case.contract_source, message=message)
+
+
+def _summary_line(outcome: RunOutcome) -> str:
+    """The end-of-run tally, read off the registers the machine-readable form is built from — so
+    the two renderings cannot come to disagree about a number. The two error levels are kept apart
+    because they ask different things of the reader: one is a corpus to fix, the other is a bug to
+    report."""
+    counts = summary(outcome)
+    unrun = sum(
+        1
+        for error in outcome.errors
+        if error.scope is Scope.CASE and not error.kind.is_elenctic_bug
+    )
+    harness = sum(1 for error in outcome.errors if error.kind.is_elenctic_bug)
+    line = f"{counts['passed']}/{counts['total']} passed"
+    if unrun:
+        line += f", {unrun} could not be run"
+    if harness:
+        line += f", {harness} harness error(s)"
+    return line
+
+
+def _validate_plans(cases: tuple[Case, ...]) -> tuple[list[Case], list[ErrorRecord]]:
     """Build every case's run plan up front (pure ``runs_for``), so all wiring errors surface before
-    any solving. Returns the well-routed cases and the misrouted ones (each
-    reported as a harness error — never a verdict)."""
+    any solving. Returns the well-routed cases and a record per misrouted one (a harness error —
+    never a verdict)."""
     valid: list[Case] = []
-    harness_errors: list[Case] = []
+    misroutes: list[ErrorRecord] = []
     for case in cases:
         try:
             runs_for(case.expectation, provides_theory(case.solver))
@@ -298,10 +407,10 @@ def _validate_plans(cases: tuple[Case, ...]) -> tuple[list[Case], list[Case]]:
                 f"HARNESS ERROR — {legible(str(case.contract_source))}: {legible(str(exc))}",
                 file=sys.stderr,
             )
-            harness_errors.append(case)
+            misroutes.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
         else:
             valid.append(case)
-    return valid, harness_errors
+    return valid, misroutes
 
 
 if __name__ == "__main__":

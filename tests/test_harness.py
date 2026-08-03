@@ -125,7 +125,14 @@ def report(
     subject: str = "",
     line: int = 1,
 ) -> CheckReport:
-    return CheckReport(verdict, label, message, subject, line, Conclusion.EXHAUSTED)
+    return CheckReport(
+        verdict=verdict,
+        label=label,
+        message=message,
+        subject=subject,
+        line=line,
+        conclusion=Conclusion.EXHAUSTED,
+    )
 
 
 @pytest.mark.parametrize(

@@ -226,7 +226,14 @@ def test_a_line_is_1_based_wherever_one_is_carried() -> None:
     with pytest.raises(ValueError, match="1-based"):
         checks.expect_sat(line=0)
     with pytest.raises(ValueError, match="1-based"):
-        CheckReport(Verdict.PASS, "@expect sat", "", "", 0, Conclusion.EXHAUSTED)
+        CheckReport(
+            verdict=Verdict.PASS,
+            label="@expect sat",
+            message="",
+            subject="",
+            line=0,
+            conclusion=Conclusion.EXHAUSTED,
+        )
 
 
 def test_a_line_is_counted_the_way_clingo_counts_one() -> None:

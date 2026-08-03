@@ -32,6 +32,13 @@ which covers both a solve that decided nothing and a search too partial for what
 The first three are the author's to fix; the last is elenctic's. That cut is why ``ProgramError``
 is not a ``HarnessError``: a broken program under test is not evidence of a broken harness.
 
+**The three registers.** A whole run lands in a :class:`RunOutcome`, which keeps apart the three
+kinds of thing a run produces: a :class:`CaseOutcome` per case that reached a verdict, an
+:class:`ErrorRecord` per reason a verdict could not be produced, and a :class:`HygieneRecord` per
+observation about the corpus's health. Every discovered case has exactly one home among the first
+two, and :func:`summary` projects the counts out of them rather than tallying beside them — so a
+reader is never shown fewer cases than exist with nothing said about where the rest went.
+
 The curated surface is resolved **lazily** (PEP 562): importing ``elenctic`` does not eagerly load
 every submodule, so ``import elenctic`` stays cheap (clingo loads only when a solver is actually
 used) and ``python -m elenctic.<stage>`` runs a stage module without a re-import warning.
@@ -52,6 +59,16 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     )
     from elenctic.expectation import Claimed, ContractError, Expectation, Sat, Unsat, parse
     from elenctic.harness import case_verdict, render, run_case
+    from elenctic.outcome import (
+        CaseOutcome,
+        ErrorKind,
+        ErrorRecord,
+        HygieneKind,
+        HygieneRecord,
+        RunOutcome,
+        Scope,
+        summary,
+    )
     from elenctic.program import ProgramError
     from elenctic.query import Answer, Query
     from elenctic.registry import SOLVERS, Solver
@@ -90,6 +107,16 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
     ),
     "elenctic.expectation": ("Claimed", "ContractError", "Expectation", "Sat", "Unsat", "parse"),
     "elenctic.harness": ("case_verdict", "render", "run_case"),
+    "elenctic.outcome": (
+        "CaseOutcome",
+        "ErrorKind",
+        "ErrorRecord",
+        "HygieneKind",
+        "HygieneRecord",
+        "RunOutcome",
+        "Scope",
+        "summary",
+    ),
     "elenctic.program": ("ProgramError",),
     "elenctic.query": ("Answer", "Query"),
     "elenctic.registry": ("SOLVERS", "Solver"),

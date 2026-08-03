@@ -39,7 +39,14 @@ def _report(
     line: int = 1,
     verdict: Verdict = Verdict.FAIL,
 ) -> CheckReport:
-    return CheckReport(verdict, label, message, subject, line, Conclusion.EXHAUSTED)
+    return CheckReport(
+        verdict=verdict,
+        label=label,
+        message=message,
+        subject=subject,
+        line=line,
+        conclusion=Conclusion.EXHAUSTED,
+    )
 
 
 def _cautious_on(*lines: int) -> tuple[CheckReport, ...]:

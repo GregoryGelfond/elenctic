@@ -71,7 +71,7 @@ from elenctic.result import (
 from elenctic.terms import contrary, intersect_all
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class CheckReport:
     """The outcome of one check: a three-valued verdict, the diagnostic to surface, and enough of
     the check's identity for a consumer to place it.
@@ -84,6 +84,11 @@ class CheckReport:
     every report, because every verdict comes from a search that ran, and it is what lets a reader
     tell a program that is wrong from a search that ran out of room. The case's ``@note`` and its
     source provenance are the renderer's concern, read from the case, not carried here.
+
+    Built by keyword, with the run-level records it is reported beside. ``message`` and ``subject``
+    are neighbouring strings, so a transposed pair type-checks clean and renders a plausible row
+    against the wrong claim; and this is a shape a consumer decoding the run's output meets, where
+    a field is identified by its name and by nothing else.
     """
 
     verdict: Verdict
@@ -226,7 +231,12 @@ class Check:
     def __call__(self, outcome: SolveOutcome) -> CheckReport:
         verdict, message = self._judge(outcome)
         return CheckReport(
-            verdict, self.label, message, self.subject, self.line, outcome.conclusion
+            verdict=verdict,
+            label=self.label,
+            message=message,
+            subject=self.subject,
+            line=self.line,
+            conclusion=outcome.conclusion,
         )
 
     def _judge(self, outcome: SolveOutcome) -> tuple[Verdict, str]:
