@@ -227,6 +227,12 @@ def test_an_observation_the_run_stayed_silent_about_is_still_recorded(
     assert graded[HygieneKind.UNDECLARED_SOLVER].source == target / "case.lp"
     assert graded[HygieneKind.ORPHAN_LIBRARY].grade is Grade.WARNING
     assert graded[HygieneKind.ORPHAN_LIBRARY].source == target / "lib.lp"
+    # The other half of the same rule, and it belongs to whoever writes the prose — which is the
+    # console entry, since the run above recorded both observations and said neither. Driven through
+    # it rather than asserted on the run, because a grade that decides what is *printed* can only be
+    # checked where something is printed.
+    capsys.readouterr()
+    main([str(target)])
     reported = capsys.readouterr().err
     assert "lib.lp" in reported, "the warned one is said once"
     assert "case.lp" not in reported, "and the silent one is recorded without being said"

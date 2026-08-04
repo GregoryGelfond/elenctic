@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from elenctic import corpus
-from elenctic.cli import main
-from elenctic.outcome import ExitStatus
+from elenctic.cli import _render_tail, _TerminalRun, main
+from elenctic.outcome import ErrorKind, ErrorRecord, ExitStatus, Invocation, RunOutcome, Scope
 from elenctic.run import RoutingError
 from elenctic.run import runs_for as real_runs_for
 
@@ -317,3 +317,55 @@ def test_a_large_finite_duration_is_the_remedy_and_is_accepted(
 
     assert status == ExitStatus.OK
     assert "1/1 passed" in capfd.readouterr().out
+
+
+@pytest.mark.parametrize("kind", list(ErrorKind))
+def test_every_locus_a_case_can_fail_under_says_something_to_a_reader(
+    kind: ErrorKind, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A case that produced no verdict must not disappear. The register accounts for it either way,
+    # but a reader watching the run sees only what is written, so a locus the renderer has no
+    # sentence for is a case that ran and then went missing from the reader's view of the corpus.
+    #
+    # Over the whole vocabulary rather than over the loci a run files today, because that is the
+    # list that grows: adding a locus is a deliberate act, and this is what makes giving it a
+    # sentence part of the act rather than something to be noticed later.
+    record = ErrorRecord(
+        kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
+    )
+
+    _TerminalRun().undecided(record)
+
+    said = capsys.readouterr().err
+    if kind is ErrorKind.DEADLINE:
+        assert said == "", (
+            "one passed deadline is one event costing many cases their result, so it is said once "
+            "at the end, from the whole register, rather than once per case"
+        )
+    else:
+        assert "the reason it produced none" in said, f"{kind} prints nothing at all"
+
+
+def test_the_deadline_is_said_once_however_many_cases_it_cost(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The other half of the arm above: the one locus the per-case renderer stays quiet about is
+    # reported by the tail instead, and reported once, counting the cases off their own records.
+    unreached = tuple(
+        ErrorRecord(
+            kind=ErrorKind.DEADLINE,
+            scope=Scope.CASE,
+            source=Path(f"case{n}.lp"),
+            message="the run passed its 5.0s deadline before reaching this case",
+        )
+        for n in range(3)
+    )
+
+    _render_tail(
+        RunOutcome(cases=(), errors=unreached, hygiene=()),
+        Invocation(target=Path("tests"), strict=False, budget=30.0, deadline=5.0),
+    )
+
+    said = capsys.readouterr().err
+    assert said.count("DEADLINE") == 1, "one event, one sentence"
+    assert "3 case(s) were not reached" in said, "a count a reader can act on"

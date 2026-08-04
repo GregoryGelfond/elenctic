@@ -35,19 +35,32 @@ import traceback
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from typing import assert_never
 
 from elenctic.corpus import explain_corpus, run_corpus
+from elenctic.discovery import Case
+from elenctic.display import legible
+from elenctic.harness import render
 from elenctic.json_report import as_json, dumps, schema_text
 from elenctic.outcome import (
+    CaseOutcome,
+    CasePlan,
     ErrorKind,
     ErrorRecord,
     ExitStatus,
+    Grade,
+    HygieneKind,
+    HygieneRecord,
     Invocation,
+    Outcome,
+    PlanOutcome,
     RunOutcome,
     Scope,
     exit_status,
     is_duration,
+    summary,
 )
+from elenctic.result import Verdict
 from elenctic.solvers import TIME_BUDGET
 
 # The same allocation failure with no case to name it against, and the reason it is worded
@@ -250,12 +263,20 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         if args.print_schema:
             return _print_schema()
         if not machine_readable:
-            produced = explain_corpus(invocation) if args.explain else run_corpus(invocation)
+            produced: Outcome = (
+                explain_corpus(invocation, observer=_TerminalPlan())
+                if args.explain
+                else run_corpus(invocation, observer=_TerminalRun())
+            )
+            _render_tail(produced, invocation)
             return exit_status(produced)
         # Discovery is inside the region with the rest of the run, because discovery grounds, and
-        # the grounder writes where rebinding a Python stream cannot follow it.
+        # the grounder writes where rebinding a Python stream cannot follow it. So is the tail: the
+        # tally is written to standard output, and under this format standard output belongs to the
+        # document alone.
         with _stdout_to_stderr():
-            outcome = run_corpus(invocation)
+            outcome = run_corpus(invocation, observer=_TerminalRun())
+            _render_tail(outcome, invocation)
     except MemoryError:
         # The backstop, for an allocation that fails where no case owns it. A case that runs out of
         # memory is caught in the run loop and costs only its own result; reaching this frame means
@@ -424,6 +445,214 @@ def _stdout_to_stderr() -> Iterator[None]:
         finally:
             os.dup2(saved, 1)
             os.close(saved)
+
+
+class _Terminal:
+    """What both modes say to a reader as the run goes — the announcements they share.
+
+    The prose lives here and nowhere below: a run establishes records and this turns them into
+    sentences, so the same run can be watched by a reader, written as a document, or embedded in
+    something else without any of the three re-deriving what the others know. Every string a corpus
+    had a hand in passes through the sanitizer, because text a reader's terminal would act on rather
+    than display can forge a verdict in the report it appears in.
+    """
+
+    def unusable(self, record: ErrorRecord) -> None:
+        # Neither line names its file, and that is not an omission: a discovery diagnostic carries
+        # its own provenance, so repeating the path would print it twice on one line. What tells the
+        # two apart is what the fault cost — a corpus nothing could be read from, or one file among
+        # others that will produce no verdict while the rest of the corpus still runs.
+        if record.scope is Scope.CORPUS:
+            print(f"corpus error: {legible(record.message)}", file=sys.stderr)
+        else:
+            print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
+
+
+class _TerminalRun(_Terminal):
+    """What a run says to a reader, case by case, as each one lands."""
+
+    def undecided(self, record: ErrorRecord) -> None:
+        """Why one case produced no verdict, named for where the fault lies.
+
+        Total over the vocabulary rather than over what a run happens to produce, so a locus added
+        later has to be given a sentence here instead of silently printing nothing. The split
+        between the arms that name the file and the arms that do not is the same rule as above: a
+        fault met while *reading* a case carries its own provenance, one met while *running* it does
+        not.
+        """
+        match record.kind:
+            case ErrorKind.DEADLINE:
+                # Said once, at the end. One passed deadline costs every case it did not reach, and
+                # a line apiece would bury the reason under its own consequences — so the record is
+                # still filed per case, where it can say which case, and the sentence is rendered
+                # from the whole register once the run is over.
+                return None
+            case ErrorKind.CONTRACT:
+                # A malformed contract is met while a case is being read, so it reaches a reader
+                # through `unusable` and not here. The arm is what keeps this total: were a run ever
+                # to file one, it would be shown the way every other contract fault is shown.
+                print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
+            case ErrorKind.DISCOVERY:
+                print(f"SOLVER ERROR — {legible(record.message)}", file=sys.stderr)
+            case ErrorKind.PROGRAM:
+                print(f"PROGRAM ERROR — {_against(record)}", file=sys.stderr)
+            case ErrorKind.RESOURCE:
+                print(f"RESOURCE ERROR — {_against(record)}", file=sys.stderr)
+            case ErrorKind.HARNESS:
+                print(f"HARNESS ERROR — {_against(record)}", file=sys.stderr)
+            case unreachable:
+                assert_never(unreachable)
+
+    def decided(self, outcome: CaseOutcome) -> None:
+        # A passing case says nothing. What a reader wants from a corpus of a hundred and
+        # thirty-five is the ones that did not pass, and the tally at the end accounts for the rest.
+        if outcome.verdict is not Verdict.PASS:
+            print(render(outcome.case, outcome.reports))
+
+
+class _TerminalPlan(_Terminal):
+    """What a dry run says to a reader: the plan each case derived to, under the case it belongs
+    to."""
+
+    def began(self, case: Case) -> None:
+        print(f"{legible(str(case.contract_source))} [{case.solver}]")
+        # The @note prose leads the narration — the author's what/why above the harness's how.
+        # Both Sat and Unsat carry notes; documentation, never a verdict.
+        for note in case.expectation.notes:
+            print(f"    note: {legible(note)}")
+
+    def planned(self, case_plan: CasePlan) -> None:
+        for plan in case_plan.runs:
+            projects = "yes" if plan.projects_to_shown else "no"
+            print(f"    {plan.mode.name} (projects: {projects}):")
+            for check in plan.checks:
+                # subject discerns the repeatable @query tag before any solve.
+                name = f"{check.label} ({check.subject})" if check.subject else check.label
+                reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
+                print(f"        {name} — reads {{{reads}}}")
+
+    def undecided(self, record: ErrorRecord) -> None:
+        # A dry run solves nothing, so the only way it fails to produce a plan is that the plan
+        # could not be built — a misroute, which is elenctic's own fault and the whole reason this
+        # mode exists. Indented under the case the narration has already named, and named again
+        # because it goes to the other stream: a reader who has only that one is owed the file.
+        print(
+            f"    HARNESS ERROR — {_against(record)}",
+            file=sys.stderr,
+        )
+
+
+def _against(record: ErrorRecord) -> str:
+    """A fault named against the file it belongs to — for the faults met while a case is *run*,
+    whose messages say what went wrong without saying where."""
+    return f"{legible(str(record.source))}: {legible(record.message)}"
+
+
+def _render_tail(outcome: Outcome, invocation: Invocation) -> None:
+    """What the report says once, when the run is over.
+
+    Three things that are about the whole run rather than about any one case, and so cannot be said
+    while it is going: that a deadline stopped it, how many cases passed, and what was observed
+    about the corpus's health. Each is rendered from the registers the run handed back, so what a
+    reader is told and what the exit status is read off cannot come to disagree.
+
+    A dry run has no tally, because it decided nothing to tally. Neither has a run that never got
+    past discovery: a corpus-scoped fault is the whole of what such an invocation produced, and
+    ``0/0 passed`` under it would answer a question nobody could have asked — it reads as a corpus
+    that was looked at and found to hold nothing, which is a different thing from one that could not
+    be read. An empty corpus *does* tally, and says exactly that.
+    """
+    if any(record.scope is Scope.CORPUS for record in outcome.errors):
+        return
+    match outcome:
+        case RunOutcome():
+            _report_deadline(outcome, invocation)
+            print(f"\n{_summary_line(outcome)}")
+        case PlanOutcome():
+            pass
+        case unreachable:
+            assert_never(unreachable)
+    _report_hygiene(outcome.hygiene)
+
+
+def _report_deadline(outcome: RunOutcome, invocation: Invocation) -> None:
+    """Say once that the deadline stopped the run, and how many cases it did not reach.
+
+    Counted off the register rather than remembered from the loop: a case the deadline never reached
+    has a record of its own saying so, and the reader's sentence is a reading of those rather than a
+    second account of the same event kept alongside them."""
+    unreached = [record for record in outcome.errors if record.kind is ErrorKind.DEADLINE]
+    if not unreached:
+        return
+    print(
+        f"DEADLINE — the run passed its {invocation.deadline}s deadline; "
+        f"{len(unreached)} case(s) were not reached",
+        file=sys.stderr,
+    )
+
+
+def _report_hygiene(hygiene: tuple[HygieneRecord, ...]) -> None:
+    """Report corpus hygiene as an aggregated end-of-run stderr summary, at the footing each
+    observation was graded on. Orphan libraries warn by default; under ``--strict`` they — plus the
+    otherwise-silent undeclared solvers — become errors that fail the run (the CI gate). Hygiene is
+    never a verdict; what a reported observation does to the exit status is decided with the rest of
+    it.
+
+    Rendered from the records themselves — their text as well as their grade — so what is printed
+    and what fails the run cannot disagree about a single observation. Every kind is walked and the
+    match over them is exhaustive, because a kind that reached the grading but not the rendering
+    would fail a run under ``--strict`` and print nothing to say why."""
+    reported = [record for record in hygiene if record.grade is not Grade.SILENT]
+    lines: list[str] = []
+    for kind in HygieneKind:
+        observed = [record for record in reported if record.kind is kind]
+        if not observed:
+            continue
+        match kind:
+            case HygieneKind.ORPHAN_LIBRARY:
+                lines.extend(
+                    f"orphan library: {legible(str(record.source))} {record.message}"
+                    for record in observed
+                )
+            case HygieneKind.UNDECLARED_SOLVER:
+                # Aggregated: a corpus that never declares a solver would otherwise report every
+                # case, and the observation is about the corpus's habit rather than about any one
+                # file. The sentence is stated once because it is one observation, and every record
+                # of a kind carries the same one.
+                listed = ", ".join(legible(str(record.source)) for record in observed)
+                lines.append(
+                    f"undeclared solver: {len(observed)} case(s) {observed[0].message}: {listed}"
+                )
+            case _:
+                assert_never(kind)
+    if not lines:
+        return
+    failing = any(record.grade is Grade.ERROR for record in reported)
+    print(f"\nhygiene {'errors (--strict)' if failing else 'warnings'}:", file=sys.stderr)
+    for line in lines:
+        print(f"  {line}", file=sys.stderr)
+
+
+def _summary_line(outcome: RunOutcome) -> str:
+    """The end-of-run tally, read off the registers the machine-readable form is built from — so
+    the two renderings cannot come to disagree about a number. The two error levels are kept apart
+    because they ask different things of the reader: one is a corpus to fix, the other is a bug to
+    report."""
+    counts = summary(outcome)
+    # Both are cases that produced no verdict, split by who can act on them — so neither is named
+    # for the running they did not do, which is the half they have in common.
+    theirs = sum(
+        1
+        for error in outcome.errors
+        if error.scope is Scope.CASE and not error.kind.is_elenctic_bug
+    )
+    ours = sum(1 for error in outcome.errors if error.kind.is_elenctic_bug)
+    line = f"{counts['passed']}/{counts['total']} passed"
+    if theirs:
+        line += f", {theirs} could not be run"
+    if ours:
+        line += f", {ours} harness error(s)"
+    return line
 
 
 if __name__ == "__main__":

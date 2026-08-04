@@ -60,7 +60,7 @@ _STDOUT_CANNOT_ENCODE = {"LC_ALL": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8"
 _ALLOCATION_FAILS = """
 import elenctic.cli
 
-def _out_of_memory(invocation):
+def _out_of_memory(invocation, *, observer=None):
     raise MemoryError
 
 elenctic.cli.run_corpus = _out_of_memory
@@ -69,7 +69,7 @@ elenctic.cli.run_corpus = _out_of_memory
 _NO_REGISTER_ANTICIPATED_THIS = """
 import elenctic.cli
 
-def _unanticipated(invocation):
+def _unanticipated(invocation, *, observer=None):
     raise ZeroDivisionError("something no register was written for")
 
 elenctic.cli.run_corpus = _unanticipated
@@ -86,9 +86,9 @@ import elenctic.cli
 
 _ran = elenctic.cli.run_corpus
 
-def _noisy(invocation):
+def _noisy(invocation, *, observer=None):
     os.write(1, b"a byte written past sys.stdout\\n")
-    outcome = _ran(invocation)
+    outcome = _ran(invocation, observer=observer)
     os.write(1, b"and another once the run is done\\n")
     return outcome
 
