@@ -1,12 +1,14 @@
 """The ``elenctic`` console entry: exit status separates pass / fail / error, and ``--explain``
 narrates the derived run plan without solving."""
 
+import io
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
 
 from elenctic import corpus
-from elenctic.cli import _render_tail, _TerminalRun, main
+from elenctic.cli import _render_tail, _summary_line, _TerminalPlan, _TerminalRun, main
 from elenctic.outcome import ErrorKind, ErrorRecord, ExitStatus, Invocation, RunOutcome, Scope
 from elenctic.run import RoutingError, runs_for as real_runs_for
 
@@ -336,13 +338,44 @@ def test_every_locus_a_case_can_fail_under_says_something_to_a_reader(
     _TerminalRun().undecided(record)
 
     said = capsys.readouterr().err
-    if kind is ErrorKind.DEADLINE:
-        assert said == "", (
-            "one passed deadline is one event costing many cases their result, so it is said once "
-            "at the end, from the whole register, rather than once per case"
-        )
-    else:
-        assert "the reason it produced none" in said, f"{kind} prints nothing at all"
+
+    # The whole line, not a substring of it. A substring assertion is satisfied by the *message*,
+    # which every arm passes through unchanged — so the labels, the separator, and whether the arm
+    # names the file were all free, and swapping two labels passed the entire suite. Measured, not
+    # supposed: the mutation that swapped SOLVER and PROGRAM was proposed by a reviewer and run.
+    assert said == _SAID_ABOUT[kind], f"what a reader is told about a {kind.value} fault"
+
+
+# What each locus says, whole. The deadline says nothing here because it is said once at the end,
+# from the whole register: one passed deadline is one event costing many cases their result, and a
+# line apiece would bury the reason under its own consequences.
+_SAID_ABOUT: dict[ErrorKind, str] = {
+    ErrorKind.DEADLINE: "",
+    ErrorKind.CONTRACT: "CASE ERROR — the reason it produced none\n",
+    ErrorKind.DISCOVERY: "SOLVER ERROR — the reason it produced none\n",
+    ErrorKind.PROGRAM: "PROGRAM ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.RESOURCE: "RESOURCE ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.HARNESS: "HARNESS ERROR — case.lp: the reason it produced none\n",
+}
+
+
+@pytest.mark.parametrize("kind", list(ErrorKind))
+def test_the_dry_run_says_the_same_thing_about_a_fault_indented_under_its_case(
+    kind: ErrorKind, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A dry run can only meet a misroute today, so it used to label whatever it was handed as
+    # elenctic's own fault. That is a fact about what the mode currently does, not a property of a
+    # renderer, and answering "harness bug" to an author's broken program is a defect this project
+    # has shipped twice. The sentence is now the same one a real run gives, indented under the case
+    # the narration has already named.
+    record = ErrorRecord(
+        kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
+    )
+
+    _TerminalPlan().undecided(record)
+
+    expected = _SAID_ABOUT[kind]
+    assert capsys.readouterr().err == (f"    {expected}" if expected else "")
 
 
 def test_the_deadline_is_said_once_however_many_cases_it_cost(
@@ -365,6 +398,63 @@ def test_the_deadline_is_said_once_however_many_cases_it_cost(
         Invocation(target=Path("tests"), strict=False, budget=30.0, deadline=5.0),
     )
 
-    said = capsys.readouterr().err
-    assert said.count("DEADLINE") == 1, "one event, one sentence"
-    assert "3 case(s) were not reached" in said, "a count a reader can act on"
+    # The whole line. A substring assertion left the interpolated number free: swapping
+    # `invocation.deadline` for `invocation.budget` reported "the run passed its 30.0s deadline"
+    # while every record beside it said 5.0s, and the entire suite stayed green. Measured — the
+    # mutation was a reviewer's and was run.
+    assert capsys.readouterr().err == (
+        "DEADLINE — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
+    )
+
+
+def test_a_tally_counts_the_cases_a_run_actually_accounted_for() -> None:
+    # Both counters read case-scoped records, and both have to: `total` counts the cases discovered
+    # and counts an unrun one by its case-scoped record, so a corpus-scoped fault counted beside it
+    # would produce a line that fails its own arithmetic — "0/0 passed, 1 harness error(s)", which
+    # says a case went wrong and that there were no cases. Nothing files such a record into an
+    # outcome that also has cases today; this is what keeps that from being the reason it is right.
+    corpus_scoped = ErrorRecord(
+        kind=ErrorKind.HARNESS, scope=Scope.CORPUS, source=None, message="no case owned it"
+    )
+    case_scoped = ErrorRecord(
+        kind=ErrorKind.HARNESS, scope=Scope.CASE, source=Path("case.lp"), message="this one did"
+    )
+
+    assert _summary_line(RunOutcome(cases=(), errors=(corpus_scoped,), hygiene=())) == "0/0 passed"
+    assert (
+        _summary_line(RunOutcome(cases=(), errors=(case_scoped,), hygiene=()))
+        == "0/1 passed, 1 harness error(s)"
+    )
+
+
+def test_a_reader_of_one_merged_stream_is_told_the_deadline_before_the_tally() -> None:
+    # The tally is written to standard output and the deadline notice to standard error, so a
+    # capture that keeps the two apart cannot see between them — and `2>&1` is what a CI log, a pipe
+    # into a pager, and a terminal all are. Both streams are pointed at one buffer here, which is
+    # the only way to read the order in process; the fake clock a real deadline needs does not
+    # survive a process boundary, so the control harness cannot reach this path at all and says so.
+    #
+    # The order is the reason, then its consequence: a reader who meets "3 could not be run" first
+    # has to hold it until something explains it.
+    unreached = tuple(
+        ErrorRecord(
+            kind=ErrorKind.DEADLINE,
+            scope=Scope.CASE,
+            source=Path(f"case{n}.lp"),
+            message="the run passed its 5.0s deadline before reaching this case",
+        )
+        for n in range(3)
+    )
+    merged = io.StringIO()
+
+    with redirect_stdout(merged), redirect_stderr(merged):
+        _render_tail(
+            RunOutcome(cases=(), errors=unreached, hygiene=()),
+            Invocation(target=Path("tests"), strict=False, budget=30.0, deadline=5.0),
+        )
+
+    assert merged.getvalue() == (
+        "DEADLINE — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
+        "\n"
+        "0/3 passed, 3 could not be run\n"
+    )

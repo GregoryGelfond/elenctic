@@ -76,6 +76,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         discover as discover,
         inspect_corpus as inspect_corpus,
     )
+    from elenctic.display import legible as legible
     from elenctic.expectation import (
         Claimed as Claimed,
         ContractError as ContractError,
@@ -137,7 +138,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         Run as Run,
         runs_for as runs_for,
     )
-    from elenctic.solvers import solve as solve
+    from elenctic.solvers import TIME_BUDGET as TIME_BUDGET, solve as solve
 
 __version__ = "0.2.0"
 
@@ -153,6 +154,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "explain_corpus",
         "run_corpus",
     ),
+    "elenctic.display": ("legible",),
     "elenctic.discovery": (
         "Case",
         "Corpus",
@@ -177,8 +179,8 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "Outcome",
         "PlanOutcome",
         "RunOutcome",
-        "Scope",
         "Grade",
+        "Scope",
         "error_kind",
         "exit_status",
         "is_duration",
@@ -202,7 +204,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "Verdict",
     ),
     "elenctic.run": ("Mode", "RoutingError", "Run", "runs_for"),
-    "elenctic.solvers": ("solve",),
+    "elenctic.solvers": ("TIME_BUDGET", "solve"),
 }
 
 _HOME: dict[str, str] = {name: module for module, names in _EXPORTS.items() for name in names}

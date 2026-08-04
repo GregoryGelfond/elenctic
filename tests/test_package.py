@@ -62,10 +62,15 @@ def test_public_api_exports_the_pipeline_and_outcome_surface() -> None:
 def test_the_package_tells_a_type_checker_that_it_is_typed() -> None:
     # Every annotation in this package is invisible to a consumer without this file (PEP 561): a
     # type checker skips a package that does not carry the marker, whatever is inside it, and says
-    # so as a missing-stubs error rather than as anything about elenctic. It shipped that way, and
-    # nothing here noticed, because the project's own checks read the source tree rather than an
-    # installed copy — so this asks the question the way an installed copy answers it, as a package
-    # resource beside the modules, exactly as the packaged schema is read.
+    # so as a missing-stubs error rather than as anything about elenctic. It shipped that way and
+    # nothing noticed, because every check this project runs reads the source tree.
+    #
+    # And so does this one. The install here is editable, so `files("elenctic")` is the source tree,
+    # and what is held is that the marker sits inside the package directory — which is where PEP 561
+    # requires it and where the build backend's `packages = ["src/elenctic"]` will pick it up. That
+    # it is actually *in* a built wheel and sdist was verified by building both; what a test in this
+    # suite can hold is the placement, and saying which of the two this is matters, because the
+    # defect it guards against was born of exactly that confusion.
     assert (files("elenctic") / "py.typed").is_file(), (
         "elenctic is annotated throughout and gated on a strict type check; without this marker "
         "none of that reaches anyone who installs it"

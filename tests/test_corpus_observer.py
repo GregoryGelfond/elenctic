@@ -1,15 +1,18 @@
 """The corpus layer writes to no stream, and tells a caller who asks the same records it returns.
 
 Running a corpus used to print as it went, which meant an embedder could not have the results
-without also having the prose — the only way to suppress it was to divert a file descriptor, and a
-library that requires that of its caller is not one you can embed. It is silent now, and a caller
-who wants to watch a long run happen hands in an observer.
+without also having the prose: the only way to quieten it was to take over their own process's
+streams, which costs them their own output and still leaves the records reachable only by reading
+the prose back. It is silent now, and a caller who wants to watch a long run happen hands in an
+observer.
 
 Two things have to hold together for that to be a fair trade. The run must actually be silent, or
-the old problem is still there for whichever path was missed. And what a caller is *told* must be
-what it is *handed back*, or a report rendered as the run goes and a report rendered from the return
-value can describe the same run differently — which is the failure the streaming was worth keeping
-in the first place.
+the old problem is still there for whichever path was missed. And every error and verdict a caller
+is *told* must be what it is *handed back*, or a report rendered as the run goes and a report
+rendered from the return value can describe the same run differently — which is the failure the
+streaming was worth keeping in the first place. Corpus hygiene is outside that: it is settled before
+the first case is reached, so it is returned and not announced, and the test below says so rather
+than leaving it to be inferred from the absence of a method.
 """
 
 from pathlib import Path
@@ -135,6 +138,13 @@ def test_what_a_run_announces_is_what_it_hands_back(tmp_path: Path) -> None:
         id(record) for record in outcome.errors
     ], "every error announced is one filed, in the register's own order"
     assert [id(case) for case in heard.decided_cases] == [id(case) for case in outcome.cases]
+    # The register that is deliberately outside the agreement, asserted rather than left to be
+    # inferred from there being no method for it. Hygiene is settled before the first case is
+    # reached, so it has no as-it-happens character; a caller reads it off the returned outcome,
+    # which is what the console entry does. Said here because the claim above would otherwise read
+    # as covering all three registers, and this corpus produces hygiene records for every case.
+    assert outcome.hygiene, "or this says nothing about the register it is about"
+    assert not hasattr(heard, "observed_records"), "hygiene has no announcement, by design"
 
 
 def test_a_file_discovery_could_not_use_is_told_apart_from_a_case_that_would_not_run(

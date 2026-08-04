@@ -61,9 +61,10 @@ class Observer(Protocol):
     A run holds everything it produced until it returns, which is the right shape for a caller that
     wants the result and the wrong one for a caller watching a hundred and thirty-five cases go by.
     So a caller may hand in an observer, and the run announces each thing as it establishes it. The
-    default is to announce nothing at all: a library that writes to a stream its caller did not ask
-    it to write to cannot be embedded without diverting a file descriptor, and that was the state
-    this replaced.
+    default is to announce nothing at all: what this replaced wrote its prose unasked, and an
+    embedder could only silence it by taking over their own process's streams — which costs them
+    their own output to buy quiet, and still leaves the run's records reachable only by reading the
+    prose back.
 
     **What is announced is a record, never a sentence.** A caller rendering prose already has
     everything the run knows, in the shape the run knows it in, and nothing has to be recovered by
@@ -73,10 +74,18 @@ class Observer(Protocol):
     announcements rather than one field: a field would have to be published in the machine-readable
     document, where it would say something about elenctic's own phases rather than about the fault.
 
-    Every method has a body that does nothing, so an implementation overrides only what it wants to
-    hear about. That is what the standard library's own observers do — a test result, a markup
-    parser, a stream protocol — and the reason to follow it here is the same: most callers care
-    about one or two of these.
+    Every error and every verdict announced is the same object the run files, so a report rendered
+    as the run goes and one rendered from the return value cannot describe it differently. Corpus
+    hygiene is the exception and deliberately so: it is established before the first case is
+    reached, it has no as-it-happens character, and it is read off the returned outcome — which is
+    what the console entry does with it.
+
+    Every method has a body that does nothing, and an implementation that **inherits** one of these
+    gets those bodies, so it overrides only what it wants to hear about. An implementation that does
+    not inherit is checked structurally and must supply every member: these are protocols, and a
+    default body is inherited, never conjured. That is the one way this differs from the standard
+    library's observers — a test result, a markup parser, a stream protocol — which are ordinary
+    base classes and so offer only the first of the two.
     """
 
     def unusable(self, record: ErrorRecord) -> None:
@@ -169,8 +178,9 @@ def run_corpus(invocation: Invocation, *, observer: RunObserver | None = None) -
 
     **Silent.** It writes to no stream. A caller who wants to see the run happen as it happens
     hands in an ``observer`` and is told each thing as it is established; a caller who only wants
-    the result passes nothing and gets it back whole. What is announced and what is returned are
-    the same records, so the two cannot come to describe the run differently.
+    the result passes nothing and gets it back whole. Every error and every verdict announced is
+    the same object this returns, so the two readings cannot come to describe the run differently;
+    corpus hygiene is read off the returned outcome, being settled before the first case is reached.
 
     Named apart from the module ``elenctic.run``, which a package attribute of the same name would
     resolve to instead.

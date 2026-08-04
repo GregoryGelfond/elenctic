@@ -472,36 +472,8 @@ class _TerminalRun(_Terminal):
     """What a run says to a reader, case by case, as each one lands."""
 
     def undecided(self, record: ErrorRecord) -> None:
-        """Why one case produced no verdict, named for where the fault lies.
-
-        Total over the vocabulary rather than over what a run happens to produce, so a locus added
-        later has to be given a sentence here instead of silently printing nothing. The split
-        between the arms that name the file and the arms that do not is the same rule as above: a
-        fault met while *reading* a case carries its own provenance, one met while *running* it does
-        not.
-        """
-        match record.kind:
-            case ErrorKind.DEADLINE:
-                # Said once, at the end. One passed deadline costs every case it did not reach, and
-                # a line apiece would bury the reason under its own consequences — so the record is
-                # still filed per case, where it can say which case, and the sentence is rendered
-                # from the whole register once the run is over.
-                return None
-            case ErrorKind.CONTRACT:
-                # A malformed contract is met while a case is being read, so it reaches a reader
-                # through `unusable` and not here. The arm is what keeps this total: were a run ever
-                # to file one, it would be shown the way every other contract fault is shown.
-                print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
-            case ErrorKind.DISCOVERY:
-                print(f"SOLVER ERROR — {legible(record.message)}", file=sys.stderr)
-            case ErrorKind.PROGRAM:
-                print(f"PROGRAM ERROR — {_against(record)}", file=sys.stderr)
-            case ErrorKind.RESOURCE:
-                print(f"RESOURCE ERROR — {_against(record)}", file=sys.stderr)
-            case ErrorKind.HARNESS:
-                print(f"HARNESS ERROR — {_against(record)}", file=sys.stderr)
-            case unreachable:
-                assert_never(unreachable)
+        if (line := _undecided_line(record)) is not None:
+            print(line, file=sys.stderr)
 
     def decided(self, outcome: CaseOutcome) -> None:
         # A passing case says nothing. What a reader wants from a corpus of a hundred and
@@ -532,14 +504,54 @@ class _TerminalPlan(_Terminal):
                 print(f"        {name} — reads {{{reads}}}")
 
     def undecided(self, record: ErrorRecord) -> None:
-        # A dry run solves nothing, so the only way it fails to produce a plan is that the plan
-        # could not be built — a misroute, which is elenctic's own fault and the whole reason this
-        # mode exists. Indented under the case the narration has already named, and named again
-        # because it goes to the other stream: a reader who has only that one is owed the file.
-        print(
-            f"    HARNESS ERROR — {_against(record)}",
-            file=sys.stderr,
-        )
+        # Indented under the case the narration has already named, and it names the file again
+        # because it goes to the other stream: a reader who has only that one is owed it.
+        #
+        # The same sentence as a real run's, rather than one of its own. A dry run solves nothing,
+        # so the only fault it can meet today is a plan that could not be built — but that is a fact
+        # about what this mode currently does, not a property of the renderer, and a renderer that
+        # answered "elenctic's own fault" to whatever it was handed would one day tell an author
+        # their corpus is a harness bug. Filing a fault as the wrong owner is a defect this project
+        # has shipped twice.
+        if (line := _undecided_line(record)) is not None:
+            print(f"    {line}", file=sys.stderr)
+
+
+def _undecided_line(record: ErrorRecord) -> str | None:
+    """What a reader is told about one case that produced no verdict — or ``None`` where the report
+    says it once at the end instead.
+
+    Total over the vocabulary rather than over what a run happens to produce, so a locus added later
+    has to be given a sentence here instead of silently printing nothing: a case that produced no
+    verdict and no line has disappeared from the reader's view of the corpus, while still being
+    counted in the tally that says how many did not run.
+
+    The split between the arms that name the file and the arms that do not is a rule rather than a
+    habit: a fault met while *reading* a case carries its own provenance in its message, and one met
+    while *running* it does not.
+    """
+    match record.kind:
+        case ErrorKind.DEADLINE:
+            # Said once, at the end. One passed deadline costs every case it did not reach, and a
+            # line apiece would bury the reason under its own consequences — so the record is still
+            # filed per case, where it can say which case, and the sentence is rendered from the
+            # whole register once the run is over.
+            return None
+        case ErrorKind.CONTRACT:
+            # A malformed contract is met while a case is being read, so it reaches a reader
+            # through `unusable` and not here. The arm is what keeps this total: were a run ever
+            # to file one, it would be shown the way every other contract fault is shown.
+            return f"CASE ERROR — {legible(record.message)}"
+        case ErrorKind.DISCOVERY:
+            return f"SOLVER ERROR — {legible(record.message)}"
+        case ErrorKind.PROGRAM:
+            return f"PROGRAM ERROR — {_against(record)}"
+        case ErrorKind.RESOURCE:
+            return f"RESOURCE ERROR — {_against(record)}"
+        case ErrorKind.HARNESS:
+            return f"HARNESS ERROR — {_against(record)}"
+        case unreachable:
+            assert_never(unreachable)
 
 
 def _against(record: ErrorRecord) -> str:
@@ -646,7 +658,14 @@ def _summary_line(outcome: RunOutcome) -> str:
         for error in outcome.errors
         if error.scope is Scope.CASE and not error.kind.is_elenctic_bug
     )
-    ours = sum(1 for error in outcome.errors if error.kind.is_elenctic_bug)
+    # Both counters are over case-scoped records, and both have to be: `total` counts the cases
+    # discovered and counts an unrun one by its case-scoped record, so a corpus-scoped fault counted
+    # here would be reported beside a total that does not include it — a line that fails its own
+    # arithmetic. Nothing files a corpus-scoped fault into an outcome that also has cases today, and
+    # this is what keeps that from being the reason the line is right.
+    ours = sum(
+        1 for error in outcome.errors if error.kind.is_elenctic_bug and error.scope is Scope.CASE
+    )
     line = f"{counts['passed']}/{counts['total']} passed"
     if theirs:
         line += f", {theirs} could not be run"

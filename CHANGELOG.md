@@ -31,20 +31,25 @@ means for them — a reader deciding whether to upgrade should not have to read 
 - **elenctic can be used as a library, and the pieces `elenctic` itself runs on are the pieces you
   get.** `elenctic.run_corpus` takes an `Invocation` — the settled form of a command line — and
   returns everything the run produced; `elenctic.explain_corpus` derives the run plans instead;
-  `elenctic.exit_status` reads either against the `ExitStatus` ladder; `elenctic.as_json` renders one
-  as the published document. The console entry is now these calls with a command line in front of
+  `elenctic.exit_status` reads either against the `ExitStatus` ladder; `elenctic.as_json` renders a
+  *run's* outcome as the published document, this version describing no document for a plan — which
+  is why the command line refuses `--explain --format json`. The console entry is now these calls
+  with a command line in front of
   them rather than the place the work is done, so an editor plugin, a CI script or another test
   runner gets the same values it does. Working one case at a time with `run_case` is unchanged and
   still the right thing when you want elenctic's checks inside a runner of your own.
 
 - **Both runners are silent, and take an observer if you want to watch.** They used to print as they
-  went, which meant embedding elenctic also meant taking its prose — the only way to suppress it was
-  to divert a file descriptor. They now write to no stream. A caller that wants to see a long run
-  happen passes `observer=`, and is told each verdict, plan and fault as it is established; what is
-  handed to the observer is the same record that comes back in the result, so a report rendered as
-  the run goes and one rendered at the end cannot describe the same run differently. `RunObserver`
-  and `PlanObserver` describe the shape, and every method has a do-nothing default, so an
-  implementation overrides only what it wants to hear about.
+  went, which meant embedding elenctic also meant taking its prose: the only way to quieten it was
+  to take over your own process's streams, which costs you your own output and still leaves the
+  run's records reachable only by reading the prose back. They now write to no stream. A caller that
+  wants to see a long run happen passes `observer=`, and is told each verdict, plan and fault as it
+  is established; every error and every verdict handed to the observer is the same object that comes
+  back in the result, so a report rendered as the run goes and one rendered at the end cannot
+  describe the same run differently. (Corpus hygiene is settled before the first case is reached and
+  is read off the result rather than announced.) `RunObserver` and `PlanObserver` describe the
+  shape; inherit one and every method you do not override does nothing, or implement all of them
+  and pass any object that fits.
 
 - **`py.typed`.** elenctic is annotated throughout and checked under `mypy --strict`, and none of
   that reached anyone who installed it: without this marker a type checker skips the package
@@ -136,8 +141,9 @@ means for them — a reader deciding whether to upgrade should not have to read 
   `--strict`. A job gating on non-zero is unaffected; one testing for exactly `2` will stop seeing
   elenctic's own faults, which is the point.
 
-- **A corpus-health observation now carries the grade the run gave it.** `HygieneRecord` gained a
-  `grade`: `error` under `--strict`, and otherwise `warning` for an orphan library and `silent`
+- **A corpus-health observation now carries the grade the run gave it.** `HygieneRecord` — new in
+  this release — carries a `grade`: `error` under `--strict`, and otherwise `warning` for an orphan
+  library and `silent`
   for an undeclared solver — the footing each observation already had. What is printed, what fails
   the run, and what a consumer is told are now read off that one field rather than each deriving it
   again from the flag, so they cannot come to disagree about a single observation. Nothing a run
@@ -234,9 +240,13 @@ means for them — a reader deciding whether to upgrade should not have to read 
   got wrong at a boundary is still `ValueError`: an unknown solver name, and the contract payloads a
   parse re-raises with the author's provenance.
 
-- **`HygieneReport.render` was removed.** What a run prints about corpus hygiene and what fails the
-  run under `--strict` are now read off the same records the run reports, rather than from a second
-  rendering of the same facts. The observations themselves are unchanged, and so is what is printed.
+- **`HygieneReport.render` was removed. This is a breaking change** for anyone who called it —
+  `HygieneReport` is exported, so it was reachable as `elenctic.inspect_corpus(target).hygiene`.
+  What a run prints about corpus hygiene and what fails the run under `--strict` are now read off
+  the same records the run reports, rather than from a second rendering of the same facts. The
+  observations themselves are unchanged, and so is what elenctic itself prints. There is no
+  drop-in replacement: read `RunOutcome.hygiene` and render the `HygieneRecord`s, each of which
+  carries its `kind`, its `grade`, the file it concerns and its message.
 
 - **Whether a search had to finish is now decided per check, not per run.** One solve serves
   several checks and they do not all ask the same thing: a census, an intersection, a union or a
