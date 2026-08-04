@@ -16,8 +16,7 @@ from pathlib import Path
 from typing import Final
 
 from clingo import SymbolType
-from clingo.ast import AST, ASTType, UnaryOperator
-from clingo.ast import parse_files as _parse_files
+from clingo.ast import AST, ASTType, UnaryOperator, parse_files as _parse_files
 
 
 class ProgramError(Exception):

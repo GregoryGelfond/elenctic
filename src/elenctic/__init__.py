@@ -41,6 +41,16 @@ rather than left to re-derive. Every discovered case has exactly one home among 
 :func:`summary` projects the counts out of them rather than tallying beside them — so a reader is
 never shown fewer cases than exist with nothing said about where the rest went.
 
+**Running a corpus.** :func:`run_corpus` takes an :class:`Invocation` — the settled form of a
+command line — and returns a :class:`RunOutcome`; :func:`explain_corpus` derives the run plans
+instead and returns a :class:`PlanOutcome`; :func:`exit_status` reads either against the
+:class:`ExitStatus` ladder, and :func:`as_json` renders one as the published document. Both runners
+are silent, and a caller who wants to watch a long run as it happens supplies a
+:class:`RunObserver` or a :class:`PlanObserver`, which is told each verdict, plan and fault as it
+is established. ``elenctic.cli`` is these five calls with a command line in front of them; a
+consumer who wants elenctic's results somewhere else has the same pieces, and can equally work one
+case at a time with :func:`run_case`.
+
 The curated surface is resolved **lazily** (PEP 562): importing ``elenctic`` does not eagerly load
 every submodule, so ``import elenctic`` stays cheap (clingo loads only when a solver is actually
 used) and ``python -m elenctic.<stage>`` runs a stage module without a re-import warning.
@@ -49,48 +59,85 @@ used) and ``python -m elenctic.<stage>`` runs a stage module without a re-import
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
-    from elenctic.checks import CheckReport
+    from elenctic.checks import CheckReport as CheckReport
+    from elenctic.corpus import (
+        Observer as Observer,
+        PlanObserver as PlanObserver,
+        RunObserver as RunObserver,
+        explain_corpus as explain_corpus,
+        run_corpus as run_corpus,
+    )
     from elenctic.discovery import (
-        Case,
-        Corpus,
-        DiscoveryError,
-        HygieneReport,
-        SolverUnavailableError,
-        discover,
-        inspect_corpus,
+        Case as Case,
+        Corpus as Corpus,
+        DiscoveryError as DiscoveryError,
+        HygieneReport as HygieneReport,
+        SolverUnavailableError as SolverUnavailableError,
+        discover as discover,
+        inspect_corpus as inspect_corpus,
     )
-    from elenctic.expectation import Claimed, ContractError, Expectation, Sat, Unsat, parse
-    from elenctic.harness import case_verdict, render, run_case
+    from elenctic.expectation import (
+        Claimed as Claimed,
+        ContractError as ContractError,
+        Expectation as Expectation,
+        Sat as Sat,
+        Unsat as Unsat,
+        parse as parse,
+    )
+    from elenctic.harness import (
+        case_verdict as case_verdict,
+        render as render,
+        run_case as run_case,
+    )
+    from elenctic.json_report import (
+        SCHEMA_VERSION as SCHEMA_VERSION,
+        as_json as as_json,
+        dumps as dumps,
+        schema_text as schema_text,
+    )
     from elenctic.outcome import (
-        CaseOutcome,
-        ErrorKind,
-        ErrorRecord,
-        Grade,
-        HygieneKind,
-        HygieneRecord,
-        RunOutcome,
-        Scope,
-        summary,
+        CaseOutcome as CaseOutcome,
+        CasePlan as CasePlan,
+        ErrorKind as ErrorKind,
+        ErrorRecord as ErrorRecord,
+        ExitStatus as ExitStatus,
+        Grade as Grade,
+        HygieneKind as HygieneKind,
+        HygieneRecord as HygieneRecord,
+        Invocation as Invocation,
+        Outcome as Outcome,
+        PlanOutcome as PlanOutcome,
+        RunOutcome as RunOutcome,
+        Scope as Scope,
+        error_kind as error_kind,
+        exit_status as exit_status,
+        is_duration as is_duration,
+        summary as summary,
     )
-    from elenctic.program import ProgramError
-    from elenctic.query import Answer, Query
-    from elenctic.registry import SOLVERS, Solver
+    from elenctic.program import ProgramError as ProgramError
+    from elenctic.query import Answer as Answer, Query as Query
+    from elenctic.registry import SOLVERS as SOLVERS, Solver as Solver
     from elenctic.result import (
-        Collection,
-        Conclusion,
-        Consistent,
-        Determination,
-        HarnessError,
-        Inconclusive,
-        Inconsistent,
-        Observable,
-        Optimum,
-        SeamError,
-        SolveOutcome,
-        Verdict,
+        Collection as Collection,
+        Conclusion as Conclusion,
+        Consistent as Consistent,
+        Determination as Determination,
+        HarnessError as HarnessError,
+        Inconclusive as Inconclusive,
+        Inconsistent as Inconsistent,
+        Observable as Observable,
+        Optimum as Optimum,
+        SeamError as SeamError,
+        SolveOutcome as SolveOutcome,
+        Verdict as Verdict,
     )
-    from elenctic.run import Mode, RoutingError, Run, runs_for
-    from elenctic.solvers import solve
+    from elenctic.run import (
+        Mode as Mode,
+        RoutingError as RoutingError,
+        Run as Run,
+        runs_for as runs_for,
+    )
+    from elenctic.solvers import solve as solve
 
 __version__ = "0.2.0"
 
@@ -99,6 +146,13 @@ __version__ = "0.2.0"
 # Field) are deliberately absent.
 _EXPORTS: dict[str, tuple[str, ...]] = {
     "elenctic.checks": ("CheckReport",),
+    "elenctic.corpus": (
+        "Observer",
+        "PlanObserver",
+        "RunObserver",
+        "explain_corpus",
+        "run_corpus",
+    ),
     "elenctic.discovery": (
         "Case",
         "Corpus",
@@ -110,15 +164,24 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
     ),
     "elenctic.expectation": ("Claimed", "ContractError", "Expectation", "Sat", "Unsat", "parse"),
     "elenctic.harness": ("case_verdict", "render", "run_case"),
+    "elenctic.json_report": ("SCHEMA_VERSION", "as_json", "dumps", "schema_text"),
     "elenctic.outcome": (
         "CaseOutcome",
+        "CasePlan",
         "ErrorKind",
         "ErrorRecord",
+        "ExitStatus",
         "HygieneKind",
         "HygieneRecord",
+        "Invocation",
+        "Outcome",
+        "PlanOutcome",
         "RunOutcome",
         "Scope",
         "Grade",
+        "error_kind",
+        "exit_status",
+        "is_duration",
         "summary",
     ),
     "elenctic.program": ("ProgramError",),

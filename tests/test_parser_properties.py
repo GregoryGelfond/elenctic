@@ -7,8 +7,7 @@ line-wrapped or what prose surrounds it. A failing property is a real defect, no
 """
 
 from clingo import parse_term
-from hypothesis import assume, given
-from hypothesis import strategies as st
+from hypothesis import assume, given, strategies as st
 
 from elenctic.expectation import Sat, _has_unclosed_brace, parse
 from elenctic.query import QueryLiteral, Var, unify

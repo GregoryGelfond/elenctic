@@ -27,8 +27,7 @@ from elenctic.outcome import (
     exit_status,
 )
 from elenctic.result import Verdict
-from elenctic.run import RoutingError
-from elenctic.run import runs_for as real_runs_for
+from elenctic.run import RoutingError, runs_for as real_runs_for
 from elenctic.solvers import TIME_BUDGET
 from support import a_clock_the_deadline_has_already_passed_on
 

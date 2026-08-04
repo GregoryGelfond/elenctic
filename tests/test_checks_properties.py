@@ -12,8 +12,7 @@ import operator
 
 import pytest
 from clingo import Function, Symbol
-from hypothesis import given
-from hypothesis import strategies as st
+from hypothesis import given, strategies as st
 
 from elenctic.checks import (
     Check,

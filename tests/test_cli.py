@@ -8,8 +8,7 @@ import pytest
 from elenctic import corpus
 from elenctic.cli import _render_tail, _TerminalRun, main
 from elenctic.outcome import ErrorKind, ErrorRecord, ExitStatus, Invocation, RunOutcome, Scope
-from elenctic.run import RoutingError
-from elenctic.run import runs_for as real_runs_for
+from elenctic.run import RoutingError, runs_for as real_runs_for
 
 
 def write(path: Path, text: str) -> Path:

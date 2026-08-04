@@ -26,8 +26,7 @@ Checks are pure over a ``SolveOutcome``; only ``solvers.py`` touches clingo/clin
 """
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
-from dataclasses import field as dc_field
+from dataclasses import dataclass, field as dc_field
 from typing import Final, assert_never
 
 from clingo import Symbol

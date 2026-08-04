@@ -7,8 +7,7 @@ than a hand-rolled splitter. A strong-negation literal ``-a`` parses to a
 ``Symbol`` with ``positive == False``.
 """
 
-from clingo import Function, Symbol, SymbolType
-from clingo import parse_term as _clingo_parse_term
+from clingo import Function, Symbol, SymbolType, parse_term as _clingo_parse_term
 
 
 def parse_term(text: str) -> Symbol:

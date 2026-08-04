@@ -28,6 +28,30 @@ means for them — a reader deciding whether to upgrade should not have to read 
   version does not know is refused rather than quietly rendered as prose, since being handed prose
   where a document was expected is the failure a machine consumer would find hardest to notice.
 
+- **elenctic can be used as a library, and the pieces `elenctic` itself runs on are the pieces you
+  get.** `elenctic.run_corpus` takes an `Invocation` — the settled form of a command line — and
+  returns everything the run produced; `elenctic.explain_corpus` derives the run plans instead;
+  `elenctic.exit_status` reads either against the `ExitStatus` ladder; `elenctic.as_json` renders one
+  as the published document. The console entry is now these calls with a command line in front of
+  them rather than the place the work is done, so an editor plugin, a CI script or another test
+  runner gets the same values it does. Working one case at a time with `run_case` is unchanged and
+  still the right thing when you want elenctic's checks inside a runner of your own.
+
+- **Both runners are silent, and take an observer if you want to watch.** They used to print as they
+  went, which meant embedding elenctic also meant taking its prose — the only way to suppress it was
+  to divert a file descriptor. They now write to no stream. A caller that wants to see a long run
+  happen passes `observer=`, and is told each verdict, plan and fault as it is established; what is
+  handed to the observer is the same record that comes back in the result, so a report rendered as
+  the run goes and one rendered at the end cannot describe the same run differently. `RunObserver`
+  and `PlanObserver` describe the shape, and every method has a do-nothing default, so an
+  implementation overrides only what it wants to hear about.
+
+- **`py.typed`.** elenctic is annotated throughout and checked under `mypy --strict`, and none of
+  that reached anyone who installed it: without this marker a type checker skips the package
+  entirely (PEP 561) and reports it as missing stubs. Every curated name is also marked as an
+  explicit re-export, so `elenctic.run_corpus` type-checks under a strict configuration rather than
+  being reported as not exported.
+
 - **`--print-schema`** writes the JSON Schema of that document and exits, without looking for a
   corpus. The schema ships inside the package, so it describes the version you have rather than
   whatever a web page says. `schema_version` changes when a field is added or removed or a closed

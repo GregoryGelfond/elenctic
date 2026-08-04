@@ -20,8 +20,7 @@ from typing import assert_never
 
 import pytest
 from clingo import Function, Symbol
-from hypothesis import given
-from hypothesis import strategies as st
+from hypothesis import given, strategies as st
 
 from elenctic import checks
 from elenctic.expectation import Claimed, Expectation, Sat, Unsat, WitnessClaim, parse

@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from importlib.resources import files
 from pathlib import Path
 
 import elenctic
@@ -40,10 +41,35 @@ def test_public_api_exports_the_pipeline_and_outcome_surface() -> None:
         # the solver registry
         "Solver",
         "SOLVERS",
+        # running a whole corpus, and reading what it produced
+        "Invocation",
+        "run_corpus",
+        "explain_corpus",
+        "RunObserver",
+        "PlanObserver",
+        "exit_status",
+        "ExitStatus",
+        "PlanOutcome",
+        "as_json",
+        "schema_text",
+        "SCHEMA_VERSION",
     }
     assert expected <= set(elenctic.__all__)
     for name in elenctic.__all__:
         assert hasattr(elenctic, name), f"__all__ names {name!r} but there is no such attribute"
+
+
+def test_the_package_tells_a_type_checker_that_it_is_typed() -> None:
+    # Every annotation in this package is invisible to a consumer without this file (PEP 561): a
+    # type checker skips a package that does not carry the marker, whatever is inside it, and says
+    # so as a missing-stubs error rather than as anything about elenctic. It shipped that way, and
+    # nothing here noticed, because the project's own checks read the source tree rather than an
+    # installed copy — so this asks the question the way an installed copy answers it, as a package
+    # resource beside the modules, exactly as the packaged schema is read.
+    assert (files("elenctic") / "py.typed").is_file(), (
+        "elenctic is annotated throughout and gated on a strict type check; without this marker "
+        "none of that reaches anyone who installs it"
+    )
 
 
 def test_public_api_is_curated_not_dumped() -> None:
@@ -76,6 +102,46 @@ if exit_status(outcome) != ExitStatus.OK:
 if "elenctic.cli" in sys.modules:
     raise SystemExit("running a corpus pulled in the console entry")
 """
+
+
+def test_the_package_alone_does_everything_the_console_entry_does(tmp_path: Path) -> None:
+    # The shape the console entry is supposed to be a derivation of: settle an invocation, run it,
+    # watch it as it goes, render what came back, read a status off it, write the document. Every
+    # step is a call into the curated surface and there is nothing else in it — which is the claim
+    # `main` makes about itself, made here without `main`.
+    (tmp_path / "case.lp").write_text(
+        "% @expect sat\n% @model { a }\n\na.\n#show a/0.\n", encoding="utf-8"
+    )
+    watched: list[str] = []
+
+    class Watching:
+        def unusable(self, record: elenctic.ErrorRecord) -> None:
+            watched.append(f"unusable {record.kind.value}")
+
+        def undecided(self, record: elenctic.ErrorRecord) -> None:
+            watched.append(f"undecided {record.kind.value}")
+
+        def decided(self, outcome: elenctic.CaseOutcome) -> None:
+            watched.append(f"decided {outcome.verdict.value}")
+
+    invocation = elenctic.Invocation(target=tmp_path, strict=False, budget=30.0, deadline=None)
+    outcome = elenctic.run_corpus(invocation, observer=Watching())
+    document = elenctic.as_json(outcome, invocation)
+
+    assert watched == ["decided pass"], "the run was watched as it went, not only at the end"
+    assert elenctic.exit_status(outcome) == elenctic.ExitStatus.OK
+    assert document["summary"] == {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "undecided": 0,
+        "errors": 0,
+        "hygiene": 1,
+    }
+    assert elenctic.dumps(document).endswith("\n"), "the document is text ready to be written"
+    # The other mode, through the same surface, with the observer it takes rather than this one.
+    plans = elenctic.explain_corpus(invocation)
+    assert [plan.case.contract_source for plan in plans.plans] == [tmp_path / "case.lp"]
 
 
 def test_running_a_corpus_does_not_reach_for_the_console_entry(tmp_path: Path) -> None:

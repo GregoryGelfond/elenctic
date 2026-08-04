@@ -32,11 +32,13 @@ elenctic = "elenctic.cli:main"  # the corpus runner (`elenctic [target]`)
 path = "src/elenctic/__init__.py"  # single source of truth for the version (read from __version__)
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/elenctic"]  # everything under here ships, including schema/output-v*.schema.json,
-                             # which `--print-schema` reads back as a package resource. Verified on
-                             # a built wheel, not assumed: narrowing this to *.py would leave that
-                             # flag with nothing to print in an installed copy and nothing here to
-                             # say so.
+packages = ["src/elenctic"]  # everything under here ships, including two files that are not code
+                             # and are load-bearing anyway: schema/output-v*.schema.json, which
+                             # `--print-schema` reads back as a package resource, and py.typed,
+                             # without which a consumer's type checker skips this package entirely
+                             # and every annotation in it is invisible to them (PEP 561). Verified
+                             # on a built wheel and sdist, not assumed: narrowing this to *.py would
+                             # drop both, silently, with nothing here to say so.
 
 [tool.ruff]
 # Formatter is `ruff format` — black-compatible.
@@ -49,6 +51,13 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # We deliberately use mathematical Unicode (⋂ ⋃ ⊆ ⊇ → ≤ ∅ ∈ …) as KR notation in
 # comments and docstrings; the ambiguous-Unicode (homoglyph) rules would flag it.
 ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+# The curated surface re-exports each name as itself (`X as X`), which is how a type checker is told
+# that a name imported into a package's __init__ is part of its public API — without it, every
+# consumer running a strict check is told the package exports nothing. Left alone, isort gives each
+# aliased name an import statement of its own, which turns one readable block into sixty-five.
+combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
 # The package __init__ re-exports the curated API for static visibility (a TYPE_CHECKING block
