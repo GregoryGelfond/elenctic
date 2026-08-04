@@ -46,9 +46,10 @@ packages = ["src/elenctic"]  # everything under here ships, including two files 
                              # and are load-bearing anyway: schema/output-v*.schema.json, which
                              # `--print-schema` reads back as a package resource, and py.typed,
                              # without which a consumer's type checker skips this package entirely
-                             # and every annotation in it is invisible to them (PEP 561). Verified
-                             # on a built wheel and sdist, not assumed: narrowing this to *.py would
-                             # drop both, silently, with nothing here to say so.
+                             # and every annotation in it is invisible to them (PEP 561).
+                             # Narrowing this to *.py drops both, silently, and leaves every import
+                             # working — so `tests/test_packaging.py` asks the backend what it
+                             # actually builds rather than trusting this comment.
 
 [tool.ruff]
 # Formatter is `ruff format` — black-compatible.

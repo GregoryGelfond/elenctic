@@ -22,6 +22,12 @@ ruff = "*"
 # dependency in pyproject.toml — a consumer installing elenctic is not installing a validator.
 jsonschema = "*"
 types-jsonschema = "*"  # it ships no types of its own, and the gate is mypy --strict
+# The build backend this project declares, here so a test can ask it what it actually puts in a
+# distribution. Two files that are not code are load-bearing — py.typed, without which every
+# annotation is invisible to a consumer, and the packaged output schema — and both had to be checked
+# by hand against a built artifact until now. A test-only tool, like jsonschema above: elenctic does
+# not build itself at runtime, so this must not become a dependency in pyproject.toml.
+hatchling = ">=1.27"
 
 [pypi-dependencies]
 elenctic = { path = ".", editable = true }
