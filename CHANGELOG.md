@@ -87,7 +87,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
   it costs that case its verdict rather than the run:
 
   ```
-  CASE ERROR — empty.lp:2: empty literal set {()}: it parses to no literals at all,
+  CONTRACT ERROR — empty.lp:2: empty literal set {()}: it parses to no literals at all,
   and a litset needs at least one (an atom or -atom)
   ```
 
@@ -144,6 +144,55 @@ means for them — a reader deciding whether to upgrade should not have to read 
   cancellation. Cases that met this now report UNDECIDED, which is what happened.
 
 ### Changed
+
+- **Every diagnostic heading now names where the fault lies, not which part of elenctic met it.**
+  A heading used to report the frame that noticed a problem, so one problem was announced under
+  several names depending on how you happened to invoke the run. Here is the same file, with the
+  same unresolvable `#include`, run as a corpus and run as a single target — before:
+
+  ```
+  CASE ERROR — cannot resolve the program (route.lp): route.lp:3:1-22: error: file could not be opened:
+    shared.lp
+  corpus error: cannot resolve the program (route.lp): route.lp:3:1-22: error: file could not be opened:
+    shared.lp
+  ```
+
+  and now:
+
+  ```
+  PROGRAM ERROR — cannot resolve the program (route.lp): route.lp:3:1-22: error: file could not be opened:
+    shared.lp
+  program error: cannot resolve the program (route.lp): route.lp:3:1-22: error: file could not be opened:
+    shared.lp
+  ```
+
+  Nine spellings across ten places collapse onto the six loci `kind` already names, so what a
+  terminal calls `PROGRAM ERROR` is what a document calls `"kind": "program"` and nobody has to
+  keep a table between the two views of one run. With the word settled by the locus, the one thing
+  left varying is the case and the punctuation, and it now says what the fault *cost*: capitals
+  and a dash for one file among others that will produce no verdict, lower case and a colon for a
+  run that ended before anything else was attempted. Both of those are fields on the record;
+  neither of them is a fact about elenctic.
+
+  **If a job matches on these lines, re-check it.** `CASE ERROR` and `SOLVER ERROR` are no longer
+  printed at all, and neither are `corpus error:`, `internal error:` or `environment error:`:
+
+  | was | is now |
+  | --- | --- |
+  | `CASE ERROR — ` | `CONTRACT` / `DISCOVERY` / `PROGRAM ERROR — `, by locus |
+  | `SOLVER ERROR — ` | `DISCOVERY ERROR — ` |
+  | `corpus error: ` | `contract error: ` / `discovery error: ` / `program error: `, by locus |
+  | `internal error: ` | `harness error: ` |
+  | `environment error: ` | `discovery error: ` |
+
+  `PROGRAM ERROR — `, `RESOURCE ERROR — `, `HARNESS ERROR — ` and `resource error: ` are byte-for-
+  byte what they were. Of those only `PROGRAM ERROR — ` is now printed where it was not before —
+  when discovery, rather than the runner, is what met the program it could not load.
+
+  `usage error:` is deliberately untouched: a command line that cannot be run has produced no run
+  and so no record, and a heading names a locus only where there is a fault filed under one. What
+  a heading does *not* yet settle is whether the line goes on to name the file — that still varies
+  by locus, and where a message already carries its own path the path is printed twice.
 
 - **A fault in elenctic now exits `3`, apart from a fault in your corpus.** Exit `2` meant both
   "your corpus has something to fix" and "elenctic violated one of its own invariants" — one status

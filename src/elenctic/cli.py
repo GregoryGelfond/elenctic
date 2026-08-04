@@ -289,20 +289,22 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         # there was no case to report it against. Being unable to *bound* the resource — clingo's
         # API offers neither a clock nor a size limit on grounding — is not a reason to be unable
         # to *report* it. What consumed the memory is not knowable from here, so it is not claimed.
-        print(f"resource error: {_CORPUS_OUT_OF_MEMORY}", file=sys.stderr)
-        outcome = _fault_outcome(ErrorKind.RESOURCE, _CORPUS_OUT_OF_MEMORY)
+        resource = _unowned_fault(ErrorKind.RESOURCE, _CORPUS_OUT_OF_MEMORY)
+        print(f"{_heading(resource)} {resource.message}", file=sys.stderr)
+        outcome = _fault_outcome(resource)
     except Exception as exc:
         # Whatever this is, the user did not cause it and cannot fix it. Say so first, then show
         # the traceback: it is the report, not a failure to produce one. The record names the family
         # rather than rendering the exception, so the last frame that can report anything cannot
         # itself fail on a __repr__ that raises.
+        internal = _unowned_fault(ErrorKind.HARNESS, f"{_INTERNAL_ERROR}: {type(exc).__name__}")
         print(
-            f"internal error: {_INTERNAL_ERROR}. Please report it at\n"
+            f"{_heading(internal)} {_INTERNAL_ERROR}. Please report it at\n"
             f"{_ISSUES}, with the traceback below.",
             file=sys.stderr,
         )
         traceback.print_exc()
-        outcome = _fault_outcome(ErrorKind.HARNESS, f"{_INTERNAL_ERROR}: {type(exc).__name__}")
+        outcome = _fault_outcome(internal)
     if machine_readable and not args.print_schema:
         # One write, made after the region has closed and never inside it, so standard output
         # carries a whole document or carries nothing at all — never the front half of one, cut
@@ -365,8 +367,9 @@ def _print_schema() -> ExitStatus:
     try:
         description = schema_text()
     except OSError:
-        print(f"environment error: {_SCHEMA_UNREADABLE}", file=sys.stderr)
-        return exit_status(_fault_outcome(ErrorKind.DISCOVERY, _SCHEMA_UNREADABLE))
+        unreadable = _unowned_fault(ErrorKind.DISCOVERY, _SCHEMA_UNREADABLE)
+        print(f"{_heading(unreadable)} {unreadable.message}", file=sys.stderr)
+        return exit_status(_fault_outcome(unreadable))
     _publish(description)
     return ExitStatus.OK
 
@@ -390,22 +393,28 @@ def _publish(document: str) -> None:
     sys.stdout.buffer.write(document.encode("utf-8"))
 
 
-def _fault_outcome(kind: ErrorKind, message: str) -> RunOutcome:
-    """A run whose whole result is one corpus-level fault, met where no case owned it.
-
-    A whole outcome rather than a record because such a fault *is* the whole of what the invocation
-    produced, and the status is then the ordinary reading of an outcome rather than a number chosen
-    beside one.
+def _unowned_fault(kind: ErrorKind, message: str) -> ErrorRecord:
+    """One fault met where no case owned it, and which therefore cost the whole run.
 
     No file is named, and there is none to name: each of the three frames that reaches this — an
     allocation that failed with no case running, a fault no register anticipated, and a copy of the
     package that cannot read its own description — knows something went wrong and not which file it
-    was about. Claiming one would be worse than naming none."""
-    return RunOutcome(
-        cases=(),
-        errors=(ErrorRecord(kind=kind, scope=Scope.CORPUS, source=None, message=message),),
-        hygiene=(),
-    )
+    was about. Claiming one would be worse than naming none.
+
+    Built before the reader is told anything, rather than after, so that what is printed and what is
+    reported are the one record read twice. These three frames used to choose their own heading
+    beside the record and each chose a different word for it, which is how a fault filed under one
+    locus came to be announced as another."""
+    return ErrorRecord(kind=kind, scope=Scope.CORPUS, source=None, message=message)
+
+
+def _fault_outcome(record: ErrorRecord) -> RunOutcome:
+    """A run whose whole result is one fault.
+
+    A whole outcome rather than a record because such a fault *is* the whole of what the invocation
+    produced, and the status is then the ordinary reading of an outcome rather than a number chosen
+    beside one."""
+    return RunOutcome(cases=(), errors=(record,), hygiene=())
 
 
 @contextmanager
@@ -476,10 +485,10 @@ class _Terminal(Observer):
     # of these it calls, so nothing here has to ask a record what it was.
 
     def corpus_unreadable(self, record: ErrorRecord) -> None:
-        print(f"corpus error: {legible(record.message)}", file=sys.stderr)
+        print(f"{_heading(record)} {legible(record.message)}", file=sys.stderr)
 
     def case_unusable(self, record: ErrorRecord) -> None:
-        print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
+        print(f"{_heading(record)} {legible(record.message)}", file=sys.stderr)
 
 
 class _TerminalRun(_Terminal):
@@ -541,8 +550,8 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
     counted in the tally that says how many did not run.
 
     The split between the arms that name the file and the arms that do not is a rule rather than a
-    habit: a fault met while *reading* a case carries its own provenance in its message, and one met
-    while *running* it does not.
+    habit: some of these messages already carry their own provenance and some do not, and a line
+    that names the file twice reads as two faults.
     """
     match record.kind:
         case ErrorKind.DEADLINE:
@@ -555,15 +564,38 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
             # A malformed contract is met while a case is being read, so it reaches a reader
             # through `unusable` and not here. The arm is what keeps this total: were a run ever
             # to file one, it would be shown the way every other contract fault is shown.
-            return f"CASE ERROR — {legible(record.message)}"
+            return f"{_heading(record)} {legible(record.message)}"
         case ErrorKind.DISCOVERY:
-            return f"SOLVER ERROR — {legible(record.message)}"
-        case ErrorKind.PROGRAM:
-            return f"PROGRAM ERROR — {_against(record)}"
-        case ErrorKind.RESOURCE:
-            return f"RESOURCE ERROR — {_against(record)}"
-        case ErrorKind.HARNESS:
-            return f"HARNESS ERROR — {_against(record)}"
+            return f"{_heading(record)} {legible(record.message)}"
+        case ErrorKind.PROGRAM | ErrorKind.RESOURCE | ErrorKind.HARNESS:
+            return f"{_heading(record)} {_against(record)}"
+        case unreachable:
+            assert_never(unreachable)
+
+
+def _heading(record: ErrorRecord) -> str:
+    """What a fault is announced as: where it lies, and what it cost.
+
+    Two facts, both read off the record, and neither of them a fact about elenctic. The **word** is
+    the locus, so one fault is announced by one name however it was met — this used to report which
+    part of elenctic noticed instead, which made a program that will not load a ``CASE ERROR`` when
+    discovery walked into it and a ``PROGRAM ERROR`` when the runner did, telling a reader that one
+    broken ``#include`` was two different problems. The **case and the punctuation** are what it
+    cost: a run that ended before anything was attempted, or one file among others that will
+    produce no verdict while the rest of the corpus still runs. A reader can tell the second from
+    the first without being told, because only one of them has a tally under it.
+
+    The word is the locus's own name rather than a second vocabulary beside it, so nobody has to
+    keep a table: what is printed here as ``PROGRAM ERROR`` is what a document calls
+    ``"kind": "program"``. Derived from the vocabulary rather than written out locus by locus,
+    because a locus added later would otherwise be announced by whatever heading the frame that met
+    it happened to carry, which is the whole of what went wrong before.
+    """
+    match record.scope:
+        case Scope.CORPUS:
+            return f"{record.kind.value} error:"
+        case Scope.CASE:
+            return f"{record.kind.value.upper()} ERROR —"
         case unreachable:
             assert_never(unreachable)
 

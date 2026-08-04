@@ -46,18 +46,21 @@ def test_cli_reports_a_malformed_contract_against_its_own_file_with_exit_2(
     status = main([str(tmp_path / "encodings")])
     assert status == ExitStatus.USER_FAULT
     err = capsys.readouterr().err
-    assert "CASE ERROR" in err
+    # Capitals and a dash say it cost this file and not the run; the word says a contract is what
+    # is wrong with it, which is the one thing a reader needs before opening the file.
+    assert "CONTRACT ERROR — " in err
     assert "e.lp" in err
 
 
-def test_cli_reports_a_corpus_error_with_exit_2(
+def test_cli_reports_a_fault_that_cost_the_whole_run_with_exit_2(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # The register above is per file; this one is genuinely about the corpus. A named target that
     # does not exist tests nothing, and there is no file to attribute it to.
     status = main([str(tmp_path / "no_such_directory")])
     assert status == ExitStatus.USER_FAULT
-    assert "corpus error" in capsys.readouterr().err
+    # Lower case and a colon are what say the run ended here: no tally follows, because nothing ran.
+    assert "discovery error: " in capsys.readouterr().err
 
 
 def test_cli_explain_narrates_the_plan_without_solving(
@@ -205,7 +208,10 @@ def test_the_dry_run_reports_a_file_it_could_not_use_and_still_narrates_the_rest
     assert status == ExitStatus.USER_FAULT, (
         "a file that will produce no verdict is a fault the author can fix"
     )
-    assert "CASE ERROR" in captured.err and "no_such_library.lp" in captured.err
+    # The worked example of the collapse: an #include that will not resolve is a fault in the
+    # program, and it is announced as one here — where discovery met it — exactly as it is when the
+    # runner meets one. It used to be announced as a CASE ERROR here and a PROGRAM ERROR there.
+    assert "PROGRAM ERROR — " in captured.err and "no_such_library.lp" in captured.err
     assert "@model" in captured.out, "the case that could be planned is still planned"
 
 
@@ -346,17 +352,105 @@ def test_every_locus_a_case_can_fail_under_says_something_to_a_reader(
     assert said == _SAID_ABOUT[kind], f"what a reader is told about a {kind.value} fault"
 
 
-# What each locus says, whole. The deadline says nothing here because it is said once at the end,
-# from the whole register: one passed deadline is one event costing many cases their result, and a
-# line apiece would bury the reason under its own consequences.
+# What each locus says, whole. Written out per locus rather than derived from the vocabulary,
+# because a table that computes the heading agrees with any implementation that computes it the
+# same way — including a wrong one. The deadline says nothing here because it is said once at the
+# end, from the whole register: one passed deadline is one event costing many cases their result,
+# and a line apiece would bury the reason under its own consequences.
 _SAID_ABOUT: dict[ErrorKind, str] = {
     ErrorKind.DEADLINE: "",
-    ErrorKind.CONTRACT: "CASE ERROR — the reason it produced none\n",
-    ErrorKind.DISCOVERY: "SOLVER ERROR — the reason it produced none\n",
+    ErrorKind.CONTRACT: "CONTRACT ERROR — the reason it produced none\n",
+    ErrorKind.DISCOVERY: "DISCOVERY ERROR — the reason it produced none\n",
     ErrorKind.PROGRAM: "PROGRAM ERROR — case.lp: the reason it produced none\n",
     ErrorKind.RESOURCE: "RESOURCE ERROR — case.lp: the reason it produced none\n",
     ErrorKind.HARNESS: "HARNESS ERROR — case.lp: the reason it produced none\n",
 }
+
+
+# The same six loci, announced by a frame that met the fault while *reading* the corpus rather than
+# while running it. The heading is the same word, because it is the same fault: what a file's
+# contract was malformed is not a different thing depending on which part of elenctic noticed.
+# Written out here too, so that the two tables agreeing is a fact about the renderer rather than
+# about one expression shared between them.
+_SAID_ABOUT_AN_UNUSABLE_FILE: dict[ErrorKind, str] = {
+    ErrorKind.DEADLINE: "DEADLINE ERROR — the reason it produced none\n",
+    ErrorKind.CONTRACT: "CONTRACT ERROR — the reason it produced none\n",
+    ErrorKind.DISCOVERY: "DISCOVERY ERROR — the reason it produced none\n",
+    ErrorKind.PROGRAM: "PROGRAM ERROR — the reason it produced none\n",
+    ErrorKind.RESOURCE: "RESOURCE ERROR — the reason it produced none\n",
+    ErrorKind.HARNESS: "HARNESS ERROR — the reason it produced none\n",
+}
+
+
+# And the same six when the fault cost the whole run. Lower case and a colon rather than capitals
+# and a dash, which is what tells a reader that nothing else was attempted: there is no tally below
+# this line to say how much of the corpus ran, because none of it did.
+_SAID_ABOUT_A_WHOLE_RUN: dict[ErrorKind, str] = {
+    ErrorKind.DEADLINE: "deadline error: the reason nothing ran\n",
+    ErrorKind.CONTRACT: "contract error: the reason nothing ran\n",
+    ErrorKind.DISCOVERY: "discovery error: the reason nothing ran\n",
+    ErrorKind.PROGRAM: "program error: the reason nothing ran\n",
+    ErrorKind.RESOURCE: "resource error: the reason nothing ran\n",
+    ErrorKind.HARNESS: "harness error: the reason nothing ran\n",
+}
+
+
+@pytest.mark.parametrize("kind", list(ErrorKind))
+def test_a_file_discovery_could_not_use_is_announced_by_the_locus_of_its_fault(
+    kind: ErrorKind, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The heading names where the fault lies. It used to name the part of elenctic that met it, so
+    # one broken #include read one way when discovery walked into it and another when the runner
+    # did — telling a reader that a program which will not load is two different problems.
+    record = ErrorRecord(
+        kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
+    )
+
+    _TerminalRun().case_unusable(record)
+
+    assert capsys.readouterr().err == _SAID_ABOUT_AN_UNUSABLE_FILE[kind]
+
+
+@pytest.mark.parametrize("kind", list(ErrorKind))
+def test_a_fault_that_cost_the_whole_run_is_announced_by_the_locus_of_its_fault(
+    kind: ErrorKind, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The third frame, and the one that used to say least: every corpus-scoped fault was announced
+    # as a corpus error whatever it was about, so a reader whose target held a program that will
+    # not load and a reader who named a directory that does not exist were told the same word.
+    record = ErrorRecord(
+        kind=kind, scope=Scope.CORPUS, source=None, message="the reason nothing ran"
+    )
+
+    _TerminalRun().corpus_unreadable(record)
+
+    assert capsys.readouterr().err == _SAID_ABOUT_A_WHOLE_RUN[kind]
+
+
+@pytest.mark.parametrize("kind", [kind for kind in ErrorKind if kind is not ErrorKind.DEADLINE])
+def test_one_locus_is_announced_by_one_word_whichever_frame_met_the_fault(
+    kind: ErrorKind, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The defect itself, stated directly rather than left to follow from three tables: hand the two
+    # per-case frames the same fault and they must call it the same thing. Before this, a program
+    # that would not load was a CASE ERROR through the one and a PROGRAM ERROR through the other,
+    # and both spellings were pinned by their own tests — each correct about its own frame, and
+    # neither able to see that they disagreed.
+    #
+    # The deadline is left out because it is the one locus a per-case frame deliberately stays
+    # quiet about, and only one of these two frames can ever be handed one.
+    record = ErrorRecord(
+        kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
+    )
+
+    _TerminalRun().case_unusable(record)
+    reading = capsys.readouterr().err
+    _TerminalRun().case_unjudged(record)
+    running = capsys.readouterr().err
+
+    heading = f"{kind.value.upper()} ERROR —"
+    assert reading.startswith(heading), "the frame that met it while reading the corpus"
+    assert running.startswith(heading), "and the frame that met it while running the case"
 
 
 @pytest.mark.parametrize("kind", list(ErrorKind))

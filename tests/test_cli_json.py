@@ -283,7 +283,10 @@ def test_a_corpus_that_could_not_be_discovered_still_produces_a_document(tmp_pat
     assert error["scope"] == "corpus", "the fault belongs to no single case"
     assert error["is_elenctic_bug"] is False
     assert document["summary"]["total"] == 0
-    assert "corpus error" in streams.err
+    # The two formats of one run, checked against each other rather than each against itself. What
+    # the reader is told the fault was and what the consumer is told it was are the same word, so a
+    # reader moving between a terminal and a document is not made to keep a table between them.
+    assert f"{error['kind']} error: " in streams.err
 
 
 def test_a_case_that_will_not_ground_costs_only_its_own_verdict(tmp_path: Path) -> None:
@@ -386,7 +389,7 @@ def test_the_human_format_writes_no_document_even_when_the_run_dies(tmp_path: Pa
 
     assert streams.status == ExitStatus.HARNESS_FAULT
     assert streams.out == "", "nothing was asked for on this stream, so nothing is put there"
-    assert "internal error" in streams.err
+    assert "harness error: " in streams.err, "the locus the record was filed under, not the frame"
 
 
 def test_a_format_this_version_does_not_know_is_refused(tmp_path: Path) -> None:
@@ -489,7 +492,7 @@ def test_an_allocation_failure_with_no_case_to_name_says_so_in_the_record(tmp_pa
     (error,) = document_of(streams)["errors"]
     assert "this corpus" in error["message"]
     assert "this case" not in error["message"]
-    assert "resource error" in streams.err, "and the reader is told in prose as well"
+    assert "resource error: " in streams.err, "and the reader is told in prose as well"
 
 
 def test_a_fault_while_printing_the_description_produces_no_document(tmp_path: Path) -> None:
@@ -502,7 +505,7 @@ def test_a_fault_while_printing_the_description_produces_no_document(tmp_path: P
 
     assert streams.status == ExitStatus.HARNESS_FAULT
     assert streams.out == ""
-    assert "internal error" in streams.err
+    assert "harness error: " in streams.err, "the locus the record was filed under, not the frame"
 
 
 def test_printing_the_description_is_not_a_document_and_asks_nothing_of_a_corpus(

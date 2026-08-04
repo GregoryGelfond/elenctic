@@ -560,6 +560,11 @@ def test_a_copy_of_the_package_carrying_no_description_says_so(
     assert captured.out == "", "half a description is worse than none"
     assert "Traceback" not in captured.err, "an actionable fault is never delivered as a traceback"
     assert "elenctic/schema/" in captured.err, "and it says where the missing thing belongs"
+    # Announced under the locus the record was filed with, like every other fault, rather than
+    # under a word this frame chose for itself. That the record is filed as a discovery fault is a
+    # grading decision — it is what keeps this a fault the reader can repair rather than one to
+    # report — and the heading now shows that decision instead of covering it with another word.
+    assert captured.err.startswith("discovery error: ")
 
 
 # What each conclusion value must be glossed as. The pairing cannot be derived from the code — it is
