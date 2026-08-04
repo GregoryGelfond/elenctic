@@ -14,7 +14,7 @@ from typing import NoReturn
 
 import pytest
 
-from elenctic import cli
+from elenctic import cli, corpus
 from elenctic.checks import CheckReport
 from elenctic.cli import main
 from elenctic.discovery import Case
@@ -41,7 +41,7 @@ def test_running_out_of_memory_is_reported_as_an_error_not_a_traceback(
     def out_of_memory(*_args: object, **_kwargs: object) -> None:
         raise MemoryError("std::bad_alloc")
 
-    monkeypatch.setattr(cli, "run_case", out_of_memory)
+    monkeypatch.setattr(corpus, "run_case", out_of_memory)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (
@@ -65,7 +65,7 @@ def test_a_case_that_runs_out_of_memory_costs_only_its_own_result(
             raise MemoryError("std::bad_alloc")
         return run_case(case, budget=budget)  # the other two cases run for real
 
-    monkeypatch.setattr(cli, "run_case", greedy)
+    monkeypatch.setattr(corpus, "run_case", greedy)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (
@@ -88,7 +88,7 @@ def test_memory_run_out_of_outside_a_case_is_still_reported(
     def out_of_memory(*_args: object, **_kwargs: object) -> NoReturn:
         raise MemoryError("std::bad_alloc")
 
-    monkeypatch.setattr(cli, "inspect_corpus", out_of_memory)
+    monkeypatch.setattr(corpus, "inspect_corpus", out_of_memory)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT
@@ -107,7 +107,7 @@ def test_an_unexpected_fault_is_framed_as_an_elenctic_bug(
     def unexpected(*_args: object, **_kwargs: object) -> None:
         raise ZeroDivisionError("an elenctic bug")
 
-    monkeypatch.setattr(cli, "run_case", unexpected)
+    monkeypatch.setattr(corpus, "run_case", unexpected)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.HARNESS_FAULT, (
@@ -137,7 +137,7 @@ def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_stat
         # patched: what is under test is the record the status was read off, not the ladder.
         return exit_status(outcome)
 
-    monkeypatch.setattr(cli, "run_case", unexpected)
+    monkeypatch.setattr(corpus, "run_case", unexpected)
     monkeypatch.setattr(cli, "exit_status", watched)
     assert main([str(tmp_path)]) == ExitStatus.HARNESS_FAULT
     capsys.readouterr()

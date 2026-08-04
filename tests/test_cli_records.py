@@ -13,8 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from elenctic import cli, discovery
-from elenctic.cli import explain_corpus, main, run_corpus
+from elenctic import cli, corpus, discovery
+from elenctic.cli import main
+from elenctic.corpus import explain_corpus, run_corpus
 from elenctic.outcome import (
     ErrorKind,
     ExitStatus,
@@ -98,7 +99,7 @@ def test_a_case_that_runs_out_of_a_resource_is_filed_apart_from_a_broken_program
     def out_of_memory(*_args: object, **_kwargs: object) -> None:
         raise MemoryError("std::bad_alloc")
 
-    monkeypatch.setattr(cli, "run_case", out_of_memory)
+    monkeypatch.setattr(corpus, "run_case", out_of_memory)
     target = _corpus(tmp_path, greedy=_PASSES)
     (record,) = run_corpus(_asked(target)).errors
     assert record.kind is ErrorKind.RESOURCE
@@ -139,7 +140,7 @@ def test_a_case_the_deadline_did_not_reach_is_filed_against_that_case(
     # the same footing as the published description of the document does. This says the same thing
     # the zero used to say — the deadline is past before the first case is dispatched — without
     # asking for an invocation nothing is allowed to build.
-    monkeypatch.setattr(cli, "monotonic", a_clock_the_deadline_has_already_passed_on(600.0))
+    monkeypatch.setattr(corpus, "monotonic", a_clock_the_deadline_has_already_passed_on(600.0))
     target = _corpus(tmp_path, first=_PASSES, second=_PASSES)
     outcome = run_corpus(_asked(target, deadline=600.0))
     assert outcome.cases == (), "the clock reads the deadline exactly, which is where it is reached"
@@ -250,7 +251,7 @@ def test_the_dry_run_records_the_plan_it_could_not_build(
     def misroute(expectation: object, theory_in_force: bool = False) -> object:
         raise RoutingError("a stale route")
 
-    monkeypatch.setattr(cli, "runs_for", misroute)
+    monkeypatch.setattr(corpus, "runs_for", misroute)
     target = _corpus(tmp_path, bad=_PASSES)
     outcome = explain_corpus(_asked(target))
     capsys.readouterr()
@@ -302,7 +303,7 @@ def test_every_case_a_dry_run_meets_reaches_exactly_one_register(
             raise RoutingError("a stale route")
         return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(cli, "runs_for", misroute_the_marked_one)
+    monkeypatch.setattr(corpus, "runs_for", misroute_the_marked_one)
     target = _corpus(
         tmp_path,
         good=_PASSES,

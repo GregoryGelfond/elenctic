@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from elenctic import cli, discovery
+from elenctic import corpus, discovery
 from elenctic.checks import CheckReport
 from elenctic.cli import main
 from elenctic.discovery import Case
@@ -135,7 +135,7 @@ def test_a_harness_fault_at_solve_time_costs_only_the_case_that_met_it(
             raise SeamError("narrowing seam: a shape that does not populate what a check reads")
         return run_case(case, budget=budget)
 
-    monkeypatch.setattr(cli, "run_case", broken)
+    monkeypatch.setattr(corpus, "run_case", broken)
     status = main([_corpus(tmp_path, aaa_good=_GOOD, mmm_broken=_GOOD, zzz_good=_GOOD)])
     captured = capsys.readouterr()
     assert status == ExitStatus.HARNESS_FAULT, (

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from elenctic import cli
+from elenctic import corpus
 from elenctic.cli import main
 from elenctic.outcome import ExitStatus
 from elenctic.run import RoutingError
@@ -94,7 +94,7 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
             raise RoutingError("a stale route")
         return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(cli, "runs_for", selectively_misroute)
+    monkeypatch.setattr(corpus, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings")])
     captured = capsys.readouterr()
     assert (
@@ -180,7 +180,7 @@ def test_the_dry_run_reports_a_misroute_it_meets_and_names_the_case(
             raise RoutingError("a stale route")
         return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(cli, "runs_for", selectively_misroute)
+    monkeypatch.setattr(corpus, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings"), "--explain"])
     captured = capsys.readouterr()
     assert status == ExitStatus.HARNESS_FAULT, (

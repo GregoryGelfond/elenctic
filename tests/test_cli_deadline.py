@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from elenctic import cli
+from elenctic import corpus
 from elenctic.cli import main
 from elenctic.outcome import ExitStatus
 from support import a_clock_the_deadline_has_already_passed_on
@@ -42,7 +42,7 @@ def test_a_passed_deadline_stops_the_run_and_accounts_for_what_was_not_reached(
     # The clock says the deadline passed before the first case was reached, so nothing runs. What
     # matters is that the cases that did not run are counted rather than omitted: a summary that
     # explained them by leaving them out would read as a smaller corpus.
-    monkeypatch.setattr(cli, "monotonic", a_clock_the_deadline_has_already_passed_on(600.0))
+    monkeypatch.setattr(corpus, "monotonic", a_clock_the_deadline_has_already_passed_on(600.0))
     status = main([_corpus(tmp_path, 3), "--deadline", "600"])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (

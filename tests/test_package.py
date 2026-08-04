@@ -1,5 +1,9 @@
 """The curated public API: ``elenctic``'s top-level surface is the documented, ordered one."""
 
+import subprocess
+import sys
+from pathlib import Path
+
 import elenctic
 
 
@@ -48,3 +52,54 @@ def test_public_api_is_curated_not_dumped() -> None:
     # internals stay internal: the Consistent shapes, accessors, check builders are not exported.
     for internal in ("ConsistentWitness", "witness_of", "has_model", "Field", "_Collector"):
         assert internal not in elenctic.__all__
+
+
+# A whole corpus run, and its status read, by someone who never went near a command line: the
+# console entry is a caller of this and not the place it happens. It proves first that it is the
+# tree under test, since a child that quietly loaded another copy answers a different question.
+_A_CORPUS_RUN_WITHOUT_THE_CONSOLE_ENTRY = """
+import sys
+from pathlib import Path
+
+import elenctic.corpus
+from elenctic.corpus import run_corpus
+from elenctic.outcome import ExitStatus, Invocation, exit_status
+
+if elenctic.corpus.__file__ != {loaded!r}:
+    raise SystemExit("the child loaded " + str(elenctic.corpus.__file__) + ", not the tree")
+
+outcome = run_corpus(Invocation(target=Path(sys.argv[1]), strict=False, budget=30.0, deadline=None))
+if [case.verdict.value for case in outcome.cases] != ["pass"]:
+    raise SystemExit("the one case did not pass: " + repr(outcome))
+if exit_status(outcome) != ExitStatus.OK:
+    raise SystemExit("a corpus whose every case passed is not the rung that says so")
+if "elenctic.cli" in sys.modules:
+    raise SystemExit("running a corpus pulled in the console entry")
+"""
+
+
+def test_running_a_corpus_does_not_reach_for_the_console_entry(tmp_path: Path) -> None:
+    # The keystone, stated as something that can fail: the command line is a derivation of the
+    # library, so the library has to hold what it derives from. If running a corpus needed the
+    # console entry, the derivation would run the other way — an embedder would have to go through
+    # a command line to do the one thing they came for.
+    #
+    # A process, because the rest of the suite imports the console entry; by the time this runs it
+    # is already in `sys.modules` and the question cannot be asked in-session at all.
+    (tmp_path / "case.lp").write_text(
+        "% @expect sat\n% @model { a }\n\na.\n#show a/0.\n", encoding="utf-8"
+    )
+    import elenctic.corpus
+
+    ran = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _A_CORPUS_RUN_WITHOUT_THE_CONSOLE_ENTRY.format(loaded=elenctic.corpus.__file__),
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ran.returncode == 0, ran.stderr or ran.stdout
