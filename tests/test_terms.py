@@ -1,3 +1,6 @@
+"""Parsing the term-level payloads a contract carries — literal sets and tuple sets — and taking
+the contrary of a literal, together with what each refuses and the quoting it must survive."""
+
 import pytest
 from clingo import Function, Number, parse_term
 

@@ -58,7 +58,26 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# The second group was chosen by measuring each family against this codebase rather than by
+# reputation: every one of them was either already clean — so it is a ratchet that holds a property
+# the code has, and costs nothing to keep — or it earns its exceptions below. Families measured and
+# deliberately NOT taken: Q and ICN (the formatter already owns quotes, and nothing here imports the
+# libraries ICN renames), DJ/NPY/PD/DTZ/FA (none can fire), and COM, which is the one family
+# measured to disagree with the formatter.
+select = [
+    "E", "F", "I", "UP", "B", "SIM", "RUF",
+    "A", "C4", "EXE", "FLY", "G", "ISC", "LOG", "PERF", "PIE", "PTH", "RET", "RSE", "SLOT", "TID",
+    "T20", "YTT",
+    # Five docstring rules, not the family. `D` as a whole costs about 1,180 findings here, and 706
+    # of them are D103 on tests — which fights a convention this suite already has and which is
+    # better: a test's name is a sentence and a comment above it states the defect it guards, so a
+    # docstring would be a third statement of what two already say. D205 and D209 (347 between them)
+    # impose a one-line summary on prose deliberately opened as a multi-line sentence. D415 is that
+    # same imposition wearing another hat — measured, all three of its findings here were opening
+    # sentences that wrap, not summaries missing a full stop — so it is left out with them. What is
+    # kept is the part that catches something missing or malformed rather than differently shaped.
+    "D100", "D102", "D301", "D403",
+]
 # We deliberately use mathematical Unicode (⋂ ⋃ ⊆ ⊇ → ≤ ∅ ∈ …) as KR notation in
 # comments and docstrings; the ambiguous-Unicode (homoglyph) rules would flag it.
 ignore = ["RUF001", "RUF002", "RUF003"]
@@ -74,6 +93,24 @@ combine-as-imports = true
 # The package __init__ re-exports the curated API for static visibility (a TYPE_CHECKING block
 # feeding the PEP 562 lazy resolver); those imports are intentional re-exports, not dead code.
 "__init__.py" = ["F401"]
+# The five modules that are meant to write to a terminal: the command line, and the four whose
+# documented `python -m elenctic.<module> <file.lp>` entry point prints an inspection of one stage.
+# Every other module in the package prints nothing, and no test prints — measured, which is what
+# makes T20 a guarantee here rather than a style preference. Note the rule's fix DELETES the print,
+# so an --unsafe-fixes run without these would quietly remove elenctic's own output.
+"src/elenctic/cli.py" = ["T201"]
+"src/elenctic/discovery.py" = ["T201"]
+"src/elenctic/expectation.py" = ["T201"]
+"src/elenctic/run.py" = ["T201"]
+"src/elenctic/solvers.py" = ["T201"]
+# The observer protocol's no-op default bodies are spelled `return None`, and RET501 wants them
+# bare. They cannot be: mypy treats a function whose body is only a docstring as *implicitly
+# abstract*, and its own diagnostic names the remedy — "if it is not meant to be abstract,
+# explicitly `return` or `return None`". A bare body would make every announcement mandatory for
+# any class inheriting the protocol, which is the opposite of what a default is for. Scoped to this
+# file rather than turned off, so a protocol written elsewhere meets the same question deliberately
+# instead of inheriting the answer.
+"src/elenctic/corpus.py" = ["RET501"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --strict-markers --strict-config"

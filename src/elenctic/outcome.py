@@ -190,6 +190,10 @@ class ExitStatus(IntEnum):
     gloss: str
 
     def __new__(cls, value: int, gloss: str) -> ExitStatus:
+        """Build a rung from its number and the sentence ``--help`` prints for it.
+
+        Both are given at the one place the rung is declared, which is what keeps a status from
+        being documented anywhere its number is not."""
         member = int.__new__(cls, value)
         member._value_ = value
         member.gloss = gloss
@@ -235,6 +239,8 @@ class CaseOutcome:
 
     @property
     def verdict(self) -> Verdict:
+        """What the case decided, folded from its reports rather than stored beside them — so a
+        verdict and the reports it was reached from cannot come to disagree."""
         return case_verdict(self.reports)
 
 

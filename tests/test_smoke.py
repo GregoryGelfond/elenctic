@@ -1,3 +1,6 @@
+"""That the package imports at all, which is the one failure every other test would report as
+something else."""
+
 import elenctic
 
 

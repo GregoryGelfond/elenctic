@@ -1,3 +1,6 @@
+"""Parsing the ``@query`` surface into its two forms — ground and binding — including a repeated
+variable collapsing to one column, a strongly-negated goal, and what the parser refuses."""
+
 import pytest
 from clingo import parse_term
 

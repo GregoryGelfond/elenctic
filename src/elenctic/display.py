@@ -20,9 +20,9 @@ __all__ = ["legible"]
 
 
 def legible(text: str) -> str:
-    """``text`` with everything a terminal would act on rendered as characters instead.
+    r"""``text`` with everything a terminal would act on rendered as characters instead.
 
-    Printable characters, spaces and newlines survive; anything else becomes a visible ``\\xNN``
+    Printable characters, spaces and newlines survive; anything else becomes a visible ``\xNN``
     escape. Escaping rather than dropping keeps the fact that something was there — a reader should
     be able to see that a corpus tried something, not find text quietly missing.
 

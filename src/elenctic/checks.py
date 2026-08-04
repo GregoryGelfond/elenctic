@@ -228,6 +228,11 @@ class Check:
         return any(collection_of(frozenset({field})).needs_exhausted_search for field in self.reads)
 
     def __call__(self, outcome: SolveOutcome) -> CheckReport:
+        """Judge one solve against this check, as the report a reader is shown.
+
+        The verdict and its sentence are decided together by ``_judge`` and merely dressed here with
+        what identifies the check, so a report can never carry one tag's verdict under another
+        tag's name."""
         verdict, message = self._judge(outcome)
         return CheckReport(
             verdict=verdict,

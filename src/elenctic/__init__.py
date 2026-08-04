@@ -1,8 +1,8 @@
-"""elenctic — a declarative testing framework for Answer Set Programming.
+r"""elenctic — a declarative testing framework for Answer Set Programming.
 
 The reference implementation of a language-parametric ``@``-contract format over the *observable*
 of an answer-set program (shown atoms + theory assignment). A contract is parsed (:func:`parse`)
-into an :data:`Expectation`; :func:`discover` walks a corpus into :class:`Case`\\ s;
+into an :data:`Expectation`; :func:`discover` walks a corpus into :class:`Case`\ s;
 :func:`runs_for` derives the solver runs and their checks; :func:`solve` collects a
 :class:`SolveOutcome` — what the solve determined, and how far the search behind it got; and
 :func:`run_case` / :func:`render` run a case end-to-end and format its diagnostic.

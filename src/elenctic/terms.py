@@ -11,7 +11,8 @@ from clingo import Function, Symbol, SymbolType, parse_term as _clingo_parse_ter
 
 
 def parse_term(text: str) -> Symbol:
-    """clingo's term parser, with its diagnostics captured instead of written to stderr.
+    """Parse one term through clingo, capturing its diagnostics instead of letting them reach
+    standard error.
 
     Given no logger, clingo reports a parse failure on standard error itself — text elenctic did
     not frame, arriving on a stream it did not choose, interleaved with whatever else is there.

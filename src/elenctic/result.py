@@ -267,6 +267,11 @@ class Consistent:
     __slots__ = ()
 
     def __new__(cls, *args: object, **kwargs: object) -> Consistent:
+        """Refuse to build the base shape, which populates no field and so answers no question.
+
+        A guard rather than ``abc``, because these shapes are slotted frozen records and the check
+        costs one comparison at construction; what it buys is that a result carrying nothing is
+        unrepresentable rather than merely undocumented."""
         if cls is Consistent:
             raise TypeError("Consistent is abstract; construct one of the eight concrete shapes")
         return super().__new__(cls)

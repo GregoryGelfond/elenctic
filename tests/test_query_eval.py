@@ -1,3 +1,7 @@
+"""Evaluating a parsed ``@query`` against answer sets: unification, the contrary of a literal, and
+the three-valued yes/no/unknown reading — including the census a conjunctive *no* requires, where
+each model may falsify a different conjunct."""
+
 import pytest
 from clingo import Symbol, parse_term
 

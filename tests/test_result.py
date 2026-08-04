@@ -1,3 +1,7 @@
+"""The result vocabulary: the observable a model projects to, the three-valued verdict, the eight
+capability fields, and the ``Determination`` arms — including that its base shape is abstract and
+that matching over the three arms is total."""
+
 import re
 from collections.abc import Callable
 
