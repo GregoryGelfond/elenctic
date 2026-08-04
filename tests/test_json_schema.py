@@ -35,9 +35,9 @@ import pytest
 from jsonschema import Draft202012Validator
 
 import elenctic
-from elenctic.cli import ExitStatus, main, run_corpus
+from elenctic.cli import main, run_corpus
 from elenctic.json_report import SCHEMA_VERSION, as_json, dumps, schema_text
-from elenctic.outcome import ErrorKind, HygieneKind, Invocation
+from elenctic.outcome import ErrorKind, ExitStatus, HygieneKind, Invocation
 from elenctic.registry import SOLVERS
 from elenctic.result import Conclusion, Verdict
 from elenctic.solvers import TIME_BUDGET

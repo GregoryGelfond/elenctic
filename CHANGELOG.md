@@ -144,9 +144,9 @@ means for them — a reader deciding whether to upgrade should not have to read 
   positive finite number of seconds, and `None` only for the deadline. `elenctic.outcome` also now
   exports `is_duration`, so that rule is one a caller can ask about rather than only discover.
 
-- **The exit statuses are a named type, `elenctic.cli.ExitStatus`.** The numbers are unchanged and
-  so is everything a shell sees: it is an `IntEnum`, so it *is* an `int`, `sys.exit` takes it, and
-  a caller comparing a status against a literal is unaffected. What changes is that the ladder is
+- **The exit statuses are a named type, `elenctic.outcome.ExitStatus`.** The numbers are unchanged
+  and so is everything a shell sees: it is an `IntEnum`, so it *is* an `int`, `sys.exit` takes it,
+  and a caller comparing a status against a literal is unaffected. What changes is that the ladder is
   now the one place the rungs and their meanings are written, and `--help` is rendered from it —
   where before the same mapping was stated in six places and checked in one. Two of those
   statements were wrong: exit `0` was glossed as "every case passed", which is told to a reader who
@@ -154,6 +154,10 @@ means for them — a reader deciding whether to upgrade should not have to read 
   not have, which is the likeliest `2` a real user meets. `exit_status` and `main` return the type;
   compare a status read back from a child process with `==` rather than `is`, since what a process
   returns is a plain integer.
+
+  The ladder and `exit_status` live with the registers they read rather than with the console entry,
+  so reading a status is something an embedder can do: it is total and pure over what a run
+  produced, asks nothing about a process, and needs no command line to have been parsed.
 
 - **`--help` says what the run leaves with, and files each option under what it is for.** Nothing in
   the help mentioned the exit status — the whole of what a script reads — and the six options were

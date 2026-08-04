@@ -32,7 +32,6 @@ import textwrap
 import traceback
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from enum import IntEnum
 from pathlib import Path
 from time import monotonic
 from typing import assert_never
@@ -56,15 +55,16 @@ from elenctic.outcome import (
     CasePlan,
     ErrorKind,
     ErrorRecord,
+    ExitStatus,
     Grade,
     HygieneKind,
     HygieneRecord,
     Invocation,
-    Outcome,
     PlanOutcome,
     RunOutcome,
     Scope,
     error_kind,
+    exit_status,
     is_duration,
     summary,
 )
@@ -132,54 +132,6 @@ _NO_MACHINE_READABLE_DRY_RUN = (
     "plan. Ask for --explain alone to read the plan, or for --format json alone to run the corpus "
     "and get the report."
 )
-
-
-class ExitStatus(IntEnum):
-    """What the process leaves with — the closed ladder, the first rung that applies winning.
-
-    The last closed vocabulary in this package to be spelled as bare integers. The others are named
-    types, and a reader who has met ``Grade`` or ``Verdict`` expects this one to be a type too; more
-    to the point, the number-to-meaning mapping was written out in six places and one of them was
-    checked, which is the shape every other rule here is arranged to avoid.
-
-    An ``IntEnum`` rather than an ``Enum``, because the value has to survive leaving the process. It
-    *is* an ``int``: ``sys.exit`` takes it, a caller comparing against a literal is unaffected, and
-    the number a shell sees is unchanged. One consequence for anything reading a status back from a
-    child process: what comes back is a bare ``int`` and not a member, so a status is compared with
-    ``==`` and never with ``is`` — identity would hold in process and fail across one, which is the
-    worst shape a comparison can have.
-
-    ``gloss`` is the sentence ``--help`` prints for the rung, and it lives on the member so that the
-    ladder and its explanation cannot come apart. The help is rendered from this rather than written
-    beside it, so a number the ladder does not return has nowhere to be documented and a gloss
-    cannot drift onto the wrong rung.
-    """
-
-    gloss: str
-
-    def __new__(cls, value: int, gloss: str) -> ExitStatus:
-        member = int.__new__(cls, value)
-        member._value_ = value
-        member.gloss = gloss
-        return member
-
-    # "nothing went wrong" rather than "every case passed": a dry run decides nothing and leaves
-    # with this, and so does a corpus that held no cases. Both are vacuously right, and neither
-    # passed anything — a reader who ran --explain and looked the status up deserves better than
-    # being told every case passed.
-    OK = (0, "nothing went wrong")
-    NOT_PASSED = (1, "a case decided wrong, or could not be decided")
-    # The declared solver belongs in this list and was missing from it. It is the likeliest 2 a real
-    # user meets — the theory solver is an optional extra, so every case declaring it fails on a
-    # machine without it — and it was named in a module docstring the user never reads.
-    USER_FAULT = (
-        2,
-        "a fault you can fix: a command line that cannot be used, a bad contract, a mis-shaped "
-        "corpus, a declared solver this environment does not have, a program that will not ground, "
-        "a case that ran out of memory or that the deadline never reached, or corpus hygiene this "
-        "run graded an error",
-    )
-    HARNESS_FAULT = (3, "a fault in elenctic itself, which outranks every other signal")
 
 
 # The width the ladder is wrapped to. The epilog is printed as it is written — argparse reflows a
@@ -540,40 +492,6 @@ def _record_discovered(
         # Every discovery diagnostic carries its own provenance, so the path is not repeated here.
         print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
     return unrunnable, _hygiene_records(corpus.hygiene, strict=strict)
-
-
-def exit_status(outcome: Outcome) -> ExitStatus:
-    """The process status for a completed invocation, the first rung that applies winning.
-
-    ``3`` an elenctic bug — a harness that is wrong about one case is evidence about every other, so
-    it puts the whole run's verdicts in doubt and outranks them all; ``2`` a fault the user can fix,
-    or an observation this run graded an error; ``1`` a case decided wrong or could not be decided;
-    ``0`` nothing went wrong. The two error levels are the closed split of where a fault lies:
-    anything that is not a harness fault is the user's, so a locus added later never silently
-    changes what a status means.
-
-    One function over both modes rather than a ladder written twice, because the faults a dry run
-    can meet are the same faults and rank the same way — and the one thing that differs, having
-    verdicts to weigh, is exactly what the two outcome types differ in. A dry run reaching the last
-    rung is ``0`` because it decided nothing: there is no verdict for it to have got wrong.
-
-    A function of what the invocation produced and of nothing else. The strictness dial is applied
-    where an observation is recorded, so the grade travels on the record and this reading of it is
-    the same reading the end-of-run summary makes — rather than a second consultation of a flag,
-    which is how a run comes to print one thing and return another.
-    """
-    if any(error.kind.is_elenctic_bug for error in outcome.errors):
-        return ExitStatus.HARNESS_FAULT
-    if outcome.errors or any(record.grade is Grade.ERROR for record in outcome.hygiene):
-        return ExitStatus.USER_FAULT
-    match outcome:
-        case RunOutcome():
-            undecided = any(case.verdict is not Verdict.PASS for case in outcome.cases)
-            return ExitStatus.NOT_PASSED if undecided else ExitStatus.OK
-        case PlanOutcome():
-            return ExitStatus.OK
-        case unreachable:
-            assert_never(unreachable)
 
 
 def _corpus_fault(kind: ErrorKind, message: str, *, source: Path | None = None) -> ErrorRecord:

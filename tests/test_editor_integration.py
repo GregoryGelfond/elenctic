@@ -13,7 +13,7 @@ all from what the document carries.
 from pathlib import Path
 from typing import Any
 
-from elenctic.cli import ExitStatus
+from elenctic.outcome import ExitStatus
 from elenctic.result import Verdict
 from support import document_of, run_cli
 

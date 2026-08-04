@@ -1,23 +1,31 @@
-"""What the README states about this package, checked against the package.
+"""What the two documents a consumer reads state about this package, checked against the package.
 
-The README is what everyone arriving reads and is enforced by nothing that runs, so a sentence in it
-stays true only for as long as somebody remembers to move it. What is held here is the part that is
-mechanically checkable — a claim naming a value the package also holds — and the boundary is worth
-stating plainly: a green run here does not mean the README is right, only that it does not
-contradict the package about the few things it names in the package's own terms.
+The README is what everyone arriving reads and the changelog is what everyone upgrading reads, and
+both are enforced by nothing that runs — so a sentence in either stays true only for as long as
+somebody remembers to move it. What is held here is the part that is mechanically checkable: a claim
+naming a value or a name the package also holds. The boundary is worth stating plainly: a green run
+here does not mean either document is right, only that it does not contradict the package about the
+few things it names in the package's own terms.
 
-The README is read from the source tree rather than from the installed package, which is where it
-is and where an edit to it lands. It is not shipped inside the wheel, and these tests are not
+Both are read from the source tree rather than from the installed package, which is where they are
+and where an edit to them lands. Neither is shipped inside the wheel, and these tests are not
 either.
 """
 
+import importlib
 import re
 from pathlib import Path
 
 import elenctic
 from elenctic.solvers import TIME_BUDGET
 
-_README = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+_ROOT = Path(__file__).resolve().parent.parent
+_README = (_ROOT / "README.md").read_text(encoding="utf-8")
+_CHANGELOG = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+# A dotted name under this package, written as code — `elenctic.outcome.ExitStatus` and the like.
+# Anchored at `elenctic.` so that a backticked flag, path or scrap of ASP is not mistaken for one.
+_DOTTED_NAME = re.compile(r"`(elenctic(?:\.[A-Za-z_][A-Za-z0-9_]*)+)`")
 
 
 def test_the_release_a_reader_is_told_to_pin_is_this_release() -> None:
@@ -51,3 +59,57 @@ def test_the_readme_does_not_keep_a_second_copy_of_the_exit_status_ladder() -> N
     running = _README.split("## Running", 1)[1].split("### Machine-readable output", 1)[0]
     assert "elenctic --help" in running, "the invitation to read the canonical list"
     assert "3 an elenctic bug" not in running, "and not a second list beside it"
+
+
+def test_every_name_the_documents_tell_a_reader_to_import_is_one_they_can() -> None:
+    # A document naming a home sends a reader to it. When the name moves, the sentence keeps its
+    # confident shape and stops being true, and the reader who follows it meets an ImportError with
+    # nothing to say about where the thing went. That is not hypothetical: the entry announcing the
+    # exit-status type named it under the console entry, which is not where it lives.
+    #
+    # Both documents at once, and asserted whole rather than one name at a time, so a reader of a
+    # failure sees every name that has come adrift rather than the first.
+    mentioned = sorted(
+        {name for text in (_README, _CHANGELOG) for name in _DOTTED_NAME.findall(text)}
+    )
+    assert mentioned, "the pattern found nothing at all, which means it is no longer the pattern"
+    adrift = [name for name in mentioned if not _is_a_home(name)]
+    assert not adrift, (
+        f"named in the README or the changelog, and not where the name says it lives: {adrift}. A "
+        f"document that names a home sends a reader there; these have moved, or never existed"
+    )
+
+
+def _is_a_home(dotted: str) -> bool:
+    """Whether ``dotted`` names this thing *where it lives* — rather than somewhere it merely
+    happens to be visible.
+
+    Importability is too weak a question to ask, and the defect that prompted this is why: the entry
+    announcing the exit-status type named it under the console entry, which imports it, so the name
+    resolved and the sentence was still wrong. A reader following it would find the thing and learn
+    the wrong home for it, and the day the console entry stops importing it the sentence breaks with
+    no warning.
+
+    Two homes count, because this package has two legitimate ones: the module a thing is defined in,
+    and the curated top-level surface, which exists precisely so that a consumer need not know the
+    first. Anything else is an incidental re-export.
+
+    A thing carrying no ``__module__`` — a plain constant — cannot be placed this way, and is taken
+    at its word rather than guessed about.
+    """
+    try:
+        importlib.import_module(dotted)
+    except ImportError:
+        pass
+    else:
+        return True  # a module is its own home
+    module, _, attribute = dotted.rpartition(".")
+    try:
+        parent = importlib.import_module(module)
+    except ImportError:
+        return False
+    if not hasattr(parent, attribute):
+        return False
+    if module == elenctic.__name__:
+        return attribute in elenctic.__all__
+    return getattr(getattr(parent, attribute), "__module__", module) == module

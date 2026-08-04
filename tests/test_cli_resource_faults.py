@@ -16,10 +16,10 @@ import pytest
 
 from elenctic import cli
 from elenctic.checks import CheckReport
-from elenctic.cli import ExitStatus, main
+from elenctic.cli import main
 from elenctic.discovery import Case
 from elenctic.harness import run_case
-from elenctic.outcome import ErrorKind, RunOutcome, Scope
+from elenctic.outcome import ErrorKind, ExitStatus, RunOutcome, Scope, exit_status
 from elenctic.solvers import TIME_BUDGET
 
 _GOOD = "% @expect sat\n% @count  1\n\na.\n#show a/0.\n"
@@ -130,11 +130,12 @@ def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_stat
         raise ZeroDivisionError("an elenctic bug")
 
     filed: list[RunOutcome] = []
-    decide = cli.exit_status
 
     def watched(outcome: RunOutcome) -> int:
         filed.append(outcome)
-        return decide(outcome)
+        # The real reading, imported from its own home rather than read back off the module being
+        # patched: what is under test is the record the status was read off, not the ladder.
+        return exit_status(outcome)
 
     monkeypatch.setattr(cli, "run_case", unexpected)
     monkeypatch.setattr(cli, "exit_status", watched)

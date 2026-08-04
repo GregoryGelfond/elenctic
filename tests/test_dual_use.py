@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from elenctic.cli import ExitStatus
+from elenctic.outcome import ExitStatus
 
 
 def write(path: Path, text: str) -> Path:

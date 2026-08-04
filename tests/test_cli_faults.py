@@ -10,9 +10,10 @@ import pytest
 
 from elenctic import cli, discovery
 from elenctic.checks import CheckReport
-from elenctic.cli import ExitStatus, main
+from elenctic.cli import main
 from elenctic.discovery import Case
 from elenctic.harness import run_case
+from elenctic.outcome import ExitStatus
 from elenctic.result import SeamError
 from elenctic.solvers import TIME_BUDGET
 

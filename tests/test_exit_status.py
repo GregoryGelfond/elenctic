@@ -11,27 +11,31 @@ it off — which is what lets a consumer holding only the report say what the pr
 embedder that never parsed a command line ask the question at all.
 """
 
+import subprocess
+import sys
 from inspect import signature
 from pathlib import Path
 
 import pytest
 
 from elenctic.checks import CheckReport
-from elenctic.cli import ExitStatus, exit_status
 from elenctic.discovery import Case
 from elenctic.expectation import Unsat
 from elenctic.outcome import (
     CaseOutcome,
     ErrorKind,
     ErrorRecord,
+    ExitStatus,
     Grade,
     HygieneKind,
     HygieneRecord,
     PlanOutcome,
     RunOutcome,
     Scope,
+    exit_status,
 )
 from elenctic.result import Conclusion, Verdict
+from support import child_environment
 
 
 def _case(verdict: Verdict) -> CaseOutcome:
@@ -192,3 +196,41 @@ def test_the_status_is_a_function_of_the_outcome_and_nothing_else() -> None:
     # could be read two ways depending on which was consulted.
     (parameter,) = signature(exit_status).parameters.values()
     assert parameter.name == "outcome"
+
+
+# What an embedder does: read a status off what a run produced, having never gone near a command
+# line. It proves first that it is the tree under test, for the same reason the command-line child
+# does — a child that quietly loaded some other copy of the package answers a different question.
+_WITHOUT_THE_CONSOLE_ENTRY = """
+import sys
+import elenctic.outcome
+from elenctic.outcome import ExitStatus, RunOutcome, exit_status
+
+if elenctic.outcome.__file__ != {loaded!r}:
+    raise SystemExit("the child loaded " + str(elenctic.outcome.__file__) + ", not the tree")
+if exit_status(RunOutcome(cases=(), errors=(), hygiene=())) != ExitStatus.OK:
+    raise SystemExit("an empty run is not the rung that says nothing went wrong")
+if "elenctic.cli" in sys.modules:
+    raise SystemExit("reading a status pulled in the console entry")
+"""
+
+
+def test_reading_a_status_does_not_reach_for_the_console_entry() -> None:
+    # The claim this module's docstring already makes, held to. The ladder and the reading of it are
+    # a library's, not a program's: the function is total and pure over what a run produced and asks
+    # nothing about a process, and the record it reads is the one a stored report carries — which is
+    # why `Invocation` sits beside it, so a reader holding only that report can reconstruct the
+    # status the process left with.
+    #
+    # A process, because every other module here imports the console entry, so by the time this runs
+    # it is already in `sys.modules` and the question cannot be asked in-session at all.
+    import elenctic.outcome
+
+    asked = subprocess.run(
+        [sys.executable, "-c", _WITHOUT_THE_CONSOLE_ENTRY.format(loaded=elenctic.outcome.__file__)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=child_environment(),
+    )
+    assert asked.returncode == 0, asked.stderr or asked.stdout

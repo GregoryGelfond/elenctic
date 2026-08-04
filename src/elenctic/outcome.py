@@ -16,6 +16,12 @@ The :class:`Invocation` a run was given lives here too. It is not something a ru
 is one of the shapes a consumer decoding the output meets, and a shape with two homes is a shape
 that drifts.
 
+So does the ladder a run is read against — :class:`ExitStatus` and :func:`exit_status` — for the
+reason the invocation is here: a stored report exists so that a reader holding only it can say what
+the process left with, and this is the function that answers. It is total and pure over what a run
+produced and asks nothing about a process, so an embedder that never parsed a command line can ask
+the question; the console entry is one caller of it rather than its home.
+
 Every record here is built by keyword. These are the shapes a consumer decoding the run's output
 meets, and that output identifies a field by its name; constructing them by position would give the
 same data a second identity, one that a field inserted later silently re-means. It also closes the
@@ -25,8 +31,9 @@ transposed, type-checks clean, and reads as a plausible row.
 
 import math
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, IntEnum
 from pathlib import Path
+from typing import assert_never
 
 from elenctic.checks import CheckReport
 from elenctic.discovery import Case, DiscoveryError
@@ -41,6 +48,7 @@ __all__ = [
     "CasePlan",
     "ErrorKind",
     "ErrorRecord",
+    "ExitStatus",
     "Grade",
     "HygieneKind",
     "HygieneRecord",
@@ -50,6 +58,7 @@ __all__ = [
     "RunOutcome",
     "Scope",
     "error_kind",
+    "exit_status",
     "is_duration",
     "summary",
 ]
@@ -155,6 +164,54 @@ class HygieneKind(Enum):
                 return Grade.WARNING
             case HygieneKind.UNDECLARED_SOLVER:
                 return Grade.SILENT
+
+
+class ExitStatus(IntEnum):
+    """What the process leaves with — the closed ladder, the first rung that applies winning.
+
+    The last closed vocabulary in this package to be spelled as bare integers. The others are named
+    types, and a reader who has met ``Grade`` or ``Verdict`` expects this one to be a type too; more
+    to the point, the number-to-meaning mapping was written out in six places and one of them was
+    checked, which is the shape every other rule here is arranged to avoid.
+
+    An ``IntEnum`` rather than an ``Enum``, because the value has to survive leaving the process. It
+    *is* an ``int``: ``sys.exit`` takes it, a caller comparing against a literal is unaffected, and
+    the number a shell sees is unchanged. One consequence for anything reading a status back from a
+    child process: what comes back is a bare ``int`` and not a member, so a status is compared with
+    ``==`` and never with ``is`` — identity would hold in process and fail across one, which is the
+    worst shape a comparison can have.
+
+    ``gloss`` is the sentence ``--help`` prints for the rung, and it lives on the member so that the
+    ladder and its explanation cannot come apart. The help is rendered from this rather than written
+    beside it, so a number the ladder does not return has nowhere to be documented and a gloss
+    cannot drift onto the wrong rung.
+    """
+
+    gloss: str
+
+    def __new__(cls, value: int, gloss: str) -> ExitStatus:
+        member = int.__new__(cls, value)
+        member._value_ = value
+        member.gloss = gloss
+        return member
+
+    # "nothing went wrong" rather than "every case passed": a dry run decides nothing and leaves
+    # with this, and so does a corpus that held no cases. Both are vacuously right, and neither
+    # passed anything — a reader who ran --explain and looked the status up deserves better than
+    # being told every case passed.
+    OK = (0, "nothing went wrong")
+    NOT_PASSED = (1, "a case decided wrong, or could not be decided")
+    # The declared solver belongs in this list and was missing from it. It is the likeliest 2 a real
+    # user meets — the theory solver is an optional extra, so every case declaring it fails on a
+    # machine without it — and it was named in a module docstring the user never reads.
+    USER_FAULT = (
+        2,
+        "a fault you can fix: a command line that cannot be used, a bad contract, a mis-shaped "
+        "corpus, a declared solver this environment does not have, a program that will not ground, "
+        "a case that ran out of memory or that the deadline never reached, or corpus hygiene this "
+        "run graded an error",
+    )
+    HARNESS_FAULT = (3, "a fault in elenctic itself, which outranks every other signal")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -328,6 +385,40 @@ type Outcome = RunOutcome | PlanOutcome
 The two share the registers that say what went wrong and what was observed, and differ only in what
 they made: verdicts, or the plans behind them. Reading a status is therefore one function over both
 rather than a ladder written twice, which is how the two modes came to disagree once already."""
+
+
+def exit_status(outcome: Outcome) -> ExitStatus:
+    """The process status for a completed invocation, the first rung that applies winning.
+
+    ``3`` an elenctic bug — a harness that is wrong about one case is evidence about every other, so
+    it puts the whole run's verdicts in doubt and outranks them all; ``2`` a fault the user can fix,
+    or an observation this run graded an error; ``1`` a case decided wrong or could not be decided;
+    ``0`` nothing went wrong. The two error levels are the closed split of where a fault lies:
+    anything that is not a harness fault is the user's, so a locus added later never silently
+    changes what a status means.
+
+    One function over both modes rather than a ladder written twice, because the faults a dry run
+    can meet are the same faults and rank the same way — and the one thing that differs, having
+    verdicts to weigh, is exactly what the two outcome types differ in. A dry run reaching the last
+    rung is ``0`` because it decided nothing: there is no verdict for it to have got wrong.
+
+    A function of what the invocation produced and of nothing else. The strictness dial is applied
+    where an observation is recorded, so the grade travels on the record and this reading of it is
+    the same reading the end-of-run summary makes — rather than a second consultation of a flag,
+    which is how a run comes to print one thing and return another.
+    """
+    if any(error.kind.is_elenctic_bug for error in outcome.errors):
+        return ExitStatus.HARNESS_FAULT
+    if outcome.errors or any(record.grade is Grade.ERROR for record in outcome.hygiene):
+        return ExitStatus.USER_FAULT
+    match outcome:
+        case RunOutcome():
+            undecided = any(case.verdict is not Verdict.PASS for case in outcome.cases)
+            return ExitStatus.NOT_PASSED if undecided else ExitStatus.OK
+        case PlanOutcome():
+            return ExitStatus.OK
+        case unreachable:
+            assert_never(unreachable)
 
 
 def error_kind(exc: Exception) -> ErrorKind:

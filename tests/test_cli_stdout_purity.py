@@ -18,7 +18,8 @@ import sys
 
 import pytest
 
-from elenctic.cli import ExitStatus, _stdout_to_stderr
+from elenctic.cli import _stdout_to_stderr
+from elenctic.outcome import ExitStatus
 
 
 def _lowest_free_descriptor() -> int:

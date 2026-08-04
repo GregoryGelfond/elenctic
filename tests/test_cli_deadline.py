@@ -15,7 +15,8 @@ from pathlib import Path
 import pytest
 
 from elenctic import cli
-from elenctic.cli import ExitStatus, main
+from elenctic.cli import main
+from elenctic.outcome import ExitStatus
 from support import a_clock_the_deadline_has_already_passed_on
 
 _GOOD = "% @expect sat\n% @count  1\n\na.\n#show a/0.\n"

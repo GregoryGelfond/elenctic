@@ -5,7 +5,7 @@ published artefact: nothing about it is enforced by the code it describes, so it
 whatever an edit leaves behind. Two things are held here. Every option this program defines is filed
 under a heading saying what it is for, rather than in one undifferentiated block that leaves a
 reader to sort an action from a dial. And the statuses the help documents are the statuses the
-ladder actually produces — asserted against ``exit_status`` itself, in ``test_cli_exit_status.py``,
+ladder actually produces — asserted against ``exit_status`` itself, in ``test_exit_status.py``,
 because a second list written beside a function is a second thing to keep true.
 
 ``main`` is called rather than a process spawned: ``--help`` is answered inside ``parse_args`` and
@@ -80,7 +80,7 @@ def test_every_option_is_filed_under_a_heading_that_says_what_it_is_for() -> Non
 
 def test_the_help_says_what_each_exit_status_means() -> None:
     # The numbers alone would be a list a reader still has to interpret. Which statuses are
-    # documented is checked against the ladder that produces them, in test_cli_exit_status.py.
+    # documented is checked against the ladder that produces them, in test_exit_status.py.
     ladder = cli_help_section("exit status")
     glossed = [line.strip() for line in ladder if line.strip()[:1].isdigit()]
     assert len(glossed) >= 4, f"each status is worth a sentence, not just a number: {glossed}"

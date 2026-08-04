@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from elenctic import cli
-from elenctic.cli import ExitStatus, main
+from elenctic.cli import main
+from elenctic.outcome import ExitStatus
 from elenctic.run import RoutingError
 from elenctic.run import runs_for as real_runs_for
 

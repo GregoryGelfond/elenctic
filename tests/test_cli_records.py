@@ -14,14 +14,16 @@ from pathlib import Path
 import pytest
 
 from elenctic import cli, discovery
-from elenctic.cli import ExitStatus, exit_status, explain_corpus, main, run_corpus
+from elenctic.cli import explain_corpus, main, run_corpus
 from elenctic.outcome import (
     ErrorKind,
+    ExitStatus,
     Grade,
     HygieneKind,
     Invocation,
     RunOutcome,
     Scope,
+    exit_status,
 )
 from elenctic.result import Verdict
 from elenctic.run import RoutingError

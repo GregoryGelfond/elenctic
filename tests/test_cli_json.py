@@ -25,8 +25,8 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from elenctic.cli import ExitStatus
 from elenctic.json_report import dumps, schema_text
+from elenctic.outcome import ExitStatus
 from support import Streams, child_environment, document_of, run_cli
 
 _PASSES = (

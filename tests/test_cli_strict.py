@@ -7,8 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from elenctic.cli import ExitStatus, main
+from elenctic.cli import main
 from elenctic.discovery import ORPHAN_LIBRARY, UNDECLARED_SOLVER
+from elenctic.outcome import ExitStatus
 
 _DECLARED = "% @expect sat\n% @model { ok }\n% @elenctic solver clingo\nok.\n#show ok/0.\n"
 _UNDECLARED = "% @expect sat\n% @model { ok }\nok.\n#show ok/0.\n"
