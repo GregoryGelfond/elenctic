@@ -56,7 +56,17 @@ every submodule, so ``import elenctic`` stays cheap (clingo loads only when a so
 used) and ``python -m elenctic.<stage>`` runs a stage module without a re-import warning.
 """
 
+import logging
 from typing import TYPE_CHECKING
+
+# What a library owes its own logger. Without it, this package's first record would be emitted by
+# logging's last-resort handler — which writes to standard error — so a library that has been
+# careful to write to no stream would write to one the moment something inside it had a debugging
+# remark to make. With it, elenctic says nothing until the program embedding it configures logging
+# and asks; the records are there either way. This is the documented practice for a library, and it
+# is the same rule the rest of this package follows for a different reason: a diagnostic a *user*
+# acts on is a structured record, and a logger carries only what a *developer* acts on.
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     from elenctic.checks import CheckReport as CheckReport

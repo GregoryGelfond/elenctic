@@ -15,6 +15,7 @@ the first case is reached, so it is returned and not announced, and the test bel
 than leaving it to be inferred from the absence of a method.
 """
 
+import logging
 from pathlib import Path
 from typing import NoReturn
 
@@ -45,32 +46,37 @@ class _Heard:
     """
 
     def __init__(self) -> None:
-        self.unusable_records: list[ErrorRecord] = []
-        self.undecided_records: list[ErrorRecord] = []
-        self.decided_cases: list[CaseOutcome] = []
-        self.began_cases: list[Case] = []
-        self.planned_cases: list[CasePlan] = []
+        self.corpus_faults: list[ErrorRecord] = []
+        self.unusable_files: list[ErrorRecord] = []
+        self.unjudged: list[ErrorRecord] = []
+        self.judged: list[CaseOutcome] = []
+        self.started: list[Case] = []
+        self.plans: list[CasePlan] = []
         self.order: list[str] = []
 
-    def unusable(self, record: ErrorRecord) -> None:
-        self.unusable_records.append(record)
-        self.order.append("unusable")
+    def corpus_unreadable(self, record: ErrorRecord) -> None:
+        self.corpus_faults.append(record)
+        self.order.append("corpus_unreadable")
 
-    def undecided(self, record: ErrorRecord) -> None:
-        self.undecided_records.append(record)
-        self.order.append("undecided")
+    def case_unusable(self, record: ErrorRecord) -> None:
+        self.unusable_files.append(record)
+        self.order.append("case_unusable")
 
-    def decided(self, outcome: CaseOutcome) -> None:
-        self.decided_cases.append(outcome)
-        self.order.append("decided")
+    def case_started(self, case: Case) -> None:
+        self.started.append(case)
+        self.order.append("case_started")
 
-    def began(self, case: Case) -> None:
-        self.began_cases.append(case)
-        self.order.append("began")
+    def case_unjudged(self, record: ErrorRecord) -> None:
+        self.unjudged.append(record)
+        self.order.append("case_unjudged")
 
-    def planned(self, case_plan: CasePlan) -> None:
-        self.planned_cases.append(case_plan)
-        self.order.append("planned")
+    def case_judged(self, outcome: CaseOutcome) -> None:
+        self.judged.append(outcome)
+        self.order.append("case_judged")
+
+    def case_planned(self, case_plan: CasePlan) -> None:
+        self.plans.append(case_plan)
+        self.order.append("case_planned")
 
 
 def _asked(target: Path) -> Invocation:
@@ -134,10 +140,12 @@ def test_what_a_run_announces_is_what_it_hands_back(tmp_path: Path) -> None:
 
     outcome = run_corpus(_asked(target), observer=heard)
 
-    assert [id(record) for record in heard.unusable_records + heard.undecided_records] == [
-        id(record) for record in outcome.errors
-    ], "every error announced is one filed, in the register's own order"
-    assert [id(case) for case in heard.decided_cases] == [id(case) for case in outcome.cases]
+    assert [
+        id(record) for record in heard.corpus_faults + heard.unusable_files + heard.unjudged
+    ] == [id(record) for record in outcome.errors], (
+        "every error announced is one filed, in the register's own order"
+    )
+    assert [id(case) for case in heard.judged] == [id(case) for case in outcome.cases]
     # The register that is deliberately outside the agreement, asserted rather than left to be
     # inferred from there being no method for it. Hygiene is settled before the first case is
     # reached, so it has no as-it-happens character; a caller reads it off the returned outcome,
@@ -159,8 +167,8 @@ def test_a_file_discovery_could_not_use_is_told_apart_from_a_case_that_would_not
 
     run_corpus(_asked(target), observer=heard)
 
-    (unusable,) = heard.unusable_records
-    (undecided,) = heard.undecided_records
+    (unusable,) = heard.unusable_files
+    (undecided,) = heard.unjudged
     assert unusable.source == target / "broken.lp", "discovery could not turn it into a case"
     assert undecided.source == target / "wrong.lp", "it became a case, and then would not run"
     assert unusable.scope is undecided.scope, "the records cannot tell them apart; the channel does"
@@ -173,9 +181,12 @@ def test_a_corpus_that_could_not_be_read_at_all_is_announced_as_the_corpus_s(
 
     run_corpus(_asked(tmp_path / "nowhere.lp"), observer=heard)
 
-    (fault,) = heard.unusable_records
+    (fault,) = heard.corpus_faults
     assert fault.kind is ErrorKind.DISCOVERY
-    assert heard.order == ["unusable"], "nothing was discovered, so nothing else can be announced"
+    assert heard.order == ["corpus_unreadable"], (
+        "nothing was discovered, so nothing else can be announced — and it is announced as the "
+        "corpus's, not as one file's, because it ends the invocation rather than costing one result"
+    )
 
 
 def test_a_dry_run_announces_a_case_before_the_plan_that_might_not_be_built(
@@ -193,11 +204,9 @@ def test_a_dry_run_announces_a_case_before_the_plan_that_might_not_be_built(
 
     outcome = explain_corpus(_asked(target), observer=heard)
 
-    assert heard.order == ["began", "undecided"], "announced, then found to have no plan"
-    assert heard.began_cases[0].contract_source == target / "good.lp"
-    assert heard.undecided_records[0].kind is ErrorKind.HARNESS, (
-        "a plan that cannot be built is ours"
-    )
+    assert heard.order == ["case_started", "case_unjudged"], "announced, then found to have no plan"
+    assert heard.started[0].contract_source == target / "good.lp"
+    assert heard.unjudged[0].kind is ErrorKind.HARNESS, "a plan that cannot be built is ours"
     assert outcome.plans == (), "and it reached no plan register"
 
 
@@ -207,9 +216,9 @@ def test_a_dry_run_announces_every_case_it_planned(tmp_path: Path) -> None:
 
     outcome = explain_corpus(_asked(target), observer=heard)
 
-    assert heard.order == ["began", "planned"]
-    assert [id(plan) for plan in heard.planned_cases] == [id(plan) for plan in outcome.plans]
-    assert heard.planned_cases[0].runs, "a case that planned successfully planned to something"
+    assert heard.order == ["case_started", "case_planned"]
+    assert [id(plan) for plan in heard.plans] == [id(plan) for plan in outcome.plans]
+    assert heard.plans[0].runs, "a case that planned successfully planned to something"
 
 
 def test_a_deadline_costs_every_case_it_did_not_reach_a_record_and_an_announcement(
@@ -228,11 +237,80 @@ def test_a_deadline_costs_every_case_it_did_not_reach_a_record_and_an_announceme
         observer=heard,
     )
 
-    assert heard.order == ["undecided", "undecided"], "one announcement per case, as filed"
-    assert {record.source for record in heard.undecided_records} == {
+    assert heard.order == ["case_unjudged", "case_unjudged"], (
+        "one announcement per case, as filed — and no case_started, because the deadline is "
+        "checked before a case is taken up, so these were never started"
+    )
+    assert {record.source for record in heard.unjudged} == {
         target / "first.lp",
         target / "second.lp",
     }
-    assert [id(record) for record in heard.undecided_records] == [
-        id(record) for record in outcome.errors
-    ]
+    assert [id(record) for record in heard.unjudged] == [id(record) for record in outcome.errors]
+
+
+class _Rude:
+    """An observer whose rendering is broken — the shape a caller's own bug takes.
+
+    Not contrived: an editor's observer publishes over a channel that fails for ordinary reasons,
+    and a CI reporter writes to a file or a socket. What matters is that the run's records survive
+    what the watching does.
+    """
+
+    def __init__(self) -> None:
+        self.heard = 0
+
+    def _raise(self, _value: object) -> NoReturn:
+        self.heard += 1
+        raise RuntimeError("the caller's renderer is broken")
+
+    corpus_unreadable = _raise
+    case_unusable = _raise
+    case_started = _raise
+    case_unjudged = _raise
+    case_judged = _raise
+    case_planned = _raise
+
+
+def test_an_observer_that_raises_costs_the_run_nothing(tmp_path: Path) -> None:
+    # Announcing is a courtesy; establishing is the work. Every announcement site sits outside the
+    # per-case handlers, so without isolation an observer that raised on one case discarded every
+    # record the run had already established — and the console entry then reported the caller's own
+    # bug as elenctic's. That is the wrong trade wherever elenctic is used: under CI the records are
+    # the deliverable, and in an editor the channel an observer writes to fails for ordinary
+    # reasons. It is also the guarantee the rest of this module already gives about a bad file.
+    target = _corpus(tmp_path, good=_PASSES, bad=_FAILS, broken=_MALFORMED, wrong=_WILL_NOT_GROUND)
+    rude = _Rude()
+
+    outcome = run_corpus(_asked(target), observer=rude)
+
+    assert rude.heard > 1, "it kept being told, rather than being given up on after the first fault"
+    assert len(outcome.cases) == 2, "every case that reached a verdict still has one"
+    assert len(outcome.errors) == 2, "and every case that reached none still has its reason"
+    assert outcome.hygiene, "and the observations are still there to read"
+
+
+def test_a_dry_run_survives_an_observer_that_raises_too(tmp_path: Path) -> None:
+    # The same guarantee on the other mode, because the announcement sites are different code.
+    target = _corpus(tmp_path, good=_PASSES, broken=_MALFORMED)
+
+    outcome = explain_corpus(_asked(target), observer=_Rude())
+
+    assert len(outcome.plans) == 1
+    assert len(outcome.errors) == 1
+
+
+def test_an_observer_fault_is_reported_where_a_developer_can_see_it(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Swallowed is not the same as hidden. A caller whose observer silently does nothing has no way
+    # to find out, so the fault goes to the one channel that says something only a developer can act
+    # on — silent until they ask for it, which is why the library can carry it without writing to a
+    # stream. The traceback is kept, because the caller's own frame is the whole of what they need.
+    target = _corpus(tmp_path, good=_PASSES)
+
+    with caplog.at_level(logging.ERROR, logger="elenctic.corpus"):
+        run_corpus(_asked(target), observer=_Rude())
+
+    assert caplog.records, "an observer fault nothing reports is one nobody can fix"
+    assert "observer" in caplog.text
+    assert "RuntimeError" in caplog.text, "the caller's own traceback, not a summary of it"

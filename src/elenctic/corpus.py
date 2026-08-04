@@ -18,6 +18,8 @@ derivation of the library rather than the place the library's work is done, and 
 these directly gets the same values the shipped runner does.
 """
 
+import logging
+from collections.abc import Callable
 from pathlib import Path
 from time import monotonic
 from typing import Protocol, assert_never
@@ -88,47 +90,61 @@ class Observer(Protocol):
     base classes and so offer only the first of the two.
     """
 
-    def unusable(self, record: ErrorRecord) -> None:
-        """Discovery could not use something: a corpus it could not read at all (the record is
-        corpus-scoped), or one contract-bearing file it could not turn into a case (case-scoped).
+    def corpus_unreadable(self, record: ErrorRecord) -> None:
+        """No corpus could be read from the target at all, and this record is the whole of what the
+        invocation will produce.
 
-        Announced before any solving, and the corpus-scoped one is the whole of what the invocation
-        will produce."""
+        Apart from :meth:`case_unusable` because the two cost different things: this ends the
+        invocation, while one unusable file among many costs only its own result."""
         return None
 
-    def undecided(self, record: ErrorRecord) -> None:
-        """A case that reached the run produced no verdict, and this is why.
+    def case_unusable(self, record: ErrorRecord) -> None:
+        """One contract-bearing file discovery could not turn into a case.
 
-        Distinct from :meth:`unusable` because the two are met at different points and mean
-        different things to a reader: one is a file that never became a case, this is a case that
-        did and then could not be carried out."""
+        Announced before any solving, and the other cases still run."""
+        return None
+
+    def case_started(self, case: Case) -> None:
+        """A case has been taken up — its plan is about to be derived, or it is about to be run.
+
+        Announced before the work rather than after it, because the work is what can fail: a case
+        that reaches :meth:`case_unjudged` has been announced here first, so a caller narrating the
+        corpus can always say which case it is talking about. It is also the only announcement that
+        arrives while something is still happening, which is what a caller showing progress on a
+        long run needs."""
+        return None
+
+    def case_unjudged(self, record: ErrorRecord) -> None:
+        """A case produced no judgment, and this is why.
+
+        A *judgment* rather than a verdict, and not for elegance: ``UNDECIDED`` is a verdict, so a
+        case that reached one is a case elenctic decided about — it decided that the solve settled
+        nothing. Naming these two announcements ``decided`` and ``undecided`` would put the pair on
+        the same words as the verdict vocabulary while cutting them in a different place, so the
+        obvious reading would work for two verdicts and fail on the third.
+        """
         return None
 
 
 class RunObserver(Observer, Protocol):
-    """What a run announces: the two above, and a verdict per case that reached one."""
+    """What a run announces: the four above, and a judgment per case that reached one."""
 
-    def decided(self, outcome: CaseOutcome) -> None:
-        """A case reached a verdict, with the reports it was folded from."""
+    def case_judged(self, outcome: CaseOutcome) -> None:
+        """A case reached a verdict, with the reports it was folded from — whichever verdict it is.
+
+        Which verdicts are worth a reader's attention is a rendering policy and the caller's to set.
+        """
         return None
 
 
 class PlanObserver(Observer, Protocol):
-    """What a dry run announces: the two shared ones, and the plan-shaped pair.
+    """What a dry run announces: the four shared ones, and the plan a case derived to.
 
-    A dry run decides nothing, so it has no verdict to announce; separating the two observers is
+    A dry run decides nothing, so it has no judgment to announce; separating the two observers is
     what makes announcing one from the other mode not merely wrong but unwritable.
     """
 
-    def began(self, case: Case) -> None:
-        """A case is about to have its run plan derived.
-
-        Announced before the derivation rather than after it, because the derivation is what can
-        fail: a case whose plan cannot be built is announced here and then to :meth:`undecided`, and
-        a caller narrating the corpus still has the case to narrate it against."""
-        return None
-
-    def planned(self, case_plan: CasePlan) -> None:
+    def case_planned(self, case_plan: CasePlan) -> None:
         """A case derived to a run plan, with the runs it derived to."""
         return None
 
@@ -136,9 +152,9 @@ class PlanObserver(Observer, Protocol):
 class _Silent(RunObserver, PlanObserver):
     """What a caller who supplied no observer is given: told everything, says nothing.
 
-    A stand-in rather than a test against ``None`` at each of the eight places a run announces
-    something. Those tests would all read the same and any one of them could be forgotten, which is
-    the shape where a mode goes quiet for one kind of thing and nobody notices.
+    A stand-in rather than a test against ``None`` at each of the places a run announces something.
+    Those tests would all read the same and any one of them could be forgotten, which is the shape
+    where a mode goes quiet for one kind of thing and nobody notices.
 
     It inherits every method, and inherits them as the do-nothing bodies the protocols declare — so
     an announcement added later is silent here without this class being touched, which is the one
@@ -147,6 +163,44 @@ class _Silent(RunObserver, PlanObserver):
 
 
 _SILENT = _Silent()
+
+_log = logging.getLogger(__name__)
+
+
+def _tell[T](announce: Callable[[T], None], value: T) -> None:
+    """Make one announcement, and let nothing it does stop the run.
+
+    **Announcing is a courtesy; establishing is the work.** A caller hands in an observer to watch
+    what happens, not to take part in it, so a fault in the watching cannot be allowed to change
+    what was established — and without this it changes it completely: the announcement sites are
+    outside the per-case handlers, so an observer that raised on the third case of a hundred and
+    thirty-five discarded all hundred and thirty-five, and the console entry reported the caller's
+    own bug as elenctic's.
+
+    That is the wrong trade in every way elenctic is used. Under a test runner or in CI the records
+    *are* the deliverable, and losing them to a rendering fault loses the run. In an editor the
+    observer publishes diagnostics over a channel that fails for ordinary reasons — a client that
+    went away, a cancelled request — and an integration in which that costs the whole corpus is one
+    nobody can rely on. It is also the guarantee the rest of this module already gives: one bad file
+    costs its own result and no other's.
+
+    Reported through a logger, which is this package's channel for something only a developer can
+    act on, and silent unless that developer asks for it — a library that wrote to a stream here
+    would be back where it started. The fault is the caller's own code, so there is no diagnostic to
+    write and no record to file: it is not a fact about the corpus, and putting it in the registers
+    would report it to the wrong reader under the wrong locus.
+    """
+    try:
+        announce(value)
+    except Exception:
+        # Deliberately every exception, including the ones a caller would normally want to
+        # see. What is inside is a callback whose failure modes are unknown here by
+        # construction, and the whole point is that none of them reaches the run.
+        # `logger.exception` keeps the traceback, so nothing is lost to whoever asks for it.
+        _log.exception(
+            "an observer raised while being told about a run; the run continues and its records "
+            "are unaffected. This is a fault in the observer, not in elenctic or in the corpus"
+        )
 
 
 # What an allocation failure has to say about the case that met it — shared by the diagnostic the
@@ -244,7 +298,7 @@ def _discover(target: Path, told: Observer) -> Corpus | ErrorRecord:
         fault = _corpus_fault(
             error_kind(exc), str(exc), source=target if target.is_file() else None
         )
-        told.unusable(fault)
+        _tell(told.corpus_unreadable, fault)
         return fault
 
 
@@ -258,7 +312,7 @@ def _record_discovered(
         # Discovered but unusable — an unresolvable #include, an undecodable byte, a malformed
         # contract. Filed against the file it belongs to, in the same register as a case the runner
         # could not run, so one bad file never costs the corpus its other results.
-        told.unusable(record)
+        _tell(told.case_unusable, record)
     return unrunnable, _hygiene_records(corpus.hygiene, strict=strict)
 
 
@@ -332,16 +386,16 @@ def _explain(
     plans: list[CasePlan] = []
     misroutes: list[ErrorRecord] = []
     for case in cases:
-        told.began(case)
+        _tell(told.case_started, case)
         try:
             derived = runs_for(case.expectation, provides_theory(case.solver))
         except HarnessError as exc:
             misroutes.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-            told.undecided(misroutes[-1])
+            _tell(told.case_unjudged, misroutes[-1])
             continue
         case_plan = CasePlan(case=case, runs=tuple(derived))
         plans.append(case_plan)
-        told.planned(case_plan)
+        _tell(told.case_planned, case_plan)
     return tuple(plans), tuple(misroutes)
 
 
@@ -394,8 +448,9 @@ def _run(
                         message=passed,
                     )
                 )
-                told.undecided(errors[-1])
+                _tell(told.case_unjudged, errors[-1])
             break
+        _tell(told.case_started, case)
         try:
             # The declared solver is checked here, per case, so an absent optional backend costs
             # only the cases that declare it rather than the whole run.
@@ -405,14 +460,14 @@ def _run(
             # the environment cannot run this case (its declared solver is not installed). The
             # message carries its own provenance, as every discovery diagnostic does.
             errors.append(_case_error(ErrorKind.DISCOVERY, case, str(exc)))
-            told.undecided(errors[-1])
+            _tell(told.case_unjudged, errors[-1])
             continue
         except ProgramError as exc:
             # the program under test cannot be run (it will not ground, an #include is unresolvable)
             # — its author fixes the .lp. Not a verdict, and not elenctic's fault either, so it is
             # filed apart from both and the remaining cases still run.
             errors.append(_case_error(ErrorKind.PROGRAM, case, str(exc)))
-            told.undecided(errors[-1])
+            _tell(told.case_unjudged, errors[-1])
             continue
         except MemoryError:
             # Filed against the case that ran out of it, and with the other cases that could not be
@@ -421,20 +476,20 @@ def _run(
             # costs is one case's result rather than the whole run's. A resource the caller is the
             # one able to bound, so not elenctic's own fault to report.
             errors.append(_case_error(ErrorKind.RESOURCE, case, _OUT_OF_MEMORY))
-            told.undecided(errors[-1])
+            _tell(told.case_unjudged, errors[-1])
             continue
         except HarnessError as exc:
             # a solve-time invariant breach (a seam, a missing cost) is a harness bug too, never a
             # verdict — filed like a misroute, and the other cases still run.
             errors.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-            told.undecided(errors[-1])
+            _tell(told.case_unjudged, errors[-1])
             continue
         outcome = CaseOutcome(case=case, reports=reports)
         outcomes.append(outcome)
         # Announced whatever the verdict is. Which verdicts are worth a reader's attention is a
         # rendering policy and the caller's to set; a run that announced only the ones it judged
         # interesting would be deciding that for every caller at once.
-        told.decided(outcome)
+        _tell(told.case_judged, outcome)
     return RunOutcome(cases=tuple(outcomes), errors=tuple(errors), hygiene=hygiene)
 
 
@@ -456,7 +511,7 @@ def _validate_plans(
             runs_for(case.expectation, provides_theory(case.solver))
         except HarnessError as exc:
             misroutes.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-            told.undecided(misroutes[-1])
+            _tell(told.case_unjudged, misroutes[-1])
         else:
             valid.append(case)
     return valid, misroutes

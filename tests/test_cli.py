@@ -335,7 +335,7 @@ def test_every_locus_a_case_can_fail_under_says_something_to_a_reader(
         kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
     )
 
-    _TerminalRun().undecided(record)
+    _TerminalRun().case_unjudged(record)
 
     said = capsys.readouterr().err
 
@@ -372,7 +372,7 @@ def test_the_dry_run_says_the_same_thing_about_a_fault_indented_under_its_case(
         kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
     )
 
-    _TerminalPlan().undecided(record)
+    _TerminalPlan().case_unjudged(record)
 
     expected = _SAID_ABOUT[kind]
     assert capsys.readouterr().err == (f"    {expected}" if expected else "")

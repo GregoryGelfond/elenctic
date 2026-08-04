@@ -49,7 +49,21 @@ means for them — a reader deciding whether to upgrade should not have to read 
   describe the same run differently. (Corpus hygiene is settled before the first case is reached and
   is read off the result rather than announced.) `RunObserver` and `PlanObserver` describe the
   shape; inherit one and every method you do not override does nothing, or implement all of them
-  and pass any object that fits.
+  and pass any object that fits. What they announce is `corpus_unreadable`, `case_unusable`,
+  `case_started`, `case_unjudged`, and then `case_judged` for a run or `case_planned` for a dry one
+  — *judged* rather than *decided* because `UNDECIDED` is a verdict, so a case that reached one is
+  a case elenctic decided about.
+
+  **A fault in an observer cannot cost the run its records.** Announcing is a courtesy; establishing
+  is the work. If your observer raises, the run continues, everything it had already established is
+  still in the value it returns, and the fault is reported through elenctic's logger — silent until
+  you configure logging, and never written to a stream. Without this, a renderer that failed on the
+  third case of a hundred and thirty-five discarded all hundred and thirty-five, and the console
+  entry reported your bug as elenctic's.
+
+- **The package publishes where to report a bug**, in its metadata and in the one diagnostic that
+  asks you to. `Homepage`, `Repository`, `Issues` and `Changelog` are now in the project metadata,
+  and the internal-error backstop names the issue tracker instead of asking you to find it.
 
 - **`py.typed`.** elenctic is annotated throughout and checked under `mypy --strict`, and none of
   that reached anyone who installed it: without this marker a type checker skips the package

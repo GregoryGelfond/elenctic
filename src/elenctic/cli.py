@@ -37,7 +37,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import assert_never
 
-from elenctic.corpus import explain_corpus, run_corpus
+from elenctic.corpus import Observer, explain_corpus, run_corpus
 from elenctic.discovery import Case
 from elenctic.display import legible
 from elenctic.harness import render
@@ -75,6 +75,12 @@ _CORPUS_OUT_OF_MEMORY = (
 # What a fault no register anticipated says about itself. Shared by the diagnostic and the record
 # for the same reason as the two above: one sentence, stated once.
 _INTERNAL_ERROR = "this is an elenctic bug, not a fault in your corpus"
+
+# Where to take it. Asking a reader to report something without saying where leaves them to search
+# for a project they may only know by the name of a command, so the address is written out. It is
+# only in the diagnostic and never in the record: the record's message is carried into a published
+# document, where a URL would be a second place this address has to stay true.
+_ISSUES = "https://github.com/GregoryGelfond/elenctic/issues"
 
 # The one thing --print-schema can fail at, said in terms the reader can act on. It is worth its own
 # sentence rather than the internal-error backstop, because the backstop asks for a bug report and
@@ -291,7 +297,8 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         # rather than rendering the exception, so the last frame that can report anything cannot
         # itself fail on a __repr__ that raises.
         print(
-            f"internal error: {_INTERNAL_ERROR}. Please report it with the traceback below.",
+            f"internal error: {_INTERNAL_ERROR}. Please report it at\n"
+            f"{_ISSUES}, with the traceback below.",
             file=sys.stderr,
         )
         traceback.print_exc()
@@ -447,8 +454,13 @@ def _stdout_to_stderr() -> Iterator[None]:
             os.close(saved)
 
 
-class _Terminal:
+class _Terminal(Observer):
     """What both modes say to a reader as the run goes — the announcements they share.
+
+    Inherits the protocol rather than merely fitting it, which is what supplies a do-nothing body
+    for every announcement neither mode renders. A run says nothing when a case is taken up: what a
+    reader wants from a corpus of a hundred and thirty-five is the ones that did not pass, and the
+    tally at the end accounts for the rest. A dry run does say so, and overrides it below.
 
     The prose lives here and nowhere below: a run establishes records and this turns them into
     sentences, so the same run can be watched by a reader, written as a document, or embedded in
@@ -457,25 +469,27 @@ class _Terminal:
     than display can forge a verdict in the report it appears in.
     """
 
-    def unusable(self, record: ErrorRecord) -> None:
-        # Neither line names its file, and that is not an omission: a discovery diagnostic carries
-        # its own provenance, so repeating the path would print it twice on one line. What tells the
-        # two apart is what the fault cost — a corpus nothing could be read from, or one file among
-        # others that will produce no verdict while the rest of the corpus still runs.
-        if record.scope is Scope.CORPUS:
-            print(f"corpus error: {legible(record.message)}", file=sys.stderr)
-        else:
-            print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
+    # Neither line names its file, and that is not an omission: a discovery diagnostic carries its
+    # own provenance, so repeating the path would print it twice on one line. What differs is what
+    # the fault cost — a corpus nothing could be read from, or one file among others that will
+    # produce no verdict while the rest of the corpus still runs — and the run says which by which
+    # of these it calls, so nothing here has to ask a record what it was.
+
+    def corpus_unreadable(self, record: ErrorRecord) -> None:
+        print(f"corpus error: {legible(record.message)}", file=sys.stderr)
+
+    def case_unusable(self, record: ErrorRecord) -> None:
+        print(f"CASE ERROR — {legible(record.message)}", file=sys.stderr)
 
 
 class _TerminalRun(_Terminal):
     """What a run says to a reader, case by case, as each one lands."""
 
-    def undecided(self, record: ErrorRecord) -> None:
-        if (line := _undecided_line(record)) is not None:
+    def case_unjudged(self, record: ErrorRecord) -> None:
+        if (line := _unjudged_line(record)) is not None:
             print(line, file=sys.stderr)
 
-    def decided(self, outcome: CaseOutcome) -> None:
+    def case_judged(self, outcome: CaseOutcome) -> None:
         # A passing case says nothing. What a reader wants from a corpus of a hundred and
         # thirty-five is the ones that did not pass, and the tally at the end accounts for the rest.
         if outcome.verdict is not Verdict.PASS:
@@ -486,14 +500,14 @@ class _TerminalPlan(_Terminal):
     """What a dry run says to a reader: the plan each case derived to, under the case it belongs
     to."""
 
-    def began(self, case: Case) -> None:
+    def case_started(self, case: Case) -> None:
         print(f"{legible(str(case.contract_source))} [{case.solver}]")
         # The @note prose leads the narration — the author's what/why above the harness's how.
         # Both Sat and Unsat carry notes; documentation, never a verdict.
         for note in case.expectation.notes:
             print(f"    note: {legible(note)}")
 
-    def planned(self, case_plan: CasePlan) -> None:
+    def case_planned(self, case_plan: CasePlan) -> None:
         for plan in case_plan.runs:
             projects = "yes" if plan.projects_to_shown else "no"
             print(f"    {plan.mode.name} (projects: {projects}):")
@@ -503,7 +517,7 @@ class _TerminalPlan(_Terminal):
                 reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
                 print(f"        {name} — reads {{{reads}}}")
 
-    def undecided(self, record: ErrorRecord) -> None:
+    def case_unjudged(self, record: ErrorRecord) -> None:
         # Indented under the case the narration has already named, and it names the file again
         # because it goes to the other stream: a reader who has only that one is owed it.
         #
@@ -513,11 +527,11 @@ class _TerminalPlan(_Terminal):
         # answered "elenctic's own fault" to whatever it was handed would one day tell an author
         # their corpus is a harness bug. Filing a fault as the wrong owner is a defect this project
         # has shipped twice.
-        if (line := _undecided_line(record)) is not None:
+        if (line := _unjudged_line(record)) is not None:
             print(f"    {line}", file=sys.stderr)
 
 
-def _undecided_line(record: ErrorRecord) -> str | None:
+def _unjudged_line(record: ErrorRecord) -> str | None:
     """What a reader is told about one case that produced no verdict — or ``None`` where the report
     says it once at the end instead.
 

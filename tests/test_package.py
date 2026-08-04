@@ -119,21 +119,24 @@ def test_the_package_alone_does_everything_the_console_entry_does(tmp_path: Path
     )
     watched: list[str] = []
 
-    class Watching:
-        def unusable(self, record: elenctic.ErrorRecord) -> None:
-            watched.append(f"unusable {record.kind.value}")
+    # Inherited, which is what gives the announcements this one does not care about a body that
+    # does nothing. An implementation that inherits nothing is checked structurally and has to
+    # supply every member — a protocol's default body is inherited, never conjured.
+    class Watching(elenctic.RunObserver):
+        def case_started(self, case: elenctic.Case) -> None:
+            watched.append(f"started {case.contract_source.name}")
 
-        def undecided(self, record: elenctic.ErrorRecord) -> None:
-            watched.append(f"undecided {record.kind.value}")
-
-        def decided(self, outcome: elenctic.CaseOutcome) -> None:
-            watched.append(f"decided {outcome.verdict.value}")
+        def case_judged(self, outcome: elenctic.CaseOutcome) -> None:
+            watched.append(f"judged {outcome.verdict.value}")
 
     invocation = elenctic.Invocation(target=tmp_path, strict=False, budget=30.0, deadline=None)
     outcome = elenctic.run_corpus(invocation, observer=Watching())
     document = elenctic.as_json(outcome, invocation)
 
-    assert watched == ["decided pass"], "the run was watched as it went, not only at the end"
+    assert watched == ["started case.lp", "judged pass"], (
+        "the run was watched as it went, not only at the end — and a case is announced as it "
+        "is taken up, which is what a caller showing progress on a long run needs"
+    )
     assert elenctic.exit_status(outcome) == elenctic.ExitStatus.OK
     assert document["summary"] == {
         "total": 1,

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]  # [project] license-files (PEP 639) needs it
 build-backend = "hatchling.build"
 
 [project]
@@ -16,11 +16,21 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",  # the discoverability half of shipping py.typed
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Testing",
 ]
 dependencies = ["clingo>=5.8"]  # honest runtime dep; clingo is on conda-forge AND PyPI (no PyPI-only dep)
+
+[project.urls]
+# Two of elenctic's own diagnostics ask a reader to report a fault, and until these were here there
+# was nowhere in the package, on its index page, or in its metadata that said where to.
+Homepage = "https://github.com/GregoryGelfond/elenctic"
+Repository = "https://github.com/GregoryGelfond/elenctic"
+Issues = "https://github.com/GregoryGelfond/elenctic/issues"
+Changelog = "https://github.com/GregoryGelfond/elenctic/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 theory = ["clingcon>=5.2.1"]  # the theory fragment (@assign, CSP @count); conda-forge-primary
