@@ -16,7 +16,7 @@ import pytest
 
 from elenctic import cli
 from elenctic.checks import CheckReport
-from elenctic.cli import main
+from elenctic.cli import ExitStatus, main
 from elenctic.discovery import Case
 from elenctic.harness import run_case
 from elenctic.outcome import ErrorKind, RunOutcome, Scope
@@ -44,7 +44,9 @@ def test_running_out_of_memory_is_reported_as_an_error_not_a_traceback(
     monkeypatch.setattr(cli, "run_case", out_of_memory)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
-    assert status == 2, "a resource run out of is the error register, never a verdict"
+    assert status == ExitStatus.USER_FAULT, (
+        "a resource run out of is the error register, never a verdict"
+    )
     assert "Traceback" not in captured.err
     assert "memory" in captured.err.lower()
 
@@ -66,7 +68,9 @@ def test_a_case_that_runs_out_of_memory_costs_only_its_own_result(
     monkeypatch.setattr(cli, "run_case", greedy)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
-    assert status == 2, "a resource the run used up is the error register, never a verdict"
+    assert status == ExitStatus.USER_FAULT, (
+        "a resource the run used up is the error register, never a verdict"
+    )
     assert "greedy.lp" in captured.err, "the reader has to be told which case it was"
     assert "2/3 passed, 1 could not be run" in captured.out, (
         "the other two cases keep their results, and the one that did not run is accounted for"
@@ -87,7 +91,7 @@ def test_memory_run_out_of_outside_a_case_is_still_reported(
     monkeypatch.setattr(cli, "inspect_corpus", out_of_memory)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert "Traceback" not in captured.err
     assert "memory" in captured.err.lower()
 
@@ -106,7 +110,9 @@ def test_an_unexpected_fault_is_framed_as_an_elenctic_bug(
     monkeypatch.setattr(cli, "run_case", unexpected)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
-    assert status == 3, "elenctic's own register, apart from the faults a user can fix"
+    assert status == ExitStatus.HARNESS_FAULT, (
+        "elenctic's own register, apart from the faults a user can fix"
+    )
     assert "elenctic" in captured.err.lower(), "the user must be told whose fault this is"
     assert "ZeroDivisionError" in captured.err, "the cause is still reported, not swallowed"
 
@@ -132,7 +138,7 @@ def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_stat
 
     monkeypatch.setattr(cli, "run_case", unexpected)
     monkeypatch.setattr(cli, "exit_status", watched)
-    assert main([str(tmp_path)]) == 3
+    assert main([str(tmp_path)]) == ExitStatus.HARNESS_FAULT
     capsys.readouterr()
     (outcome,) = filed
     (record,) = outcome.errors

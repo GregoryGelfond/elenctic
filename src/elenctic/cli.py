@@ -12,15 +12,13 @@ plan: it narrates the derived runs (mode + checks) per case without solving, the
 moves every diagnostic to standard error, so that nothing a consumer's parser would choke on lands
 beside the document; ``--print-schema`` describes that document's shape without running anything.
 
-Exit status separates the outcome registers: ``0`` all cases pass; ``1`` some case FAILed or is
-UNDECIDED (a statement about a program under test); ``2`` a fault the user can fix — a command line
-that cannot be run, a bad contract, a mis-shaped corpus, a program that cannot be run, a declared
-solver this environment does not have, a case that ran out of memory, a run that passed its
-deadline, a corpus-health observation under ``--strict``, or a copy of elenctic carrying the modules
-and not the packaged description — and ``3`` an elenctic bug, which
-outranks the rest because a harness wrong about one case is evidence about every other. The two
-error levels ask different things of the reader, which is why they are not one: ``2`` is a corpus to
-attend to, ``3`` is a bug to report. Neither is ever a verdict. A case that cannot be run does not
+Exit status separates the outcome registers, and :class:`ExitStatus` is where the rungs and what
+each means are written — once, and rendered from there into ``--help``, rather than restated here
+in words that could come to differ. What belongs here is why the ladder has the shape it does: the
+two error levels ask different things of the reader, which is why they are not one — ``2`` is a
+corpus to attend to and ``3`` is a bug to report — and ``3`` outranks everything because a harness
+wrong about one case is evidence about every other. Neither is ever a verdict, and a verdict is
+never dressed as either. A case that cannot be run does not
 stop the others: it is reported in its own register and the run continues, so one broken encoding
 never costs the run every other case's result. This is the runner elenctic ships; a consumer wanting
 elenctic's results inside a test runner of their own drives ``harness.run_case`` per case instead,
@@ -30,9 +28,11 @@ and this module is then one example of what to build rather than the only way in
 import argparse
 import os
 import sys
+import textwrap
 import traceback
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from enum import IntEnum
 from pathlib import Path
 from time import monotonic
 from typing import assert_never
@@ -133,22 +133,86 @@ _NO_MACHINE_READABLE_DRY_RUN = (
     "and get the report."
 )
 
-# What the run leaves with, which is the whole of what a script reads and the one thing argparse
-# never volunteers. Written as a table and kept out of the wrapper for that reason; the gloss beside
-# each number is the part a reader needs, since the numbers alone still have to be interpreted, and
-# which numbers appear here is checked against ``exit_status`` rather than against this list.
-_EXIT_STATUS_HELP = """\
-exit status:
-  0  every case passed
-  1  a case decided wrong, or could not be decided
-  2  a fault you can fix: a bad contract, a mis-shaped corpus, a program that
-     will not ground, a case that ran out of memory or that the deadline never
-     reached, or corpus hygiene this run graded an error
-  3  a fault in elenctic itself, which outranks every other signal
 
-A command line elenctic cannot run is refused before anything is discovered:
-the reason goes to standard error, standard output stays empty, and the status
-is 2. So a report is either whole or absent, never half written."""
+class ExitStatus(IntEnum):
+    """What the process leaves with — the closed ladder, the first rung that applies winning.
+
+    The last closed vocabulary in this package to be spelled as bare integers. The others are named
+    types, and a reader who has met ``Grade`` or ``Verdict`` expects this one to be a type too; more
+    to the point, the number-to-meaning mapping was written out in six places and one of them was
+    checked, which is the shape every other rule here is arranged to avoid.
+
+    An ``IntEnum`` rather than an ``Enum``, because the value has to survive leaving the process. It
+    *is* an ``int``: ``sys.exit`` takes it, a caller comparing against a literal is unaffected, and
+    the number a shell sees is unchanged. One consequence for anything reading a status back from a
+    child process: what comes back is a bare ``int`` and not a member, so a status is compared with
+    ``==`` and never with ``is`` — identity would hold in process and fail across one, which is the
+    worst shape a comparison can have.
+
+    ``gloss`` is the sentence ``--help`` prints for the rung, and it lives on the member so that the
+    ladder and its explanation cannot come apart. The help is rendered from this rather than written
+    beside it, so a number the ladder does not return has nowhere to be documented and a gloss
+    cannot drift onto the wrong rung.
+    """
+
+    gloss: str
+
+    def __new__(cls, value: int, gloss: str) -> ExitStatus:
+        member = int.__new__(cls, value)
+        member._value_ = value
+        member.gloss = gloss
+        return member
+
+    # "nothing went wrong" rather than "every case passed": a dry run decides nothing and leaves
+    # with this, and so does a corpus that held no cases. Both are vacuously right, and neither
+    # passed anything — a reader who ran --explain and looked the status up deserves better than
+    # being told every case passed.
+    OK = (0, "nothing went wrong")
+    NOT_PASSED = (1, "a case decided wrong, or could not be decided")
+    # The declared solver belongs in this list and was missing from it. It is the likeliest 2 a real
+    # user meets — the theory solver is an optional extra, so every case declaring it fails on a
+    # machine without it — and it was named in a module docstring the user never reads.
+    USER_FAULT = (
+        2,
+        "a fault you can fix: a command line that cannot be used, a bad contract, a mis-shaped "
+        "corpus, a declared solver this environment does not have, a program that will not ground, "
+        "a case that ran out of memory or that the deadline never reached, or corpus hygiene this "
+        "run graded an error",
+    )
+    HARNESS_FAULT = (3, "a fault in elenctic itself, which outranks every other signal")
+
+
+# The width the ladder is wrapped to. The epilog is printed as it is written — argparse reflows a
+# description and this formatter does not — so the wrapping happens here, over the glosses, rather
+# than by hand in a string where a longer sentence would silently break the column a reader follows.
+_HELP_WIDTH = 79
+
+
+def _exit_status_help() -> str:
+    """The exit-status table, rendered from the ladder rather than written beside it.
+
+    What the run leaves with is the whole of what a script reads and the one thing argparse never
+    volunteers. The ordering is precedence and not severity, which is worth saying outright: four
+    ascending integers read as a severity scale, and on that reading a mis-shaped corpus would be
+    worse than a refuted contract, which is not what the numbers mean.
+    """
+    rungs = "\n".join(
+        textwrap.fill(
+            status.gloss,
+            width=_HELP_WIDTH,
+            initial_indent=f"  {status.value}  ",
+            subsequent_indent="     ",
+        )
+        for status in ExitStatus
+    )
+    refusal = textwrap.fill(
+        "A command line elenctic cannot parse or use is refused before anything is discovered: "
+        "the reason goes to standard error, standard output stays empty, and the status is "
+        f"{ExitStatus.USER_FAULT.value}. So a report is either whole or absent, never half "
+        "written.",
+        width=_HELP_WIDTH,
+    )
+    return f"exit status, the first rung that applies:\n{rungs}\n\n{refusal}"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -162,7 +226,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="elenctic",
         description="Run a corpus of @-contracts over Answer Set Programs.",
-        epilog=_EXIT_STATUS_HELP,
+        epilog=_exit_status_help(),
         # The ladder is a table, and the default formatter would reflow it into a paragraph. Only
         # the description and the epilog are left alone by this one; each option's help is still
         # wrapped to the terminal, which is what a reader wants of a sentence and not of a table.
@@ -230,7 +294,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> ExitStatus:
     """Run the ``elenctic`` CLI; return the process exit status (0 pass / 1 fail or undecided /
     2 a fault in the corpus / 3 an elenctic bug).
 
@@ -252,7 +316,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # parser itself does with a flag it cannot read, and a machine consumer meets one thing
         # rather than two.
         print(f"usage error: {refusal}", file=sys.stderr)
-        return 2
+        return ExitStatus.USER_FAULT
     # Settled above the guarded region rather than inside it, because a handler down there reports
     # a run that produced nothing else, and a machine-readable report has to say what the run was
     # asked to do. Neither step can fail here, and for the two flags that could the reason is
@@ -342,7 +406,7 @@ def _refusal(args: argparse.Namespace) -> str | None:
     return None
 
 
-def _print_schema() -> int:
+def _print_schema() -> ExitStatus:
     """Write the description of the machine-readable report, and say so if this copy has none.
 
     Answered from the package alone, so it is answered before anything is looked for on disk:
@@ -360,7 +424,7 @@ def _print_schema() -> int:
         print(f"environment error: {_SCHEMA_UNREADABLE}", file=sys.stderr)
         return exit_status(_fault_outcome(ErrorKind.DISCOVERY, _SCHEMA_UNREADABLE))
     _publish(description)
-    return 0
+    return ExitStatus.OK
 
 
 def _publish(document: str) -> None:
@@ -478,8 +542,8 @@ def _record_discovered(
     return unrunnable, _hygiene_records(corpus.hygiene, strict=strict)
 
 
-def exit_status(outcome: Outcome) -> int:
-    """The process status for a completed invocation, highest signal winning.
+def exit_status(outcome: Outcome) -> ExitStatus:
+    """The process status for a completed invocation, the first rung that applies winning.
 
     ``3`` an elenctic bug — a harness that is wrong about one case is evidence about every other, so
     it puts the whole run's verdicts in doubt and outranks them all; ``2`` a fault the user can fix,
@@ -499,14 +563,15 @@ def exit_status(outcome: Outcome) -> int:
     which is how a run comes to print one thing and return another.
     """
     if any(error.kind.is_elenctic_bug for error in outcome.errors):
-        return 3
+        return ExitStatus.HARNESS_FAULT
     if outcome.errors or any(record.grade is Grade.ERROR for record in outcome.hygiene):
-        return 2
+        return ExitStatus.USER_FAULT
     match outcome:
         case RunOutcome():
-            return 1 if any(case.verdict is not Verdict.PASS for case in outcome.cases) else 0
+            undecided = any(case.verdict is not Verdict.PASS for case in outcome.cases)
+            return ExitStatus.NOT_PASSED if undecided else ExitStatus.OK
         case PlanOutcome():
-            return 0
+            return ExitStatus.OK
         case unreachable:
             assert_never(unreachable)
 

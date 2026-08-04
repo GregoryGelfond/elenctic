@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -17,7 +18,9 @@ from elenctic.result import Conclusion, Determination, SolveOutcome
 
 __all__ = [
     "Streams",
+    "a_clock_the_deadline_has_already_passed_on",
     "child_environment",
+    "cli_help_section",
     "cli_help_sections",
     "cli_help_text",
     "decided",
@@ -154,6 +157,24 @@ def cli_help_text() -> str:
     return written.getvalue()
 
 
+def a_clock_the_deadline_has_already_passed_on(deadline: float) -> Callable[[], float]:
+    """A monotonic clock that says ``deadline`` seconds went by between starting the run and
+    reaching the first case.
+
+    The deadline is a duration rather than an instant, so forcing one to have passed means
+    controlling the clock and not the number: an invocation refuses a zero on the same footing as
+    the published description of the document does, so there is no number that has already elapsed
+    when the first case is reached, and asking for one short enough would make the test a race
+    against how long two statements take.
+
+    The second reading is the deadline itself rather than a number past it, because that is the
+    point the run branches at — a reading safely beyond it would pass under either comparison and
+    say nothing about which one the code makes.
+    """
+    readings = iter((0.0, deadline))
+    return lambda: next(readings, deadline)
+
+
 def cli_help_sections() -> dict[str, list[str]]:
     """``--help`` split at its headings: each heading mapped to the lines filed under it.
 
@@ -164,12 +185,49 @@ def cli_help_sections() -> dict[str, list[str]]:
     """
     filed: dict[str, list[str]] = {}
     under: list[str] = []
-    for line in cli_help_text().splitlines():
-        if line and not line[0].isspace() and line.rstrip().endswith(":"):
+    lines = cli_help_text().splitlines()
+    for index, line in enumerate(lines):
+        if (
+            line
+            and not line[0].isspace()
+            and line.rstrip().endswith(":")
+            and _indented_next(lines, index)
+        ):
             under = filed.setdefault(line.rstrip().removesuffix(":"), [])
         else:
             under.append(line)
     return filed
+
+
+def cli_help_section(prefix: str) -> list[str]:
+    """The lines under the one ``--help`` heading beginning with ``prefix``.
+
+    By prefix rather than by exact title, so that a heading may say more about itself without every
+    reader of it having to be told. Exactly one must match: a prefix answering to two headings is a
+    reading that would silently pick whichever came first.
+    """
+    matched = {
+        heading: lines
+        for heading, lines in cli_help_sections().items()
+        if heading.startswith(prefix)
+    }
+    assert len(matched) == 1, f"{prefix!r} matched {sorted(matched)}"
+    return next(iter(matched.values()))
+
+
+def _indented_next(lines: list[str], index: int) -> bool:
+    """Whether the next line with anything on it is indented under ``lines[index]``.
+
+    What tells a heading from a sentence that happens to end in a colon. Without it, a paragraph of
+    prose introducing a list — which is a shape English produces constantly — is read as a heading,
+    and everything after it is filed away from the section it belongs to. That is not hypothetical:
+    it is how the one paragraph saying what a refused command line returns came to sit outside the
+    section a test reads to check those numbers.
+    """
+    return next(
+        (line.startswith(" ") for line in lines[index + 1 :] if line.strip()),
+        False,
+    )
 
 
 def document_of(streams: Streams) -> dict[str, Any]:

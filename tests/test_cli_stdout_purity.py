@@ -18,7 +18,7 @@ import sys
 
 import pytest
 
-from elenctic.cli import _stdout_to_stderr
+from elenctic.cli import ExitStatus, _stdout_to_stderr
 
 
 def _lowest_free_descriptor() -> int:
@@ -153,7 +153,7 @@ def _streams_of(child: str) -> tuple[str, str]:
         text=True,
         check=False,
     )
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == ExitStatus.OK, result.stderr
     return result.stdout, result.stderr
 
 

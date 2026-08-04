@@ -375,7 +375,7 @@ def check_program(
         )
     if expectation.cost is not None and facts.has_maximize:
         raise DiscoveryError(
-            f"{where}: @cost over a #maximize objective is not supported in v1 — clingo reports a "
+            f"{where}: @cost over a #maximize objective is not supported — clingo reports a "
             "maximize cost in negated form, and natural-value normalisation is deferred. Use "
             "#minimize, or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
         )
@@ -401,7 +401,7 @@ def _contraries_needed(query: Query) -> frozenset[tuple[str, int]]:
       ⋃/⋂, so an unshown ``-q`` would under-compute it), or ``no`` with a **non-empty** set (an
       empty ``no`` set is vacuously satisfiable without ``-q``: the "non-empty" carve-out).
 
-    A ``yes`` query reads only the positive literal, covered by the (deferred) shown-vocabulary
+    A ``yes`` query reads only the positive literal, covered by no rule this version
     precondition, not this rule. Keyed by full ``(name, arity)`` signature, so a contrary
     ``#show``n at the wrong arity is caught loud rather than silently unobservable."""
     match query:

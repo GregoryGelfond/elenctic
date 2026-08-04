@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from elenctic import cli, discovery
-from elenctic.cli import exit_status, explain_corpus, main, run_corpus
+from elenctic.cli import ExitStatus, exit_status, explain_corpus, main, run_corpus
 from elenctic.outcome import (
     ErrorKind,
     Grade,
@@ -27,6 +27,7 @@ from elenctic.result import Verdict
 from elenctic.run import RoutingError
 from elenctic.run import runs_for as real_runs_for
 from elenctic.solvers import TIME_BUDGET
+from support import a_clock_the_deadline_has_already_passed_on
 
 _PASSES = "% @expect sat\n% @count 2\n\n1 { tea; coffee } 1.\n#show tea/0.\n#show coffee/0.\n"
 _WILL_NOT_GROUND = "% @expect sat\n% @count 1\n\nq(1).\np(X) :- q(Y).\n"
@@ -136,11 +137,10 @@ def test_a_case_the_deadline_did_not_reach_is_filed_against_that_case(
     # the same footing as the published description of the document does. This says the same thing
     # the zero used to say — the deadline is past before the first case is dispatched — without
     # asking for an invocation nothing is allowed to build.
-    readings = iter((0.0, 3600.0))
-    monkeypatch.setattr(cli, "monotonic", lambda: next(readings, 3600.0))
+    monkeypatch.setattr(cli, "monotonic", a_clock_the_deadline_has_already_passed_on(600.0))
     target = _corpus(tmp_path, first=_PASSES, second=_PASSES)
     outcome = run_corpus(_asked(target, deadline=600.0))
-    assert outcome.cases == (), "an hour went by before the first case, against a ten-minute limit"
+    assert outcome.cases == (), "the clock reads the deadline exactly, which is where it is reached"
     assert len(outcome.errors) == 2, "one record per case, so a case cannot be filed twice"
     assert {record.kind for record in outcome.errors} == {ErrorKind.DEADLINE}
     assert {record.scope for record in outcome.errors} == {Scope.CASE}
@@ -257,7 +257,9 @@ def test_the_dry_run_records_the_plan_it_could_not_build(
     assert record.kind is ErrorKind.HARNESS
     assert record.scope is Scope.CASE
     assert record.source == target / "bad.lp"
-    assert exit_status(outcome) == 3, "and one status function ranks it, in either mode"
+    assert exit_status(outcome) == ExitStatus.HARNESS_FAULT, (
+        "and one status function ranks it, in either mode"
+    )
 
 
 def test_a_dry_run_on_an_undiscoverable_corpus_records_the_fault_too(tmp_path: Path) -> None:
@@ -268,7 +270,7 @@ def test_a_dry_run_on_an_undiscoverable_corpus_records_the_fault_too(tmp_path: P
     (record,) = outcome.errors
     assert record.kind is ErrorKind.DISCOVERY
     assert record.scope is Scope.CORPUS
-    assert exit_status(outcome) == 2, "a corpus to fix, in either mode"
+    assert exit_status(outcome) == ExitStatus.USER_FAULT, "a corpus to fix, in either mode"
 
 
 def test_the_dry_run_hands_back_the_plans_it_derived(
@@ -283,7 +285,9 @@ def test_the_dry_run_hands_back_the_plans_it_derived(
     (plan,) = outcome.plans
     assert plan.case.contract_source == target / "good.lp"
     assert plan.runs, "a case that planned successfully planned to something"
-    assert exit_status(outcome) == 0, "a dry run decides nothing, so nothing can be decided wrong"
+    assert exit_status(outcome) == ExitStatus.OK, (
+        "a dry run decides nothing, so nothing can be decided wrong"
+    )
 
 
 def test_every_case_a_dry_run_meets_reaches_exactly_one_register(

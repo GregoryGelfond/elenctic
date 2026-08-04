@@ -50,6 +50,7 @@ __all__ = [
     "RunOutcome",
     "Scope",
     "error_kind",
+    "is_duration",
     "summary",
 ]
 
@@ -213,21 +214,41 @@ class HygieneRecord:
     message: str
 
 
-def is_duration(seconds: float) -> bool:
+def is_duration(seconds: float | None) -> bool:
     """Whether ``seconds`` is a length of time elenctic can be asked for: positive and finite.
 
     Positive because zero and the negatives are not lengths of time — a zero budget asks for a
     solve that has already run out, and there is no reading at all for a negative one. Finite
     because an infinity and a NaN have no JSON form, so a report carrying either could not be read
-    by the consumer it was written for.
+    by the consumer it was written for. Total over absence as well: ``None`` is not a duration,
+    because absence is not a length of time. Answering that rather than raising is what lets a
+    caller ask the question of a value they have not checked, which is the only way to ask it that
+    is worth anything.
 
-    One predicate rather than one per site. The rule holds in three places — this record, the
-    command line's refusal, and the description elenctic publishes for its output — and a rule
-    written out three times is how two of them come to disagree. The *sentences* stay separate,
-    because the reader who typed a flag and the reader who called a constructor need different
-    remedies; only the question is shared.
+    One predicate rather than one per site. The rule holds in four places — this record, the
+    command line's refusal, the range constraint in the description elenctic publishes for its
+    output, and the encoder that writes the document, which is what refuses an infinity where a
+    range constraint cannot reach one. A rule written out four times is how two of them come to
+    disagree; the *sentences* stay separate, because the reader who typed a flag and the reader who
+    called a constructor need different remedies, and only the question is shared.
     """
-    return math.isfinite(seconds) and seconds > 0
+    return seconds is not None and math.isfinite(seconds) and seconds > 0
+
+
+def _not_a_duration(field: str, seconds: float | None) -> str:
+    """What to say to a caller who built a record naming a duration that is not one.
+
+    Addressed to whoever called the constructor, and so different from what the command line says
+    to whoever typed a flag: there is no flag to leave off here, and the reason the value cannot
+    stand is that a report of this run would not answer to the account elenctic publishes for it.
+    """
+    given = "no budget at all" if seconds is None else str(seconds)
+    return (
+        f"{field} is a length of time in seconds, so it is positive and finite, and this "
+        f"invocation was built with {given}. An invocation says what a run was asked to do, and "
+        f"elenctic's published description of its output states {field} as a positive finite "
+        f"number — so a report of this run would contradict the account it is published under."
+    )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -253,18 +274,16 @@ class Invocation:
     deadline: float | None
 
     def __post_init__(self) -> None:
-        for flag, seconds in (("budget", self.budget), ("deadline", self.deadline)):
-            # An absent deadline is the default and the commonest invocation there is; refusing it
-            # would make the ordinary run the unrepresentable one. A budget has no such spelling —
-            # there is no way to ask for no per-solve limit — so None never reaches it.
-            if seconds is not None and not is_duration(seconds):
-                raise ValueError(
-                    f"{flag} is a length of time in seconds, so it is positive and finite, and "
-                    f"this invocation was built with {seconds}. An invocation says what a run was "
-                    f"asked to do, and elenctic's published description of its output states "
-                    f"{flag} as positive and finite — so a report of this run would contradict "
-                    f"the account it is published under."
-                )
+        # The two are checked apart rather than in one loop, because they differ in exactly one way
+        # and it is this: a run with no deadline leaves the flag off, while there is no way to ask
+        # for no per-solve budget at all. So absence is a value for one and not for the other, and
+        # a guard that treated them alike would let a null into the field the published description
+        # types as a number — the shape this guard exists to prevent, surviving in the one place it
+        # was not looked for.
+        if not is_duration(self.budget):
+            raise ValueError(_not_a_duration("budget", self.budget))
+        if self.deadline is not None and not is_duration(self.deadline):
+            raise ValueError(_not_a_duration("deadline", self.deadline))
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

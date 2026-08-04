@@ -51,9 +51,27 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
     """Run ``case`` to its check reports (impure via ``solvers.solve``): for each derived run, solve
     under ``budget`` and apply the run's checks. Output order follows ``runs_for`` (deterministic).
     ``theory_in_force`` is fixed once at the boundary as the case's solver being a theory solver
-    (clingcon), then flows as a property into the per-run projection decision. A misrouted plan
-    raises a ``RoutingError`` (``HarnessError``) from ``runs_for`` — propagated to the runner as a
-    harness error, never a verdict."""
+    (clingcon), then flows as a property into the per-run projection decision.
+
+    **What it raises, which is the caller's whole job to handle.** A case that cannot be run does
+    not come back as a verdict — there is no verdict to be had — so it leaves by raising, and a
+    runner catching one family and not the others loses the corpus on the first case meeting
+    another. Four families reach a caller, each saying something different about whose fault it is:
+
+    - :class:`~elenctic.program.ProgramError` — the program under test will not ground, or an
+      ``#include`` will not resolve. The corpus author fixes the ``.lp``.
+    - :class:`~elenctic.discovery.DiscoveryError` — a discovery-time precondition this case fails.
+      Its subclass ``SolverUnavailableError`` is the common one and is worth heading off: call
+      ``discovery.check_solver_available`` per case before running, which is what turns "this
+      machine has no clingcon" into a report about that case rather than an exception midway.
+    - ``MemoryError`` — the machine ran out. Nothing about the encoding is wrong, and the frame that
+      can bound what a case consumes is the one that started it.
+    - :class:`~elenctic.result.HarnessError` — including ``RoutingError`` from ``runs_for``, raised
+      at plan construction before any solving. An elenctic bug, never a statement about the program.
+
+    The first three cost that case its verdict and no other's; the last is evidence about every
+    case in the run. ``elenctic.cli`` catches all four per case and files each as an
+    :class:`~elenctic.outcome.ErrorRecord`, which is the shape a runner of your own wants too."""
     theory_in_force = provides_theory(case.solver)
     reports: list[CheckReport] = []
     for run in runs_for(case.expectation, theory_in_force):

@@ -13,6 +13,7 @@ all from what the document carries.
 from pathlib import Path
 from typing import Any
 
+from elenctic.cli import ExitStatus
 from elenctic.result import Verdict
 from support import document_of, run_cli
 
@@ -148,7 +149,9 @@ def test_a_broken_program_is_never_drawn_as_a_failing_contract(tmp_path: Path) -
     # names the file either way, which is what an editor needs in order to place anything at all.
     assert error["scope"] == "corpus"
     assert document["summary"]["total"] == 0
-    assert streams.status == 2, "a fault its author can fix, distinct from an elenctic bug at 3"
+    assert streams.status == ExitStatus.USER_FAULT, (
+        "a fault its author can fix, distinct from an elenctic bug at 3"
+    )
 
 
 def test_the_mapping_is_total_over_the_verdicts_it_must_draw() -> None:

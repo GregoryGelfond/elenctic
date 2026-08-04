@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from elenctic import cli
-from elenctic.cli import main
+from elenctic.cli import ExitStatus, main
 from elenctic.run import RoutingError
 from elenctic.run import runs_for as real_runs_for
 
@@ -20,7 +20,7 @@ def write(path: Path, text: str) -> Path:
 def test_cli_passes_a_satisfied_corpus(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
     status = main([str(tmp_path / "encodings")])
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "1/1 passed" in capsys.readouterr().out
 
 
@@ -31,7 +31,7 @@ def test_cli_fails_a_violated_corpus(tmp_path: Path, capsys: pytest.CaptureFixtu
         "a. #show a/0. #show b/0.\n% @expect sat\n% @cautious { b }\n",
     )
     status = main([str(tmp_path / "encodings")])
-    assert status == 1
+    assert status == ExitStatus.NOT_PASSED
     assert "FAIL" in capsys.readouterr().out
 
 
@@ -42,7 +42,7 @@ def test_cli_reports_a_malformed_contract_against_its_own_file_with_exit_2(
     # it is named and the other cases still run. Still the error register (2), never a verdict.
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @model { a }\n")  # no @expect
     status = main([str(tmp_path / "encodings")])
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     err = capsys.readouterr().err
     assert "CASE ERROR" in err
     assert "e.lp" in err
@@ -54,7 +54,7 @@ def test_cli_reports_a_corpus_error_with_exit_2(
     # The register above is per file; this one is genuinely about the corpus. A named target that
     # does not exist tests nothing, and there is no file to attribute it to.
     status = main([str(tmp_path / "no_such_directory")])
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert "corpus error" in capsys.readouterr().err
 
 
@@ -64,7 +64,7 @@ def test_cli_explain_narrates_the_plan_without_solving(
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @cautious { a }\n")
     status = main([str(tmp_path / "encodings"), "--explain"])
     out = capsys.readouterr().out
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "CAUTIOUS_ALL (projects: no):" in out  # the run, its projection decision
     # the check, the claim it judges, and the fields it reads. The claim is named because a
     # contract may repeat the tag, and two claims a reader cannot tell apart explain nothing.
@@ -75,7 +75,7 @@ def test_cli_runs_the_krbook_dogfood_corpus(capsys: pytest.CaptureFixture[str]) 
     # the vendored Gelfond programs pass end-to-end through the real console entry.
     krbook = Path(__file__).parent / "krbook" / "encodings"
     status = main([str(krbook)])
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "4/4 passed" in capsys.readouterr().out
 
 
@@ -96,7 +96,9 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
     monkeypatch.setattr(cli, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings")])
     captured = capsys.readouterr()
-    assert status == 3  # a harness error, not a verdict and not a corpus to fix
+    assert (
+        status == ExitStatus.HARNESS_FAULT
+    )  # a harness error, not a verdict and not a corpus to fix
     assert "HARNESS ERROR" in captured.err and "bad" in captured.err  # the misrouted case named
     assert "1/2 passed" in captured.out  # the good case still ran and passed
     assert "1 harness error" in captured.out
@@ -120,7 +122,7 @@ def test_cli_explain_narrates_reads_and_the_projection_decision(
     )
     status = main([str(tmp_path / "encodings"), "--explain"])
     out = capsys.readouterr().out
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "reads {shown census}" in out  # @model narrates its read token
     assert "projects: yes" in out  # the shown-only run projects
     assert "reads {full census}" in out  # @count narrates the full token
@@ -142,7 +144,7 @@ def test_cli_explain_leads_with_the_note_gloss(
     )
     status = main([str(case), "--explain"])
     out = capsys.readouterr().out
-    assert status == 0
+    assert status == ExitStatus.OK
     first = out.index("note: feasible within budget")
     second = out.index("note: and within the deadline")
     assert first < second  # author order preserved
@@ -158,7 +160,7 @@ def test_cli_explain_glosses_an_unsat_note(
         tmp_path / "u.lp", "% @expect unsat\n% @note no schedule fits the budget\na :- not a.\n"
     )
     status = main([str(case), "--explain"])
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "no schedule fits the budget" in capsys.readouterr().out
 
 
@@ -180,7 +182,9 @@ def test_the_dry_run_reports_a_misroute_it_meets_and_names_the_case(
     monkeypatch.setattr(cli, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings"), "--explain"])
     captured = capsys.readouterr()
-    assert status == 3, "a plan that cannot be built is a harness error, never a clean dry run"
+    assert status == ExitStatus.HARNESS_FAULT, (
+        "a plan that cannot be built is a harness error, never a clean dry run"
+    )
     assert "HARNESS ERROR" in captured.err
     assert "bad" in captured.err, "standard error names the case on its own"
 
@@ -196,7 +200,9 @@ def test_the_dry_run_reports_a_file_it_could_not_use_and_still_narrates_the_rest
     write(tmp_path / "encodings/bad/e.lp", '% @expect sat\n#include "no_such_library.lp".\n')
     status = main([str(tmp_path / "encodings"), "--explain"])
     captured = capsys.readouterr()
-    assert status == 2, "a file that will produce no verdict is a fault the author can fix"
+    assert status == ExitStatus.USER_FAULT, (
+        "a file that will produce no verdict is a fault the author can fix"
+    )
     assert "CASE ERROR" in captured.err and "no_such_library.lp" in captured.err
     assert "@model" in captured.out, "the case that could be planned is still planned"
 
@@ -222,7 +228,7 @@ def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
     )
     status = main([str(tmp_path / "encodings"), *flags])
     captured = capsys.readouterr()
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "passed" not in captured.out, "a dry run reports a plan, never a score"
 
 
@@ -266,7 +272,9 @@ def test_a_duration_that_is_not_a_positive_finite_number_of_seconds_is_refused(
     status = main([str(tmp_path / "encodings"), flag, value])
 
     captured = capfd.readouterr()
-    assert status == 2, "a command line that cannot be run is a fault its author can fix"
+    assert status == ExitStatus.USER_FAULT, (
+        "a command line that cannot be run is a fault its author can fix"
+    )
     assert captured.out == "", "and it produced no run, so there is nothing to report about one"
     assert captured.err.startswith("usage error: "), "filed where the reader's own mistakes are"
     assert flag in captured.err, "the diagnostic names the flag that was wrong"
@@ -292,7 +300,7 @@ def test_the_remedy_a_refused_duration_offers_is_the_one_that_flag_has(
     # is exactly the reader for whom the wrong remedy is worse than none.
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
 
-    assert main([str(tmp_path / "encodings"), flag, "0"]) == 2
+    assert main([str(tmp_path / "encodings"), flag, "0"]) == ExitStatus.USER_FAULT
 
     assert remedy in capfd.readouterr().err
 
@@ -306,5 +314,5 @@ def test_a_large_finite_duration_is_the_remedy_and_is_accepted(
 
     status = main([str(tmp_path / "encodings"), "--budget", "1e9", "--deadline", "1e9"])
 
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "1/1 passed" in capfd.readouterr().out

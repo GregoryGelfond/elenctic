@@ -10,7 +10,7 @@ import pytest
 
 from elenctic import cli, discovery
 from elenctic.checks import CheckReport
-from elenctic.cli import main
+from elenctic.cli import ExitStatus, main
 from elenctic.discovery import Case
 from elenctic.harness import run_case
 from elenctic.result import SeamError
@@ -38,7 +38,7 @@ def test_an_ungroundable_case_exits_as_an_error_not_a_verdict(
     captured = capsys.readouterr()
     # An error register, not a verdict: 1 would claim the case was tested and decided wrong.
     # 2 rather than 3 because the program under test is the author's to fix, not elenctic's.
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert "Traceback" not in captured.err
     # The author needs the offending line and the cause, not a summary that grounding stopped.
     assert "unsafe" in captured.err
@@ -52,7 +52,7 @@ def test_an_ungroundable_case_does_not_cost_the_other_cases_their_results(
     # results went with it — including the summary line — and stdout came back empty.
     status = main([_corpus(tmp_path, aaa_good=_GOOD, zzz_broken=_UNSAFE)])
     captured = capsys.readouterr()
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert "passed" in captured.out, "the summary of the cases that ran must survive"
     assert "1/2 passed" in captured.out
 
@@ -66,7 +66,7 @@ def test_an_undiscoverable_case_does_not_cost_the_other_cases_their_results(
     # result was lost. Whether a case can be run is a fact about that case, at either stage.
     status = main([_corpus(tmp_path, aaa_good=_GOOD, zzz_bad=_BAD_INCLUDE)])
     captured = capsys.readouterr()
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert "Traceback" not in captured.err
     assert "1/2 passed" in captured.out, "the healthy case's result must survive the bad one"
     assert "could not be run" in captured.out
@@ -81,7 +81,7 @@ def test_an_explicitly_named_undiscoverable_file_is_still_loud(
     (tmp_path / "named.lp").write_text(_BAD_INCLUDE, encoding="utf-8")
     status = main([str(tmp_path / "named.lp")])
     captured = capsys.readouterr()
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert "Traceback" not in captured.err
     assert "no_such_library.lp" in captured.err
 
@@ -92,7 +92,7 @@ def test_a_missing_declared_solver_exits_as_an_error_with_a_remedy(
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     status = main([_corpus(tmp_path, theory=_THEORY)])
     captured = capsys.readouterr()
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert 'pip install "elenctic[theory]"' in captured.err
 
 
@@ -105,7 +105,7 @@ def test_a_missing_declared_solver_costs_only_the_cases_that_declare_it(
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     status = main([_corpus(tmp_path, aaa_good=_GOOD, zzz_theory=_THEORY)])
     captured = capsys.readouterr()
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert "1/2 passed" in captured.out
 
 
@@ -117,7 +117,7 @@ def test_a_dry_run_does_not_require_the_declared_solver(
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     status = main([_corpus(tmp_path, theory=_THEORY), "--explain"])
     captured = capsys.readouterr()
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "clingcon" in captured.out, "the plan still names the declared solver"
 
 
@@ -137,7 +137,7 @@ def test_a_harness_fault_at_solve_time_costs_only_the_case_that_met_it(
     monkeypatch.setattr(cli, "run_case", broken)
     status = main([_corpus(tmp_path, aaa_good=_GOOD, mmm_broken=_GOOD, zzz_good=_GOOD)])
     captured = capsys.readouterr()
-    assert status == 3, (
+    assert status == ExitStatus.HARNESS_FAULT, (
         "a harness fault is elenctic's own error register — never a verdict, and never filed with "
         "the faults a user can fix"
     )

@@ -375,7 +375,7 @@ class ConsistentShownOptimalCensus(Consistent):
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentOptimum(Consistent):
-    """``OPT``: the proven optimum cost alone (no optimal-class enumeration)."""
+    """``OPTIMAL``: the proven optimum cost alone (no optimal-class enumeration)."""
 
     optimum: Optimum
 

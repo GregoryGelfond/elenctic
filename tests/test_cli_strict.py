@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from elenctic.cli import main
+from elenctic.cli import ExitStatus, main
 from elenctic.discovery import ORPHAN_LIBRARY, UNDECLARED_SOLVER
 
 _DECLARED = "% @expect sat\n% @model { ok }\n% @elenctic solver clingo\nok.\n#show ok/0.\n"
@@ -29,7 +29,9 @@ def test_orphan_library_warns_by_default_with_no_exit_effect(
     write(tmp_path / "case.lp", _DECLARED)
     write(tmp_path / "orphan.lp", "never(included).\n")  # contract-free, no case #includes it
     status = main([str(tmp_path)])
-    assert status == 0  # the case passes; hygiene does not move the exit code by default
+    assert (
+        status == ExitStatus.OK
+    )  # the case passes; hygiene does not move the exit code by default
     assert "orphan" in capsys.readouterr().err.lower()  # but it is reported
 
 
@@ -39,7 +41,7 @@ def test_orphan_library_fails_under_strict(
     write(tmp_path / "case.lp", _DECLARED)
     write(tmp_path / "orphan.lp", "never(included).\n")
     status = main([str(tmp_path), "--strict"])
-    assert status == 2  # escalated to a corpus error (the CI gate)
+    assert status == ExitStatus.USER_FAULT  # escalated to a corpus error (the CI gate)
     assert "orphan" in capsys.readouterr().err.lower()
 
 
@@ -50,9 +52,11 @@ def test_undeclared_solver_is_silent_by_default_and_errors_under_strict(
     # of silence; the mypy --strict / pytest --strict-markers posture) and an error only under
     # --strict — unlike an orphan library, which is a real smell warned by default.
     write(tmp_path / "case.lp", _UNDECLARED)  # no @elenctic solver → defaulted to clingo
-    assert main([str(tmp_path)]) == 0  # passes
+    assert main([str(tmp_path)]) == ExitStatus.OK  # passes
     assert "undeclared" not in capsys.readouterr().err.lower()  # silent by default (no nag)
-    assert main([str(tmp_path), "--strict"]) == 2  # required explicit under --strict
+    assert (
+        main([str(tmp_path), "--strict"]) == ExitStatus.USER_FAULT
+    )  # required explicit under --strict
     assert "undeclared" in capsys.readouterr().err.lower()
 
 
@@ -65,7 +69,7 @@ def test_each_reported_observation_renders_the_sentence_its_own_record_carries(
     # and stating it from anywhere but the records would leave the records unread.
     write(tmp_path / "case.lp", _UNDECLARED)
     write(tmp_path / "orphan.lp", "never(included).\n")
-    assert main([str(tmp_path), "--strict"]) == 2
+    assert main([str(tmp_path), "--strict"]) == ExitStatus.USER_FAULT
     err = capsys.readouterr().err
     assert ORPHAN_LIBRARY in err
     assert UNDECLARED_SOLVER in err
@@ -79,9 +83,9 @@ def test_the_hygiene_heading_says_whether_the_run_failed_on_what_follows(
     # contradicting itself about what it thinks of them.
     write(tmp_path / "case.lp", _DECLARED)
     write(tmp_path / "orphan.lp", "never(included).\n")
-    assert main([str(tmp_path)]) == 0
+    assert main([str(tmp_path)]) == ExitStatus.OK
     assert "hygiene warnings:" in capsys.readouterr().err
-    assert main([str(tmp_path), "--strict"]) == 2
+    assert main([str(tmp_path), "--strict"]) == ExitStatus.USER_FAULT
     assert "hygiene errors (--strict):" in capsys.readouterr().err
 
 
@@ -91,7 +95,7 @@ def test_a_clean_corpus_emits_no_hygiene_even_under_strict(
     write(tmp_path / "case.lp", _DECLARED)  # declared solver, no orphans
     status = main([str(tmp_path), "--strict"])
     err = capsys.readouterr().err.lower()
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "orphan" not in err and "hygiene" not in err
 
 
@@ -102,7 +106,7 @@ def test_hygiene_records_are_aggregated_and_reported_together(
     write(tmp_path / "orphan.lp", "never(included).\n")  # and an orphan library
     status = main([str(tmp_path), "--strict"])
     err = capsys.readouterr().err.lower()
-    assert status == 2
+    assert status == ExitStatus.USER_FAULT
     assert "orphan" in err and "undeclared" in err  # both axes in one summary
 
 
@@ -113,9 +117,11 @@ def test_explain_also_reports_hygiene_and_strict_still_escalates(
     # exit 2 even in the dry-run (lint a corpus's hygiene without solving it).
     write(tmp_path / "case.lp", _DECLARED)
     write(tmp_path / "orphan.lp", "never(included).\n")
-    assert main([str(tmp_path), "--explain"]) == 0  # dry-run passes; hygiene warns only
+    assert main([str(tmp_path), "--explain"]) == ExitStatus.OK  # dry-run passes; hygiene warns only
     assert "orphan" in capsys.readouterr().err.lower()
-    assert main([str(tmp_path), "--explain", "--strict"]) == 2  # escalates in --explain too
+    assert (
+        main([str(tmp_path), "--explain", "--strict"]) == ExitStatus.USER_FAULT
+    )  # escalates in --explain too
 
 
 # --- the exit-code interaction with the verdict register ---
@@ -128,7 +134,7 @@ def test_strict_does_not_relax_a_verdict_failure(tmp_path: Path) -> None:
         tmp_path / "case.lp",
         "a. #show a/0. #show b/0.\n% @expect sat\n% @cautious { b }\n% @elenctic solver clingo\n",
     )
-    assert main([str(tmp_path), "--strict"]) == 1
+    assert main([str(tmp_path), "--strict"]) == ExitStatus.NOT_PASSED
 
 
 def test_strict_hygiene_error_dominates_a_verdict_failure(tmp_path: Path) -> None:
@@ -137,7 +143,7 @@ def test_strict_hygiene_error_dominates_a_verdict_failure(tmp_path: Path) -> Non
         tmp_path / "case.lp",  # FAILs (b ∉ ⋂) AND is undeclared (dirty hygiene)
         "a. #show a/0. #show b/0.\n% @expect sat\n% @cautious { b }\n",
     )
-    assert main([str(tmp_path), "--strict"]) == 2
+    assert main([str(tmp_path), "--strict"]) == ExitStatus.USER_FAULT
 
 
 # --- the always-error axes (independent of --strict) ---
@@ -147,12 +153,12 @@ def test_closed_vocabulary_is_always_an_error(tmp_path: Path) -> None:
     # An unknown contract tag → ContractError → exit 2, with or without --strict (pydantic-style
     # extra='forbid'; mode-independent).
     write(tmp_path / "case.lp", "% @expect sat\n% @bogus xyz\n")
-    assert main([str(tmp_path)]) == 2
-    assert main([str(tmp_path), "--strict"]) == 2
+    assert main([str(tmp_path)]) == ExitStatus.USER_FAULT
+    assert main([str(tmp_path), "--strict"]) == ExitStatus.USER_FAULT
 
 
 def test_soundness_floor_is_always_an_error(tmp_path: Path) -> None:
     # a theory atom under default clingo → DiscoveryError → exit 2, with or without --strict.
     write(tmp_path / "case.lp", "% @expect sat\n&dom { 1..3 } = x.\n#show.\n")
-    assert main([str(tmp_path)]) == 2
-    assert main([str(tmp_path), "--strict"]) == 2
+    assert main([str(tmp_path)]) == ExitStatus.USER_FAULT
+    assert main([str(tmp_path), "--strict"]) == ExitStatus.USER_FAULT

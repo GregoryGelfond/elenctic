@@ -62,9 +62,11 @@ $ elenctic encodings/
 1/1 passed
 ```
 
-`--explain` shows how each tag is routed to a solver run and the fields it reads, *without solving*,
-and whether projecting onto the shown atoms would erase anything the run's checks read. This
-contract needs three runs (a full
+`--explain` shows how each tag is routed to a solver run and the fields it reads, *without
+solving*, and whether that run collapses its answer sets onto the shown atoms — which is what
+`projects` reports. It is `yes` only under a theory solver, since that is the only place the
+collapse can lose anything; a plain clingo run is `no` because there is nothing behind the shown
+view to lose, not because a projection was declined. This contract needs three runs (a full
 enumeration for `@count`, and the native cautious and brave runs):
 
 ```console
@@ -173,9 +175,12 @@ an answer set onto its `#show`-declared predicates, plus the theory (CSP) assign
 in force. Hidden atoms are not checkable. A **strong-negation literal** `-a` is a *distinct* atom from
 `a`, observable only if the program shows it on the same footing.
 
-**The base.** A model-base tag is evaluated over a chosen set of answer sets, named by an optional
-base qualifier: `all` (the default — every answer set `AS(P)`) or `optimal` (the optimal class
-`Opt(P)`). So `@cautious optimal { L }` reads "`L` holds in every optimal model."
+**The base.** A model-base tag is evaluated over a chosen set of answer sets. Writing `optimal`
+before the payload chooses the optimal class `Opt(P)`; writing nothing chooses every answer set
+`AS(P)`, which is what the tables below mean by a base of `all`. So `@cautious optimal { L }` reads
+"`L` holds in every optimal model." The default has a name so that it can be talked about, but it
+has no spelling: `optimal` is the only qualifier a contract may write, and `@cautious all { L }` is
+a contract error.
 
 ### Grammar
 
@@ -312,7 +317,7 @@ clingo / clingcon pairings used at scale.
 The standalone runner discovers cases under a target (a single `.lp` file or a directory) and runs them:
 
 ```console
-$ elenctic [target]            # default target tests/; exit 0 pass, 1 fail/undecided, 2 a fault you can fix, 3 an elenctic bug
+$ elenctic [target]            # default target tests/; `elenctic --help` lists the exit statuses
 $ elenctic tests/feasible.lp   # run a single case file
 $ elenctic tests/ --explain    # narrate the derived run plan, without solving
 $ elenctic tests/ --strict     # fail the run on any corpus-hygiene issue (the CI gate)

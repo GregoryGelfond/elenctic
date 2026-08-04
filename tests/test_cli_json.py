@@ -25,6 +25,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
+from elenctic.cli import ExitStatus
 from elenctic.json_report import dumps, schema_text
 from support import Streams, child_environment, document_of, run_cli
 
@@ -164,7 +165,9 @@ def test_standard_output_carries_one_document_and_nothing_else(tmp_path: Path) -
         # The orphan library, and the one case that declared no solver — the other declares one.
         "hygiene": 2,
     }
-    assert streams.status == 1, "a case decided wrong, and nothing else went wrong"
+    assert streams.status == ExitStatus.NOT_PASSED, (
+        "a case decided wrong, and nothing else went wrong"
+    )
     assert "FAIL" in streams.err, "the human report is moved to standard error, not discarded"
     assert "1/2 passed" in streams.err, "including the summary the run writes at the end"
 
@@ -183,7 +186,7 @@ def test_a_write_beneath_the_python_stream_never_reaches_the_document(tmp_path: 
     assert "and another once the run is done" in streams.err, (
         "including one written after the run returned, since the region covers the whole of it"
     )
-    assert streams.status == 0
+    assert streams.status == ExitStatus.OK
 
 
 @pytest.mark.parametrize(
@@ -274,7 +277,7 @@ def test_a_corpus_that_could_not_be_discovered_still_produces_a_document(tmp_pat
     streams = _reported(tmp_path / "no_such_directory")
     document = document_of(streams)
 
-    assert streams.status == 2
+    assert streams.status == ExitStatus.USER_FAULT
     assert document["cases"] == [], "nothing was tested, so nothing belongs in that register"
     (error,) = document["errors"]
     assert error["scope"] == "corpus", "the fault belongs to no single case"
@@ -289,7 +292,7 @@ def test_a_case_that_will_not_ground_costs_only_its_own_verdict(tmp_path: Path) 
     streams = _reported(target)
     document = document_of(streams)
 
-    assert streams.status == 2
+    assert streams.status == ExitStatus.USER_FAULT
     (case,) = document["cases"]
     assert case["verdict"] == "pass", "a broken sibling costs a case nothing"
     assert case["source"].endswith("passes.lp")
@@ -316,7 +319,9 @@ def test_hygiene_this_run_graded_an_error_reaches_the_document(tmp_path: Path) -
     streams = _reported(target, "--strict")
     document = document_of(streams)
 
-    assert streams.status == 2, "the gate fails on a corpus-health observation under --strict"
+    assert streams.status == ExitStatus.USER_FAULT, (
+        "the gate fails on a corpus-health observation under --strict"
+    )
     graded = {record["kind"]: record for record in document["hygiene"]}
     assert sorted(graded) == ["orphan_library", "undeclared_solver"]
     assert graded["orphan_library"]["grade"] == "error"
@@ -353,7 +358,9 @@ def test_the_same_corpus_serializes_identically_twice(tmp_path: Path) -> None:
     first = _reported(target, hash_seed="0")
     second = _reported(target, hash_seed="1")
 
-    assert first.status == 2, "and the runs behind the comparison actually happened"
+    assert first.status == ExitStatus.USER_FAULT, (
+        "and the runs behind the comparison actually happened"
+    )
     assert document_of(first)["summary"]["total"] == 3
     assert first.out == second.out
 
@@ -377,7 +384,7 @@ def test_the_human_format_writes_no_document_even_when_the_run_dies(tmp_path: Pa
 
     streams = run_cli(target, prelude=_NO_REGISTER_ANTICIPATED_THIS)
 
-    assert streams.status == 3
+    assert streams.status == ExitStatus.HARNESS_FAULT
     assert streams.out == "", "nothing was asked for on this stream, so nothing is put there"
     assert "internal error" in streams.err
 
@@ -387,7 +394,7 @@ def test_a_format_this_version_does_not_know_is_refused(tmp_path: Path) -> None:
     # not exist and being handed prose, which parses as nothing and reads as a broken run.
     streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--format", "sarif")
 
-    assert streams.status == 2
+    assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == "", "an unknown format falls through to no report at all"
     assert "sarif" in streams.err, "and the diagnostic names what was asked for"
 
@@ -397,7 +404,7 @@ def test_a_dry_run_has_no_machine_readable_form_and_says_so(tmp_path: Path) -> N
     # document for a plan. Refused before anything is discovered: there is no half-run to report.
     streams = _reported(_corpus(tmp_path, passes=_PASSES), "--explain")
 
-    assert streams.status == 2
+    assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == "", "a command line that cannot be run has produced no run to report"
     assert "usage error" in streams.err
     assert "--explain" in streams.err and "--format json" in streams.err
@@ -411,7 +418,7 @@ def test_a_budget_that_is_not_a_positive_finite_number_of_seconds_leaves_no_docu
     # half that belongs to this format: no document at all, rather than a document about a refusal.
     streams = _reported(_corpus(tmp_path, passes=_PASSES), "--budget", "0")
 
-    assert streams.status == 2
+    assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == ""
     assert "--budget" in streams.err
 
@@ -493,7 +500,7 @@ def test_a_fault_while_printing_the_description_produces_no_document(tmp_path: P
 
     streams = _reported(target, "--print-schema", prelude=_DESCRIPTION_IS_NOT_TEXT)
 
-    assert streams.status == 3
+    assert streams.status == ExitStatus.HARNESS_FAULT
     assert streams.out == ""
     assert "internal error" in streams.err
 
@@ -506,7 +513,7 @@ def test_printing_the_description_is_not_a_document_and_asks_nothing_of_a_corpus
     # turns the question into a fault.
     streams = _reported(tmp_path / "no_such_directory", "--print-schema")
 
-    assert streams.status == 0
+    assert streams.status == ExitStatus.OK
     assert streams.err == ""
     assert document_of(streams)["title"] == "elenctic run report", "the description, not a report"
 
@@ -519,7 +526,7 @@ def test_the_description_outranks_the_dry_run_rather_than_being_dropped_by_it(
     # written down here so that it is a decision rather than a consequence of statement order.
     streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--explain", "--print-schema")
 
-    assert streams.status == 0
+    assert streams.status == ExitStatus.OK
     assert document_of(streams)["title"] == "elenctic run report"
     assert streams.err == "", "and no plan was narrated"
 
@@ -533,7 +540,7 @@ def test_a_command_line_that_cannot_be_run_is_refused_even_when_it_asks_only_for
     # which flag it was paired with.
     streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--print-schema", "--budget", "0")
 
-    assert streams.status == 2
+    assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == "", "the description is not written for a command line that was refused"
     assert "--budget" in streams.err
 
@@ -548,7 +555,7 @@ def test_the_document_is_utf8_whatever_the_environment_would_have_chosen(tmp_pat
     streams = _reported(target, env=_STDOUT_CANNOT_ENCODE)
     document = document_of(streams)
 
-    assert streams.status == 0
+    assert streams.status == ExitStatus.OK
     (case,) = document["cases"]
     messages = " ".join(check["message"] for check in case["checks"])
     assert not messages.isascii(), (
@@ -560,7 +567,7 @@ def test_the_document_is_utf8_whatever_the_environment_would_have_chosen(tmp_pat
 def test_the_description_is_utf8_whatever_the_environment_would_have_chosen(tmp_path: Path) -> None:
     streams = _reported(tmp_path, "--print-schema", env=_STDOUT_CANNOT_ENCODE)
 
-    assert streams.status == 0
+    assert streams.status == ExitStatus.OK
     assert streams.out == schema_text()
     assert not streams.out.isascii(), "the description is what makes this test say anything"
 

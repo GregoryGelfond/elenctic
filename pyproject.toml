@@ -26,7 +26,7 @@ dependencies = ["clingo>=5.8"]  # honest runtime dep; clingo is on conda-forge A
 theory = ["clingcon>=5.2.1"]  # the theory fragment (@assign, CSP @count); conda-forge-primary
 
 [project.scripts]
-elenctic = "elenctic.cli:main"  # the standalone corpus runner (`elenctic <encodings> [cases]`)
+elenctic = "elenctic.cli:main"  # the corpus runner (`elenctic [target]`)
 
 [tool.hatch.version]
 path = "src/elenctic/__init__.py"  # single source of truth for the version (read from __version__)

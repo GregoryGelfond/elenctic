@@ -18,7 +18,7 @@ from elenctic.checks import CheckReport
 from elenctic.discovery import Case, DiscoveryError, SolverUnavailableError
 from elenctic.expectation import ContractError, Unsat
 from elenctic.harness import case_verdict
-from elenctic.json_report import schema_text
+from elenctic.json_report import dumps, schema_text
 from elenctic.outcome import (
     CaseOutcome,
     ErrorKind,
@@ -30,6 +30,7 @@ from elenctic.outcome import (
     RunOutcome,
     Scope,
     error_kind,
+    is_duration,
     summary,
 )
 from elenctic.program import ProgramError
@@ -61,6 +62,15 @@ def test_an_invocation_refuses_a_deadline_that_is_not_a_length_of_time(seconds: 
         Invocation(target=Path("corpus"), strict=False, budget=30.0, deadline=seconds)
 
 
+def test_an_invocation_refuses_a_budget_that_is_absent() -> None:
+    # The two durations differ in exactly one way and this is it: a run with no deadline leaves the
+    # flag off, while there is no way to ask for no per-solve budget at all. So absence is a value
+    # for one and not for the other, and a guard treating them alike lets a null into the field the
+    # published description types as a number — the very shape the guard exists to prevent.
+    with pytest.raises(ValueError, match="budget"):
+        Invocation(target=Path("corpus"), strict=False, budget=None, deadline=None)  # type: ignore[arg-type]
+
+
 def test_an_invocation_with_no_deadline_is_the_ordinary_one() -> None:
     # The absent deadline is the default and must not be caught by the guard: refusing it would
     # make the commonest invocation the unrepresentable one.
@@ -70,34 +80,59 @@ def test_an_invocation_with_no_deadline_is_the_ordinary_one() -> None:
 
 @pytest.mark.parametrize("seconds", _NOT_A_DURATION)
 @pytest.mark.parametrize("field", ["budget", "deadline"])
-def test_the_record_refuses_exactly_what_the_published_description_refuses(
+def test_the_named_durations_the_record_refuses_are_refused_by_the_description(
     field: str, seconds: float
 ) -> None:
-    # The invariant is stated in two places — here, and in the description elenctic publishes for
-    # the document this record is written into. Two statements of one rule is how they come to
-    # disagree, and the direction that matters is this one: a value the record accepts and the
-    # description refuses is a document that fails elenctic's own published account of it.
-    #
-    # The description is consulted through a validator rather than read, because what a consumer
-    # does with it is validate. A value with no JSON form is refused by the encoder instead, which
-    # is the same refusal arriving at the earlier of the two seams.
+    # The readable statement of the four named cases. The general one is the property below, which
+    # is what actually holds the seam; this is here because a table a person can read is worth
+    # keeping beside a property a person cannot.
     invocation = {"target": "corpus", "strict": False, "budget": 30.0, "deadline": None}
     invocation[field] = seconds
-    definition = json.loads(schema_text())["$defs"]["invocation"]
-    refused = not Draft202012Validator(definition).is_valid(invocation) or not _has_a_json_form(
-        seconds
+    assert not _the_description_can_carry(field, seconds), (
+        f"the description accepts {field}={seconds}, which the record refuses"
     )
-    assert refused, f"the description accepts {field}={seconds}, which the record refuses"
 
 
-def _has_a_json_form(value: float) -> bool:
-    """Whether JSON can carry ``value`` at all — an infinity and a NaN cannot, which is why the
-    encoder refuses them where a range constraint cannot."""
+@given(st.floats())
+def test_the_record_and_the_description_agree_about_every_duration(seconds: float) -> None:
+    # The invariant is stated twice — here, and in the description elenctic publishes for the
+    # document this record is written into — and a rule written twice is how two of them come to
+    # disagree. Asserted as a biconditional over the whole domain rather than in one direction over
+    # six chosen values, because each direction has its own failure and only one of them is the one
+    # a six-row table was ever going to find.
+    #
+    # Record accepts, description refuses: a document produced without complaint that fails
+    # elenctic's own published account of it. That is the direction a ceiling added to the
+    # description would open, and it is the direction the table cannot see, because the table is
+    # built from values the record already refuses.
+    #
+    # Record refuses, description accepts: a duration a caller may legitimately ask for and cannot,
+    # which is a fabricated constraint with nothing to justify it.
+    assert is_duration(seconds) == _the_description_can_carry("budget", seconds)
+
+
+def _the_description_can_carry(field: str, seconds: float) -> bool:
+    """Whether elenctic's published description of its output admits ``seconds`` in ``field``.
+
+    Two seams, not one, and the second is why this is a function rather than a validator call. A
+    range constraint cannot reach an infinity or a NaN because JSON has no form for either, so the
+    encoder is what refuses those — and it is asked here through ``dumps``, the encoder the package
+    actually writes documents with, rather than through a second call to the standard library
+    configured the same way by hand.
+    """
+    invocation: dict[str, object] = {
+        "target": "corpus",
+        "strict": False,
+        "budget": 30.0,
+        "deadline": None,
+    }
+    invocation[field] = seconds
     try:
-        json.dumps(value, allow_nan=False)
+        dumps(invocation)
     except ValueError:
         return False
-    return True
+    definition = json.loads(schema_text())["$defs"]["invocation"]
+    return Draft202012Validator(definition).is_valid(invocation)
 
 
 def _a_report(verdict: Verdict) -> CheckReport:

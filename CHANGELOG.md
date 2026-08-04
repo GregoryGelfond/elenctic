@@ -133,13 +133,27 @@ means for them — a reader deciding whether to upgrade should not have to read 
   instead. **`--deadline 0` used to mean "reach no cases"** and is now refused: a run that wants no
   deadline leaves the flag off, which is the default.
 
-  **The rule holds for a caller who never parsed a command line, too.** `Invocation` refuses the
-  same four at construction, raising `ValueError`. It was previously enforced on the command line
-  alone, while the published description of the output states it unconditionally as a property of
-  the *document* — so building `Invocation(budget=0.0)` directly produced, without complaint, a
-  report contradicting the account it is published under. Nothing the command line can do changes,
-  because it refuses first and in its own words; code that builds an `Invocation` itself must pass
-  a positive finite number of seconds, or `None` for no deadline.
+  **The rule holds for a caller who never parsed a command line, too.** `elenctic.outcome`'s
+  `Invocation` refuses the same four at construction, raising `ValueError`, and refuses an absent
+  budget on the same footing — a run with no deadline leaves the flag off, but there is no way to
+  ask for no per-solve budget at all. It was previously enforced on the command line alone, while
+  the published description of the output states it unconditionally as a property of the
+  *document* — so building `Invocation(budget=0.0)` directly produced, without complaint, a report
+  contradicting the account it is published under. Nothing the command line can do changes, because
+  it refuses first and in its own words; code that builds an `Invocation` itself must pass a
+  positive finite number of seconds, and `None` only for the deadline. `elenctic.outcome` also now
+  exports `is_duration`, so that rule is one a caller can ask about rather than only discover.
+
+- **The exit statuses are a named type, `elenctic.cli.ExitStatus`.** The numbers are unchanged and
+  so is everything a shell sees: it is an `IntEnum`, so it *is* an `int`, `sys.exit` takes it, and
+  a caller comparing a status against a literal is unaffected. What changes is that the ladder is
+  now the one place the rungs and their meanings are written, and `--help` is rendered from it —
+  where before the same mapping was stated in six places and checked in one. Two of those
+  statements were wrong: exit `0` was glossed as "every case passed", which is told to a reader who
+  ran `--explain` and solved nothing, and exit `2` omitted a declared solver this environment does
+  not have, which is the likeliest `2` a real user meets. `exit_status` and `main` return the type;
+  compare a status read back from a child process with `==` rather than `is`, since what a process
+  returns is a plain integer.
 
 - **`--help` says what the run leaves with, and files each option under what it is for.** Nothing in
   the help mentioned the exit status — the whole of what a script reads — and the six options were

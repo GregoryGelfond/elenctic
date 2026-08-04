@@ -35,7 +35,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 import elenctic
-from elenctic.cli import main, run_corpus
+from elenctic.cli import ExitStatus, main, run_corpus
 from elenctic.json_report import SCHEMA_VERSION, as_json, dumps, schema_text
 from elenctic.outcome import ErrorKind, HygieneKind, Invocation
 from elenctic.registry import SOLVERS
@@ -523,7 +523,7 @@ def test_printing_the_schema_writes_the_packaged_file_and_nothing_else(
     status = main(["--print-schema"])
 
     captured = capfdbinary.readouterr()
-    assert status == 0
+    assert status == ExitStatus.OK
     assert captured.out == schema_text().encode("utf-8")
     assert captured.err == b"", "nothing shares the stream the description is written to"
 
@@ -536,7 +536,7 @@ def test_printing_the_schema_asks_nothing_of_a_corpus(
     # asking what the output looks like has no reason to have a corpus at all.
     status = main(["--print-schema", str(tmp_path / "no_such_corpus")])
 
-    assert status == 0
+    assert status == ExitStatus.OK
     assert capsys.readouterr().out == schema_text()
 
 
@@ -553,7 +553,9 @@ def test_a_copy_of_the_package_carrying_no_description_says_so(
     status = main(["--print-schema"])
 
     captured = capsys.readouterr()
-    assert status == 2, "the environment is mis-shaped, which is a fault its owner can repair"
+    assert status == ExitStatus.USER_FAULT, (
+        "the environment is mis-shaped, which is a fault its owner can repair"
+    )
     assert captured.out == "", "half a description is worse than none"
     assert "Traceback" not in captured.err, "an actionable fault is never delivered as a traceback"
     assert "elenctic/schema/" in captured.err, "and it says where the missing thing belongs"

@@ -16,12 +16,24 @@ a stream, which is the reason the machine-readable tests need a child.
 import pytest
 
 from elenctic.cli import main
-from support import cli_help_sections, cli_help_text
+from support import cli_help_section, cli_help_sections, cli_help_text
 
-# Every option elenctic defines. Written out rather than read off the parser, so that adding a flag
-# and forgetting to file it under a heading fails here instead of being carried along by whatever
-# the parser reports about itself.
-_OPTIONS = ("--explain", "--print-schema", "--format", "--strict", "--budget", "--deadline")
+# Where every option elenctic defines is filed, written out rather than read off the parser, so
+# that adding a flag and forgetting to file it fails here instead of being carried along by
+# whatever the parser reports about itself.
+#
+# The whole mapping and not a count of its headings. "More than one heading" is a weaker claim than
+# the one being made: two groups can be given the same title, argparse prints it twice, the option
+# that says who the report is written for ends up under a heading that does not say so — and a
+# count of distinct headings is still two.
+_HOMES = {
+    "--explain": "instead of running the corpus",
+    "--print-schema": "instead of running the corpus",
+    "--format": "the report",
+    "--strict": "the run",
+    "--budget": "the run",
+    "--deadline": "the run",
+}
 
 
 def _options_by_heading() -> dict[str, list[str]]:
@@ -63,16 +75,14 @@ def test_every_option_is_filed_under_a_heading_that_says_what_it_is_for() -> Non
         f"option this program did not define; it holds {catch_all}"
     )
     homes = {option: heading for heading, options in filed.items() for option in options}
-    assert set(_OPTIONS) <= set(homes), f"unfiled: {sorted(set(_OPTIONS) - set(homes))}"
-    assert len({homes[option] for option in _OPTIONS}) > 1, "one heading is the block again"
+    assert {option: homes.get(option) for option in _HOMES} == _HOMES
 
 
 def test_the_help_says_what_each_exit_status_means() -> None:
     # The numbers alone would be a list a reader still has to interpret. Which statuses are
     # documented is checked against the ladder that produces them, in test_cli_exit_status.py.
-    headings = cli_help_sections()
-    assert "exit status" in headings, f"headings were {sorted(headings)}"
-    glossed = [line.strip() for line in headings["exit status"] if line.strip()[:1].isdigit()]
+    ladder = cli_help_section("exit status")
+    glossed = [line.strip() for line in ladder if line.strip()[:1].isdigit()]
     assert len(glossed) >= 4, f"each status is worth a sentence, not just a number: {glossed}"
     assert all(len(line.split(maxsplit=1)) == 2 for line in glossed), f"bare numbers in {glossed}"
 
