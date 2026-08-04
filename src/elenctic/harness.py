@@ -19,15 +19,19 @@ Three responsibilities, layered by purity:
 
 A **misrouted run-plan** is a :class:`~elenctic.result.HarnessError` (``RoutingError``) raised by
 ``runs_for`` at plan construction — a harness bug, never a verdict. ``run_case`` lets it
-**propagate** to the runner (the pytest client or the CLI), which reports it under a distinct
-"harness error" status (the pytest collection-error analog), keeps testing the other cases, and
-fails the run with a non-zero exit. The plan is pure and buildable up front, so a session can
-pre-validate every case's plan (call ``runs_for`` for all cases) *before* any solving if it wants
-all wiring errors at once; ``run_case`` bundles build-then-solve for the per-case path.
+**propagate** to whatever is running the corpus, which reports it under a distinct "harness error"
+status — pytest's collection error is the same idea: something went wrong *before* a test could
+have an outcome, so it is reported as its own kind of thing rather than as a failing test — keeps
+testing the other cases, and fails the run with a non-zero exit. The plan is pure and buildable up
+front, so a caller wanting every wiring error at once can call ``runs_for`` for all cases *before*
+any solving; ``run_case`` bundles build-then-solve for the per-case path.
 
-The pytest ``parametrize`` + assertion (and the session-level aggregation) live in the **client**
-(the pytest client or the CLI); elenctic **ships the diagnostic value** rather than pushing it to
-consumers.
+These three functions are the per-*case* layer, and everything above a case belongs to whoever runs
+the corpus: which cases exist, what to do with a case that could not be run at all, and the counts
+at the end. ``elenctic.cli`` is one such runner and the one that ships; a consumer embedding these
+three in a runner of their own — driving :func:`run_case` from ``pytest.mark.parametrize``, say — is
+the other, and gets the same three values to build a report out of. Either way elenctic **ships the
+diagnostic value** rather than pushing it to consumers.
 """
 
 from typing import Final

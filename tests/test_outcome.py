@@ -4,6 +4,7 @@ A count computed by subtraction cannot say where a missing case went. These pin 
 the conservation law that follows from it.
 """
 
+import json
 from dataclasses import fields
 from enum import Enum
 from pathlib import Path
@@ -11,11 +12,13 @@ from pathlib import Path
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
+from jsonschema import Draft202012Validator
 
 from elenctic.checks import CheckReport
 from elenctic.discovery import Case, DiscoveryError, SolverUnavailableError
 from elenctic.expectation import ContractError, Unsat
 from elenctic.harness import case_verdict
+from elenctic.json_report import schema_text
 from elenctic.outcome import (
     CaseOutcome,
     ErrorKind,
@@ -23,6 +26,7 @@ from elenctic.outcome import (
     Grade,
     HygieneKind,
     HygieneRecord,
+    Invocation,
     RunOutcome,
     Scope,
     error_kind,
@@ -36,6 +40,64 @@ from elenctic.run import RoutingError
 
 def _a_case() -> Case:
     return Case(Path("a.lp"), "clingo", Unsat(expect_line=1), frozenset())
+
+
+# Every duration the published description refuses. Zero and the negatives are not lengths of time;
+# the last three have no JSON form at all, which is why a document carrying one could not be read
+# by the consumer it was written for. One list, used both against the record and against the
+# description, so the two are shown to refuse the same values rather than each refusing its own.
+_NOT_A_DURATION = (0.0, -1.0, -0.5, float("inf"), float("-inf"), float("nan"))
+
+
+@pytest.mark.parametrize("seconds", _NOT_A_DURATION)
+def test_an_invocation_refuses_a_budget_that_is_not_a_length_of_time(seconds: float) -> None:
+    with pytest.raises(ValueError, match="budget"):
+        Invocation(target=Path("corpus"), strict=False, budget=seconds, deadline=None)
+
+
+@pytest.mark.parametrize("seconds", _NOT_A_DURATION)
+def test_an_invocation_refuses_a_deadline_that_is_not_a_length_of_time(seconds: float) -> None:
+    with pytest.raises(ValueError, match="deadline"):
+        Invocation(target=Path("corpus"), strict=False, budget=30.0, deadline=seconds)
+
+
+def test_an_invocation_with_no_deadline_is_the_ordinary_one() -> None:
+    # The absent deadline is the default and must not be caught by the guard: refusing it would
+    # make the commonest invocation the unrepresentable one.
+    asked = Invocation(target=Path("corpus"), strict=False, budget=30.0, deadline=None)
+    assert asked.deadline is None
+
+
+@pytest.mark.parametrize("seconds", _NOT_A_DURATION)
+@pytest.mark.parametrize("field", ["budget", "deadline"])
+def test_the_record_refuses_exactly_what_the_published_description_refuses(
+    field: str, seconds: float
+) -> None:
+    # The invariant is stated in two places — here, and in the description elenctic publishes for
+    # the document this record is written into. Two statements of one rule is how they come to
+    # disagree, and the direction that matters is this one: a value the record accepts and the
+    # description refuses is a document that fails elenctic's own published account of it.
+    #
+    # The description is consulted through a validator rather than read, because what a consumer
+    # does with it is validate. A value with no JSON form is refused by the encoder instead, which
+    # is the same refusal arriving at the earlier of the two seams.
+    invocation = {"target": "corpus", "strict": False, "budget": 30.0, "deadline": None}
+    invocation[field] = seconds
+    definition = json.loads(schema_text())["$defs"]["invocation"]
+    refused = not Draft202012Validator(definition).is_valid(invocation) or not _has_a_json_form(
+        seconds
+    )
+    assert refused, f"the description accepts {field}={seconds}, which the record refuses"
+
+
+def _has_a_json_form(value: float) -> bool:
+    """Whether JSON can carry ``value`` at all — an infinity and a NaN cannot, which is why the
+    encoder refuses them where a range constraint cannot."""
+    try:
+        json.dumps(value, allow_nan=False)
+    except ValueError:
+        return False
+    return True
 
 
 def _a_report(verdict: Verdict) -> CheckReport:

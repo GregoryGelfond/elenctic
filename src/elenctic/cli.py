@@ -22,12 +22,12 @@ outranks the rest because a harness wrong about one case is evidence about every
 error levels ask different things of the reader, which is why they are not one: ``2`` is a corpus to
 attend to, ``3`` is a bug to report. Neither is ever a verdict. A case that cannot be run does not
 stop the others: it is reported in its own register and the run continues, so one broken encoding
-never costs the run every other case's result. This is the standalone runner; the pytest-client path
-(per-case ``parametrize``) is a separate consumer.
+never costs the run every other case's result. This is the runner elenctic ships; a consumer wanting
+elenctic's results inside a test runner of their own drives ``harness.run_case`` per case instead,
+and this module is then one example of what to build rather than the only way in.
 """
 
 import argparse
-import math
 import os
 import sys
 import traceback
@@ -65,6 +65,7 @@ from elenctic.outcome import (
     RunOutcome,
     Scope,
     error_kind,
+    is_duration,
     summary,
 )
 from elenctic.program import ProgramError
@@ -132,10 +133,40 @@ _NO_MACHINE_READABLE_DRY_RUN = (
     "and get the report."
 )
 
+# What the run leaves with, which is the whole of what a script reads and the one thing argparse
+# never volunteers. Written as a table and kept out of the wrapper for that reason; the gloss beside
+# each number is the part a reader needs, since the numbers alone still have to be interpreted, and
+# which numbers appear here is checked against ``exit_status`` rather than against this list.
+_EXIT_STATUS_HELP = """\
+exit status:
+  0  every case passed
+  1  a case decided wrong, or could not be decided
+  2  a fault you can fix: a bad contract, a mis-shaped corpus, a program that
+     will not ground, a case that ran out of memory or that the deadline never
+     reached, or corpus hygiene this run graded an error
+  3  a fault in elenctic itself, which outranks every other signal
+
+A command line elenctic cannot run is refused before anything is discovered:
+the reason goes to standard error, standard output stays empty, and the status
+is 2. So a report is either whole or absent, never half written."""
+
 
 def _build_parser() -> argparse.ArgumentParser:
+    """The command line, with each option filed under what it is for.
+
+    Six options in one block is a block a reader has to sort: two of them do something other than
+    running the corpus, one says who the report is written for, and three bound or sharpen the run
+    itself. The headings say which is which, and the closing text says what the run leaves with —
+    the one thing ``argparse`` never volunteers and the one a script has to know.
+    """
     parser = argparse.ArgumentParser(
-        prog="elenctic", description="Run a corpus of @-contracts over Answer Set Programs."
+        prog="elenctic",
+        description="Run a corpus of @-contracts over Answer Set Programs.",
+        epilog=_EXIT_STATUS_HELP,
+        # The ladder is a table, and the default formatter would reflow it into a paragraph. Only
+        # the description and the epilog are left alone by this one; each option's help is still
+        # wrapped to the terminal, which is what a reader wants of a sentence and not of a table.
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "target",
@@ -144,12 +175,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("tests"),
         help="a case file or a directory to walk for contract-bearing cases (default: tests/)",
     )
-    parser.add_argument(
+
+    instead = parser.add_argument_group("instead of running the corpus")
+    instead.add_argument(
         "--explain",
         action="store_true",
         help="narrate the derived run plan per case, without solving (a dry-run)",
     )
-    parser.add_argument(
+    instead.add_argument(
+        "--print-schema",
+        action="store_true",
+        help="write the JSON schema of the machine-readable report to standard output and exit, "
+        "without running anything. It is answered from the package alone, so the target and every "
+        "dial of the run are ignored — but a command line that cannot be run is still refused",
+    )
+
+    report = parser.add_argument_group("the report")
+    report.add_argument(
         "--format",
         choices=("human", "json"),
         default="human",
@@ -157,13 +199,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "document on standard output with every diagnostic moved to standard error, which is the "
         "published machine-readable contract --print-schema describes",
     )
-    parser.add_argument(
+
+    run = parser.add_argument_group("the run")
+    run.add_argument(
         "--strict",
         action="store_true",
         help="fail the run on any corpus-hygiene issue (the CI gate): orphan libraries (warned by "
         "default) become errors, and undeclared solvers (silent by default) are required explicit",
     )
-    parser.add_argument(
+    run.add_argument(
         "--budget",
         type=float,
         default=TIME_BUDGET,
@@ -173,7 +217,7 @@ def _build_parser() -> argparse.ArgumentParser:
         f"decided, and only the checks that needed more of the search are UNDECIDED (default "
         f"{TIME_BUDGET}s)",
     )
-    parser.add_argument(
+    run.add_argument(
         "--deadline",
         type=float,
         default=None,
@@ -182,13 +226,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "of seconds; cases not reached are reported as not run. The clock starts after discovery, "
         "and it is checked between cases, so a solve already under way runs to its own --budget "
         "(off by default — --budget bounds one solve, this bounds the solving of the corpus)",
-    )
-    parser.add_argument(
-        "--print-schema",
-        action="store_true",
-        help="write the JSON schema of the machine-readable report to standard output and exit, "
-        "without running anything. It is answered from the package alone, so the target and every "
-        "dial of the run are ignored — but a command line that cannot be run is still refused",
     )
     return parser
 
@@ -218,8 +255,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     # Settled above the guarded region rather than inside it, because a handler down there reports
     # a run that produced nothing else, and a machine-readable report has to say what the run was
-    # asked to do. Neither step can fail here: the parser exits rather than returning on a command
-    # line it cannot read, and this is a frozen record that validates nothing.
+    # asked to do. Neither step can fail here, and for the two flags that could the reason is
+    # ordering rather than permissiveness: the record does refuse a duration that is not one, and
+    # the refusal above has already returned on exactly those values. So what makes this safe is
+    # that it stands below the refusal — move it above and the guard it depends on has not run.
     invocation = Invocation(
         target=args.target,
         strict=args.strict,
@@ -285,17 +324,17 @@ def _refusal(args: argparse.Namespace) -> str | None:
         ("--budget", args.budget, _UNBOUNDED_BUDGET),
         ("--deadline", args.deadline, _UNBOUNDED_DEADLINE),
     ):
-        # A duration is a positive finite number of seconds, and converting the text is as far as
-        # the parser goes: it accepts a zero, a negative, and both spellings of a number that is
-        # not one. An infinity or a NaN has no JSON form, so a report carrying one is a report the
-        # consumer it was written for cannot parse — and refusing what was typed, in terms of what
-        # was typed, is the only frame that still knows which flag it came from.
+        # Converting the text is as far as the parser goes: it accepts a zero, a negative, and both
+        # spellings of a number that is not one. What counts as a length of time is asked of the
+        # one predicate that answers it everywhere, so this refusal and the record's cannot come to
+        # disagree; what is *said* about it is written here, because refusing what was typed, in
+        # terms of what was typed, is the only frame that still knows which flag it came from.
         #
         # The remedy differs by flag because what the two do about "no limit" differs. The reader
         # most likely to type a zero here is one carrying over a solver convention in which zero
         # means unbounded, so the sentence that tells them what to do instead is the half of the
         # message they came for.
-        if seconds is not None and not (math.isfinite(seconds) and seconds > 0):
+        if seconds is not None and not is_duration(seconds):
             return (
                 f"{flag} takes a positive finite number of seconds, and this run was given "
                 f"{seconds}. {remedy}"

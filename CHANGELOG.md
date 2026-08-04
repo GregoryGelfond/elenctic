@@ -133,6 +133,22 @@ means for them — a reader deciding whether to upgrade should not have to read 
   instead. **`--deadline 0` used to mean "reach no cases"** and is now refused: a run that wants no
   deadline leaves the flag off, which is the default.
 
+  **The rule holds for a caller who never parsed a command line, too.** `Invocation` refuses the
+  same four at construction, raising `ValueError`. It was previously enforced on the command line
+  alone, while the published description of the output states it unconditionally as a property of
+  the *document* — so building `Invocation(budget=0.0)` directly produced, without complaint, a
+  report contradicting the account it is published under. Nothing the command line can do changes,
+  because it refuses first and in its own words; code that builds an `Invocation` itself must pass
+  a positive finite number of seconds, or `None` for no deadline.
+
+- **`--help` says what the run leaves with, and files each option under what it is for.** Nothing in
+  the help mentioned the exit status — the whole of what a script reads — and the six options were
+  one undifferentiated block holding two things that run something other than the corpus, one that
+  says who the report is written for, and three that bound or sharpen the run. Both are now in the
+  help. One consequence reaches beyond it: the usage line lists options in the order they are
+  defined, so the usage printed with a command-line error now names `--print-schema` second rather
+  than last.
+
 - **A failure now names the contract line it judged, and repeated claims no longer repeat one
   sentence.** Every claim carries the line it was written on, so a diagnostic can be placed against
   the claim rather than against the file, and a tag a contract may write more than once is shown

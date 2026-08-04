@@ -128,10 +128,19 @@ def test_a_corpus_fault_on_a_named_file_names_that_file(tmp_path: Path) -> None:
     assert from_the_directory.scope is Scope.CASE, "inside a corpus it is one file among others"
 
 
-def test_a_case_the_deadline_did_not_reach_is_filed_against_that_case(tmp_path: Path) -> None:
+def test_a_case_the_deadline_did_not_reach_is_filed_against_that_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The clock is controlled rather than the number, because a deadline is a duration and every
+    # duration elenctic accepts is one that has not elapsed yet: an invocation refuses a zero on
+    # the same footing as the published description of the document does. This says the same thing
+    # the zero used to say — the deadline is past before the first case is dispatched — without
+    # asking for an invocation nothing is allowed to build.
+    readings = iter((0.0, 3600.0))
+    monkeypatch.setattr(cli, "monotonic", lambda: next(readings, 3600.0))
     target = _corpus(tmp_path, first=_PASSES, second=_PASSES)
-    outcome = run_corpus(_asked(target, deadline=0.0))
-    assert outcome.cases == (), "a deadline of zero is past before the first case is dispatched"
+    outcome = run_corpus(_asked(target, deadline=600.0))
+    assert outcome.cases == (), "an hour went by before the first case, against a ten-minute limit"
     assert len(outcome.errors) == 2, "one record per case, so a case cannot be filed twice"
     assert {record.kind for record in outcome.errors} == {ErrorKind.DEADLINE}
     assert {record.scope for record in outcome.errors} == {Scope.CASE}

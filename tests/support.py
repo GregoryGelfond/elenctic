@@ -4,6 +4,8 @@ Importable from any test module because ``pythonpath`` puts this directory on th
 itself is not importable under pytest's importlib mode, so shared helpers live here instead.
 """
 
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -13,7 +15,15 @@ from typing import Any, NamedTuple
 
 from elenctic.result import Conclusion, Determination, SolveOutcome
 
-__all__ = ["Streams", "child_environment", "decided", "document_of", "run_cli"]
+__all__ = [
+    "Streams",
+    "child_environment",
+    "cli_help_sections",
+    "cli_help_text",
+    "decided",
+    "document_of",
+    "run_cli",
+]
 
 # How long a child may take before it is a hang rather than a slow run. It has to exceed the largest
 # ``--budget`` any test asks for, multiplied by the largest corpus any test builds, with room for
@@ -120,6 +130,46 @@ def run_cli(
         env=child_environment(env, hash_seed),
     )
     return Streams(finished.stdout, finished.stderr, finished.returncode)
+
+
+def cli_help_text() -> str:
+    """What ``elenctic --help`` writes, having left with the status that says nothing went wrong.
+
+    A call rather than a process, and rebinding the stream rather than the descriptor, because
+    ``--help`` is answered inside ``parse_args`` and leaves from there — it never reaches the region
+    where standard output is a descriptor, which is what forces the machine-readable tests to spawn
+    a child. It lives here because the help is read by tests of two different subjects: what the
+    help *is*, and whether what it says about the exit status is what the ladder produces.
+    """
+    written = io.StringIO()
+    from elenctic.cli import main
+
+    with contextlib.redirect_stdout(written):
+        try:
+            main(["--help"])
+        except SystemExit as leaving:
+            assert leaving.code == 0, f"asking for the help left with {leaving.code}"
+        else:  # pragma: no cover — argparse leaves by raising; reached only if that changes
+            raise AssertionError("--help returned instead of leaving")
+    return written.getvalue()
+
+
+def cli_help_sections() -> dict[str, list[str]]:
+    """``--help`` split at its headings: each heading mapped to the lines filed under it.
+
+    A heading is what ``argparse`` writes at column zero ending in a colon. Reading the help by its
+    structure rather than by searching the whole text is what keeps an assertion about one section
+    from being answered by a coincidence in another — a wrapped line of one option's help can begin
+    with a digit, and read as a documented exit status.
+    """
+    filed: dict[str, list[str]] = {}
+    under: list[str] = []
+    for line in cli_help_text().splitlines():
+        if line and not line[0].isspace() and line.rstrip().endswith(":"):
+            under = filed.setdefault(line.rstrip().removesuffix(":"), [])
+        else:
+            under.append(line)
+    return filed
 
 
 def document_of(streams: Streams) -> dict[str, Any]:

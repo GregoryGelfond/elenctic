@@ -23,6 +23,7 @@ gap that motivated the rule: a record whose neighbouring fields have the same ty
 transposed, type-checks clean, and reads as a plausible row.
 """
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -212,6 +213,23 @@ class HygieneRecord:
     message: str
 
 
+def is_duration(seconds: float) -> bool:
+    """Whether ``seconds`` is a length of time elenctic can be asked for: positive and finite.
+
+    Positive because zero and the negatives are not lengths of time — a zero budget asks for a
+    solve that has already run out, and there is no reading at all for a negative one. Finite
+    because an infinity and a NaN have no JSON form, so a report carrying either could not be read
+    by the consumer it was written for.
+
+    One predicate rather than one per site. The rule holds in three places — this record, the
+    command line's refusal, and the description elenctic publishes for its output — and a rule
+    written out three times is how two of them come to disagree. The *sentences* stay separate,
+    because the reader who typed a flag and the reader who called a constructor need different
+    remedies; only the question is shared.
+    """
+    return math.isfinite(seconds) and seconds > 0
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Invocation:
     """What a run was asked to do: the settled form of a command line, and the provenance a stored
@@ -220,12 +238,33 @@ class Invocation:
     It is what the runner takes, so a mode that produces no run has no way to be expressed here —
     a dry run is not an invocation with a flag set but a different thing to do, and keeping it out
     of this type is what makes running total rather than something that has to refuse.
+
+    Both durations are checked here, which is the only place a caller who never parsed a command
+    line passes through. The published description of the output states them as properties of the
+    *document* — a budget is "always a positive finite number" — so a record that accepted anything
+    else would be a report contradicting the account it is published under, produced without
+    complaint. The command line refuses first and in its own words, so this is the backstop for the
+    library path rather than the diagnostic anybody typing a flag will meet.
     """
 
     target: Path
     strict: bool
     budget: float
     deadline: float | None
+
+    def __post_init__(self) -> None:
+        for flag, seconds in (("budget", self.budget), ("deadline", self.deadline)):
+            # An absent deadline is the default and the commonest invocation there is; refusing it
+            # would make the ordinary run the unrepresentable one. A budget has no such spelling —
+            # there is no way to ask for no per-solve limit — so None never reaches it.
+            if seconds is not None and not is_duration(seconds):
+                raise ValueError(
+                    f"{flag} is a length of time in seconds, so it is positive and finite, and "
+                    f"this invocation was built with {seconds}. An invocation says what a run was "
+                    f"asked to do, and elenctic's published description of its output states "
+                    f"{flag} as positive and finite — so a report of this run would contradict "
+                    f"the account it is published under."
+                )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

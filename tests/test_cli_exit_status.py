@@ -31,6 +31,7 @@ from elenctic.outcome import (
     Scope,
 )
 from elenctic.result import Conclusion, Verdict
+from support import cli_help_sections
 
 
 def _case(verdict: Verdict) -> CaseOutcome:
@@ -129,6 +130,27 @@ def test_an_observation_graded_below_an_error_leaves_the_status_alone(
     # the status by some other route: a corpus that passes with a warning has passed.
     outcome = _outcome(cases=(_case(Verdict.PASS),), hygiene=(_observation(grade),))
     assert exit_status(outcome) == 0
+
+
+def test_the_help_documents_exactly_the_statuses_this_ladder_produces() -> None:
+    # The ladder is knowledge this function holds and `--help` restates, so the two can come to
+    # disagree in either direction: a rung added here and not written down, or a number written
+    # down that nothing returns. Both are read off the help a reader actually gets, against the
+    # statuses this function actually produces, rather than against a second list kept beside it.
+    produced = {
+        exit_status(_outcome(cases=(_case(Verdict.PASS),))),
+        exit_status(_outcome(cases=(_case(Verdict.FAIL),))),
+        exit_status(_outcome(errors=(_error(ErrorKind.PROGRAM),))),
+        exit_status(_outcome(errors=(_error(ErrorKind.HARNESS),))),
+    }
+    documented = {
+        int(head)
+        for head, _, gloss in (
+            line.strip().partition(" ") for line in cli_help_sections()["exit status"]
+        )
+        if head.isdigit() and gloss.strip()
+    }
+    assert documented == produced
 
 
 def test_the_status_is_a_function_of_the_outcome_and_nothing_else() -> None:
