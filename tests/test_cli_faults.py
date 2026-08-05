@@ -146,3 +146,55 @@ def test_a_harness_fault_at_solve_time_costs_only_the_case_that_met_it(
     assert "2/3 passed, 1 harness error(s)" in captured.out, (
         "the cases either side of it keep their results, and the one that broke is accounted for"
     )
+
+
+# An escape a terminal acts on rather than displays: erase-in-line. Written into a corpus by an
+# author, and reaching a reader through a diagnostic — which is the whole point. A diagnostic that
+# reproduces it can erase the line above it, so a report saying a case FAILed can be made to say
+# nothing at all, or something else.
+_ERASES_THE_LINE = "\x1b[2K"
+
+
+def test_a_corpus_cannot_write_a_terminal_escape_into_a_diagnostic_it_causes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The frame that reports a file discovery could not use. This is the guarantee `_Terminal`
+    # states in its own docstring and the one nothing held: a reviewer's mutation dropping
+    # `legible` here passed the entire suite, because every test reaching this frame used text with
+    # nothing in it to sanitize.
+    #
+    # The input is chosen so that it can fail. A malformed *contract* cannot: `expectation.parse`
+    # sanitizes the payload it quotes back, so the escape is already neutral by the time it gets
+    # here and dropping the call changes nothing. The first draft of this test used exactly that,
+    # and the mutation walked through it — the test was green and measuring nothing. What does
+    # reach this frame raw is a program fault met while the corpus is walked: the message is
+    # clingo's, quoting a path this corpus chose.
+    (tmp_path / f"ev{_ERASES_THE_LINE}il.lp").write_text(
+        '% @expect sat\n% @count 1\n#include "nowhere.lp".\na.\n', encoding="utf-8"
+    )
+
+    assert main([str(tmp_path)]) == ExitStatus.USER_FAULT
+
+    said = capsys.readouterr().err
+    assert _ERASES_THE_LINE not in said, "the escape reached the reader's terminal intact"
+    assert "ev\\x1b[2Kil.lp" in said, (
+        "and it is shown rather than dropped: a reader has to be able to see that the corpus "
+        "tried something, not find text quietly missing"
+    )
+
+
+def test_a_path_the_corpus_chose_is_sanitized_before_a_reader_sees_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The other half, and the one an author is least likely to have thought about: the file's own
+    # name. A fault met while the case is *run* is reported against its path, so a corpus that names
+    # a file with an escape writes into every diagnostic about it.
+    (tmp_path / f"ev{_ERASES_THE_LINE}il.lp").write_text(
+        "% @expect sat\n% @count 1\np(X) :- q(Y).\n#show p/1.\n", encoding="utf-8"
+    )
+
+    assert main([str(tmp_path)]) == ExitStatus.USER_FAULT
+
+    said = capsys.readouterr().err
+    assert _ERASES_THE_LINE not in said, "the escape reached the reader's terminal intact"
+    assert "ev\\x1b[2Kil.lp" in said, "and the name is still legible enough to find the file by"

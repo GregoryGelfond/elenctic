@@ -97,7 +97,8 @@ def test_a_clean_corpus_emits_no_hygiene_even_under_strict(
     status = main([str(tmp_path), "--strict"])
     err = capsys.readouterr().err.lower()
     assert status == ExitStatus.OK
-    assert "orphan" not in err and "hygiene" not in err
+    assert "orphan" not in err
+    assert "hygiene" not in err
 
 
 def test_hygiene_records_are_aggregated_and_reported_together(
@@ -108,7 +109,9 @@ def test_hygiene_records_are_aggregated_and_reported_together(
     status = main([str(tmp_path), "--strict"])
     err = capsys.readouterr().err.lower()
     assert status == ExitStatus.USER_FAULT
-    assert "orphan" in err and "undeclared" in err  # both axes in one summary
+    # Both hygiene axes in the one summary, rather than whichever was observed first.
+    assert "orphan" in err
+    assert "undeclared" in err
 
 
 def test_explain_also_reports_hygiene_and_strict_still_escalates(

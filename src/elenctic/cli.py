@@ -290,7 +290,7 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         # API offers neither a clock nor a size limit on grounding — is not a reason to be unable
         # to *report* it. What consumed the memory is not knowable from here, so it is not claimed.
         resource = _unowned_fault(ErrorKind.RESOURCE, _CORPUS_OUT_OF_MEMORY)
-        print(f"{_heading(resource)} {resource.message}", file=sys.stderr)
+        print(f"{_heading(resource.kind, resource.scope)} {resource.message}", file=sys.stderr)
         outcome = _fault_outcome(resource)
     except Exception as exc:
         # Whatever this is, the user did not cause it and cannot fix it. Say so first, then show
@@ -299,7 +299,7 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         # itself fail on a __repr__ that raises.
         internal = _unowned_fault(ErrorKind.HARNESS, f"{_INTERNAL_ERROR}: {type(exc).__name__}")
         print(
-            f"{_heading(internal)} {_INTERNAL_ERROR}. Please report it at\n"
+            f"{_heading(internal.kind, internal.scope)} {_INTERNAL_ERROR}. Please report it at\n"
             f"{_ISSUES}, with the traceback below.",
             file=sys.stderr,
         )
@@ -367,8 +367,10 @@ def _print_schema() -> ExitStatus:
     try:
         description = schema_text()
     except OSError:
-        unreadable = _unowned_fault(ErrorKind.DISCOVERY, _SCHEMA_UNREADABLE)
-        print(f"{_heading(unreadable)} {unreadable.message}", file=sys.stderr)
+        unreadable = _unowned_fault(ErrorKind.ENVIRONMENT, _SCHEMA_UNREADABLE)
+        print(
+            f"{_heading(unreadable.kind, unreadable.scope)} {unreadable.message}", file=sys.stderr
+        )
         return exit_status(_fault_outcome(unreadable))
     _publish(description)
     return ExitStatus.OK
@@ -396,10 +398,13 @@ def _publish(document: str) -> None:
 def _unowned_fault(kind: ErrorKind, message: str) -> ErrorRecord:
     """One fault met where no case owned it, and which therefore cost the whole run.
 
-    No file is named, and there is none to name: each of the three frames that reaches this — an
-    allocation that failed with no case running, a fault no register anticipated, and a copy of the
-    package that cannot read its own description — knows something went wrong and not which file it
-    was about. Claiming one would be worse than naming none.
+    No file is named. Two of the three frames that reach this — an allocation that failed with no
+    case running, and a fault no register anticipated — know something went wrong and not which file
+    it was about, and claiming one would be worse than naming none. The third knows its file exactly
+    and still names none, for a different reason: ``source`` is a path into the corpus under test,
+    resolved the way a case's is, and the description this frame could not read lives inside the
+    installed package. Putting one where the other is expected would send a reader looking for it in
+    their own tree.
 
     Built before the reader is told anything, rather than after, so that what is printed and what is
     reported are the one record read twice. These three frames used to choose their own heading
@@ -485,10 +490,10 @@ class _Terminal(Observer):
     # of these it calls, so nothing here has to ask a record what it was.
 
     def corpus_unreadable(self, record: ErrorRecord) -> None:
-        print(f"{_heading(record)} {legible(record.message)}", file=sys.stderr)
+        print(f"{_heading(record.kind, record.scope)} {legible(record.message)}", file=sys.stderr)
 
     def case_unusable(self, record: ErrorRecord) -> None:
-        print(f"{_heading(record)} {legible(record.message)}", file=sys.stderr)
+        print(f"{_heading(record.kind, record.scope)} {legible(record.message)}", file=sys.stderr)
 
 
 class _TerminalRun(_Terminal):
@@ -549,9 +554,15 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
     verdict and no line has disappeared from the reader's view of the corpus, while still being
     counted in the tally that says how many did not run.
 
-    The split between the arms that name the file and the arms that do not is a rule rather than a
-    habit: some of these messages already carry their own provenance and some do not, and a line
-    that names the file twice reads as two faults.
+    The split between the arms that name the file and the arms that do not is **keyed on the locus,
+    and the property it is reaching for belongs to the message**: some of these messages already say
+    where they happened and some do not, and a line that names the file twice reads as two faults.
+    For two of the three loci below the two coincide; for a program fault they do not, and the
+    ordinary run-time diagnostic prints its path more than once as a result. Anyone adding a locus
+    should read this as "does this locus's message carry its own provenance?" and know that the
+    answer is not always a property of the locus. Settling it properly means deciding where
+    provenance lives — in the message, or in the record's ``source`` with the renderer placing it —
+    and that is a change to what a caller catching one of these sees, not a change to a heading.
     """
     match record.kind:
         case ErrorKind.DEADLINE:
@@ -564,45 +575,63 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
             # A malformed contract is met while a case is being read, so it reaches a reader
             # through `unusable` and not here. The arm is what keeps this total: were a run ever
             # to file one, it would be shown the way every other contract fault is shown.
-            return f"{_heading(record)} {legible(record.message)}"
-        case ErrorKind.DISCOVERY:
-            return f"{_heading(record)} {legible(record.message)}"
+            return f"{_heading(record.kind, record.scope)} {legible(record.message)}"
+        case ErrorKind.DISCOVERY | ErrorKind.ENVIRONMENT:
+            # An environment fault reaches a reader here and not through `unusable`, because the
+            # declared solver is checked per case at run time rather than during the corpus walk.
+            # Its message names the case, as every diagnostic raised from discovery does.
+            return f"{_heading(record.kind, record.scope)} {legible(record.message)}"
         case ErrorKind.PROGRAM | ErrorKind.RESOURCE | ErrorKind.HARNESS:
-            return f"{_heading(record)} {_against(record)}"
+            return f"{_heading(record.kind, record.scope)} {_against(record)}"
         case unreachable:
             assert_never(unreachable)
 
 
-def _heading(record: ErrorRecord) -> str:
+def _heading(kind: ErrorKind, scope: Scope) -> str:
     """What a fault is announced as: where it lies, and what it cost.
 
-    Two facts, both read off the record, and neither of them a fact about elenctic. The **word** is
-    the locus, so one fault is announced by one name however it was met — this used to report which
-    part of elenctic noticed instead, which made a program that will not load a ``CASE ERROR`` when
-    discovery walked into it and a ``PROGRAM ERROR`` when the runner did, telling a reader that one
-    broken ``#include`` was two different problems. The **case and the punctuation** are what it
-    cost: a run that ended before anything was attempted, or one file among others that will
-    produce no verdict while the rest of the corpus still runs. A reader can tell the second from
-    the first without being told, because only one of them has a tally under it.
+    Two facts, and neither of them a fact about elenctic. The **word** is the locus, so one fault is
+    announced by one name however it was met — this used to report which part of elenctic noticed
+    instead, which made a program that will not load a ``CASE ERROR`` when discovery walked into it
+    and a ``PROGRAM ERROR`` when the runner did, telling a reader that one broken ``#include`` was
+    two different problems. The **case and the punctuation** are what it cost, which is what
+    ``Scope`` means: capitals where the run went on and still produced a report, lower case where it
+    stopped and there is none.
 
     The word is the locus's own name rather than a second vocabulary beside it, so nobody has to
     keep a table: what is printed here as ``PROGRAM ERROR`` is what a document calls
     ``"kind": "program"``. Derived from the vocabulary rather than written out locus by locus,
     because a locus added later would otherwise be announced by whatever heading the frame that met
     it happened to carry, which is the whole of what went wrong before.
+
+    The two facts are taken as themselves rather than as a record holding them, and that is what
+    lets every line naming a locus come through here — including the deadline notice, which is a
+    reading of *many* records and so has no one record to be handed. It also makes the paragraph
+    above a property of the signature rather than a promise about the body: there is nothing else
+    here to read.
     """
-    match record.scope:
+    match scope:
         case Scope.CORPUS:
-            return f"{record.kind.value} error:"
+            return f"{kind.value} error:"
         case Scope.CASE:
-            return f"{record.kind.value.upper()} ERROR —"
+            return f"{kind.value.upper()} ERROR —"
         case unreachable:
             assert_never(unreachable)
 
 
 def _against(record: ErrorRecord) -> str:
-    """A fault named against the file it belongs to — for the faults met while a case is *run*,
-    whose messages say what went wrong without saying where."""
+    """A fault named against the file it belongs to, for the loci whose messages may say what went
+    wrong without saying where.
+
+    Both halves are sanitized, and neither is elenctic's own text: the message is the solver's or an
+    exception's, and the path is a filename the corpus chose. Text a reader's terminal would act on
+    rather than display can move a cursor over a line already printed, which is how a diagnostic
+    forges a verdict in the report it appears in.
+
+    Every record reaching here carries a source, because every frame that files a case-scoped fault
+    of these loci has a case in hand to name. That is a precondition and not a check: a record
+    without one renders the word ``None``, which is a fault in this renderer rather than something
+    to be handled here."""
     return f"{legible(str(record.source))}: {legible(record.message)}"
 
 
@@ -638,13 +667,20 @@ def _report_deadline(outcome: RunOutcome, invocation: Invocation) -> None:
 
     Counted off the register rather than remembered from the loop: a case the deadline never reached
     has a record of its own saying so, and the reader's sentence is a reading of those rather than a
-    second account of the same event kept alongside them."""
+    second account of the same event kept alongside them.
+
+    Announced through the same vocabulary as every other fault, although it is the one line built
+    from many records rather than from one. That is why the heading is asked for by locus and scope
+    rather than handed a record: there is no single record here to hand it, and picking one of the
+    several would make an arbitrary choice look like a considered one. The scope is the one every
+    record in this register carries — a deadline costs cases, and the run still reports on the ones
+    it reached, which is exactly what the tally below this line goes on to say."""
     unreached = [record for record in outcome.errors if record.kind is ErrorKind.DEADLINE]
     if not unreached:
         return
     print(
-        f"DEADLINE — the run passed its {invocation.deadline}s deadline; "
-        f"{len(unreached)} case(s) were not reached",
+        f"{_heading(ErrorKind.DEADLINE, Scope.CASE)} the run passed its {invocation.deadline}s "
+        f"deadline; {len(unreached)} case(s) were not reached",
         file=sys.stderr,
     )
 

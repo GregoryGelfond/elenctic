@@ -85,7 +85,10 @@ def test_a_declared_solver_this_environment_lacks_is_filed_against_the_environme
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     target = _corpus(tmp_path, theory=_DECLARES_THE_THEORY_SOLVER)
     (record,) = run_corpus(_asked(target)).errors
-    assert record.kind is ErrorKind.DISCOVERY
+    # Not `discovery`, although this is a DiscoveryError by class: the check runs per case at run
+    # time, after the corpus walk is over, so discovery never met it. A locus is where the fault
+    # lies and not which of elenctic's own exceptions carried it.
+    assert record.kind is ErrorKind.ENVIRONMENT
     assert record.scope is Scope.CASE
     assert record.source == target / "theory.lp"
 

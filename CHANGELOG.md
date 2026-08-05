@@ -77,6 +77,16 @@ means for them — a reader deciding whether to upgrade should not have to read 
   enumeration gains a member; the open-valued fields (`kind`, `solver`, a check's `tag`) may gain
   values without one; every `message` is opaque and may be reworded at any time.
 
+- **A new error locus, `environment`,** for a fault in the machine a corpus was run on rather than
+  in the corpus: a declared solver this installation does not have, and a copy of elenctic that
+  cannot read its own packaged output description. Both were filed as `discovery` before, which was
+  never quite true — the declared solver is checked per case while the run is under way, not during
+  the corpus walk at all — and the published description of `discovery` had grown an "or the
+  environment … including a declared solver that is not installed" to cover it. Nothing about a
+  corpus would change if either fault were fixed, which is the line between the two. `kind` is
+  open-valued, so this needs no `schema_version` change; `is_elenctic_bug` is `false` for it, so
+  the exit status is what it was.
+
 ### Fixed
 
 - **A literal set whose body parses to nothing is refused, and refused as the author's mistake.**
@@ -166,33 +176,45 @@ means for them — a reader deciding whether to upgrade should not have to read 
     shared.lp
   ```
 
-  Nine spellings across ten places collapse onto the six loci `kind` already names, so what a
-  terminal calls `PROGRAM ERROR` is what a document calls `"kind": "program"` and nobody has to
-  keep a table between the two views of one run. With the word settled by the locus, the one thing
-  left varying is the case and the punctuation, and it now says what the fault *cost*: capitals
-  and a dash for one file among others that will produce no verdict, lower case and a colon for a
-  run that ended before anything else was attempted. Both of those are fields on the record;
-  neither of them is a fact about elenctic.
+  Every heading is now built from one rule, so what a terminal calls `PROGRAM ERROR` is what a
+  document calls `"kind": "program"` and nobody has to keep a table between the two views of one
+  run. With the word settled by the locus, the one thing left varying is the case and the
+  punctuation, and it says what the fault *cost* — which is what `scope` means in the document:
+  capitals where the run went on and still produced a report, lower case where it stopped and there
+  is none. Both are fields on the record.
 
-  **If a job matches on these lines, re-check it.** `CASE ERROR` and `SOLVER ERROR` are no longer
-  printed at all, and neither are `corpus error:`, `internal error:` or `environment error:`:
+  **All of these go to standard error**, as every diagnostic always has; standard output carries
+  the report — the tally under `--format human`, the document under `--format json`. A job
+  scraping standard output for these was never seeing them.
+
+  **If a job matches on these lines, re-check it.** `CASE ERROR`, `SOLVER ERROR`, `corpus error:`
+  and `internal error:` are no longer printed at all:
 
   | was | is now |
   | --- | --- |
   | `CASE ERROR — ` | `CONTRACT` / `DISCOVERY` / `PROGRAM ERROR — `, by locus |
-  | `SOLVER ERROR — ` | `DISCOVERY ERROR — ` |
+  | `SOLVER ERROR — ` | `ENVIRONMENT ERROR — ` |
   | `corpus error: ` | `contract error: ` / `discovery error: ` / `program error: `, by locus |
   | `internal error: ` | `harness error: ` |
-  | `environment error: ` | `discovery error: ` |
+  | `DEADLINE — ` | `DEADLINE ERROR — ` |
+  | `environment error: ` | unchanged |
+  | `resource error: ` | unchanged |
+  | `PROGRAM` / `RESOURCE` / `HARNESS ERROR — ` | unchanged |
 
-  `PROGRAM ERROR — `, `RESOURCE ERROR — `, `HARNESS ERROR — ` and `resource error: ` are byte-for-
-  byte what they were. Of those only `PROGRAM ERROR — ` is now printed where it was not before —
-  when discovery, rather than the runner, is what met the program it could not load.
+  Of the unchanged ones, only `PROGRAM ERROR — ` is now printed where it was not before — when
+  discovery, rather than the runner, is what met the program it could not load.
 
-  `usage error:` is deliberately untouched: a command line that cannot be run has produced no run
-  and so no record, and a heading names a locus only where there is a fault filed under one. What
-  a heading does *not* yet settle is whether the line goes on to name the file — that still varies
-  by locus, and where a message already carries its own path the path is printed twice.
+  `usage error:` is deliberately untouched, and it is the one line that is not in this scheme: a
+  command line that cannot be run has produced no run and so no record, and a heading names a locus
+  only where a fault is filed under one.
+
+  What a heading does **not** yet settle is whether the line goes on to name the file. That still
+  varies by locus *and* by which part of elenctic met the fault — a program that will not load is
+  reported as `PROGRAM ERROR — <message>` when discovery meets it and `PROGRAM ERROR — <file>:
+  <message>` when the runner does — and where a message already carries its own path, the path is
+  printed twice. Deciding it means deciding where provenance lives, in the message or in the
+  record's `source`, which changes what a library caller catching one of these sees. It is the
+  remaining half of this, and it is not done.
 
 - **A fault in elenctic now exits `3`, apart from a fault in your corpus.** Exit `2` meant both
   "your corpus has something to fix" and "elenctic violated one of its own invariants" — one status

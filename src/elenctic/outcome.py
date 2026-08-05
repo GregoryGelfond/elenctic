@@ -84,6 +84,14 @@ class ErrorKind(Enum):
     PROGRAM = "program"
     DEADLINE = "deadline"
     RESOURCE = "resource"
+    # Apart from `discovery`, and the distinction is the machine rather than the corpus. A declared
+    # solver that is not installed and a copy of this package that cannot read its own packaged
+    # description are both faults in what elenctic was given to run *in* — nothing about the corpus
+    # would change if either were fixed, and nothing a corpus author writes can cause either. Both
+    # were filed as `discovery` until the diagnostic heading was derived from the locus, at which
+    # point they began announcing themselves under a phase that never met them: the declared solver
+    # is checked per case at run time and not during the corpus walk at all.
+    ENVIRONMENT = "environment"
     HARNESS = "harness"
 
     @property

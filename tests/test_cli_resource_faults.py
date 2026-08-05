@@ -25,6 +25,19 @@ from elenctic.solvers import TIME_BUDGET
 _GOOD = "% @expect sat\n% @count  1\n\na.\n#show a/0.\n"
 
 
+def test_the_address_a_reader_is_sent_to_is_the_one_the_project_declares() -> None:
+    # The backstop asks a reader to report a fault and tells them where, which is the one diagnostic
+    # in the package whose usefulness depends on a fact outside it. It is written in two places —
+    # here in the prose, and in the project metadata that puts a link on the index page — and
+    # nothing made them agree, so moving the repository would leave a diagnostic sending people to
+    # a page that no longer exists, with the suite green.
+    import tomllib
+
+    with (Path(__file__).resolve().parent.parent / "pyproject.toml").open("rb") as declared:
+        urls = tomllib.load(declared)["project"]["urls"]
+    assert urls["Issues"] == cli._ISSUES
+
+
 def _corpus(root: Path, *names: str) -> None:
     for name in names:
         (root / f"{name}.lp").write_text(_GOOD, encoding="utf-8")
@@ -147,4 +160,10 @@ def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_stat
     assert record.scope is Scope.CORPUS, "no case owned it, so it belongs to the run"
     assert "ZeroDivisionError" in record.message, (
         "a record whose reason was dropped is not a report, and the traceback is not in it"
+    )
+    # The record and the diagnostic are one record read twice, so they cannot disagree about whose
+    # fault this is. Without this, the terminal can say "not a fault in your corpus" while the
+    # document filed beside it says the opposite, and only the reader who has both would notice.
+    assert record.message.startswith(cli._INTERNAL_ERROR), (
+        "the record says whose fault it is in the same words the reader was told"
     )

@@ -31,6 +31,7 @@ from elenctic.discovery import (
     Corpus,
     DiscoveryError,
     HygieneReport,
+    SolverUnavailableError,
     check_solver_available,
     inspect_corpus,
 )
@@ -456,10 +457,12 @@ def _run(
             # only the cases that declare it rather than the whole run.
             check_solver_available(case.solver, case.contract_source)
             reports = run_case(case, budget=budget)  # plan validated above
-        except DiscoveryError as exc:
-            # the environment cannot run this case (its declared solver is not installed). The
-            # message carries its own provenance, as every discovery diagnostic does.
-            errors.append(_case_error(ErrorKind.DISCOVERY, case, str(exc)))
+        except SolverUnavailableError as exc:
+            # The environment cannot run this case: its declared solver is not installed. Filed
+            # under the environment and not under discovery, because discovery never met it — the
+            # check above runs per case, here, after the corpus walk is over. The message carries
+            # its own provenance, as every diagnostic raised from `discovery` does.
+            errors.append(_case_error(ErrorKind.ENVIRONMENT, case, str(exc)))
             _tell(told.case_unjudged, errors[-1])
             continue
         except ProgramError as exc:

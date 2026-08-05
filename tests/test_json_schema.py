@@ -327,7 +327,7 @@ def test_a_number_with_no_json_form_is_refused_rather_than_written(
     # A budget can be given as infinite, and the obliging thing to do with it is to write
     # `Infinity`, which is not JSON. There being no document is the right outcome: a document a
     # consumer cannot parse is worse than an error saying why there is none.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="not JSON compliant"):
         dumps(_edited(document, ("invocation", "budget"), float("inf")))
 
 
@@ -561,10 +561,10 @@ def test_a_copy_of_the_package_carrying_no_description_says_so(
     assert "Traceback" not in captured.err, "an actionable fault is never delivered as a traceback"
     assert "elenctic/schema/" in captured.err, "and it says where the missing thing belongs"
     # Announced under the locus the record was filed with, like every other fault, rather than
-    # under a word this frame chose for itself. That the record is filed as a discovery fault is a
-    # grading decision — it is what keeps this a fault the reader can repair rather than one to
-    # report — and the heading now shows that decision instead of covering it with another word.
-    assert captured.err.startswith("discovery error: ")
+    # under a word this frame chose for itself. The locus is the environment because that is what is
+    # wrong: a copy of elenctic that has the code and not the data was assembled that way by
+    # something downstream, and nothing about the corpus would change if it were fixed.
+    assert captured.err.startswith("environment error: ")
 
 
 # What each conclusion value must be glossed as. The pairing cannot be derived from the code — it is

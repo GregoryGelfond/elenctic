@@ -410,7 +410,8 @@ def test_a_dry_run_has_no_machine_readable_form_and_says_so(tmp_path: Path) -> N
     assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == "", "a command line that cannot be run has produced no run to report"
     assert "usage error" in streams.err
-    assert "--explain" in streams.err and "--format json" in streams.err
+    assert "--explain" in streams.err
+    assert "--format json" in streams.err
     assert "alone" in streams.err, "and it says what to ask for instead, which is why it is refused"
 
 

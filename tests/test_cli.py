@@ -3,12 +3,20 @@ narrates the derived run plan without solving."""
 
 import io
 from contextlib import redirect_stderr, redirect_stdout
+from itertools import product
 from pathlib import Path
 
 import pytest
 
 from elenctic import corpus
-from elenctic.cli import _render_tail, _summary_line, _TerminalPlan, _TerminalRun, main
+from elenctic.cli import (
+    _heading,
+    _render_tail,
+    _summary_line,
+    _TerminalPlan,
+    _TerminalRun,
+    main,
+)
 from elenctic.outcome import ErrorKind, ErrorRecord, ExitStatus, Invocation, RunOutcome, Scope
 from elenctic.run import RoutingError, runs_for as real_runs_for
 
@@ -104,7 +112,8 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
     assert (
         status == ExitStatus.HARNESS_FAULT
     )  # a harness error, not a verdict and not a corpus to fix
-    assert "HARNESS ERROR" in captured.err and "bad" in captured.err  # the misrouted case named
+    assert "HARNESS ERROR" in captured.err
+    assert "bad" in captured.err, "and the misrouted case is named"
     assert "1/2 passed" in captured.out  # the good case still ran and passed
     assert "1 harness error" in captured.out
 
@@ -211,7 +220,8 @@ def test_the_dry_run_reports_a_file_it_could_not_use_and_still_narrates_the_rest
     # The worked example of the collapse: an #include that will not resolve is a fault in the
     # program, and it is announced as one here — where discovery met it — exactly as it is when the
     # runner meets one. It used to be announced as a CASE ERROR here and a PROGRAM ERROR there.
-    assert "PROGRAM ERROR — " in captured.err and "no_such_library.lp" in captured.err
+    assert "PROGRAM ERROR — " in captured.err
+    assert "no_such_library.lp" in captured.err
     assert "@model" in captured.out, "the case that could be planned is still planned"
 
 
@@ -361,6 +371,7 @@ _SAID_ABOUT: dict[ErrorKind, str] = {
     ErrorKind.DEADLINE: "",
     ErrorKind.CONTRACT: "CONTRACT ERROR — the reason it produced none\n",
     ErrorKind.DISCOVERY: "DISCOVERY ERROR — the reason it produced none\n",
+    ErrorKind.ENVIRONMENT: "ENVIRONMENT ERROR — the reason it produced none\n",
     ErrorKind.PROGRAM: "PROGRAM ERROR — case.lp: the reason it produced none\n",
     ErrorKind.RESOURCE: "RESOURCE ERROR — case.lp: the reason it produced none\n",
     ErrorKind.HARNESS: "HARNESS ERROR — case.lp: the reason it produced none\n",
@@ -376,23 +387,60 @@ _SAID_ABOUT_AN_UNUSABLE_FILE: dict[ErrorKind, str] = {
     ErrorKind.DEADLINE: "DEADLINE ERROR — the reason it produced none\n",
     ErrorKind.CONTRACT: "CONTRACT ERROR — the reason it produced none\n",
     ErrorKind.DISCOVERY: "DISCOVERY ERROR — the reason it produced none\n",
+    ErrorKind.ENVIRONMENT: "ENVIRONMENT ERROR — the reason it produced none\n",
     ErrorKind.PROGRAM: "PROGRAM ERROR — the reason it produced none\n",
     ErrorKind.RESOURCE: "RESOURCE ERROR — the reason it produced none\n",
     ErrorKind.HARNESS: "HARNESS ERROR — the reason it produced none\n",
 }
 
 
-# And the same six when the fault cost the whole run. Lower case and a colon rather than capitals
-# and a dash, which is what tells a reader that nothing else was attempted: there is no tally below
-# this line to say how much of the corpus ran, because none of it did.
+# And the same loci when the fault cost the whole run. Lower case and a colon rather than capitals
+# and a dash, which is what tells a reader the run stopped here and produced no report at all.
 _SAID_ABOUT_A_WHOLE_RUN: dict[ErrorKind, str] = {
     ErrorKind.DEADLINE: "deadline error: the reason nothing ran\n",
     ErrorKind.CONTRACT: "contract error: the reason nothing ran\n",
     ErrorKind.DISCOVERY: "discovery error: the reason nothing ran\n",
+    ErrorKind.ENVIRONMENT: "environment error: the reason nothing ran\n",
     ErrorKind.PROGRAM: "program error: the reason nothing ran\n",
     ErrorKind.RESOURCE: "resource error: the reason nothing ran\n",
     ErrorKind.HARNESS: "harness error: the reason nothing ran\n",
 }
+
+
+# Every heading the vocabulary can produce, whole and written out, over BOTH axes. The three tables
+# above each fix one scope and vary the locus, so between them they say nothing about how the scope
+# is read — and a renderer that ignored scope entirely would satisfy all three. This is the table
+# that holds the other axis, and it is what makes a locus or a scope added later fail here (a
+# missing key) as well as under the type checker.
+_HEADING: dict[tuple[ErrorKind, Scope], str] = {
+    (ErrorKind.CONTRACT, Scope.CASE): "CONTRACT ERROR —",
+    (ErrorKind.DISCOVERY, Scope.CASE): "DISCOVERY ERROR —",
+    (ErrorKind.ENVIRONMENT, Scope.CASE): "ENVIRONMENT ERROR —",
+    (ErrorKind.PROGRAM, Scope.CASE): "PROGRAM ERROR —",
+    (ErrorKind.DEADLINE, Scope.CASE): "DEADLINE ERROR —",
+    (ErrorKind.RESOURCE, Scope.CASE): "RESOURCE ERROR —",
+    (ErrorKind.HARNESS, Scope.CASE): "HARNESS ERROR —",
+    (ErrorKind.CONTRACT, Scope.CORPUS): "contract error:",
+    (ErrorKind.DISCOVERY, Scope.CORPUS): "discovery error:",
+    (ErrorKind.ENVIRONMENT, Scope.CORPUS): "environment error:",
+    (ErrorKind.PROGRAM, Scope.CORPUS): "program error:",
+    (ErrorKind.DEADLINE, Scope.CORPUS): "deadline error:",
+    (ErrorKind.RESOURCE, Scope.CORPUS): "resource error:",
+    (ErrorKind.HARNESS, Scope.CORPUS): "harness error:",
+}
+
+
+@pytest.mark.parametrize(("kind", "scope"), list(product(ErrorKind, Scope)))
+def test_a_heading_is_the_locus_and_what_it_cost_and_nothing_else(
+    kind: ErrorKind, scope: Scope
+) -> None:
+    # Both axes at once, against literals. Written out rather than computed from the vocabulary,
+    # because a table that builds the heading the way the code builds it agrees with any
+    # implementation that builds it that way — including a wrong one. That was the defect in the
+    # test this replaces: it asserted `startswith(f"{kind.value.upper()} ERROR —")`, which is the
+    # implementation's own expression copied into the assertion, so it could not fail while the
+    # implementation was self-consistent.
+    assert _heading(kind, scope) == _HEADING[kind, scope]
 
 
 @pytest.mark.parametrize("kind", list(ErrorKind))
@@ -437,6 +485,10 @@ def test_one_locus_is_announced_by_one_word_whichever_frame_met_the_fault(
     # and both spellings were pinned by their own tests — each correct about its own frame, and
     # neither able to see that they disagreed.
     #
+    # The expectation comes from the table rather than from the implementation's own expression. It
+    # asserted `startswith(f"{kind.value.upper()} ERROR —")` when it was first written, which is a
+    # copy of the line under test and so could not fail while that line was self-consistent.
+    #
     # The deadline is left out because it is the one locus a per-case frame deliberately stays
     # quiet about, and only one of these two frames can ever be handed one.
     record = ErrorRecord(
@@ -448,7 +500,7 @@ def test_one_locus_is_announced_by_one_word_whichever_frame_met_the_fault(
     _TerminalRun().case_unjudged(record)
     running = capsys.readouterr().err
 
-    heading = f"{kind.value.upper()} ERROR —"
+    heading = _HEADING[kind, Scope.CASE]
     assert reading.startswith(heading), "the frame that met it while reading the corpus"
     assert running.startswith(heading), "and the frame that met it while running the case"
 
@@ -497,7 +549,7 @@ def test_the_deadline_is_said_once_however_many_cases_it_cost(
     # while every record beside it said 5.0s, and the entire suite stayed green. Measured — the
     # mutation was a reviewer's and was run.
     assert capsys.readouterr().err == (
-        "DEADLINE — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
+        "DEADLINE ERROR — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
     )
 
 
@@ -548,7 +600,7 @@ def test_a_reader_of_one_merged_stream_is_told_the_deadline_before_the_tally() -
         )
 
     assert merged.getvalue() == (
-        "DEADLINE — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
+        "DEADLINE ERROR — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
         "\n"
         "0/3 passed, 3 could not be run\n"
     )
