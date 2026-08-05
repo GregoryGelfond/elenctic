@@ -150,7 +150,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     )
     from elenctic.solvers import TIME_BUDGET as TIME_BUDGET, solve as solve
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # The curated public API, grouped by home module — the single source for both __all__ and the lazy
 # resolver, so the two cannot drift. Internals (the Consistent shapes, accessors, check builders,

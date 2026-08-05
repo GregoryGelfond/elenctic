@@ -373,7 +373,7 @@ clingcon = "5.2.1.*"   # only for the theory fragment
 
 [pypi-dependencies]
 elenctic = { git = "https://github.com/GregoryGelfond/elenctic.git" }
-# pin a release for reproducibility, e.g. { git = "...", tag = "v0.2.0" }
+# pin a release for reproducibility, e.g. { git = "...", tag = "v0.3.0" }
 ```
 
 Then `pixi run elenctic <path>` runs a corpus of contracts.
