@@ -260,6 +260,43 @@ def test_a_signature_only_ever_displayed_is_refused_as_its_own_fault() -> None:
         check_program(exp, _facts(shown=shown), "clingo", WHERE)
 
 
+def test_the_displayed_refusal_states_the_fault_and_a_remedy_that_keeps_the_output() -> None:
+    # The whole line. The remedy half is the reason: telling an author to declare the predicate the
+    # directive names is advice that CHANGES WHAT THEIR PROGRAM OUTPUTS — a display directive
+    # selects a subset, and declaring the raw predicate widens the output to all of it. Measured on
+    # a real corpus, that advice broke eight cases whose contracts compare a whole observable.
+    exp = parse("% @expect sat\n% @query yes { reachable(a) }\n")
+    shown = _shows(("reachable", 1), ("-reachable", 1), displayed=frozenset({("reachable", 1)}))
+    with pytest.raises(DiscoveryError) as caught:
+        check_program(exp, _facts(shown=shown), "clingo", WHERE)
+    assert str(caught.value) == (
+        "case.lp:2: this @query reads reachable/1, which the program displays with a "
+        "`#show <term> : <body>.` directive. Such a directive emits its term wherever its body "
+        "holds, so the predicate reaches the output for some ground instances and not others — and "
+        "the term need not be an atom of the program at all, so the output can carry a symbol no "
+        "answer set contains. elenctic answers a query from what the solver puts in the output, so "
+        "a literal that does not reach it exactly when the answer set contains it cannot be told "
+        "apart from one no answer set contains, and the answer would describe the #show directives "
+        "rather than the program. Give what the directive selects a name of its own — a rule "
+        "deriving it where the body holds, declared with `#show <name>/<arity>.` — and then claim "
+        "that, or drop the query"
+    )
+
+
+def test_the_displayed_refusal_agrees_in_number_when_several_are_named() -> None:
+    # Two signatures, so every clause that counts them has to say so. A message built by joining a
+    # list to a fixed verb reads "what the directive select", which is the shape this catches.
+    exp = parse("% @expect sat\n% @query yes { reachable(a), blocked(b) }\n")
+    displayed = frozenset({("reachable", 1), ("blocked", 1)})
+    shown = _shows(_R, _NR, _B, _NB, displayed=displayed)
+    with pytest.raises(DiscoveryError) as caught:
+        check_program(exp, _facts(shown=shown), "clingo", WHERE)
+    message = str(caught.value)
+    assert "displays with `#show <term> : <body>.` directives" in message, message
+    assert "Give what the directives select names of their own" in message, message
+    assert "each declared with" in message, message
+
+
 def test_the_displayed_refusal_fires_even_where_nothing_is_restricted() -> None:
     # The half that a `Restricted`-only check would miss, and the one that was measured reporting
     # `1/1 passed` on a false claim: an unrestricted program loses nothing, which says nothing at

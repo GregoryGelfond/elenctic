@@ -492,9 +492,19 @@ def _displayed_not_declared(where: Path, line: int, displayed: frozenset[Signatu
     directives = (
         "`#show <term> : <body>.` directives" if several else "a `#show <term> : <body>.` directive"
     )
-    declarations = " ".join(f"#show {name}/{arity}." for name, arity in sorted(displayed))
-    dropped = "directives" if several else "directive"
-    remedy = f"Declare {declarations} and drop the displaying {dropped}"
+    # Not "declare the predicate the directive names": measured on a real corpus, that is advice
+    # that changes what the program outputs. A display directive selects a *subset* — the costs of
+    # the assignments made, say, out of a whole cost table — and declaring the raw predicate widens
+    # the output to all of it, which breaks every contract comparing a whole observable. What the
+    # author means already has a definition; it just has no name. Giving it one leaves the values
+    # exactly as they were and makes them observable in a way a reading can trust.
+    remedy = (
+        "Give what the directives select names of their own — rules deriving them where their "
+        "bodies hold, each declared with `#show <name>/<arity>.` — and then claim those"
+        if several
+        else "Give what the directive selects a name of its own — a rule deriving it where the "
+        "body holds, declared with `#show <name>/<arity>.` — and then claim that"
+    )
     return (
         f"{where}:{line}: this @query reads {_signature_list(displayed)}, which the program "
         f"displays with {directives}. Such a directive emits its term wherever its body holds, so "
