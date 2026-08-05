@@ -104,7 +104,7 @@ ORPHAN_LIBRARY = (
 UNDECLARED_SOLVER = "defaulted to clingo (declare @elenctic solver for reproducibility)"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class HygieneReport:
     """Corpus hygiene — the third strictness axis, distinct from the always-error closed
     vocabulary and soundness floor. These are observations, never verdicts, and the two have
@@ -121,6 +121,11 @@ class HygieneReport:
     backstop: a forgotten case, or a dead library). ``undeclared_solvers`` — case files that did not
     declare ``@elenctic solver`` and so defaulted to ``clingo``. Both are absolute-or-walk-relative
     paths, in deterministic (sorted-walk) order.
+
+    Built by keyword, like every other record a consumer meets. The two fields are adjacent and have
+    the same type, which is the exact hazard the rule exists for: transposed, they type-check clean
+    and read as a plausible report, and every orphan library would then be reported as a case that
+    did not declare its solver.
     """
 
     orphan_libraries: tuple[Path, ...]

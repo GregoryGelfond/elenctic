@@ -34,6 +34,22 @@ from elenctic.query import Query, parse_query
 from elenctic.registry import SOLVERS, Solver
 from elenctic.terms import parse_litset, parse_term
 
+__all__ = [
+    "BEHAVIORAL_TAGS",
+    "KNOWN_TAGS",
+    "Claimed",
+    "Contract",
+    "ContractError",
+    "Expectation",
+    "Sat",
+    "Unsat",
+    "WitnessClaim",
+    "has_contract",
+    "parse",
+    "parse_contract",
+    "require_line",
+]
+
 
 class ContractError(Exception):
     """An ill-formed or inconsistent contract block. Carries source:line provenance."""

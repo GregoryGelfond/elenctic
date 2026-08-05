@@ -12,6 +12,8 @@ declared (selected from this registry).
 
 from typing import Final, Literal
 
+__all__ = ["BACKING_MODULES", "SOLVERS", "THEORY_SOLVERS", "Solver", "provides_theory"]
+
 type Solver = Literal["clingo", "clingcon"]
 
 SOLVERS: Final[frozenset[str]] = frozenset({"clingo", "clingcon"})

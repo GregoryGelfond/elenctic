@@ -18,6 +18,8 @@ from typing import Final
 from clingo import SymbolType
 from clingo.ast import AST, ASTType, UnaryOperator, parse_files as _parse_files
 
+__all__ = ["ProgramError", "ProgramFacts", "inspect"]
+
 
 class ProgramError(Exception):
     """A program under test that elenctic cannot run — a missing or cyclic ``#include``, a parse

@@ -1,5 +1,6 @@
 """The curated public API: ``elenctic``'s top-level surface is the documented, ordered one."""
 
+import ast
 import subprocess
 import sys
 from importlib.resources import files
@@ -7,56 +8,70 @@ from pathlib import Path
 
 import elenctic
 
+# The curated surface, written out. Curated means somebody wrote it down, so this is the writing
+# down: a name joins or leaves elenctic's public API by being added to or removed from this list and
+# in no other way. It is compared for equality below and not for containment, which is the whole
+# point — under a subset assertion a name outside the list could be dropped from the surface with
+# every check in the project still green, and `ErrorRecord` (the type every observer method is
+# annotated with in the README) was one of them.
+_CURATED = {
+    # the pipeline
+    "Case", "Corpus", "discover", "inspect_corpus", "parse", "Expectation", "Sat", "Unsat",
+    "Claimed", "runs_for", "Run", "Mode", "solve", "TIME_BUDGET", "run_case", "case_verdict",
+    "render", "CheckReport", "Query", "Answer",
+    # the outcomes a solve produced, and how far the search behind them got
+    "Determination", "Verdict", "Observable", "Optimum", "SolveOutcome", "Consistent",
+    "Inconclusive", "Inconsistent", "Conclusion", "Collection",
+    # the error taxonomy
+    "ContractError", "DiscoveryError", "SolverUnavailableError", "ProgramError", "HarnessError",
+    "RoutingError", "SeamError",
+    # the solver registry
+    "Solver", "SOLVERS",
+    # running a whole corpus, watching it, and reading what it produced
+    "Invocation", "run_corpus", "explain_corpus", "Observer", "RunObserver", "PlanObserver",
+    "RunOutcome", "PlanOutcome", "Outcome", "CaseOutcome", "CasePlan", "ErrorRecord", "ErrorKind",
+    "HygieneRecord", "HygieneKind", "HygieneReport", "Grade", "Scope", "summary", "error_kind",
+    "is_duration", "exit_status", "ExitStatus",
+    # the published document, and making corpus-controlled text safe to show
+    "as_json", "dumps", "schema_text", "SCHEMA_VERSION", "legible",
+}  # fmt: skip
+
 
 def test_public_api_exports_the_pipeline_and_outcome_surface() -> None:
-    expected = {
-        # the pipeline
-        "Case",
-        "discover",
-        "parse",
-        "Expectation",
-        "Sat",
-        "Unsat",
-        "runs_for",
-        "Run",
-        "Mode",
-        "solve",
-        "run_case",
-        "case_verdict",
-        "render",
-        "CheckReport",
-        # the outcomes
-        "Determination",
-        "Verdict",
-        "Observable",
-        "Optimum",
-        # the error taxonomy
-        "ContractError",
-        "DiscoveryError",
-        "SolverUnavailableError",
-        "ProgramError",
-        "HarnessError",
-        "RoutingError",
-        "SeamError",
-        # the solver registry
-        "Solver",
-        "SOLVERS",
-        # running a whole corpus, and reading what it produced
-        "Invocation",
-        "run_corpus",
-        "explain_corpus",
-        "RunObserver",
-        "PlanObserver",
-        "exit_status",
-        "ExitStatus",
-        "PlanOutcome",
-        "as_json",
-        "schema_text",
-        "SCHEMA_VERSION",
-    }
-    assert expected <= set(elenctic.__all__)
+    assert set(elenctic.__all__) - {"__version__"} == _CURATED
     for name in elenctic.__all__:
         assert hasattr(elenctic, name), f"__all__ names {name!r} but there is no such attribute"
+
+
+def _imported_under_type_checking(source: str) -> set[str]:
+    """Every name the module imports inside ``if TYPE_CHECKING:``, as a consumer's type checker
+    reads them.
+
+    Read out of the text rather than asked of the module, because the block does not run: at import
+    ``TYPE_CHECKING`` is false and the names never exist. That is exactly why it needs a check of
+    its own — it is the one view of the surface nothing else can see."""
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.If) and getattr(node.test, "id", "") == "TYPE_CHECKING":
+            return {
+                alias.asname or alias.name
+                for statement in ast.walk(node)
+                if isinstance(statement, ast.ImportFrom)
+                for alias in statement.names
+            }
+    raise AssertionError("elenctic/__init__.py no longer has an `if TYPE_CHECKING:` block")
+
+
+def test_the_static_view_of_the_surface_names_what_the_runtime_one_does() -> None:
+    # The surface has three views and only two of them are single-sourced. `__all__` and the lazy
+    # resolver are both derived from `_EXPORTS`, so those cannot drift. The third is the
+    # hand-written `if TYPE_CHECKING:` block, and it is the one a consumer's type checker and IDE
+    # actually read — so drift there is invisible in the direction that hurts: a name in the block
+    # and not in `_EXPORTS` type-checks clean everywhere and raises `AttributeError` in the
+    # consumer's process. Nothing compared the two until this.
+    source = (files("elenctic") / "__init__.py").read_text(encoding="utf-8")
+    # `__version__` is a plain assignment rather than an import, so it is in `__all__` and cannot be
+    # in the block; it is the one name the two views are allowed to differ on.
+    assert _imported_under_type_checking(source) == set(elenctic.__all__) - {"__version__"}
 
 
 def test_the_package_tells_a_type_checker_that_it_is_typed() -> None:

@@ -23,6 +23,23 @@ from clingo import Symbol, SymbolType
 from elenctic.result import HarnessError
 from elenctic.terms import contrary, parse_litset, parse_tupleset
 
+__all__ = [
+    "Answer",
+    "BindingQuery",
+    "GroundQuery",
+    "Query",
+    "QueryForm",
+    "QueryLiteral",
+    "Var",
+    "binding_set",
+    "classify",
+    "conjunctive_answer",
+    "contrary_literal",
+    "parse_query",
+    "singleton_answer",
+    "unify",
+]
+
 # The ASP lexical forms: a variable (upper-case / underscore initial), a constant (lower-case).
 _VARIABLE = re.compile(r"[A-Z_][A-Za-z0-9_']*")
 _CONSTANT = re.compile(r"[a-z][A-Za-z0-9_']*")

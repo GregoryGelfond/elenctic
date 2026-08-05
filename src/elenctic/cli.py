@@ -63,6 +63,8 @@ from elenctic.outcome import (
 from elenctic.result import Verdict
 from elenctic.solvers import TIME_BUDGET
 
+__all__ = ["main"]
+
 # The same allocation failure with no case to name it against, and the reason it is worded
 # separately rather than reused: a frame that cannot say which case was running cannot offer the
 # remedy that names one, so it asks for the whole corpus to be bounded instead.

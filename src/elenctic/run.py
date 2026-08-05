@@ -42,6 +42,17 @@ from elenctic.result import (
     collection_of,
 )
 
+__all__ = [
+    "Mode",
+    "RoutingError",
+    "Run",
+    "populates",
+    "reads_full_census",
+    "runs_for",
+    "shape_for",
+    "should_project",
+]
+
 
 class Mode(Enum):
     """One solve configuration of the fixed run-configuration taxonomy. The taxonomy is

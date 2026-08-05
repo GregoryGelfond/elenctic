@@ -9,6 +9,15 @@ than a hand-rolled splitter. A strong-negation literal ``-a`` parses to a
 
 from clingo import Function, Symbol, SymbolType, parse_term as _clingo_parse_term
 
+__all__ = [
+    "contrary",
+    "intersect_all",
+    "parse_litset",
+    "parse_term",
+    "parse_tupleset",
+    "union_all",
+]
+
 
 def parse_term(text: str) -> Symbol:
     """Parse one term through clingo, capturing its diagnostics instead of letting them reach

@@ -69,6 +69,25 @@ from elenctic.result import (
 )
 from elenctic.terms import contrary, intersect_all
 
+__all__ = [
+    "Check",
+    "CheckReport",
+    "assign_contains",
+    "assign_optimal_contains",
+    "brave_contains",
+    "brave_optimal_contains",
+    "cautious_contains",
+    "cautious_optimal_contains",
+    "cost_is",
+    "count_is",
+    "count_optimal_is",
+    "expect_sat",
+    "expect_unsat",
+    "has_model",
+    "has_optimal_model",
+    "query_matches",
+]
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class CheckReport:

@@ -20,6 +20,7 @@ from clingo.solving import SolveResult
 from elenctic import solvers
 from elenctic.checks import cost_is, count_is, count_optimal_is
 from elenctic.program import ProgramError
+from elenctic.registry import Solver
 from elenctic.result import (
     Conclusion,
     Consistent,
@@ -326,7 +327,7 @@ def _readable_fields(shape: Consistent) -> frozenset[Field]:
 @pytest.mark.parametrize("project", [False, True], ids=["no-project", "project"])
 @pytest.mark.parametrize("solver", ["clingo", "clingcon"])
 @pytest.mark.parametrize("mode", list(Mode), ids=lambda mode: mode.name)
-def test_lowering_postcondition(solver: str, mode: Mode, project: bool) -> None:
+def test_lowering_postcondition(solver: Solver, mode: Mode, project: bool) -> None:
     # The merge-gating property over BOTH backends × the projection coordinate: solvers produces,
     # for a SAT run of (mode, project), exactly shape_for(mode, projects_to_shown), whose readable
     # fields are exactly populates(mode, projects_to_shown), with projects_to_shown = project and a
@@ -412,8 +413,12 @@ def test_solve_dispatches_by_solver_name() -> None:
 
 
 def test_solve_rejects_an_unknown_solver() -> None:
+    # The parameter is the closed `Solver` vocabulary, so this call is a type error and is written
+    # as one deliberately: a type checker is not a runtime guard, and what is under test is that a
+    # caller who bypasses it — decoding a name out of JSON, reading one from a config file — meets a
+    # loud refusal at the dispatch boundary rather than a mid-run harness error.
     with pytest.raises(ValueError, match=r"unknown solver 'dlv'"):
-        solve("dlv", Mode.DEFAULT, "a.")
+        solve("dlv", Mode.DEFAULT, "a.")  # type: ignore[arg-type]
 
 
 def test_a_clingcon_solve_honours_the_budget_through_the_shared_driver() -> None:

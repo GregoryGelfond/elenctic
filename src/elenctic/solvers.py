@@ -45,7 +45,7 @@ from clingo.solving import Model, ModelType, SolveResult
 
 from elenctic.discovery import SolverUnavailableError
 from elenctic.program import ProgramError
-from elenctic.registry import SOLVERS
+from elenctic.registry import SOLVERS, Solver
 from elenctic.result import (
     Conclusion,
     Consistent,
@@ -670,11 +670,12 @@ def run_clingcon(
 type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool], SolveOutcome]
 
 _FACADES: Final[dict[str, _Facade]] = {"clingo": run_clingo, "clingcon": run_clingcon}
-assert frozenset(_FACADES) == SOLVERS, "solvers._FACADES drifted from registry.SOLVERS"
+if frozenset(_FACADES) != SOLVERS:  # raised, not asserted, so it survives `python -O`
+    raise AssertionError("solvers._FACADES drifted from registry.SOLVERS")
 
 
 def solve(
-    solver: str,
+    solver: Solver,
     mode: Mode,
     program: str = "",
     files: tuple[Path, ...] = (),
@@ -687,9 +688,11 @@ def solve(
     try:
         facade = _FACADES[solver]
     except KeyError:
-        # ``Case.solver`` is a Literal, so an unknown name is a type-bypass at the public API
-        # boundary (a bad argument), not a mid-run harness-invariant violation — hence ValueError,
-        # not HarnessError: crash loudly at the dispatch boundary, do not report it per-case.
+        # ``solver`` is the closed ``Solver`` vocabulary, so an unknown name is a type-bypass at the
+        # public API boundary (a bad argument), not a mid-run harness-invariant violation — hence
+        # ValueError, not HarnessError: crash loudly at the dispatch boundary, do not report it
+        # per-case. The parameter is narrowed rather than left `str` because this is the one curated
+        # function that takes a solver name, and a consumer's call site narrows nothing by itself.
         raise ValueError(f"unknown solver {solver!r} (known: {sorted(_FACADES)})") from None
     return facade(mode, program, files, budget, project)
 
