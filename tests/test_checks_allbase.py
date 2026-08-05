@@ -131,11 +131,13 @@ def test_count_is_total_at_both_ends() -> None:
     assert count_is(2, line=1)(decided(two)).verdict is Verdict.PASS
     missed = count_is(2, line=1)(decided(Inconsistent()))
     assert missed.verdict is Verdict.FAIL
-    assert "2" in missed.message and "0" in missed.message  # expected 2, got 0
+    assert "2" in missed.message, "the count the contract asked for"
+    assert "0" in missed.message, "and the count an inconsistent program has"
     assert count_is(0, line=1)(decided(Inconsistent())).verdict is Verdict.PASS  # @count 0 ⟺ unsat
     wrong = count_is(2, line=1)(decided(enum(obs("a"), obs("b"), obs("c"))))
     assert wrong.verdict is Verdict.FAIL  # wrong count on a Consistent enumeration
-    assert "2" in wrong.message and "3" in wrong.message  # expected 2, got 3
+    assert "2" in wrong.message, "the count the contract asked for"
+    assert "3" in wrong.message, "and the count the enumeration actually found"
 
 
 def test_cautious_reads_intersection_and_is_total_on_unsat() -> None:
@@ -143,7 +145,8 @@ def test_cautious_reads_intersection_and_is_total_on_unsat() -> None:
     assert cautious_contains(lits("a"), line=1)(decided(present)).verdict is Verdict.PASS
     missing = cautious_contains(lits("c"), line=1)(decided(present))
     assert missing.verdict is Verdict.FAIL
-    assert "c" in missing.message and "⋂" in missing.message
+    assert "c" in missing.message
+    assert "⋂" in missing.message
     unsat = cautious_contains(lits("a"), line=1)(decided(Inconsistent()))
     assert unsat.verdict is Verdict.FAIL  # AS(P) = ∅ arm; never evaluate L ⊆ (missing)
 
@@ -153,7 +156,8 @@ def test_brave_reads_union_and_is_total_on_unsat() -> None:
     assert brave_contains(lits("a"), line=1)(decided(present)).verdict is Verdict.PASS
     missing = brave_contains(lits("c"), line=1)(decided(present))
     assert missing.verdict is Verdict.FAIL
-    assert "c" in missing.message and "⋃" in missing.message
+    assert "c" in missing.message
+    assert "⋃" in missing.message
     unsat = brave_contains(lits("a"), line=1)(decided(Inconsistent()))
     assert unsat.verdict is Verdict.FAIL
 

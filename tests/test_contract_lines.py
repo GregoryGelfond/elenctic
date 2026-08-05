@@ -39,9 +39,11 @@ def test_the_expect_line_is_the_line_expect_was_written_on() -> None:
 def test_each_cell_carries_its_own_line() -> None:
     expectation = parse(_CONTRACT)
     assert isinstance(expectation, Sat)
-    assert expectation.count is not None and expectation.count.line == 3
+    assert expectation.count is not None
+    assert expectation.count.line == 3
     assert expectation.count.value == 2
-    assert expectation.model is not None and expectation.model.line == 5
+    assert expectation.model is not None
+    assert expectation.model.line == 5
 
 
 def test_a_brace_continuation_reports_the_line_the_tag_opened_on() -> None:
@@ -49,7 +51,8 @@ def test_a_brace_continuation_reports_the_line_the_tag_opened_on() -> None:
     # line is where a reader looks for it.
     expectation = parse("% @expect sat\n% @model { a,\n%   b }\n")
     assert isinstance(expectation, Sat)
-    assert expectation.model is not None and expectation.model.line == 2
+    assert expectation.model is not None
+    assert expectation.model.line == 2
 
 
 def test_the_line_reaches_the_check_that_reads_the_cell() -> None:

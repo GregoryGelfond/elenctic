@@ -14,6 +14,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
+import pytest
+
 from elenctic.result import Conclusion, Determination, SolveOutcome
 
 __all__ = [
@@ -147,13 +149,12 @@ def cli_help_text() -> str:
     written = io.StringIO()
     from elenctic.cli import main
 
-    with contextlib.redirect_stdout(written):
-        try:
-            main(["--help"])
-        except SystemExit as leaving:
-            assert leaving.code == 0, f"asking for the help left with {leaving.code}"
-        else:  # pragma: no cover — argparse leaves by raising; reached only if that changes
-            raise AssertionError("--help returned instead of leaving")
+    # `pytest.raises` rather than a try/except pair, and it says both halves at once: that asking
+    # for the help *leaves* rather than returning is the failure the `else` branch used to catch,
+    # and it is what this refuses to pass without.
+    with contextlib.redirect_stdout(written), pytest.raises(SystemExit) as leaving:
+        main(["--help"])
+    assert leaving.value.code == 0, f"asking for the help left with {leaving.value.code}"
     return written.getvalue()
 
 

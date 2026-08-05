@@ -65,7 +65,11 @@ def test_contrary_rejects_non_literal() -> None:
     ],
 )
 def test_parse_litset_rejects(body: str) -> None:
-    with pytest.raises(ValueError):
+    # Matched loosely on purpose: these five bodies fail for three different reasons and say so in
+    # three different sentences. What the match holds is that the diagnostic is about the litset —
+    # a bare `ValueError` here would be satisfied by one raised anywhere underneath, including by
+    # clingo's own parser for a reason that has nothing to do with what is being rejected.
+    with pytest.raises(ValueError, match=r"literal set|litset"):
         parse_litset(body)
 
 

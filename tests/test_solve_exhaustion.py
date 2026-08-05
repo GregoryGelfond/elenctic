@@ -306,7 +306,8 @@ def test_a_witness_search_is_not_required_to_finish() -> None:
     completed, result = _solve_under_budget(
         _control(Mode.DEFAULT, program=_PLAIN), _Collector().on_model, 30.0
     )
-    assert completed and result.satisfiable, "the unlimited witness solve is expected to decide"
+    assert completed, "the unlimited witness solve is expected to run to its own end"
+    assert result.satisfiable, "and to have decided satisfiability"
     assert not result.exhausted, "a witness solve over an objective-free program does not finish"
 
     collector = _Collector()

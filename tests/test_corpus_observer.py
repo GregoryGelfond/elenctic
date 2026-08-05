@@ -99,9 +99,11 @@ def test_a_run_writes_to_no_stream(tmp_path: Path, capsys: pytest.CaptureFixture
 
     outcome = run_corpus(_asked(target))
 
-    assert outcome.cases and outcome.errors and outcome.hygiene, (
-        "the corpus must reach all three registers, or this says nothing about the paths that print"
-    )
+    # All three registers, or this says nothing about the paths that print: a corpus that reached
+    # only one of them would leave the other two announcements untested and still look green.
+    assert outcome.cases, "the corpus must decide at least one case"
+    assert outcome.errors, "and hold at least one file it could not"
+    assert outcome.hygiene, "and observe something about its own health"
     assert capsys.readouterr() == ("", "")
 
 
@@ -111,7 +113,9 @@ def test_a_dry_run_writes_to_no_stream(tmp_path: Path, capsys: pytest.CaptureFix
 
     outcome = explain_corpus(_asked(target))
 
-    assert outcome.plans and outcome.errors and outcome.hygiene
+    assert outcome.plans
+    assert outcome.errors
+    assert outcome.hygiene
     assert capsys.readouterr() == ("", "")
 
 

@@ -185,7 +185,8 @@ def test_a_second_phase_that_reports_no_model_never_calls_the_program_unsatisfia
         if solves == 1:
             return completed, result
         forced = SolveResult(_UNSATISFIABLE | _EXHAUSTED)  # type: ignore[no-untyped-call]
-        assert forced.unsatisfiable and forced.exhausted, "the forced result is the state at issue"
+        assert forced.unsatisfiable, "the forced result carries the bit at issue"
+        assert forced.exhausted, "alongside the exhaustion that used to outrank it"
         return True, forced
 
     monkeypatch.setattr(solvers, "_solve_under_budget", no_model_in_the_second_phase)

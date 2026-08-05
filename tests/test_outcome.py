@@ -167,8 +167,10 @@ def test_a_declared_solver_this_environment_lacks_is_a_discovery_fault() -> None
 
 
 def test_an_unrecognised_exception_is_re_raised_never_costumed() -> None:
-    # An error family the taxonomy does not know is not silently filed under one it does.
-    with pytest.raises(ValueError):
+    # An error family the taxonomy does not know is not silently filed under one it does. Matched
+    # on the message that was handed in, which is the whole claim: what comes back out is the
+    # original exception and not one this package built to stand in for it.
+    with pytest.raises(ValueError, match="not an elenctic error family"):
         error_kind(ValueError("not an elenctic error family"))
 
 
@@ -196,6 +198,7 @@ def test_only_a_harness_fault_is_elenctic_s_to_fix() -> None:
                 "PROGRAM": "program",
                 "DEADLINE": "deadline",
                 "RESOURCE": "resource",
+                "ENVIRONMENT": "environment",
                 "HARNESS": "harness",
             },
         ),
@@ -279,7 +282,7 @@ def test_a_corpus_scoped_error_is_not_counted_as_a_case() -> None:
 
 
 def test_an_error_record_always_carries_a_message() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="an error record carries the reason"):
         ErrorRecord(kind=ErrorKind.PROGRAM, scope=Scope.CASE, source=Path("a.lp"), message="")
 
 
@@ -287,7 +290,7 @@ def test_a_case_outcome_carries_the_reports_its_verdict_was_folded_from() -> Non
     # A case that checked nothing has not passed; it has not been tested. The fold over an empty set
     # meets neither FAIL nor UNDECIDED and so answers PASS, which would let a run report a clean
     # corpus it never examined — the vacuous pass this codebase refuses at every other boundary.
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="carries the reports its verdict was folded from"):
         CaseOutcome(case=_a_case(), reports=())
 
 

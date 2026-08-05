@@ -308,7 +308,8 @@ def test_count_diverges_requires_theory_from_reads_full_census() -> None:
     # require a theory solver (@count is meaningful on pure clingo) — the two properties diverge.
     assert reads_full_census(checks.count_is(2, line=1))
     exp = parse("% @expect sat\n% @count 2\n")
-    assert isinstance(exp, Sat) and not exp.requires_theory
+    assert isinstance(exp, Sat)
+    assert not exp.requires_theory
 
 
 def test_run_accepts_a_well_routed_check() -> None:

@@ -86,7 +86,8 @@ def test_optimal_base_checks_share_the_optimal_observables() -> None:
     )  # optimal backbone
     missing = cautious_optimal_contains(lits("x"), line=1)(decided(result))
     assert missing.verdict is Verdict.FAIL  # x is in only one optimum
-    assert "x" in missing.message and "⋂" in missing.message
+    assert "x" in missing.message
+    assert "⋂" in missing.message
     assert brave_optimal_contains(lits("y"), line=1)(decided(result)).verdict is Verdict.PASS
     assert count_optimal_is(2, line=1)(decided(result)).verdict is Verdict.PASS
 
@@ -124,7 +125,8 @@ def test_optimal_base_failures_name_opt_p_not_enumerated_models() -> None:
     assert "enumerated models" not in partial.message
     brave_miss = brave_optimal_contains(lits("z"), line=1)(decided(result))
     assert brave_miss.verdict is Verdict.FAIL
-    assert "z" in brave_miss.message and "⋃" in brave_miss.message
+    assert "z" in brave_miss.message
+    assert "⋃" in brave_miss.message
 
 
 # --- @query: ground singleton (⋂), ground conjunctive (census), binding (⋂, and ⋃ for unknown) ---
@@ -142,7 +144,8 @@ def test_query_ground_conjunctive_reads_the_census_and_localizes() -> None:
         decided(enum(obs("start(s)")))
     )  # end(t) not in the census → computed unknown ≠ yes
     assert missed.verdict is Verdict.FAIL
-    assert "yes" in missed.message and "unknown" in missed.message  # expected yes, computed unknown
+    assert "yes" in missed.message, "the answer the contract claimed"
+    assert "unknown" in missed.message, "and the answer the census supports"
     assert "end(t)" in missed.message  # localizes the not-entailed conjunct
 
 
@@ -155,7 +158,10 @@ def test_query_ground_conjunctive_no_localizes_from_the_census() -> None:
     assert missed.verdict is Verdict.FAIL  # expected yes, computed no
     assert "no" in missed.message
     assert "falsified" in missed.message  # census-based, not an empty counter-entailed set
-    assert "p(a)" in missed.message and "p(b)" in missed.message  # both falsified (in some model)
+    # Both conjuncts are named, because each is falsified in some model and neither alone explains
+    # the "no": the localization has to come from the census.
+    assert "p(a)" in missed.message
+    assert "p(b)" in missed.message
 
 
 def test_query_ground_singleton_no_via_strong_negation() -> None:

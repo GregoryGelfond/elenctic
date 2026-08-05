@@ -68,6 +68,12 @@ select = [
     "E", "F", "I", "UP", "B", "SIM", "RUF",
     "A", "C4", "EXE", "FLY", "G", "ISC", "LOG", "PERF", "PIE", "PTH", "RET", "RSE", "SLOT", "TID",
     "T20", "YTT",
+    # Every rule pytest's own family has, and it earns the place in a project that cares this much
+    # about what a failure says. PT018 splits `assert a and b`, so a failure names which half; PT011
+    # refuses a bare `pytest.raises(ValueError)` with no `match`, which can pass on an entirely
+    # different ValueError raised somewhere underneath — a green test asserting a fault the code
+    # never had.
+    "PT",
     # Five docstring rules, not the family. `D` as a whole costs about 1,180 findings here, and 706
     # of them are D103 on tests — which fights a convention this suite already has and which is
     # better: a test's name is a sentence and a comment above it states the defect it guards, so a

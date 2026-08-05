@@ -165,7 +165,8 @@ def test_a_cut_short_search_never_reports_that_it_closed_the_space() -> None:
     # costs when it does arise is one reading going UNDECIDED; what it buys is that a partial
     # census is never read as a whole one, which is a wrong verdict rather than a missing one.
     both = SolveResult(_SATISFIABLE | _EXHAUSTED | _INTERRUPTED)  # type: ignore[no-untyped-call]
-    assert both.exhausted and both.interrupted, "the constructed result carries both bits"
+    assert both.exhausted, "the constructed result claims the search finished"
+    assert both.interrupted, "and that it was cut short — the pair at issue"
     assert _conclusion(completed=False, result=both) is Conclusion.INTERRUPTED
 
 
@@ -196,7 +197,8 @@ def test_a_cancelled_search_reporting_no_answer_set_is_not_believed() -> None:
     # ran to its own end can make. The satisfiable case above keeps its exhaustion because a
     # positive finding corroborates it; this one has no finding to corroborate anything.
     cut_short = SolveResult(_UNSATISFIABLE | _EXHAUSTED | _INTERRUPTED)  # type: ignore[no-untyped-call]
-    assert cut_short.unsatisfiable and cut_short.exhausted, "the constructed result carries both"
+    assert cut_short.unsatisfiable, "the constructed result claims no answer set exists"
+    assert cut_short.exhausted, "and that the search finished — the pair at issue"
     outcome = _outcome_unless_satisfiable(completed=False, result=cut_short)
     assert outcome is not None, "a solve that did not decide satisfiable is reduced here"
     assert isinstance(outcome.determination, Inconclusive), "AS(P) = ∅ was never established"

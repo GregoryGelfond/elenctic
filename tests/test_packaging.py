@@ -21,7 +21,6 @@ neither of which is under test.
 
 import tarfile
 import zipfile
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -35,7 +34,7 @@ _NOT_CODE = ("py.typed", "schema/output-v1.schema.json")
 
 
 @pytest.fixture(scope="module")
-def built(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, list[str]]]:
+def built(tmp_path_factory: pytest.TempPathFactory) -> dict[str, list[str]]:
     """The names in a freshly built wheel and sdist.
 
     Built once for the module: the two hooks are the slow part of this file, and nothing here
@@ -59,7 +58,7 @@ def built(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, list[s
         wheel_names = archive.namelist()
     with tarfile.open(sdist) as archive:
         sdist_names = archive.getnames()
-    yield {"wheel": wheel_names, "sdist": sdist_names}
+    return {"wheel": wheel_names, "sdist": sdist_names}
 
 
 @pytest.mark.parametrize("distribution", ["wheel", "sdist"])
