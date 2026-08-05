@@ -101,7 +101,7 @@ def test_a_case_that_runs_out_of_a_resource_is_filed_apart_from_a_broken_program
     def out_of_memory(*_args: object, **_kwargs: object) -> None:
         raise MemoryError("std::bad_alloc")
 
-    monkeypatch.setattr(corpus, "run_case", out_of_memory)
+    monkeypatch.setattr(corpus, "run_plan", out_of_memory)
     target = _corpus(tmp_path, greedy=_PASSES)
     (record,) = run_corpus(_asked(target)).errors
     assert record.kind is ErrorKind.RESOURCE

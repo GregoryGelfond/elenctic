@@ -1,4 +1,4 @@
-"""Run a discovered case end-to-end and render its outcome — the top of the module DAG.
+"""Run a discovered case end-to-end and render its outcome — the per-case layer.
 
 Three responsibilities, layered by purity:
 
@@ -34,6 +34,7 @@ the other, and gets the same three values to build a report out of. Either way e
 diagnostic value** rather than pushing it to consumers.
 """
 
+from collections.abc import Iterable
 from typing import Final
 
 from elenctic.checks import CheckReport
@@ -41,10 +42,10 @@ from elenctic.discovery import Case
 from elenctic.display import legible
 from elenctic.registry import provides_theory
 from elenctic.result import Verdict
-from elenctic.run import runs_for
+from elenctic.run import Run, runs_for
 from elenctic.solvers import TIME_BUDGET, solve
 
-__all__ = ["case_verdict", "render", "run_case"]
+__all__ = ["case_verdict", "render", "run_case", "run_plan"]
 
 
 def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]:
@@ -72,11 +73,32 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
       at plan construction before any solving. An elenctic bug, never a statement about the program.
 
     The first three cost that case its verdict and no other's; the last is evidence about every
-    case in the run. ``elenctic.cli`` catches all four per case and files each as an
-    :class:`~elenctic.outcome.ErrorRecord`, which is the shape a runner of your own wants too."""
-    theory_in_force = provides_theory(case.solver)
+    case in the run. ``elenctic.corpus`` catches all four per case and files each as an
+    :class:`~elenctic.outcome.ErrorRecord`, which is the shape a runner of your own wants too.
+
+    A caller that has already derived the plan — because it validated every plan before solving
+    anything, which is what running a corpus does — passes it to :func:`run_plan` instead and does
+    not derive it a second time."""
+    return run_plan(case, runs_for(case.expectation, provides_theory(case.solver)), budget=budget)
+
+
+def run_plan(
+    case: Case, runs: Iterable[Run], budget: float = TIME_BUDGET
+) -> tuple[CheckReport, ...]:
+    """Carry out an already-derived plan for ``case``: solve each run under ``budget`` and apply its
+    checks. Output order follows the plan (deterministic).
+
+    Apart from :func:`run_case` because deriving the plan and carrying it out are separable and a
+    corpus separates them: it builds every plan first, so a wiring fault surfaces before any
+    solving, and then runs the ones that built. Written as one function that does both, that costs a
+    second derivation per case and — worse — leaves the validated plan discarded, so what is carried
+    out is a plan nothing proved rather than the one that was proved. Here the proof travels with
+    the value.
+
+    It raises what :func:`run_case` raises, minus the one that comes from deriving: a plan handed in
+    has already been built, so ``RoutingError`` belongs to whoever built it."""
     reports: list[CheckReport] = []
-    for run in runs_for(case.expectation, theory_in_force):
+    for run in runs:
         outcome = solve(case.solver, run.mode, files=case.files, budget=budget, project=run.project)
         reports.extend(check(outcome) for check in run.checks)
     return tuple(reports)

@@ -9,6 +9,7 @@ register and reached the user as a stack trace, past the bar the rest of the CLI
 Being unable to *bound* the resource does not excuse being unable to *report* it.
 """
 
+from collections.abc import Iterable
 from pathlib import Path
 from typing import NoReturn
 
@@ -18,8 +19,9 @@ from elenctic import cli, corpus
 from elenctic.checks import CheckReport
 from elenctic.cli import main
 from elenctic.discovery import Case
-from elenctic.harness import run_case
+from elenctic.harness import run_plan
 from elenctic.outcome import ErrorKind, ExitStatus, RunOutcome, Scope, exit_status
+from elenctic.run import Run
 from elenctic.solvers import TIME_BUDGET
 
 _GOOD = "% @expect sat\n% @count  1\n\na.\n#show a/0.\n"
@@ -54,7 +56,7 @@ def test_running_out_of_memory_is_reported_as_an_error_not_a_traceback(
     def out_of_memory(*_args: object, **_kwargs: object) -> None:
         raise MemoryError("std::bad_alloc")
 
-    monkeypatch.setattr(corpus, "run_case", out_of_memory)
+    monkeypatch.setattr(corpus, "run_plan", out_of_memory)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (
@@ -73,12 +75,14 @@ def test_a_case_that_runs_out_of_memory_costs_only_its_own_result(
     # arrive in a large corpus, where the results it discards are worth the most.
     _corpus(tmp_path, "first", "greedy", "last")
 
-    def greedy(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]:
+    def greedy(
+        case: Case, runs: Iterable[Run], budget: float = TIME_BUDGET
+    ) -> tuple[CheckReport, ...]:
         if case.contract_source.name == "greedy.lp":
             raise MemoryError("std::bad_alloc")
-        return run_case(case, budget=budget)  # the other two cases run for real
+        return run_plan(case, runs, budget=budget)  # the other two cases run for real
 
-    monkeypatch.setattr(corpus, "run_case", greedy)
+    monkeypatch.setattr(corpus, "run_plan", greedy)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (
@@ -120,7 +124,7 @@ def test_an_unexpected_fault_is_framed_as_an_elenctic_bug(
     def unexpected(*_args: object, **_kwargs: object) -> None:
         raise ZeroDivisionError("an elenctic bug")
 
-    monkeypatch.setattr(corpus, "run_case", unexpected)
+    monkeypatch.setattr(corpus, "run_plan", unexpected)
     status = main([str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.HARNESS_FAULT, (
@@ -154,7 +158,7 @@ def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_stat
         # patched: what is under test is the record the status was read off, not the ladder.
         return exit_status(outcome)
 
-    monkeypatch.setattr(corpus, "run_case", unexpected)
+    monkeypatch.setattr(corpus, "run_plan", unexpected)
     monkeypatch.setattr(cli, "exit_status", watched)
     assert main([str(tmp_path)]) == ExitStatus.HARNESS_FAULT
     capsys.readouterr()

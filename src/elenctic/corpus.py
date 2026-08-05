@@ -36,7 +36,7 @@ from elenctic.discovery import (
     inspect_corpus,
 )
 from elenctic.expectation import ContractError
-from elenctic.harness import run_case
+from elenctic.harness import run_plan
 from elenctic.outcome import (
     CaseOutcome,
     CasePlan,
@@ -400,16 +400,32 @@ def _explain(
     misroutes: list[ErrorRecord] = []
     for case in cases:
         _tell(told, lambda o: o.case_started, case)
-        try:
-            derived = runs_for(case.expectation, provides_theory(case.solver))
-        except HarnessError as exc:
-            misroutes.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-            _tell(told, lambda o: o.case_unjudged, misroutes[-1])
-            continue
-        case_plan = CasePlan(case=case, runs=tuple(derived))
-        plans.append(case_plan)
-        _tell(told, lambda o: o.case_planned, case_plan)
+        match _plan_for(case):
+            case ErrorRecord() as fault:
+                misroutes.append(fault)
+                _tell(told, lambda o: o.case_unjudged, fault)
+            case CasePlan() as case_plan:
+                plans.append(case_plan)
+                _tell(told, lambda o: o.case_planned, case_plan)
     return tuple(plans), tuple(misroutes)
+
+
+def _plan_for(case: Case) -> CasePlan | ErrorRecord:
+    """The plan a case derives to, or the reason it derives to none.
+
+    The one place a plan is built, so the two modes cannot come to build one differently: a dry run
+    derives a plan in order to show it, and a real run derives one in order to prove it can be built
+    before anything is solved, and those are the same derivation asked for two reasons. Written
+    twice, they were the same fifteen lines with one difference between them — and the difference
+    was that one kept the plan and the other threw it away.
+
+    A plan that cannot be built is elenctic's own fault rather than the corpus's, which is why the
+    reason comes back as a record filed under the harness locus rather than as a raise."""
+    try:
+        derived = runs_for(case.expectation, provides_theory(case.solver))
+    except HarnessError as exc:
+        return _case_error(ErrorKind.HARNESS, case, str(exc))
+    return CasePlan(case=case, runs=tuple(derived))
 
 
 def _run(
@@ -443,7 +459,7 @@ def _run(
     errors = [*unrunnable, *misroutes]
     outcomes: list[CaseOutcome] = []
     started = monotonic()
-    for reached, case in enumerate(valid):
+    for reached, plan in enumerate(valid):
         if deadline is not None and monotonic() - started >= deadline:
             # Stop dispatching, and account for every case that will not run. Each gets its own
             # record, because a count cannot say which case is missing — and each is announced,
@@ -457,18 +473,20 @@ def _run(
                     ErrorRecord(
                         kind=ErrorKind.DEADLINE,
                         scope=Scope.CASE,
-                        source=unreached.contract_source,
+                        source=unreached.case.contract_source,
                         message=passed,
                     )
                 )
                 _tell(told, lambda o: o.case_unjudged, errors[-1])
             break
+        case = plan.case
         _tell(told, lambda o: o.case_started, case)
         try:
             # The declared solver is checked here, per case, so an absent optional backend costs
             # only the cases that declare it rather than the whole run.
             check_solver_available(case.solver, case.contract_source)
-            reports = run_case(case, budget=budget)  # plan validated above
+            # The plan built and proved above, carried out — not derived a second time.
+            reports = run_plan(case, plan.runs, budget=budget)
         except SolverUnavailableError as exc:
             # The environment cannot run this case: its declared solver is not installed. Filed
             # under the environment and not under discovery, because discovery never met it — the
@@ -515,18 +533,22 @@ def _case_error(kind: ErrorKind, case: Case, message: str) -> ErrorRecord:
 
 def _validate_plans(
     cases: tuple[Case, ...], *, told: RunObserver
-) -> tuple[list[Case], list[ErrorRecord]]:
+) -> tuple[list[CasePlan], list[ErrorRecord]]:
     """Build every case's run plan up front (pure ``runs_for``), so all wiring errors surface before
-    any solving. Returns the well-routed cases and a record per misrouted one (a harness error —
-    never a verdict)."""
-    valid: list[Case] = []
+    any solving. Returns the plans that built and a record per misrouted case (a harness error —
+    never a verdict).
+
+    The plans are handed on rather than discarded, so what the run carries out is the plan this
+    proved buildable and not a second derivation of it. Proving a value and then throwing it away
+    leaves the caller running something nothing checked, which is the shape the validation pass
+    exists to prevent."""
+    valid: list[CasePlan] = []
     misroutes: list[ErrorRecord] = []
     for case in cases:
-        try:
-            runs_for(case.expectation, provides_theory(case.solver))
-        except HarnessError as exc:
-            misroutes.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-            _tell(told, lambda o: o.case_unjudged, misroutes[-1])
-        else:
-            valid.append(case)
+        match _plan_for(case):
+            case ErrorRecord() as fault:
+                misroutes.append(fault)
+                _tell(told, lambda o: o.case_unjudged, fault)
+            case CasePlan() as plan:
+                valid.append(plan)
     return valid, misroutes

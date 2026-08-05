@@ -4,6 +4,7 @@ An error is not a verdict, so it must not borrow a verdict's exit status, and it
 run the results of the cases that did complete. These drive the CLI end to end.
 """
 
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
@@ -12,9 +13,10 @@ from elenctic import corpus, discovery
 from elenctic.checks import CheckReport
 from elenctic.cli import main
 from elenctic.discovery import Case
-from elenctic.harness import run_case
+from elenctic.harness import run_plan
 from elenctic.outcome import ExitStatus
 from elenctic.result import SeamError
+from elenctic.run import Run
 from elenctic.solvers import TIME_BUDGET
 
 _GOOD = "% @expect sat\n% @count  2\n\n1 { tea; coffee } 1.\n#show tea/0.\n#show coffee/0.\n"
@@ -130,12 +132,14 @@ def test_a_harness_fault_at_solve_time_costs_only_the_case_that_met_it(
     # one case its verdict. An exception outside the taxonomy reaches the outermost frame instead
     # and ends the run, discarding every case still to come — including ones that had already
     # passed. Raised from the solve path, which is where those invariants live.
-    def broken(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]:
+    def broken(
+        case: Case, runs: Iterable[Run], budget: float = TIME_BUDGET
+    ) -> tuple[CheckReport, ...]:
         if case.contract_source.name == "mmm_broken.lp":
             raise SeamError("narrowing seam: a shape that does not populate what a check reads")
-        return run_case(case, budget=budget)
+        return run_plan(case, runs, budget=budget)
 
-    monkeypatch.setattr(corpus, "run_case", broken)
+    monkeypatch.setattr(corpus, "run_plan", broken)
     status = main([_corpus(tmp_path, aaa_good=_GOOD, mmm_broken=_GOOD, zzz_good=_GOOD)])
     captured = capsys.readouterr()
     assert status == ExitStatus.HARNESS_FAULT, (

@@ -99,6 +99,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         case_verdict as case_verdict,
         render as render,
         run_case as run_case,
+        run_plan as run_plan,
     )
     from elenctic.json_report import (
         SCHEMA_VERSION as SCHEMA_VERSION,
@@ -176,7 +177,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "inspect_corpus",
     ),
     "elenctic.expectation": ("Claimed", "ContractError", "Expectation", "Sat", "Unsat", "parse"),
-    "elenctic.harness": ("case_verdict", "render", "run_case"),
+    "elenctic.harness": ("case_verdict", "render", "run_case", "run_plan"),
     "elenctic.json_report": ("SCHEMA_VERSION", "as_json", "dumps", "schema_text"),
     "elenctic.outcome": (
         "CaseOutcome",
