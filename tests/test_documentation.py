@@ -13,6 +13,7 @@ either.
 """
 
 import importlib
+import json
 import re
 from pathlib import Path
 
@@ -113,3 +114,40 @@ def _is_a_home(dotted: str) -> bool:
     if module == elenctic.__name__:
         return attribute in elenctic.__all__
     return getattr(getattr(parent, attribute), "__module__", module) == module
+
+
+def test_the_readmes_library_example_runs_and_does_what_it_says(tmp_path: Path) -> None:
+    """The worked example a consumer copies, run as written rather than read.
+
+    This is the one block in either document that a reader will paste into their own project, and
+    the release it demonstrates is the one this branch exists for — so "does it still import" is
+    not the question. It is extracted from the README itself, so an edit to the prose is what runs.
+
+    Run as a process, in a directory laid out the way the example assumes, because the example ends
+    by leaving with a status and writes a file beside itself. Both are part of what it claims.
+    """
+    import subprocess
+    import sys
+
+    section = _README.split("## Using elenctic as a library", 1)[1].split("## Discovery", 1)[0]
+    block = re.search(r"```python\n(.*?)```", section, re.S)
+    assert block is not None, "the library section no longer holds a Python block to check"
+
+    (tmp_path / "encodings").mkdir()
+    (tmp_path / "encodings" / "case.lp").write_text(
+        "% @elenctic solver clingo\n% @expect sat\n% @model { a }\na.\n#show a/0.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "example.py").write_text(block.group(1), encoding="utf-8")
+
+    done = subprocess.run(
+        [sys.executable, "example.py"], cwd=tmp_path, capture_output=True, text=True
+    )
+
+    assert done.returncode == 0, f"the example did not leave cleanly: {done.stderr}"
+    assert done.stdout == "running case.lp\n  pass\n", (
+        "the observer is what prints, and it prints as the run goes — a case announced when it is "
+        "taken up and again when it is judged"
+    )
+    document = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert document["summary"]["passed"] == 1, "and the document it wrote reports the run"

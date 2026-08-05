@@ -34,9 +34,8 @@ means for them — a reader deciding whether to upgrade should not have to read 
   `elenctic.exit_status` reads either against the `ExitStatus` ladder; `elenctic.as_json` renders a
   *run's* outcome as the published document, this version describing no document for a plan — which
   is why the command line refuses `--explain --format json`. The console entry is now these calls
-  with a command line in front of
-  them rather than the place the work is done, so an editor plugin, a CI script or another test
-  runner gets the same values it does. Working one case at a time with `run_case` is unchanged and
+  with a command line in front of them rather than the place the work is done, so an editor plugin,
+  a CI script or another test runner gets the same values it does. Working one case at a time with `run_case` is unchanged and
   still the right thing when you want elenctic's checks inside a runner of your own.
 
 - **Both runners are silent, and take an observer if you want to watch.** They used to print as they
@@ -86,72 +85,6 @@ means for them — a reader deciding whether to upgrade should not have to read 
   corpus would change if either fault were fixed, which is the line between the two. `kind` is
   open-valued, so this needs no `schema_version` change; `is_elenctic_bug` is `false` for it, so
   the exit status is what it was.
-
-### Fixed
-
-- **A literal set whose body parses to nothing is refused, and refused as the author's mistake.**
-  `@cautious { () }` — or any body that tokenizes to no atom at all — was silently dropped, so a
-  contract that claimed something was checked for nothing and passed on that basis. Briefly it was
-  then reported as an elenctic bug, which sent the wrong reader to the wrong place. It is now a
-  contract error against the line that wrote it, naming what it read and what a litset needs, and
-  it costs that case its verdict rather than the run:
-
-  ```
-  CONTRACT ERROR — empty.lp:2: empty literal set {()}: it parses to no literals at all,
-  and a litset needs at least one (an atom or -atom)
-  ```
-
-- **A solve cut short by `--budget` no longer throws away the answer it did reach.** A cancelled
-  search still reports whether the program is satisfiable; elenctic decided the run was undecided
-  before reading that, so every check on it came back UNDECIDED — including checks the search had
-  already settled. Any corpus whose search outlives its budget met this, so it was not a corner
-  case but the ordinary behaviour of a hit budget.
-
-  Before, on a program with 2^20 answer sets under `--budget 0.5`:
-
-  ```
-  case.lp [clingo] — UNDECIDED
-    [UNDECIDED] @count: the solve did not settle the question — UNDECIDED, never FAIL
-    [UNDECIDED] @expect sat: the solve did not settle the question — UNDECIDED, never FAIL
-  ```
-
-  After — the satisfiability question was answered, so it is answered, and the census question
-  says why it was not and what would help:
-
-  ```
-  case.lp [clingo] — UNDECIDED
-    [UNDECIDED] @count (line 2): the search was cut short before covering the collection this
-    reads, so what it holds is part of the collection and not the collection — UNDECIDED, never
-    FAIL. The per-solve time budget is what stops a search this way from the command line, so a
-    larger --budget may decide it
-  ```
-
-- **An optimal-class run that could not finish enumerating no longer reports the program as having
-  no answer set.** The optimal-class modes solve twice: prove the optimum, then enumerate at it.
-  The second solve's "no model" answer was read as a statement about the program, when it is a
-  statement about that solve — by then the first has already found a model, so the program is known
-  to have an answer set. A case whose optimal class was too large to enumerate inside `--budget`
-  therefore came back with every optimal-base tag reporting `AS(P) = ∅`, as a definite failure,
-  contradicted in the same report by the `@expect sat` that passed. Such a case is now UNDECIDED —
-  it could not be decided, which is what happened — so a corpus that used to fail here will report
-  differently, and `@cost`, `@optimal`, `@cautious optimal`, `@brave optimal`, `@count optimal` and
-  `@assign optimal` are the tags affected.
-
-- **A solve cut short by `--budget` can no longer report that your program has no answer set.** A
-  cancelled solve sometimes comes back carrying clingo's "unsatisfiable" and "exhausted" bits
-  together — measured at two occurrences in 1,400 zero-budget solves of a program with 2^30 answer
-  sets, under the single-model configuration as much as the enumerating one. Read literally, that
-  says the search covered the space and found nothing. elenctic believed it, so a case whose solve
-  ran out of budget could report `AS(P) = ∅` as a decided fact about a program with more answer sets
-  than could be counted. Every model-bearing tag then failed, and `@expect unsat` — which rides its
-  own single-model run, one of the two configurations this was measured in — **passed**, upholding a
-  claim nothing had established.
-
-  A search cut short from outside is now believed about what it *found* and never about what it
-  *finished*. A model it produced is evidence a cancellation cannot take back, so a cut-short solve
-  still reports the satisfiability it settled; covering the space is a claim only a search that ran
-  to its own end can make, so neither "no answer set" nor "the space was covered" survives a
-  cancellation. Cases that met this now report UNDECIDED, which is what happened.
 
 ### Changed
 
@@ -228,8 +161,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 - **A corpus-health observation now carries the grade the run gave it.** `HygieneRecord` — new in
   this release — carries a `grade`: `error` under `--strict`, and otherwise `warning` for an orphan
-  library and `silent`
-  for an undeclared solver — the footing each observation already had. What is printed, what fails
+  library and `silent` for an undeclared solver — the footing each observation already had. What is printed, what fails
   the run, and what a consumer is told are now read off that one field rather than each deriving it
   again from the flag, so they cannot come to disagree about a single observation. Nothing a run
   prints changed.
@@ -325,14 +257,6 @@ means for them — a reader deciding whether to upgrade should not have to read 
   got wrong at a boundary is still `ValueError`: an unknown solver name, and the contract payloads a
   parse re-raises with the author's provenance.
 
-- **`HygieneReport.render` was removed. This is a breaking change** for anyone who called it —
-  `HygieneReport` is exported, so it was reachable as `elenctic.inspect_corpus(target).hygiene`.
-  What a run prints about corpus hygiene and what fails the run under `--strict` are now read off
-  the same records the run reports, rather than from a second rendering of the same facts. The
-  observations themselves are unchanged, and so is what elenctic itself prints. There is no
-  drop-in replacement: read `RunOutcome.hygiene` and render the `HygieneRecord`s, each of which
-  carries its `kind`, its `grade`, the file it concerns and its message.
-
 - **Whether a search had to finish is now decided per check, not per run.** One solve serves
   several checks and they do not all ask the same thing: a census, an intersection, a union or a
   proven optimum is a claim about every member of a collection, so a search that stopped early
@@ -349,6 +273,81 @@ means for them — a reader deciding whether to upgrade should not have to read 
 - **`Collection` is now imported from `elenctic.result`** rather than `elenctic.run`; it describes
   what a *field* is a reading of, so it belongs beside the field vocabulary. `elenctic.Collection`
   is unchanged.
+### Removed
+
+- **`HygieneReport.render` was removed. This is a breaking change** for anyone who called it —
+  `HygieneReport` is exported, so it was reachable as `elenctic.inspect_corpus(target).hygiene`.
+  What a run prints about corpus hygiene and what fails the run under `--strict` are now read off
+  the same records the run reports, rather than from a second rendering of the same facts. The
+  observations themselves are unchanged, and so is what elenctic itself prints. There is no
+  drop-in replacement: read `RunOutcome.hygiene` and render the `HygieneRecord`s, each of which
+  carries its `kind`, its `grade`, the file it concerns and its message.
+
+### Fixed
+
+- **A literal set whose body parses to nothing is refused, and refused as the author's mistake.**
+  `@cautious { () }` — or any body that tokenizes to no atom at all — was silently dropped, so a
+  contract that claimed something was checked for nothing and passed on that basis. Briefly it was
+  then reported as an elenctic bug, which sent the wrong reader to the wrong place. It is now a
+  contract error against the line that wrote it, naming what it read and what a litset needs, and
+  it costs that case its verdict rather than the run:
+
+  ```
+  CONTRACT ERROR — empty.lp:2: empty literal set {()}: it parses to no literals at all,
+  and a litset needs at least one (an atom or -atom)
+  ```
+
+- **A solve cut short by `--budget` no longer throws away the answer it did reach.** A cancelled
+  search still reports whether the program is satisfiable; elenctic decided the run was undecided
+  before reading that, so every check on it came back UNDECIDED — including checks the search had
+  already settled. Any corpus whose search outlives its budget met this, so it was not a corner
+  case but the ordinary behaviour of a hit budget.
+
+  Before, on a program with 2^20 answer sets under `--budget 0.5`:
+
+  ```
+  case.lp [clingo] — UNDECIDED
+    [UNDECIDED] @count: the solve did not settle the question — UNDECIDED, never FAIL
+    [UNDECIDED] @expect sat: the solve did not settle the question — UNDECIDED, never FAIL
+  ```
+
+  After — the satisfiability question was answered, so it is answered, and the census question
+  says why it was not and what would help:
+
+  ```
+  case.lp [clingo] — UNDECIDED
+    [UNDECIDED] @count (line 2): the search was cut short before covering the collection this
+    reads, so what it holds is part of the collection and not the collection — UNDECIDED, never
+    FAIL. The per-solve time budget is what stops a search this way from the command line, so a
+    larger --budget may decide it
+  ```
+
+- **An optimal-class run that could not finish enumerating no longer reports the program as having
+  no answer set.** The optimal-class modes solve twice: prove the optimum, then enumerate at it.
+  The second solve's "no model" answer was read as a statement about the program, when it is a
+  statement about that solve — by then the first has already found a model, so the program is known
+  to have an answer set. A case whose optimal class was too large to enumerate inside `--budget`
+  therefore came back with every optimal-base tag reporting `AS(P) = ∅`, as a definite failure,
+  contradicted in the same report by the `@expect sat` that passed. Such a case is now UNDECIDED —
+  it could not be decided, which is what happened — so a corpus that used to fail here will report
+  differently, and `@cost`, `@optimal`, `@cautious optimal`, `@brave optimal`, `@count optimal` and
+  `@assign optimal` are the tags affected.
+
+- **A solve cut short by `--budget` can no longer report that your program has no answer set.** A
+  cancelled solve sometimes comes back carrying clingo's "unsatisfiable" and "exhausted" bits
+  together — measured at two occurrences in 1,400 zero-budget solves of a program with 2^30 answer
+  sets, under the single-model configuration as much as the enumerating one. Read literally, that
+  says the search covered the space and found nothing. elenctic believed it, so a case whose solve
+  ran out of budget could report `AS(P) = ∅` as a decided fact about a program with more answer sets
+  than could be counted. Every model-bearing tag then failed, and `@expect unsat` — which rides its
+  own single-model run, one of the two configurations this was measured in — **passed**, upholding a
+  claim nothing had established.
+
+  A search cut short from outside is now believed about what it *found* and never about what it
+  *finished*. A model it produced is evidence a cancellation cannot take back, so a cut-short solve
+  still reports the satisfiability it settled; covering the space is a claim only a search that ran
+  to its own end can make, so neither "no answer set" nor "the space was covered" survives a
+  cancellation. Cases that met this now report UNDECIDED, which is what happened.
 
 ## [0.2.0] - 2026-08-01
 

@@ -204,8 +204,8 @@ def _empty_collection(shape: str, item: str, nonempty: str) -> NoReturn:
 
 @dataclass(frozen=True, slots=True)
 class Optimum:
-    """The proven optimum of an optimisation run. ``cost`` is the
-    priority-ordered (lexicographic) cost vector, compared positionally, never a scalar.
+    """The proven optimum of an optimisation run. ``cost`` is the priority-ordered
+    (lexicographic) cost vector, compared positionally, never a scalar.
 
     Read it as a proof-token of *proven* optimality: only ``solvers.py`` puts one on a shape, and
     only where the cost was in fact proven — by the search that closed its own space, or by an
@@ -339,9 +339,8 @@ class ConsistentBrave(Consistent):
     """``BRAVE_ALL``: the brave-consequence set clingo reported, alone (no census to derive from).
 
     It is ⋃ exactly when the search closed the space; clingo widens the set as it goes, so over a
-    search that did not close the space it is a *subset* of ⋃ — the mirror of the cautious case, and
-    read
-    under the same condition."""
+    search that did not close the space it is a *subset* of ⋃ — the mirror of the cautious case,
+    and read under the same condition."""
 
     brave: frozenset[Symbol]
 
@@ -477,8 +476,7 @@ class SeamError(HarnessError):
     ``reads ⊆ populates`` wiring rule (the primary guard, ``run.py``) attaches a check only to a
     run whose mode populates what it reads; and the ``solvers.py`` lowering postcondition, that any
     ``Consistent`` it yields for a run of mode M is the shape whose fields are exactly
-    ``populates(M)``. If it fires, one of
-    those was violated — an elenctic bug, never a verdict."""
+    ``populates(M)``. If it fires, one of those was violated — an elenctic bug, never a verdict."""
 
 
 def _seam_violation(field: Field, shape: Consistent) -> NoReturn:

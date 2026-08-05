@@ -1,12 +1,11 @@
 """Solver facades over the clingo/clingcon Python API — the **only impure module**.
 
 A facade runs one configured solve and returns a :class:`~elenctic.result.SolveOutcome`: the arm the
-solve settled, paired with how its search ended. The arm is
-:class:`~elenctic.result.Inconclusive` if the solve settled nothing — the budget was hit before it
-decided, or the solver gave up (both ``UNDECIDED``, never FAIL/UNSAT);
-:class:`~elenctic.result.Inconsistent` if the whole-result ``unsatisfiable`` bit is set (decided
-once, never inferred from an empty field);
-else the :class:`~elenctic.result.Consistent` shape the mode produces.
+solve settled, paired with how its search ended. The arm is :class:`~elenctic.result.Inconclusive`
+if the solve settled nothing — the budget was hit before it decided, or the solver gave up (both
+``UNDECIDED``, never FAIL/UNSAT); :class:`~elenctic.result.Inconsistent` if the whole-result
+``unsatisfiable`` bit is set (decided once, never inferred from an empty field); else the
+:class:`~elenctic.result.Consistent` shape the mode produces.
 
 A search cut short still reports the satisfiability it settled, and every arm reports the search
 behind it — the undecided one included, where how the search ended is the only thing there is to
@@ -145,8 +144,7 @@ class _Collector:
         clingo narrows this set as the search proceeds, so it is ⋂ only once the search has closed
         the space; over a search that did not close the space it is a *superset* of ⋂. Which of the
         two you hold is what the outcome's conclusion says, and no reader may treat this as ⋂
-        without
-        consulting it."""
+        without consulting it."""
         return self._cautious
 
     def brave(self) -> frozenset[Symbol] | None:
@@ -155,8 +153,7 @@ class _Collector:
 
         clingo widens this set as the search proceeds, so it is ⋃ only once the search has closed
         the space; over a search that did not close the space it is a *subset* of ⋃ — the mirror of
-        the
-        cautious case, and read under the same condition."""
+        the cautious case, and read under the same condition."""
         return self._brave
 
     def optimum(self) -> Optimum:

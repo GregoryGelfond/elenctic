@@ -228,10 +228,30 @@ that classical logic cannot name. (See the worked examples below.)
 ### Well-formedness
 
 `parse` accepts exactly the well-formed blocks and **rejects every other with a diagnostic** — it
-never silently defaults. Exactly one `@expect`; single-valued witness/scalar tags per `(mode, base)`
-cell; `@count 0 ⟺ @expect unsat`; and the precondition tags (`@cost`/`optimal` need an optimizing
-encoding; `@assign`, `@assign optimal`, and a `where`-witness need clingcon; a `no`/`unknown`
-`@query` needs the contrary `#show`n) are checked at discovery against the actual encoding.
+never silently defaults. Exactly one `@expect`; **`@expect unsat` admits no model-bearing tag at
+all** — no `@model`, `@count` (beyond `@count 0`), `@cautious`, `@brave`, `@optimal`, `@cost`,
+`@assign` or `@query`, because a program with no answer sets has nothing for any of them to be
+about, which is what makes a contract one shape or the other rather than a bag of tags;
+single-valued witness/scalar tags per `(mode, base)` cell; `@count 0 ⟺ @expect unsat`; and the
+precondition tags are checked at discovery **against the actual encoding**, not at parse time.
+
+Those discovery-time preconditions are the ones most likely to surprise, so in full. `@cost` and the
+`optimal` base need an optimizing encoding (a `#minimize`, `#maximize` or `:~`). `@assign`, `@assign
+optimal` and a `where`-witness need clingcon. A `no` or `unknown` `@query` needs the contrary
+`#show`n, since an unshown literal can never enter ⋂ or ⋃. And two that the grammar above gives no
+hint of:
+
+- **`@cost` is refused over a `#maximize` objective.** clingo reports such a cost in negated form,
+  and elenctic will not present a number that is not the one you wrote. Use `#minimize`, or an
+  optimal-base tag.
+- **Every tag that reads AS(P) is refused over a *theory-native* objective** (`&minimize`,
+  `&maximize`) — that is `@model`, `@count`, `@assign`, `@cautious`, `@brave` and `@query`. The
+  theory's propagator drives the search to the optimum and no clingo setting switches that off, so
+  an enumeration would silently cover only part of AS(P). Move the objective into ASP, which the
+  AS(P) modes *do* switch off, or drop to `@expect sat` or an optimal-base tag.
+
+Each is a hard exit `2` with a diagnostic naming the file — never a `FAIL`, because none of them is
+the program being wrong.
 
 ## The verdict
 
@@ -252,14 +272,29 @@ Each check yields a three-valued **Verdict** about the program under test:
   settles it whatever the rest of the search would have found.
 
 A case passes iff every check passes. Errors are a separate register, never verdicts, and they are
-reported loudly and distinctly rather than as a costumed `FAIL`. They divide by whose fault they
-are: a bad contract (`ContractError`), a mis-shaped corpus or a missing declared solver
-(`DiscoveryError`), or a program that cannot be run at all — one that will not ground, or whose
-`#include` does not resolve (`ProgramError`) — are yours to fix; an `elenctic` bug
-(`HarnessError`) is ours. Two more are yours to fix and are named for where the fault lies rather
-than for an exception, because neither is one this package defines: a case the run's `--deadline`
-never reached, and a case that ran out of memory. A case that cannot be run does not stop the
-others: it is reported on its own and the rest of the corpus still runs.
+reported loudly and distinctly rather than as a costumed `FAIL`. Each is filed under a **locus** —
+where the fault lies, which is the word a diagnostic leads with and the `kind` a machine-readable
+report carries:
+
+| locus | what is wrong | whose |
+| --- | --- | --- |
+| `contract` | the `@`-contract is ill-formed | yours |
+| `discovery` | the corpus is mis-shaped: a target that does not exist, a precondition above | yours |
+| `environment` | the machine cannot do what the corpus asks: a declared solver that is not installed | yours |
+| `program` | the program will not load, ground or solve — an unresolvable `#include`, an unsafe variable | yours |
+| `deadline` | the run's `--deadline` passed before this case was tried | yours |
+| `resource` | the case ran out of memory | yours |
+| `harness` | elenctic violated one of its own invariants | **ours** |
+
+Loci name *places*, not exception classes, and deliberately: a deadline raises no exception at all
+and a resource running out arrives as a built-in. Four of them do have an exception a library
+consumer can catch — `elenctic.ContractError`, `elenctic.DiscoveryError`, `elenctic.ProgramError`
+and `elenctic.HarnessError` (plus `elenctic.SolverUnavailableError`, which is both a
+`DiscoveryError` and an `ImportError`, so either idiom catches a missing backend). The one closed
+question about a locus is `is_elenctic_bug` on `elenctic.ErrorKind` — whether to report it or fix
+it — and that is what the exit status reads, so a locus added later never changes what a status
+means. A case that cannot be run does not stop the others: it is reported on its own and the rest
+of the corpus still runs.
 
 ## Worked examples
 
@@ -307,10 +342,58 @@ Bob, in CS, is genuinely undetermined — the **unknown** that the consequence v
 real encodings: shortest paths, the travelling salesman, task allocation, the equality-generalized
 TSP, n-queens, send-more-money, and task scheduling, with **135 contract-checked cases** across
 clingo and clingcon. It is a literate ASP corpus written to be read, and elenctic's first consumer:
-each
-scenario `#include`s its domain encoding and declares its solver, and the whole corpus runs directly
-under `elenctic`. It is the place to see the `@`-tags, the declared-solver model, and the
+each scenario `#include`s its domain encoding and declares its solver, and the whole corpus runs
+directly under `elenctic`. It is the place to see the `@`-tags, the declared-solver model, and the
 clingo / clingcon pairings used at scale.
+
+## Discovery
+
+Discovery is **content-keyed**: a `.lp` file is a *case* iff it carries a contract (any known
+`@`-tag), otherwise it is a *library* (an `#include` target, never run directly). A directory is
+walked for contract-bearing files; a single file is run directly. The program under test is the case
+file plus its resolved `#include`s, and the solver is **declared** in the contract
+(`% @elenctic solver clingcon`, default `clingo`), never inferred from a filename. An undeclared
+theory program is a loud error: elenctic never silently mis-solves a theory program under plain clingo.
+
+## Installation
+
+elenctic runs on **Python ≥ 3.14** (a deliberate floor: the implementation uses modern Python
+idioms) and needs **clingo**, plus **clingcon** for the theory fragment (`@assign` and CSP `@count`).
+Both solvers are on conda-forge *and* on PyPI.
+
+### In a [pixi](https://pixi.sh) project (recommended)
+
+Take the solvers from conda-forge and elenctic from its repo. clingo (and clingcon) satisfy
+elenctic's runtime imports, so the `[theory]` extra is not needed:
+
+```toml
+[dependencies]
+clingo = "5.8.*"
+clingcon = "5.2.1.*"   # only for the theory fragment
+
+[pypi-dependencies]
+elenctic = { git = "https://github.com/GregoryGelfond/elenctic.git" }
+# pin a release for reproducibility, e.g. { git = "...", tag = "v0.2.0" }
+```
+
+Then `pixi run elenctic <path>` runs a corpus of contracts.
+
+### With pip
+
+clingo ships 3.14 wheels; clingcon may build from source on 3.14.
+
+```console
+$ pip install "git+https://github.com/GregoryGelfond/elenctic.git"                    # answer-set fragment
+$ pip install "elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic.git" # + clingcon
+```
+
+### Working on elenctic
+
+```console
+$ git clone https://github.com/GregoryGelfond/elenctic
+$ cd elenctic && pixi install
+$ pixi run check        # ruff + mypy --strict + pytest
+```
 
 ## Running
 
@@ -331,19 +414,55 @@ $ elenctic --print-schema          # the JSON schema of that report, without run
 practical per-solve limit asks for a large number; a run that wants no deadline leaves `--deadline`
 off, which is the default.
 
+**The two streams are split under every format, not only under `--format json`.** Standard output
+carries the *report* — the rendering of each case that did not pass, and the tally. Standard error
+carries everything *about* the run: the per-case error lines, the corpus-hygiene block, and the
+notice that a deadline stopped it. So `elenctic tests/ | tee ci.log` keeps `0/3 passed, 2 could not
+be run` and loses which two and why; `elenctic tests/ > ci.log 2>&1` keeps both.
+
+**What `--strict` fails a build on** is corpus hygiene, and there are exactly two observations: an
+**orphan library** (a contract-free `.lp` that no case `#include`s — a forgotten case, or dead
+code), and an **undeclared solver** (a case that did not say which solver it wants, so it got the
+default). Without `--strict` the first is a warning and the second is recorded silently; under
+`--strict` both become errors and the run exits `2` however every contract fared. Nothing else
+changes: a verdict is never affected by the flag.
+
 ### Machine-readable output
 
 `--format json` writes the whole run as **one JSON object on standard output**, and moves everything
 else — the per-case report, the hygiene summary, every diagnostic — to standard error. Standard
 output carries a whole document or nothing at all, so a consumer can parse it without filtering.
-Running a single case file:
+The example below runs this case, which claims that every answer set contains `tea` — and it
+does not, because exactly one of `tea` and `coffee` is chosen:
+
+```asp
+% @elenctic solver clingo
+% @expect sat
+% @cautious { tea }
+
+1 { tea; coffee } 1.
+#show tea/0.
+#show coffee/0.
+```
 
 ```console
 $ elenctic menu.lp --format json
 {
   "schema_version": 1,
-  "invocation": { "target": "menu.lp", "strict": false, "budget": 30.0, "deadline": null },
-  "summary": { "total": 1, "passed": 0, "failed": 1, "undecided": 0, "errors": 0, "hygiene": 0 },
+  "invocation": {
+    "target": "menu.lp",
+    "strict": false,
+    "budget": 30.0,
+    "deadline": null
+  },
+  "summary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "undecided": 0,
+    "errors": 0,
+    "hygiene": 0
+  },
   "cases": [
     {
       "source": "menu.lp",
@@ -404,9 +523,9 @@ resolve them against the directory you ran from, which the document does not rec
 corpus. Three things are refused rather than guessed at: a `--format` this version does not know;
 `--explain --format json` (a dry run narrates a plan, and this version describes no document for
 one); and a `--budget` or `--deadline` that is not a positive finite number of seconds. A refused
-command line produces **no** document, so
-check the exit status before parsing — and note that `--print-schema` puts the *schema* on that
-stream, which parses as JSON and has none of the fields above.
+command line produces **no** document, so check the exit status before parsing — and note that
+`--print-schema` puts the *schema* on that stream, which parses as JSON and has none of the fields
+above.
 
 Redirecting standard error onto standard output (`--format json 2>&1`) gives away the guarantee by
 your own hand.
@@ -416,8 +535,18 @@ your own hand.
 elenctic runs the programs it is given, so a corpus is as trusted as code you would run. It is
 built to be well-behaved about that — a case may only `#include` files from inside the corpus it
 belongs to; text from a case cannot rewrite the report it appears in; and one unusable file costs
-its own result and no other's — but two limits are worth stating plainly rather than leaving to be
-discovered.
+its own result and no other's.
+
+**Grounding is not bounded at all.** A program can be small and still ground to something enormous,
+and clingo offers no way to cap that — it is not a limit elenctic can lift. Running an untrusted
+corpus therefore belongs inside whatever your platform already gives you: a container with a memory
+limit and a job timeout. Running out of memory is reported against the case that ran out of it, and
+costs that case's result rather than the whole run's — but it cannot be prevented from here.
+
+### What the bounds actually bound
+
+Three limits are worth stating plainly rather than leaving to be discovered, and the last is the
+one to read first if an honest `@count` comes back `UNDECIDED`.
 
 **`--budget` bounds a solve, not a run.** It is per solve, and a case can route to several. Use
 `--deadline` to bound the solving.
@@ -426,12 +555,6 @@ discovered.
 has finished, and discovery is not free — it parses every case and its transitive `#include`s. It
 also stops elenctic *starting* a case rather than interrupting one under way, so a solve already
 running finishes on its own `--budget`.
-
-**Grounding is not bounded at all.** A program can be small and still ground to something enormous,
-and clingo offers no way to cap that — it is not a limit elenctic can lift. Running an untrusted
-corpus therefore belongs inside whatever your platform already gives you: a container with a memory
-limit and a job timeout. Running out of memory is reported against the case that ran out of it, and
-costs that case's result rather than the whole run's — but it cannot be prevented from here.
 
 **An enumerating solve holds at most a million answer sets.** Past that the search stops, and every
 check whose reading ranges over the whole collection is `UNDECIDED` — a census of part of a
@@ -448,59 +571,59 @@ Each pipeline stage is also runnable for inspection: `python -m elenctic.expecta
 `python -m elenctic.discovery <file-or-dir>` (the discovered cases), and
 `python -m elenctic.solvers <MODE> <file.lp>` (one solve's outcome, with clingo).
 
-Beyond the CLI, elenctic is also a **library**: `discover(target)` yields cases, `run_case(case)`
-yields the per-check reports, `case_verdict(reports)` folds them, and `render(case, reports)` formats
-the diagnostic — ready to drive `pytest.mark.parametrize` when you want elenctic's results inside
-another test runner.
+## Using elenctic as a library
 
-## Discovery
+The command line is a derivation of the library, not the other way round: it parses an invocation,
+runs it, renders what comes back, and reads a status off it. Every one of those steps is a call you
+can make yourself, so elenctic's results can go into a runner of your own, a CI script, or an
+editor plugin without shelling out and parsing prose.
 
-Discovery is **content-keyed**: a `.lp` file is a *case* iff it carries a contract (any known
-`@`-tag), otherwise it is a *library* (an `#include` target, never run directly). A directory is
-walked for contract-bearing files; a single file is run directly. The program under test is the case
-file plus its resolved `#include`s, and the solver is **declared** in the contract
-(`% @elenctic solver clingcon`, default `clingo`), never inferred from a filename. An undeclared
-theory program is a loud error: elenctic never silently mis-solves a theory program under plain clingo.
+**The library is silent.** Nothing below prints; you supply an observer if you want to watch a run
+as it goes, and the announcements hand you *records* rather than strings, so nothing you display
+has to be re-derived from a sentence elenctic wrote.
 
-## Installation
+```python
+from pathlib import Path
 
-elenctic runs on **Python ≥ 3.14** (a deliberate floor: the implementation uses modern Python
-idioms) and needs **clingo**, plus **clingcon** for the theory fragment (`@assign` and CSP `@count`).
-Both solvers are on conda-forge *and* on PyPI.
+import elenctic
 
-### In a [pixi](https://pixi.sh) project (recommended)
 
-Take the solvers from conda-forge and elenctic from its repo. clingo (and clingcon) satisfy
-elenctic's runtime imports, so the `[theory]` extra is not needed:
+class Watching(elenctic.RunObserver):
+    def case_started(self, case: elenctic.Case) -> None:
+        print(f"running {case.contract_source.name}")
 
-```toml
-[dependencies]
-clingo = "5.8.*"
-clingcon = "5.2.1.*"   # only for the theory fragment
+    def case_judged(self, outcome: elenctic.CaseOutcome) -> None:
+        print(f"  {outcome.verdict.value}")
 
-[pypi-dependencies]
-elenctic = { git = "https://github.com/GregoryGelfond/elenctic.git" }
-# pin a release for reproducibility, e.g. { git = "...", tag = "v0.2.0" }
+
+invocation = elenctic.Invocation(
+    target=Path("encodings"), strict=False, budget=30.0, deadline=None
+)
+outcome = elenctic.run_corpus(invocation, observer=Watching())
+
+Path("report.json").write_text(
+    elenctic.dumps(elenctic.as_json(outcome, invocation)), encoding="utf-8"
+)
+raise SystemExit(elenctic.exit_status(outcome))
 ```
 
-Then `pixi run elenctic <path>` runs a corpus of contracts.
+`elenctic.RunObserver` is a protocol with a do-nothing body for every announcement, so **inheriting
+it** lets you override only what you care about — as above. Implementing it *structurally*, without
+inheriting, means supplying every member: a protocol's default bodies are inherited, never
+conjured. The announcements are `corpus_unreadable`, `case_unusable`, `case_started`,
+`case_unjudged`, and then `case_judged`. **A fault in your observer costs the run nothing**: it is
+reported through a module logger and the records are unaffected, because in a CI job or an editor
+the records are the deliverable and the channel an observer writes to is the part that fails.
 
-### With pip
+`elenctic.explain_corpus` is the same shape for the dry run — it takes the same
+`elenctic.Invocation`, announces `case_planned` through an `elenctic.PlanObserver`, and returns an
+`elenctic.PlanOutcome`. `elenctic.exit_status` is total over both.
 
-clingo ships 3.14 wheels; clingcon may build from source on 3.14.
+For one case at a time rather than a corpus: `elenctic.discover` yields cases, `elenctic.run_case`
+yields the per-check reports, `elenctic.case_verdict` folds them, and `elenctic.render` formats the
+diagnostic — which is what you want to drive `pytest.mark.parametrize` with.
 
-```console
-$ pip install "git+https://github.com/GregoryGelfond/elenctic.git"                    # answer-set fragment
-$ pip install "elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic.git" # + clingcon
-```
-
-### Working on elenctic
-
-```console
-$ git clone https://github.com/GregoryGelfond/elenctic
-$ cd elenctic && pixi install
-$ pixi run check        # ruff + mypy --strict + pytest
-```
+elenctic ships `py.typed`, so all of this is typed for whatever checker you run.
 
 ## License
 
