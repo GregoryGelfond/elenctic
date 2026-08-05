@@ -14,7 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from elenctic import corpus
 from elenctic.cli import main
+from elenctic.outcome import ExitStatus
+from support import a_clock_the_deadline_has_already_passed_on
 
 _GOOD = "% @expect sat\n% @count  1\n\na.\n#show a/0.\n"
 
@@ -25,27 +28,26 @@ def _corpus(root: Path, count: int) -> str:
     return str(root)
 
 
-def test_without_a_deadline_every_case_runs() -> None:
-    """The default is unchanged behaviour — the bound exists only when it is asked for."""
-
-
 def test_a_run_without_a_deadline_is_unchanged(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     status = main([_corpus(tmp_path, 3)])
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "3/3 passed" in capsys.readouterr().out
 
 
 def test_a_passed_deadline_stops_the_run_and_accounts_for_what_was_not_reached(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # A deadline of zero has already passed when the first case is reached, so nothing runs. What
+    # The clock says the deadline passed before the first case was reached, so nothing runs. What
     # matters is that the cases that did not run are counted rather than omitted: a summary that
     # explained them by leaving them out would read as a smaller corpus.
-    status = main([_corpus(tmp_path, 3), "--deadline", "0"])
+    monkeypatch.setattr(corpus, "monotonic", a_clock_the_deadline_has_already_passed_on(600.0))
+    status = main([_corpus(tmp_path, 3), "--deadline", "600"])
     captured = capsys.readouterr()
-    assert status == 2, "an unfinished run is the error register, never a verdict"
+    assert status == ExitStatus.USER_FAULT, (
+        "an unfinished run is the error register, never a verdict"
+    )
     assert "0/3 passed" in captured.out, "the corpus total must still be the corpus total"
     assert "3 could not be run" in captured.out
     assert "deadline" in captured.err.lower()
@@ -56,5 +58,5 @@ def test_a_generous_deadline_does_not_interfere(
 ) -> None:
     # The other side: a deadline nobody meets must be invisible.
     status = main([_corpus(tmp_path, 3), "--deadline", "600"])
-    assert status == 0
+    assert status == ExitStatus.OK
     assert "3/3 passed" in capsys.readouterr().out

@@ -1,9 +1,15 @@
+"""The result vocabulary: the observable a model projects to, the three-valued verdict, the eight
+capability fields, and the ``Determination`` arms — including that its base shape is abstract and
+that matching over the three arms is total."""
+
+import re
 from collections.abc import Callable
 
 import pytest
 from clingo import Function
 
 from elenctic.result import (
+    Conclusion,
     Consistent,
     ConsistentBrave,
     ConsistentCautious,
@@ -21,6 +27,7 @@ from elenctic.result import (
     Observable,
     Optimum,
     SeamError,
+    SolveOutcome,
     Verdict,
     brave_of,
     brave_optimal_of,
@@ -57,7 +64,7 @@ def test_verdict_three_valued() -> None:
     assert len({Verdict.PASS, Verdict.FAIL, Verdict.UNDECIDED}) == 3
 
 
-# --- the Determination arms (depth D) ---
+# --- the Determination arms ---
 
 
 def _obs(*names: str) -> Observable:
@@ -72,7 +79,7 @@ def test_consistent_shapes_are_consistent_others_are_not() -> None:
 
 
 def test_consistent_base_is_abstract() -> None:
-    # the depth-D invariant: only the six concrete shapes are inhabitable, never a bare Consistent
+    # only the concrete shapes are inhabitable, never a bare Consistent
     with pytest.raises(TypeError, match="abstract"):
         Consistent()
 
@@ -118,7 +125,7 @@ def test_optimum_carries_the_priority_vector() -> None:
 
 
 def test_optimum_rejects_an_empty_cost_vector() -> None:
-    with pytest.raises(ValueError, match="cost"):
+    with pytest.raises(HarnessError, match="cost"):
         Optimum(())
 
 
@@ -225,14 +232,41 @@ def test_seam_error_is_a_harness_error_never_a_verdict() -> None:
 # --- the result-shape invariant: Consistent ⟹ ≥1 model ---
 
 
-def test_consistent_enumeration_requires_a_nonempty_census() -> None:
-    with pytest.raises(ValueError, match="observable"):
-        ConsistentEnumeration(())
+@pytest.mark.parametrize(
+    ("build", "word"),
+    [
+        (lambda: ConsistentEnumeration(()), "observable"),
+        (lambda: ConsistentShownCensus(frozenset()), "ConsistentShownCensus"),
+        (lambda: ConsistentOptimalEnumeration((), Optimum((1,))), "optimal model"),
+        (lambda: ConsistentShownOptimalCensus(frozenset(), Optimum((1,))), "Opt(P)"),
+    ],
+)
+def test_a_consistent_shape_refuses_an_empty_collection(
+    build: Callable[[], Consistent], word: str
+) -> None:
+    # Consistent means the program has an answer set, so a shape built around none of them is a
+    # result that contradicts its own arm. Every shape that carries a collection is here, including
+    # the two projected ones, whose guards had no test of their own.
+    with pytest.raises(HarnessError, match=re.escape(word)):
+        build()
 
 
-def test_consistent_optimal_enumeration_requires_a_nonempty_class() -> None:
-    with pytest.raises(ValueError, match="optimal"):
-        ConsistentOptimalEnumeration((), Optimum((1,)))
+def test_a_mis_shaped_result_is_reported_the_way_the_runner_can_survive() -> None:
+    # The invariants above are elenctic's own, so they raise elenctic's own root. That is not a
+    # naming preference: HarnessError is the family the runner catches per case, so a result that
+    # cannot be right costs one case's result. A ValueError matches no per-case arm, reaches the
+    # outermost frame, and ends the run — losing every case still to come, which is the shape the
+    # per-case registers exist to prevent.
+    for build in (
+        lambda: Optimum(()),
+        lambda: ConsistentEnumeration(()),
+        lambda: ConsistentShownCensus(frozenset()),
+        lambda: ConsistentOptimalEnumeration((), Optimum((1,))),
+        lambda: ConsistentShownOptimalCensus(frozenset(), Optimum((1,))),
+        lambda: SolveOutcome(Inconsistent(), Conclusion.INTERRUPTED),
+    ):
+        with pytest.raises(HarnessError):
+            build()
 
 
 # --- the projected shapes and the shown-census accessors (the field split) ---

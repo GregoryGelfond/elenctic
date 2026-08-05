@@ -27,6 +27,7 @@ from elenctic.checks import Check
 from elenctic.expectation import Expectation, Sat, Unsat
 from elenctic.query import Query, QueryForm, classify
 from elenctic.result import (
+    Collection,
     Consistent,
     ConsistentBrave,
     ConsistentCautious,
@@ -38,85 +39,8 @@ from elenctic.result import (
     ConsistentWitness,
     Field,
     HarnessError,
+    collection_of,
 )
-
-
-class Collection(Enum):
-    """What a reading ranges over — the structural fact that fixes how a run must treat an
-    objective.
-
-    An objective (``#minimize``/``#maximize``/``:~``) *ranks* answer sets; it never removes any, so
-    AS(P) is the same set with or without one. A solver need not enumerate it that way, though:
-    clingo optimizes by default, and an enumerating solve under an active objective reports only the
-    branch-and-bound **improving sequence** — the models the search passed through on its way to the
-    optimum. That sequence is neither AS(P) nor Opt(P), it varies with the search heuristic, and
-    clingo says so where consequences are involved ("Consequences may depend on enumeration order").
-
-    So what a reading ranges over settles the optimization it needs:
-
-    - ``ALL`` — all of AS(P), so the objective must be switched **off** or the search prunes it.
-    - ``OPTIMAL`` — all of Opt(P), which only an active objective identifies, so **on**.
-    - ``WITNESS`` — a single answer set, and only its existence and contents. An objective changes
-      neither whether one exists nor whether a given model qualifies, so the setting cannot move
-      the answer and the reading states none.
-    """
-
-    ALL = "AS(P)"
-    OPTIMAL = "Opt(P)"
-    WITNESS = "one answer set"
-
-    @property
-    def needs_exhausted_search(self) -> bool:
-        """Whether a reading over this collection requires the search that produced it to have
-        finished.
-
-        A solver settles two separate things: whether a model exists, and whether the search that
-        found one covered everything it was asked to. ``ALL`` and ``OPTIMAL`` are readings of a
-        whole collection — a census, an intersection, a union, a proven optimum — and each is a
-        claim about every member, so a search that stopped early leaves an arbitrary prefix that
-        answers a different question.
-
-        ``WITNESS`` asks only whether some answer set exists and what is in it, which one model
-        settles whatever the rest of the search would have found. The exemption is not merely
-        permitted but necessary: with nothing else driving it a witness search stops at the first
-        answer set and reports a search that did not finish, so requiring exhaustion would report
-        satisfiable programs as undecided. It is *not* that such a search never finishes — an
-        objective puts the solver's own optimization in force and proving an optimum does exhaust —
-        which is why this is a statement about what the reading requires, not about what the search
-        happens to do."""
-        return self is not Collection.WITNESS
-
-
-# Which collection each field is a reading of. This is the partition the mode-level collection
-# derives from: a field IS a question about a collection (⋂/⋃/a census are questions about AS(P);
-# a cost or an optimal census about Opt(P); a witness about one model), so a mode's collection is
-# whatever its fields agree on rather than a second thing to declare and keep in step.
-_READS: Final[dict[Field, Collection]] = {
-    Field.WITNESS: Collection.WITNESS,
-    Field.SHOWN_CENSUS: Collection.ALL,
-    Field.FULL_CENSUS: Collection.ALL,
-    Field.CAUTIOUS: Collection.ALL,
-    Field.BRAVE: Collection.ALL,
-    Field.SHOWN_OPTIMAL_CENSUS: Collection.OPTIMAL,
-    Field.FULL_OPTIMAL_CENSUS: Collection.OPTIMAL,
-    Field.OPTIMUM: Collection.OPTIMAL,
-}
-
-
-def collection_of(fields: frozenset[Field]) -> Collection:
-    """The collection a run populating ``fields`` reads. Total over the field vocabulary (an
-    unmapped field raises ``KeyError`` at import, before any solve), and defined only where the
-    fields agree: a run reading both AS(P) and Opt(P) has no single optimization to lower to, so it
-    is a contradiction, reported loudly rather than resolved by picking one."""
-    collections = {_READS[field] for field in fields}
-    if len(collections) != 1:
-        named = ", ".join(sorted(collection.value for collection in collections)) or "nothing"
-        raise HarnessError(
-            f"a run reading {{{', '.join(sorted(field.value for field in fields))}}} would read "
-            f"{named}, but a run reads exactly one collection — it lowers to one optimization "
-            "setting, and no setting answers for two (an elenctic bug, not a verdict)"
-        )
-    return collections.pop()
 
 
 class Mode(Enum):
@@ -138,8 +62,12 @@ class Mode(Enum):
 
     @property
     def args(self) -> tuple[str, ...]:
-        """The clingo arg tuple this mode lowers to — its search-config flags; another
-        backend would lower the same mode differently."""
+        """The clingo arg tuple this mode is constructed with — its search-config flags; another
+        backend would lower the same mode differently.
+
+        These are construction flags, not always the configuration a solve finally runs under:
+        ``OPTIMAL_ENUM`` is driven in two phases that set the optimization mode on the already-built
+        control, so its ``--opt-mode=optN`` here is overridden before either phase solves."""
         return _ARGS[self]
 
     @property
@@ -311,7 +239,13 @@ def runs_for(exp: Expectation, theory_in_force: bool = False) -> tuple[Run, ...]
     ``False`` (pure clingo) so the solver-less dry-run and existing callers are unaffected."""
     match exp:
         case Unsat():
-            return (Run(Mode.DEFAULT, (checks.expect_unsat(),), theory_in_force=theory_in_force),)
+            return (
+                Run(
+                    Mode.DEFAULT,
+                    (checks.expect_unsat(line=exp.expect_line),),
+                    theory_in_force=theory_in_force,
+                ),
+            )
         case Sat():
             return _sat_runs(exp, theory_in_force)
         case _:
@@ -325,51 +259,77 @@ def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
     Each check is added under a mode that populates the fields its decision reads; the wiring rule
     (``Run.__post_init__``) verifies ``reads ⊆ populates`` per run, so coalescing soundness is
     enforced by construction rather than by hand.
+
+    A repeated consequence tag is a repeated *claim*: each ``@cautious``/``@brave`` line becomes its
+    own check, decided and reported against the line it was written on. Checking them apart decides
+    the case identically — for any set ``S``, ``L₁ ⊆ S`` and ``L₂ ⊆ S`` hold exactly when
+    ``(L₁ ∪ L₂) ⊆ S`` does, a fact about ⊆ and ∪ that covers the ⋃ and Opt(P) readings as much as ⋂
+    — and all of a cell's claims land on one mode, so no extra search is done. What changes is the
+    report: a failure that turns on which claim was false now names that claim, and the arms whose
+    verdict does not depend on the claim report once per claim instead of once per cell.
     """
     bucket: dict[Mode, list[Check]] = {}
 
     def add(mode: Mode, check: Check) -> None:
         bucket.setdefault(mode, []).append(check)
 
-    # ``is not None`` for the Optional cells (absent vs present — @count 0 is a *present* unsat
-    # claim, not absence); truthy for the containment tags, where ∅ is a vacuous claim their
-    # builders reject (so empty == absent), keeping them consistent with cautious/brave.
+    # Two idioms, one rule: ``is not None`` for the single-valued cells below, plain iteration for
+    # the consequence tuples further down. In both, absence is a type fact rather than an empty
+    # value — @count 0 is a *present* unsat claim, and an empty tuple derives nothing without
+    # needing a guard — so no cell is ever tested for emptiness to learn whether it is occupied.
+    # (The containment builders separately reject an empty litset, which is a vacuity guard on a
+    # claim that is present, not an absence test.)
     if exp.model is not None:
-        add(Mode.ENUM_ALL, checks.has_model(exp.model))
+        add(Mode.ENUM_ALL, checks.has_model(exp.model.value, line=exp.model.line))
     if exp.count is not None:
-        add(Mode.ENUM_ALL, checks.count_is(exp.count))
-    if exp.assign:
-        add(Mode.ENUM_ALL, checks.assign_contains(exp.assign))
+        add(Mode.ENUM_ALL, checks.count_is(exp.count.value, line=exp.count.line))
+    if exp.assign is not None:
+        add(Mode.ENUM_ALL, checks.assign_contains(exp.assign.value, line=exp.assign.line))
     # cautious and brave run as two native consequence solves, not one ENUM_ALL census: clingo's
     # --enum-mode=cautious/brave compute ⋂/⋃ directly, avoiding a full (possibly exponential) enum.
-    if exp.cautious:
-        add(Mode.CAUTIOUS_ALL, checks.cautious_contains(exp.cautious))
-    if exp.brave:
-        add(Mode.BRAVE_ALL, checks.brave_contains(exp.brave))
+    for claim in exp.cautious:
+        add(Mode.CAUTIOUS_ALL, checks.cautious_contains(claim.value, line=claim.line))
+    for claim in exp.brave:
+        add(Mode.BRAVE_ALL, checks.brave_contains(claim.value, line=claim.line))
 
     if exp.optimal_model is not None:
-        add(Mode.OPTIMAL_ENUM, checks.has_optimal_model(exp.optimal_model))
-    if exp.cautious_optimal:
-        add(Mode.OPTIMAL_ENUM, checks.cautious_optimal_contains(exp.cautious_optimal))
-    if exp.brave_optimal:
-        add(Mode.OPTIMAL_ENUM, checks.brave_optimal_contains(exp.brave_optimal))
+        add(
+            Mode.OPTIMAL_ENUM,
+            checks.has_optimal_model(exp.optimal_model.value, line=exp.optimal_model.line),
+        )
+    for claim in exp.cautious_optimal:
+        add(Mode.OPTIMAL_ENUM, checks.cautious_optimal_contains(claim.value, line=claim.line))
+    for claim in exp.brave_optimal:
+        add(Mode.OPTIMAL_ENUM, checks.brave_optimal_contains(claim.value, line=claim.line))
     if exp.count_optimal is not None:
-        add(Mode.OPTIMAL_ENUM, checks.count_optimal_is(exp.count_optimal))
-    if exp.assign_optimal:
-        add(Mode.OPTIMAL_ENUM, checks.assign_optimal_contains(exp.assign_optimal))
+        add(
+            Mode.OPTIMAL_ENUM,
+            checks.count_optimal_is(exp.count_optimal.value, line=exp.count_optimal.line),
+        )
+    if exp.assign_optimal is not None:
+        add(
+            Mode.OPTIMAL_ENUM,
+            checks.assign_optimal_contains(exp.assign_optimal.value, line=exp.assign_optimal.line),
+        )
     if exp.cost is not None:
         # @cost rides the shared Opt(P) enumeration when an optimal-base mode is present, else a
         # cheap single-optimum solve. Optimal-base membership lives on Sat (one home).
-        add(Mode.OPTIMAL_ENUM if exp.has_optimal_base else Mode.OPTIMAL, checks.cost_is(exp.cost))
+        add(
+            Mode.OPTIMAL_ENUM if exp.has_optimal_base else Mode.OPTIMAL,
+            checks.cost_is(exp.cost.value, line=exp.cost.line),
+        )
 
     for query in exp.queries:
-        add(_query_mode(query), checks.query_matches(query))
+        add(_query_mode(query.value), checks.query_matches(query.value, line=query.line))
 
     # @expect sat reads ∅ (the arm is the answer), so it could ride any run; it rides an existing
     # full enumeration when one exists, else a cheap DEFAULT 1-model solve — deliberately not an
     # expensive cautious/brave/opt run, which is likelier to time out and report UNDECIDED where the
     # cheap solve would decide satisfiability. (A more refined UNDECIDED treatment is deferred.)
-    add(Mode.ENUM_ALL if Mode.ENUM_ALL in bucket else Mode.DEFAULT, checks.expect_sat())
+    add(
+        Mode.ENUM_ALL if Mode.ENUM_ALL in bucket else Mode.DEFAULT,
+        checks.expect_sat(line=exp.expect_line),
+    )
 
     return tuple(
         Run(

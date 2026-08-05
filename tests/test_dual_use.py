@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from elenctic.outcome import ExitStatus
+
 
 def write(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -32,7 +34,7 @@ def run_module(module: str, *args: str) -> subprocess.CompletedProcess[str]:
 def test_expectation_module_prints_the_parsed_contract(tmp_path: Path) -> None:
     contract = write(tmp_path / "c.lp", "% @expect sat\n% @model { a }\n")
     result = run_module("expectation", str(contract))
-    assert result.returncode == 0
+    assert result.returncode == ExitStatus.OK
     assert "Sat" in result.stdout
     assert result.stderr == ""  # pristine: no runpy re-import warning (the lazy-__init__ contract)
 
@@ -40,29 +42,30 @@ def test_expectation_module_prints_the_parsed_contract(tmp_path: Path) -> None:
 def test_run_module_prints_the_derived_plan(tmp_path: Path) -> None:
     contract = write(tmp_path / "c.lp", "% @expect sat\n% @cautious { a }\n")
     result = run_module("run", str(contract))
-    assert result.returncode == 0
+    assert result.returncode == ExitStatus.OK
     assert "CAUTIOUS_ALL:" in result.stdout
-    assert "@cautious — reads {cautious}" in result.stdout
+    assert "@cautious ({ a }) — reads {cautious}" in result.stdout  # the claim, not just the tag
     assert result.stderr == ""
 
 
 def test_discovery_module_lists_cases(tmp_path: Path) -> None:
     write(tmp_path / "encodings/g/e.lp", "#show p/0.\n% @expect sat\n")
     result = run_module("discovery", str(tmp_path / "encodings"))
-    assert result.returncode == 0
+    assert result.returncode == ExitStatus.OK
     assert "e.lp [clingo]" in result.stdout  # the discovered case file and its (default) solver
     assert result.stderr == ""
 
 
-def test_solvers_module_prints_the_determination(tmp_path: Path) -> None:
+def test_solvers_module_prints_the_solve_outcome(tmp_path: Path) -> None:
     program = write(tmp_path / "p.lp", "a. #show a/0.\n")
     result = run_module("solvers", "DEFAULT", str(program))
-    assert result.returncode == 0
-    assert "ConsistentWitness" in result.stdout
+    assert result.returncode == ExitStatus.OK
+    assert "ConsistentWitness" in result.stdout, "the arm the solve settled"
+    assert "Conclusion." in result.stdout, "and how its search ended, which is half the answer"
     assert result.stderr == ""
 
 
 def test_module_usage_error_exits_2() -> None:
     result = run_module("expectation")  # missing the file argument
-    assert result.returncode == 2
+    assert result.returncode == ExitStatus.USER_FAULT
     assert "usage" in result.stderr

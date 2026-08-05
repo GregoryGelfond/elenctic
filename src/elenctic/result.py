@@ -1,4 +1,4 @@
-"""Outcome data types: ``Observable``, ``Verdict``, and the ``Determination``.
+"""Outcome data types: ``Observable``, ``Verdict``, the ``Determination``, and the ``Conclusion``.
 
 A solved program yields a :data:`Determination` — a three-arm outcome surface:
 :class:`Inconsistent` (AS(P)=∅), :class:`Inconclusive` (the solve did not decide), or one of the
@@ -6,23 +6,34 @@ A solved program yields a :data:`Determination` — a three-arm outcome surface:
 *exactly* the observations its run-mode computes, so a field's absence is a type fact, not a
 sentinel — there is no ``NotConfigured`` and no per-field guard.
 
+Whether a model exists and whether the search that looked covered the space are independent
+questions, so the second has its own answer: a :class:`Conclusion`, paired with the determination
+as a :class:`SolveOutcome`. Which readings that answer disturbs is a question about what is read,
+so it is settled where the reading is (``checks.py``), not here and not at the solver.
+
 A check reads a field through one accessor (``*_of``); the single centralised ``_seam_violation`` is
 the one narrowing assertion, unreachable through the supported path on **two** premises: (1) the
 ``reads ⊆ populates`` wiring rule (``run.py``) attaches a check only to a run whose mode populates
-what it reads, and (2) the lowering postcondition — ``solvers.py`` produces, for a run of mode M,
-exactly the ``Consistent`` shape whose fields are ``populates(M)``. Checks (``checks.py``) are pure
-functions of a ``Determination``; only ``solvers.py`` constructs one.
+what it reads, and (2) the lowering postcondition — whenever ``solvers.py`` yields a ``Consistent``
+for a run of mode M, it is exactly the shape whose fields are ``populates(M)``. Checks
+(``checks.py``) are pure functions of a ``SolveOutcome``; only ``solvers.py`` constructs one.
+
+:class:`Collection` — what a reading ranges over — lives here beside :class:`Field` because it is a
+statement about a *field*, not about a run: a mode and a check each read whatever their fields read,
+so neither declares one and the two cannot drift apart.
 """
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import NoReturn, final
+from typing import Final, NoReturn, final
 
 from clingo import Symbol
 
 from elenctic.terms import intersect_all, union_all
 
 __all__ = [
+    "Collection",
+    "Conclusion",
     "Consistent",
     "ConsistentBrave",
     "ConsistentCautious",
@@ -40,11 +51,13 @@ __all__ = [
     "Observable",
     "Optimum",
     "SeamError",
+    "SolveOutcome",
     "Verdict",
     "brave_of",
     "brave_optimal_of",
     "cautious_of",
     "cautious_optimal_of",
+    "collection_of",
     "observables_of",
     "optimal_observables_of",
     "optimum_of",
@@ -97,22 +110,122 @@ class Field(Enum):
     OPTIMUM = "optimum"
 
 
+class Collection(Enum):
+    """What a reading ranges over — the structural fact that fixes how a run must treat an
+    objective, and whether the search behind a reading had to finish.
+
+    An objective (``#minimize``/``#maximize``/``:~``) *ranks* answer sets; it never removes any, so
+    AS(P) is the same set with or without one. A solver need not enumerate it that way, though:
+    clingo optimizes by default, and an enumerating solve under an active objective reports only the
+    branch-and-bound **improving sequence** — the models the search passed through on its way to the
+    optimum. That sequence is neither AS(P) nor Opt(P), it varies with the search heuristic, and
+    clingo says so where consequences are involved ("Consequences may depend on enumeration order").
+
+    So what a reading ranges over settles the optimization it needs:
+
+    - ``ALL`` — all of AS(P), so the objective must be switched **off** or the search prunes it.
+    - ``OPTIMAL`` — all of Opt(P), which only an active objective identifies, so **on**.
+    - ``WITNESS`` — a single answer set, and only its existence and contents. An objective changes
+      neither whether one exists nor whether a given model qualifies, so the setting cannot move
+      the answer and the reading states none.
+    """
+
+    ALL = "AS(P)"
+    OPTIMAL = "Opt(P)"
+    WITNESS = "one answer set"
+
+    @property
+    def needs_exhausted_search(self) -> bool:
+        """Whether a reading over this collection requires the search that produced it to have
+        finished.
+
+        A solver settles two separate things: whether a model exists, and whether the search that
+        found one covered everything it was asked to. ``ALL`` and ``OPTIMAL`` are readings of a
+        whole collection — a census, an intersection, a union, a proven optimum — and each is a
+        claim about every member, so a search that did not close the space leaves an arbitrary part
+        unseen and answers a different question.
+
+        ``WITNESS`` asks only whether some answer set exists and what is in it, which one model
+        settles whatever the rest of the search would have found. The exemption is not merely
+        permitted but necessary: with nothing else driving it a witness search stops at the first
+        answer set and reports a search that did not finish, so requiring exhaustion would report
+        satisfiable programs as undecided. It is *not* that such a search never finishes — an
+        objective puts the solver's own optimization in force and proving an optimum does exhaust —
+        which is why this is a statement about what the reading requires, not about what the search
+        happens to do."""
+        return self is not Collection.WITNESS
+
+
+# Which collection each field is a reading of. This is the partition both the mode-level and the
+# check-level collection derive from: a field IS a question about a collection (⋂/⋃/a census are
+# questions about AS(P); a cost or an optimal census about Opt(P); a witness about one model), so
+# neither a mode nor a check declares one — each reads whatever its fields read.
+_READS: Final[dict[Field, Collection]] = {
+    Field.WITNESS: Collection.WITNESS,
+    Field.SHOWN_CENSUS: Collection.ALL,
+    Field.FULL_CENSUS: Collection.ALL,
+    Field.CAUTIOUS: Collection.ALL,
+    Field.BRAVE: Collection.ALL,
+    Field.SHOWN_OPTIMAL_CENSUS: Collection.OPTIMAL,
+    Field.FULL_OPTIMAL_CENSUS: Collection.OPTIMAL,
+    Field.OPTIMUM: Collection.OPTIMAL,
+}
+
+
+def collection_of(fields: frozenset[Field]) -> Collection:
+    """The collection a reader of ``fields`` ranges over. Total over the field vocabulary (an
+    unmapped field raises ``KeyError`` at import, before any solve), and defined only where the
+    fields agree: a run reading both AS(P) and Opt(P) has no single optimization to lower to, so it
+    is a contradiction, reported loudly rather than resolved by picking one."""
+    collections = {_READS[field] for field in fields}
+    if len(collections) != 1:
+        named = ", ".join(sorted(collection.value for collection in collections)) or "nothing"
+        raise HarnessError(
+            f"a run reading {{{', '.join(sorted(field.value for field in fields))}}} would read "
+            f"{named}, but a run reads exactly one collection — it lowers to one optimization "
+            "setting, and no setting answers for two (an elenctic bug, not a verdict)"
+        )
+    return collections.pop()
+
+
+def _empty_collection(shape: str, item: str, nonempty: str) -> NoReturn:
+    """The one refusal shared by every ``Consistent`` shape built around an empty collection.
+
+    Centralised for the same reason the narrowing seam is: the four shapes say the same thing, and
+    the thing they say is a policy — whose fault this is — that must not come to differ between
+    copies of it.
+    """
+    raise HarnessError(
+        f"a {shape} carries ≥1 {item} ({nonempty}), and this one carries none. A consistent result "
+        "says the program has an answer set, so a shape built around none of them contradicts the "
+        "arm it is on — an elenctic bug, never a verdict."
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Optimum:
-    """The proven optimum of an optimisation run. ``cost`` is the
-    priority-ordered (lexicographic) cost vector, compared positionally, never a scalar.
+    """The proven optimum of an optimisation run. ``cost`` is the priority-ordered
+    (lexicographic) cost vector, compared positionally, never a scalar.
 
-    Read it as a proof-token of *proven* optimality: by construction convention only ``solvers.py``
-    builds one, and only once the optimum is proven, so a best-so-far never reaches a check. Python
-    has no private constructor, so this is a construction convention, not a
-    type guarantee — sound because checks are pure readers that never mint a result.
+    Read it as a proof-token of *proven* optimality: only ``solvers.py`` puts one on a shape, and
+    only where the cost was in fact proven — by the search that closed its own space, or by an
+    earlier phase that proved the bound a later one enumerates at, which is why a truncated
+    optimal-class enumeration still carries a sound optimum around a partial class. A best-so-far is
+    never published. That is a construction convention rather than a type guarantee — Python has no
+    private constructor — and it is sound because checks are pure readers that never mint a result.
+    The condition is applied where the shape is built rather than left to each reader, because a
+    reader who forgot would publish an unproven number under a name that says otherwise.
     """
 
     cost: tuple[int, ...]
 
     def __post_init__(self) -> None:
         if not self.cost:
-            raise ValueError("an Optimum carries a non-empty priority-ordered cost vector")
+            raise HarnessError(
+                "an Optimum carries a non-empty priority-ordered cost vector, and this one carries "
+                "none. The token asserts a proven optimum, so an empty cost vector proves nothing "
+                "under a name that says otherwise — an elenctic bug, never a verdict."
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,10 +236,26 @@ class Inconsistent:
 
 @dataclass(frozen=True, slots=True)
 class Inconclusive:
-    """The solve did not settle the question — the time budget was hit, the solver gave up without
-    an answer, or it answered over a search that stopped before covering what the reading ranges
-    over. Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an undecided
-    solve is inexpressible — including which of the three it was."""
+    """The solve settled nothing: the budget was hit before it decided, or the solver gave up
+    without an answer. Every check → ``UNDECIDED``. Carries no fields, so reading an answer off an
+    undecided solve is inexpressible.
+
+    No fields — but the solve still *ran*, and how its search ended rides beside this arm as a
+    :class:`Conclusion` like any other. That is what lets a report say which kind of not-knowing it
+    met: raising a budget and shrinking a program are different remedies, and the reading most
+    likely to be short of time is the one that lands here. Mostly the searches that arrive are the
+    ones that stopped short or were cut short — but not only: a search can close its own space and
+    still leave a mode without what its shape is made of, which is what the second phase of the
+    optimal-class driver does when it comes back with no model on a control the first phase already
+    exhausted. That phase cannot be reporting the program unsatisfiable, since the first found a
+    model, so it reports a reading it could not make.
+
+    A search that *did* settle satisfiability and then stopped early usually lands elsewhere: it
+    keeps what it settled. Three narrower states still arrive here, because the solve produced
+    nothing the mode's shape could honestly be made of — a consequence run that ended before clingo
+    reported a set; a search that reported no model at all; and an optimal run with no *proven*
+    optimum, whether that is the single-optimum mode over a search that did not close its space, or
+    the two-phase driver whose first phase did not."""
 
 
 class Consistent:
@@ -138,6 +267,11 @@ class Consistent:
     __slots__ = ()
 
     def __new__(cls, *args: object, **kwargs: object) -> Consistent:
+        """Refuse to build the base shape, which populates no field and so answers no question.
+
+        A guard rather than ``abc``, because these shapes are slotted frozen records and the check
+        costs one comparison at construction; what it buys is that a result carrying nothing is
+        unrepresentable rather than merely undocumented."""
         if cls is Consistent:
             raise TypeError("Consistent is abstract; construct one of the eight concrete shapes")
         return super().__new__(cls)
@@ -155,16 +289,18 @@ class ConsistentWitness(Consistent):
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentEnumeration(Consistent):
-    """``ENUM_ALL``: the complete answer-set census. The cautious ⋂ and brave ⋃ are *views* of it
-    (derived by ``cautious_of`` / ``brave_of``), never stored, so they cannot disagree with the
-    census — single source of truth. Carries ≥1 observable by construction (Consistent ⟹ AS(P)≠∅),
-    which makes ``query.conjunctive_answer``'s non-empty-census precondition hold structurally."""
+    """``ENUM_ALL``: the answer-set census the search collected — all of AS(P) exactly when the
+    search closed the space, and a part of it otherwise, which the accompanying
+    :class:`Conclusion` distinguishes. The cautious ⋂ and brave ⋃ are *views* of it (derived by
+    ``cautious_of`` / ``brave_of``), never stored, so they cannot disagree with the census — single
+    source of truth. Carries ≥1 observable by construction (Consistent ⟹ AS(P)≠∅), which makes
+    ``query.conjunctive_answer``'s non-empty-census precondition hold structurally."""
 
     observables: tuple[Observable, ...]
 
     def __post_init__(self) -> None:
         if not self.observables:
-            raise ValueError("a ConsistentEnumeration carries ≥1 observable (AS(P) ≠ ∅)")
+            _empty_collection("ConsistentEnumeration", "observable", "AS(P) ≠ ∅")
 
 
 @final
@@ -179,14 +315,20 @@ class ConsistentShownCensus(Consistent):
 
     def __post_init__(self) -> None:
         if not self.shown_census:
-            raise ValueError("a ConsistentShownCensus carries ≥1 shown class (AS(P) ≠ ∅)")
+            _empty_collection("ConsistentShownCensus", "shown class", "AS(P) ≠ ∅")
 
 
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentCautious(Consistent):
-    """``CAUTIOUS_ALL``: the cautious consequences ⋂ alone (clingo-emitted; no census to derive
-    from)."""
+    """``CAUTIOUS_ALL``: the cautious-consequence set clingo reported, alone (no census to derive
+    from).
+
+    It is ⋂ exactly when the search closed the space; clingo narrows the set as it goes, so over a
+    search that did not close the space it is a *superset* of ⋂. The accompanying
+    :class:`Conclusion` is what distinguishes the two, and a reading that treats this as ⋂ must
+    consult it — a claim naming one of the surplus atoms would otherwise be satisfied by a search
+    that never established it."""
 
     cautious: frozenset[Symbol]
 
@@ -194,7 +336,11 @@ class ConsistentCautious(Consistent):
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentBrave(Consistent):
-    """``BRAVE_ALL``: the brave consequences ⋃ alone (clingo-emitted; no census to derive from)."""
+    """``BRAVE_ALL``: the brave-consequence set clingo reported, alone (no census to derive from).
+
+    It is ⋃ exactly when the search closed the space; clingo widens the set as it goes, so over a
+    search that did not close the space it is a *subset* of ⋃ — the mirror of the cautious case,
+    and read under the same condition."""
 
     brave: frozenset[Symbol]
 
@@ -211,7 +357,7 @@ class ConsistentOptimalEnumeration(Consistent):
 
     def __post_init__(self) -> None:
         if not self.optimal_observables:
-            raise ValueError("a ConsistentOptimalEnumeration carries ≥1 optimal model (Opt(P) ≠ ∅)")
+            _empty_collection("ConsistentOptimalEnumeration", "optimal model", "Opt(P) ≠ ∅")
 
 
 @final
@@ -227,18 +373,92 @@ class ConsistentShownOptimalCensus(Consistent):
 
     def __post_init__(self) -> None:
         if not self.shown_census:
-            raise ValueError("a ConsistentShownOptimalCensus carries ≥1 shown class (Opt(P) ≠ ∅)")
+            _empty_collection("ConsistentShownOptimalCensus", "shown class", "Opt(P) ≠ ∅")
 
 
 @final
 @dataclass(frozen=True, slots=True)
 class ConsistentOptimum(Consistent):
-    """``OPT``: the proven optimum cost alone (no optimal-class enumeration)."""
+    """``OPTIMAL``: the proven optimum cost alone (no optimal-class enumeration)."""
 
     optimum: Optimum
 
 
 type Determination = Inconsistent | Inconclusive | Consistent
+
+
+class Conclusion(Enum):
+    """How a search came to an end.
+
+    Separate from the :data:`Determination` because the two are independent: a search can decide
+    that an answer set exists and still stop long before it has seen them all, and a search can end
+    every one of these ways without deciding anything at all. Reading a partial search as a finished
+    one is the error this vocabulary exists to prevent — a reading over a whole collection is a
+    claim about every member, and over a partial search it is a claim about an arbitrary part
+    instead.
+    """
+
+    EXHAUSTED = "exhausted"
+    """The search closed the space: every answer set the configuration admits was seen."""
+    INCOMPLETE = "incomplete"
+    """The search ended without closing the space and without being interrupted — it stopped short.
+    A bound the search runs *into* ends it this way, and not all such bounds are asked for: elenctic
+    caps how many models one solve may hold, and the solver applies a limit of its own to a search
+    nobody asked to enumerate, which is why an ordinary satisfiability run reports this. A bound
+    applied from *outside* the search — the per-solve time budget — is ``INTERRUPTED`` instead.
+    Named for what it is rather than for a cause it does not establish, and it is the value that
+    would be catastrophic to read as ``EXHAUSTED``."""
+    INTERRUPTED = "interrupted"
+    """The search was cut short from outside it, rather than by anything the search found."""
+
+
+@dataclass(frozen=True, slots=True)
+class SolveOutcome:
+    """One solve's result: what it determined, and how the search that determined it ended.
+
+    Both are total. Every outcome comes from a search that ran, so every outcome can say how that
+    search ended — including one that settled nothing, where the answer is the whole diagnostic a
+    reader has to act on. The two axes are otherwise free of each other, with one exception: an
+    :class:`Inconsistent` result always closed the space, since no search can report that a program
+    has no answer set without covering it.
+
+    "One solve" is one *reduction*: the two-phase optimal driver runs two solves and reports the
+    second, which is sound because a shortfall in the first yields no shape at all. So a
+    ``Consistent`` optimal-class result that did not close its space means the optimum was proven
+    and the class around it is partial, never the reverse.
+    """
+
+    determination: Determination
+    conclusion: Conclusion
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.conclusion, Conclusion):
+            # Checked although the annotation says it cannot happen, because this type is part of
+            # the published surface and the absence it rejects used to be *meaningful* here — an
+            # undecided solve carried no conclusion. A caller working from the old shape would
+            # otherwise build one that no reader can use, and the failure would surface as a bare
+            # lookup miss inside a check, at verdict time, on someone's corpus: not an exception
+            # the per-case handler recognises, so it would cost the run every case still to come.
+            raise HarnessError(
+                "every solve reports how its search ended, and this one reports "
+                f"{self.conclusion!r}. Absence once meant a solve that settled nothing; it now "
+                "means only that a result was built without one — a fault in whoever built it, "
+                "never a verdict"
+            )
+        if isinstance(self.determination, Inconsistent) and self.conclusion is not (
+            Conclusion.EXHAUSTED
+        ):
+            # No search can report that a program has no answer set without covering the space, so
+            # this pairing describes a solver that contradicted itself. Checked rather than assumed
+            # because the claim is load-bearing: every check answers the inconsistent arm from a
+            # static verdict without consulting the search, so `@expect unsat` would PASS on a
+            # search that had not established anything of the kind.
+            raise HarnessError(
+                "an unsatisfiable result reports a search that closed the space, but this one "
+                f"reports {self.conclusion}. No search can establish that a program has no answer "
+                "set without covering it, so this is a solver reporting something elenctic relies "
+                "on it never to report — please report it. Never a verdict."
+            )
 
 
 # --- harness-internal errors (never a Verdict; the runner reports them as harness errors) ---
@@ -254,9 +474,9 @@ class SeamError(HarnessError):
     """A check read a field off a ``Consistent`` shape that does not populate it — the one
     provably-unreachable narrowing assertion fired, unreachable on **two** premises: the
     ``reads ⊆ populates`` wiring rule (the primary guard, ``run.py``) attaches a check only to a
-    run whose mode populates what it reads; and the ``solvers.py`` lowering postcondition produces,
-    for a run of mode M, the shape whose fields are exactly ``populates(M)``. If it fires, one of
-    those was violated — an elenctic bug, never a verdict."""
+    run whose mode populates what it reads; and the ``solvers.py`` lowering postcondition, that any
+    ``Consistent`` it yields for a run of mode M is the shape whose fields are exactly
+    ``populates(M)``. If it fires, one of those was violated — an elenctic bug, never a verdict."""
 
 
 def _seam_violation(field: Field, shape: Consistent) -> NoReturn:

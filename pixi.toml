@@ -1,7 +1,7 @@
 # Toolchain for elenctic, pinned. Baseline: `pixi run <cmd>` / `pixi shell`.
-# clingo + clingcon are conda-forge-only (the payoff of dropping clintest);
-# clingcon is pinned to 5.2.1 to match the estate reference toolchain (krml, krml-poc, kr-domains).
-# Python 3.14 matches kr-domains' resolved env (the client #1) and unlocks PEP 695 / PEP 649.
+# clingo and clingcon come from conda-forge, which is where they are packaged.
+# clingcon is pinned to 5.2.1 and Python to 3.14, which the language features this project
+# relies on require.
 [workspace]
 name = "elenctic"
 description = "A declarative testing framework for Answer Set Programming."
@@ -17,6 +17,17 @@ pytest-cov = "*"
 hypothesis = "*"
 mypy = "*"
 ruff = "*"
+# Checks the packaged output schema against the documents the package produces. A test-only tool:
+# elenctic prints its schema and never validates against it, so this must not become a runtime
+# dependency in pyproject.toml — a consumer installing elenctic is not installing a validator.
+jsonschema = "*"
+types-jsonschema = "*"  # it ships no types of its own, and the gate is mypy --strict
+# The build backend this project declares, here so a test can ask it what it actually puts in a
+# distribution. Two files that are not code are load-bearing — py.typed, without which every
+# annotation is invisible to a consumer, and the packaged output schema — and both had to be checked
+# by hand against a built artifact until now. A test-only tool, like jsonschema above: elenctic does
+# not build itself at runtime, so this must not become a dependency in pyproject.toml.
+hatchling = ">=1.27"
 
 [pypi-dependencies]
 elenctic = { path = ".", editable = true }

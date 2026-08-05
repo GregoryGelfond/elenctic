@@ -7,8 +7,7 @@ line-wrapped or what prose surrounds it. A failing property is a real defect, no
 """
 
 from clingo import parse_term
-from hypothesis import assume, given
-from hypothesis import strategies as st
+from hypothesis import assume, given, strategies as st
 
 from elenctic.expectation import Sat, _has_unclosed_brace, parse
 from elenctic.query import QueryLiteral, Var, unify
@@ -72,7 +71,8 @@ def test_continuation_is_invariant_to_litset_line_wrapping(atom_texts: list[str]
     body = ", ".join(atom_texts)
     single = parse(f"% @expect sat\n% @model {{ {body} }}\n")
     wrapped = parse("% @expect sat\n% @model { " + ",\n%   ".join(atom_texts) + " }\n")
-    assert isinstance(single, Sat) and isinstance(wrapped, Sat)
+    assert isinstance(single, Sat)
+    assert isinstance(wrapped, Sat)
     assert single.model == wrapped.model
 
 
@@ -90,19 +90,30 @@ def test_parse_is_robust_to_prose_around_a_closed_litset(
     base = f"% @expect sat\n% @model {{ {body} }}\n"
     with_prose = base + "".join(f"% {line}\n" for line in prose)
     bare, surrounded = parse(base), parse(with_prose)
-    assert isinstance(bare, Sat) and isinstance(surrounded, Sat)
+    assert isinstance(bare, Sat)
+    assert isinstance(surrounded, Sat)
     assert bare.model == surrounded.model
 
 
 @given(st.lists(atoms(), min_size=1, max_size=5))
 def test_cautious_accumulation_is_order_independent(atom_texts: list[str]) -> None:
-    # Accumulating tags form the union of their litsets, independent of order.
+    # Each @cautious line is its own claim, so the claims themselves come in surface order. What
+    # must not depend on that order is what they jointly claim: checking L1 and L2 apart decides
+    # exactly what checking L1 ∪ L2 decides, so the atoms covered are the order-independent thing.
     lines = [f"% @cautious {{ {text} }}\n" for text in atom_texts]
     forward = parse("% @expect sat\n" + "".join(lines))
     backward = parse("% @expect sat\n" + "".join(reversed(lines)))
-    assert isinstance(forward, Sat) and isinstance(backward, Sat)
-    assert forward.cautious == backward.cautious
-    assert forward.cautious == frozenset(parse_term(text) for text in atom_texts)
+    assert isinstance(forward, Sat)
+    assert isinstance(backward, Sat)
+    # One claim per line, in surface order. Asserted first because the coverage assertions below
+    # cannot see it: they compare flattened unions, which an implementation that re-merged the
+    # claims into one cell would satisfy exactly as well.
+    assert [claim.value for claim in forward.cautious] == [
+        frozenset({parse_term(text)}) for text in atom_texts
+    ]
+    covered = {atom for claim in forward.cautious for atom in claim.value}
+    assert covered == {atom for claim in backward.cautious for atom in claim.value}
+    assert covered == {parse_term(text) for text in atom_texts}
 
 
 @given(
@@ -115,7 +126,8 @@ def test_parsed_assign_is_never_empty(bindings: list[tuple[str, int]]) -> None:
     body = ", ".join(f"{atom}={value}" for atom, value in bindings)
     exp = parse(f"% @expect sat\n% @assign {{ {body} }}\n")
     assert isinstance(exp, Sat)
-    assert len(exp.assign) > 0  # a present @assign is non-empty (empty == absent, like cautious)
+    assert exp.assign is not None  # absence is None, so a present cell is never the empty claim
+    assert len(exp.assign.value) > 0
 
 
 @given(st.lists(_terms(), min_size=1, max_size=3), _IDENT)

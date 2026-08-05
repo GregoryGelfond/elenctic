@@ -81,12 +81,14 @@ def test_an_async_solve_erases_the_type_of_a_callback_exception() -> None:
     # at get() as a plain RuntimeError carrying only the message. If a future clingo stops doing
     # this, this test fails loudly and the guard can be reconsidered.
     control = _grounded_choice()  # bound to a local: the control must outlive the solve handle
-    with (
-        pytest.raises(RuntimeError) as caught,
-        control.solve(on_model=_exploding, async_=True) as handle,
-    ):
+    # The solve is driven outside the raises block, so what the block holds is the one call this
+    # test is about: `get()` is where the callback's exception is said to surface, and pinning the
+    # raise to that call is what makes the claim in the comment above checkable rather than merely
+    # true of the pair.
+    with control.solve(on_model=_exploding, async_=True) as handle:
         handle.wait(30.0)
-        handle.get()
+        with pytest.raises(RuntimeError) as caught:
+            handle.get()
     assert type(caught.value) is RuntimeError, "the original type is expected to be erased here"
     assert "seam breach" in str(caught.value), "only the message survives the rewrap"
 

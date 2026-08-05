@@ -3,7 +3,7 @@
 ``run_case(case)`` is the impure orchestrator (derive runs → solve → check), ``case_verdict`` folds
 the per-check reports to a case verdict (FAIL dominates UNDECIDED dominates PASS), and ``render`` is
 the pure human diagnostic that keeps FAIL and UNDECIDED distinct and surfaces the case's
-``@note`` prose and its ``contract_source`` provenance (Model A — from the case, not the reports).
+``@note`` prose and its ``contract_source`` provenance, taken from the case rather than the reports.
 """
 
 from pathlib import Path
@@ -15,7 +15,7 @@ from elenctic.discovery import Case, discover
 from elenctic.expectation import Sat, Unsat
 from elenctic.harness import case_verdict, render, run_case
 from elenctic.registry import Solver
-from elenctic.result import Verdict
+from elenctic.result import Conclusion, Verdict
 from elenctic.run import RoutingError
 
 
@@ -117,8 +117,22 @@ def test_run_case_projects_a_shown_only_clingcon_contract(tmp_path: Path) -> Non
 # --- case_verdict: FAIL dominates UNDECIDED dominates PASS (a definite failure sinks the case) ---
 
 
-def report(verdict: Verdict, label: str = "@cautious") -> CheckReport:
-    return CheckReport(verdict, label, "message")
+def report(
+    verdict: Verdict,
+    label: str = "@cautious",
+    message: str = "message",
+    *,
+    subject: str = "",
+    line: int = 1,
+) -> CheckReport:
+    return CheckReport(
+        verdict=verdict,
+        label=label,
+        message=message,
+        subject=subject,
+        line=line,
+        conclusion=Conclusion.EXHAUSTED,
+    )
 
 
 @pytest.mark.parametrize(
@@ -144,52 +158,97 @@ def synthetic(expectation: Sat | Unsat, solver: Solver = "clingo") -> Case:
 
 
 def test_render_pass_case_is_a_terse_header() -> None:
-    out = render(synthetic(Sat()), (report(Verdict.PASS, "@expect sat"),))
+    out = render(synthetic(Sat(expect_line=1)), (report(Verdict.PASS, "@expect sat"),))
     assert out == "tests/cases/x.lp [clingo] — PASS"
 
 
 def test_render_fail_shows_the_failing_check_and_the_note() -> None:
-    case = synthetic(Sat(notes=("the budget forces a detour",)))
+    case = synthetic(Sat(expect_line=1, notes=("the budget forces a detour",)))
     reports = (
         report(Verdict.PASS, "@expect sat"),
-        CheckReport(Verdict.FAIL, "@cautious", "{ c } ⊄ ⋂ AS(P) = { } (missing: { c })"),
+        report(
+            Verdict.FAIL,
+            "@cautious",
+            "{ c } ⊄ ⋂ AS(P) = { } (missing: { c })",
+            subject="{ c }",
+            line=4,
+        ),
     )
     out = render(case, reports)
     assert "— FAIL" in out
-    assert "[FAIL] @cautious: { c } ⊄ ⋂ AS(P)" in out
+    assert "[FAIL] @cautious { c } (line 4): { c } ⊄ ⋂ AS(P)" in out
     assert "note: the budget forces a detour" in out
     assert "@expect sat" not in out  # the passing check is not dumped
 
 
+# How a row names the claim it judged, and when rows that share a diagnostic become one, are
+# pinned in `test_collapsed_rows.py` — this module covers the renderer's other responsibilities.
+
+
+_ESCAPE = "\x1b[2J"
+
+
+def _rendered_with_an_escape_in(surface: str) -> str:
+    """One render in which exactly ``surface`` carries a terminal escape sequence."""
+    case = Case(
+        Path(f"tests/cases/{_ESCAPE}x.lp" if surface == "path" else "tests/cases/x.lp"),
+        "clingo",
+        Sat(
+            expect_line=1,
+            notes=(f"a note with {_ESCAPE} in it" if surface == "note" else "an ordinary note",),
+        ),
+        frozenset(),
+    )
+    failure = report(
+        Verdict.FAIL,
+        "@query",
+        f"computed {_ESCAPE} no" if surface == "message" else "computed no",
+        subject=f"yes {_ESCAPE}{{ a }}" if surface == "subject" else "yes { a }",
+        line=2,
+    )
+    return render(case, (failure,))
+
+
+@pytest.mark.parametrize("surface", ["path", "note", "message", "subject"])
+def test_render_makes_every_corpus_surface_legible(surface: str) -> None:
+    # Four of the strings this render is built from come from the corpus, and a terminal acts on
+    # some of that text rather than showing it — so a case could clear the screen or overwrite the
+    # verdict just printed. Each surface is asserted rather than assumed: only the subject was
+    # covered, and an implementation that dropped the escaping from any of the other three passed.
+    out = _rendered_with_an_escape_in(surface)
+    assert "\x1b" not in out, f"the {surface} reached the terminal able to act on it"
+    assert "\\x1b" in out, f"the {surface} was dropped rather than shown"
+
+
 def test_render_keeps_fail_and_undecided_distinct() -> None:
     reports = (
-        CheckReport(Verdict.FAIL, "@cautious", "decided wrong"),
-        CheckReport(Verdict.UNDECIDED, "@brave", "the solve did not complete"),
+        report(Verdict.FAIL, "@cautious", "decided wrong", subject="{ a }", line=2),
+        report(Verdict.UNDECIDED, "@brave", "the solve did not complete", subject="{ b }", line=3),
     )
-    out = render(synthetic(Sat()), reports)
-    assert "[FAIL] @cautious: decided wrong" in out
-    assert "[UNDECIDED] @brave: the solve did not complete" in out
+    out = render(synthetic(Sat(expect_line=1)), reports)
+    assert "[FAIL] @cautious { a } (line 2): decided wrong" in out
+    assert "[UNDECIDED] @brave { b } (line 3): the solve did not complete" in out
 
 
 def test_render_surfaces_note_on_undecided_too() -> None:
     # A "known-slow" @note is useful on UNDECIDED, not only FAIL.
-    case = synthetic(Sat(notes=("this instance is known-slow",)))
-    out = render(case, (CheckReport(Verdict.UNDECIDED, "@count", "budget hit"),))
+    case = synthetic(Sat(expect_line=1, notes=("this instance is known-slow",)))
+    out = render(case, (report(Verdict.UNDECIDED, "@count", "budget hit", line=3),))
     assert "— UNDECIDED" in out
     assert "note: this instance is known-slow" in out
 
 
 def test_render_suppresses_the_note_on_a_passing_case() -> None:
-    case = synthetic(Sat(notes=("irrelevant on pass",)))
+    case = synthetic(Sat(expect_line=1, notes=("irrelevant on pass",)))
     out = render(case, (report(Verdict.PASS, "@expect sat"),))
     assert out == "tests/cases/x.lp [clingo] — PASS"  # no note line on a passing case
 
 
 def test_render_surfaces_an_unsat_cases_note_on_failure() -> None:
-    case = synthetic(Unsat(notes=("the budget cap excludes every s–t path",)))
-    out = render(case, (CheckReport(Verdict.FAIL, "@expect unsat", "a model exists: { a }"),))
+    case = synthetic(Unsat(expect_line=1, notes=("the budget cap excludes every s–t path",)))
+    out = render(case, (report(Verdict.FAIL, "@expect unsat", "a model exists: { a }"),))
     assert "— FAIL" in out
-    assert "[FAIL] @expect unsat: a model exists: { a }" in out
+    assert "[FAIL] @expect unsat (line 1): a model exists: { a }" in out
     assert "note: the budget cap excludes every s–t path" in out
 
 
@@ -199,4 +258,4 @@ def test_case_verdict_empty_is_vacuously_pass() -> None:
 
 
 def test_render_empty_reports_is_a_bare_header() -> None:
-    assert render(synthetic(Sat()), ()) == "tests/cases/x.lp [clingo] — PASS"
+    assert render(synthetic(Sat(expect_line=1)), ()) == "tests/cases/x.lp [clingo] — PASS"

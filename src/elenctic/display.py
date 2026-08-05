@@ -1,25 +1,28 @@
 """Making corpus-controlled text safe to show.
 
 Everything elenctic prints about a case is influenced by the case: its path, its ``@note`` prose,
-the atoms in its answer sets, and the solver's own diagnostics about it. A corpus is untrusted input
-— it is cloned, or it arrives in a pull request — and a terminal treats some of that text as
+the atoms in its answer sets, and the solver's own diagnostics about it. Running a corpus means
+trusting it as code; showing its *text* is a separate question, and the answer there is that the
+text is not to be trusted with a terminal — a corpus is cloned, or it arrives in a pull request, and
+a terminal treats some of that text as
 instructions rather than as characters. An escape sequence can clear the screen or move the cursor;
 a carriage return can overwrite the line just printed. Since elenctic exists to produce a verdict a
 reader can act on, text that can rewrite the report is a defect in the product itself, not a
 cosmetic one.
 
 So corpus-controlled text passes through :func:`legible` before it is shown. This module has no
-elenctic dependencies, so every renderer can reach it — the human one today, and the machine-
-readable one that will need exactly the same guarantee.
+elenctic dependencies, so every renderer reaches it — the human one, and the machine-
+readable one, which needs exactly the same guarantee for a related reason: text a parser would act
+on can break the document it appears in as surely as text a terminal acts on can rewrite a report.
 """
 
 __all__ = ["legible"]
 
 
 def legible(text: str) -> str:
-    """``text`` with everything a terminal would act on rendered as characters instead.
+    r"""``text`` with everything a terminal would act on rendered as characters instead.
 
-    Printable characters, spaces and newlines survive; anything else becomes a visible ``\\xNN``
+    Printable characters, spaces and newlines survive; anything else becomes a visible ``\xNN``
     escape. Escaping rather than dropping keeps the fact that something was there — a reader should
     be able to see that a corpus tried something, not find text quietly missing.
 

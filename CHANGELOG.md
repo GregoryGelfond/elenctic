@@ -10,6 +10,366 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-04
+
+The minor bump is deliberate, and this is the release with the most to re-check in it so far.
+Six things can stop working: a fault in elenctic now exits `3` rather than `2`; **every**
+diagnostic heading changed; `HygieneReport.render` is gone; `Sat`, `Unsat` and `CheckReport`
+gained required fields and are keyword-only; `Collection` moved module; and four invariant
+breaches raise `HarnessError` where they raised `ValueError`. Each is marked below. If you only
+run the command line, the first two are the ones to look at; if you import elenctic, read the
+rest.
+
+### Added
+
+- **`--format json` — a machine-readable report, as one JSON object on standard output.** Everything
+  else a run writes moves to standard error, so standard output carries a whole document or nothing
+  at all and a consumer can parse it without filtering. Results stay in the three registers the exit
+  status is built from: `cases` holds judgments about programs, `errors` says where no judgment could
+  be made, `hygiene` holds observations about the corpus's own health. Each check carries the
+  **line** its claim was written on, so a result can be placed where the claim is, and a
+  `conclusion` saying how the search behind the verdict ended — which is what tells "the budget was
+  too small" apart from "the program is wrong". The exit status is readable off the document alone.
+
+  The default is `--format human`, which is also spellable, so a script can be explicit and get
+  exactly what it gets by saying nothing. That is *not* what earlier versions printed: the
+  diagnostic rows themselves changed on this release — see the per-line entry under Changed — so a
+  job scraping standard output needs re-checking whichever way it spells the format. A format this
+  version does not know is refused rather than quietly rendered as prose, since being handed prose
+  where a document was expected is the failure a machine consumer would find hardest to notice.
+
+- **elenctic can be used as a library, and the pieces `elenctic` itself runs on are the pieces you
+  get.** `elenctic.run_corpus` takes an `Invocation` — the settled form of a command line — and
+  returns everything the run produced; `elenctic.explain_corpus` derives the run plans instead;
+  `elenctic.exit_status` reads either against the `ExitStatus` ladder; `elenctic.as_json` renders a
+  *run's* outcome as the published document, this version describing no document for a plan — which
+  is why the command line refuses `--explain --format json`. The console entry is now these calls
+  with a command line in front of them rather than the place the work is done, so an editor plugin,
+  a CI script or another test runner gets the same values it does. Working one case at a time with
+  `run_case` is unchanged and still the right thing when you want elenctic's checks inside a runner
+  of your own.
+
+- **Both runners are silent, and take an observer if you want to watch.** They used to print as they
+  went, which meant embedding elenctic also meant taking its prose: the only way to quieten it was
+  to take over your own process's streams, which costs you your own output and still leaves the
+  run's records reachable only by reading the prose back. They now write to no stream. A caller that
+  wants to see a long run happen passes `observer=`, and is told each verdict, plan and fault as it
+  is established; every error and every verdict handed to the observer is the same object that comes
+  back in the result, so a report rendered as the run goes and one rendered at the end cannot
+  describe the same run differently. (Corpus hygiene is settled before the first case is reached and
+  is read off the result rather than announced.) `RunObserver` and `PlanObserver` describe the
+  shape; inherit one and every method you do not override does nothing, or implement all of them
+  and pass any object that fits. What they announce is `corpus_unreadable`, `case_unusable`,
+  `case_started`, `case_unjudged`, and then `case_judged` for a run or `case_planned` for a dry one
+  — *judged* rather than *decided* because `UNDECIDED` is a verdict, so a case that reached one is
+  a case elenctic decided about.
+
+  **A fault in an observer cannot cost the run its records.** Announcing is a courtesy; establishing
+  is the work. If your observer raises, the run continues, everything it had already established is
+  still in the value it returns, and the fault is reported through elenctic's logger — silent until
+  you configure logging, and never written to a stream. Without this, a renderer that failed on the
+  third case of a hundred and thirty-five discarded all hundred and thirty-five, and the console
+  entry reported your bug as elenctic's.
+
+- **The package publishes where to report a bug**, in its metadata and in the one diagnostic that
+  asks you to. `Homepage`, `Repository`, `Issues` and `Changelog` are now in the project metadata,
+  and the backstop that meets a fault no register anticipated names the issue tracker instead of
+  asking you to find it. The other diagnostic that asks you to report something — a harness fault
+  against a single case — still names only the locus, `harness`, which is the word to search for.
+
+- **`py.typed`.** elenctic is annotated throughout and checked under `mypy --strict`, and none of
+  that reached anyone who installed it: without this marker a type checker skips the package
+  entirely (PEP 561) and reports it as missing stubs. Every curated name is also marked as an
+  explicit re-export, so `elenctic.run_corpus` type-checks under a strict configuration rather than
+  being reported as not exported.
+
+- **`--print-schema`** writes the JSON Schema of that document and exits, without looking for a
+  corpus. The schema ships inside the package, so it describes the version you have rather than
+  whatever a web page says. `schema_version` changes when a field is added or removed or a closed
+  enumeration gains a member; the open-valued fields (`kind`, `solver`, a check's `tag`) may gain
+  values without one; every `message` is opaque and may be reworded at any time.
+
+- **A new error locus, `environment`,** for a fault in the machine a corpus was run on rather than
+  in the corpus: a declared solver this installation does not have, and a copy of elenctic that
+  cannot read its own packaged output description. The first was filed as `discovery` before, which
+  was never quite true — the declared solver is checked per case while the run is under way, not
+  during the corpus walk at all — and the published description of `discovery` had grown an "or the
+  environment … including a declared solver that is not installed" to cover it. The second is new
+  with `--print-schema` and has never been anything else. Nothing about a
+  corpus would change if either fault were fixed, which is the line between the two. `kind` is
+  open-valued, so this needs no `schema_version` change; `is_elenctic_bug` is `false` for it, so
+  the exit status is what it was.
+
+### Changed
+
+- **Every diagnostic heading now names where the fault lies, not which part of elenctic met it.**
+  A heading used to report the frame that noticed a problem, so one problem was announced under
+  several names depending on how you happened to invoke the run. Here is the same file, with the
+  same unresolvable `#include`, run as a corpus and run as a single target — before:
+
+  ```
+  CASE ERROR — cannot resolve the program (route.lp): route.lp:3:1-22: error: file could not be opened:
+    shared.lp
+  corpus error: cannot resolve the program (route.lp): route.lp:3:1-22: error: file could not be opened:
+    shared.lp
+  ```
+
+  and now:
+
+  ```
+  PROGRAM ERROR — cannot resolve the program (route.lp): route.lp:3:1-22: error: file could not be opened:
+    shared.lp
+  program error: cannot resolve the program (route.lp): route.lp:3:1-22: error: file could not be opened:
+    shared.lp
+  ```
+
+  Every heading is now built from one rule, so what a terminal calls `PROGRAM ERROR` is what a
+  document calls `"kind": "program"` and nobody has to keep a table between the two views of one
+  run. With the word settled by the locus, the one thing left varying is the case and the
+  punctuation, and it says what the fault *cost* — which is what `scope` means in the document:
+  capitals where the run went on and still produced a report, lower case where it stopped and there
+  is none. Both are fields on the record.
+
+  **All of these go to standard error**, as every diagnostic always has; standard output carries
+  the report — the tally under `--format human`, the document under `--format json`. A job
+  scraping standard output for these was never seeing them.
+
+  **If a job matches on these lines, re-check it.** `CASE ERROR`, `SOLVER ERROR`, `corpus error:`
+  and `internal error:` are no longer printed at all:
+
+  | was | is now |
+  | --- | --- |
+  | `CASE ERROR — ` | `CONTRACT` / `DISCOVERY` / `PROGRAM ERROR — `, by locus |
+  | `SOLVER ERROR — ` | `ENVIRONMENT ERROR — ` |
+  | `corpus error: ` | `contract error: ` / `discovery error: ` / `program error: `, by locus |
+  | `internal error: ` | `harness error: ` |
+  | `DEADLINE — ` | `DEADLINE ERROR — ` |
+  | `resource error: ` | unchanged |
+  | `PROGRAM` / `RESOURCE` / `HARNESS ERROR — ` | unchanged |
+
+  Of the unchanged ones, only `PROGRAM ERROR — ` is now printed where it was not before — when
+  discovery, rather than the runner, is what met the program it could not load. Two headings are
+  new rather than changed, so nothing matched them in 0.2.0: `ENVIRONMENT ERROR — ` and
+  `environment error: `, which belong to the new locus below.
+
+  `usage error:` is deliberately untouched, and it is the one line that is not in this scheme: a
+  command line that cannot be run has produced no run and so no record, and a heading names a locus
+  only where a fault is filed under one.
+
+  What a heading does **not** yet settle is whether the line goes on to name the file. That still
+  varies by locus *and* by which part of elenctic met the fault — a program that will not load is
+  reported as `PROGRAM ERROR — <message>` when discovery meets it and `PROGRAM ERROR — <file>:
+  <message>` when the runner does — and where a message already carries its own path, the path is
+  printed twice. Deciding it means deciding where provenance lives, in the message or in the
+  record's `source`, which changes what a library caller catching one of these sees. It is the
+  remaining half of this, and it is not done.
+
+- **A fault in elenctic now exits `3`, apart from a fault in your corpus.** Exit `2` meant both
+  "your corpus has something to fix" and "elenctic violated one of its own invariants" — one status
+  for the two things a reader can least afford to confuse, since one is work for them and the other
+  is a bug to report. A harness fault is now `3`, and it outranks every other signal, because a
+  harness that is wrong about one case is evidence about every other. Everything else that was `2`
+  stays `2`: a bad contract, a mis-shaped corpus, a program that will not ground, a case that ran
+  out of memory, a run that passed its `--deadline`, and corpus-health observations under
+  `--strict`. A job gating on non-zero is unaffected; one testing for exactly `2` will stop seeing
+  elenctic's own faults, which is the point.
+
+- **A corpus-health observation now carries the grade the run gave it.** `HygieneRecord` — new in
+  this release — carries a `grade`: `error` under `--strict`, and otherwise `warning` for an orphan
+  library and `silent` for an undeclared solver — the footing each observation already had. What is
+  printed, what fails the run, and what a consumer is told are now read off that one field rather
+  than each deriving it
+  again from the flag, so they cannot come to disagree about a single observation. Nothing a run
+  prints changed.
+
+  It is a *grade* and not a severity, deliberately. This language keeps the two vocabularies apart:
+  its severity ladder runs from debug to critical and has no member meaning *do not show this*,
+  because suppression there is a filter and not a level. A reader meeting a field called a severity
+  maps it onto a scale of severities — which works for two of these three values and fails on the
+  one whose whole purpose is that nothing be drawn for it.
+
+- **`--budget` and `--deadline` now require a positive finite number of seconds.** Converting the
+  text was as far as the parser went, so a zero, a negative, an infinity and a NaN were all accepted
+  and all reached the run. The last two have no JSON form at all, so a report carrying one could not
+  be parsed by anything it was written for; the first two are simply not durations. All four are now
+  refused before the run starts, with a diagnostic naming the flag, the value and what to ask for
+  instead. **`--deadline 0` used to mean "reach no cases"** and is now refused: a run that wants no
+  deadline leaves the flag off, which is the default.
+
+  **The rule holds for a caller who never parsed a command line, too.** `elenctic.outcome`'s
+  `Invocation` refuses the same four at construction, raising `ValueError`, and refuses an absent
+  budget on the same footing — a run with no deadline leaves the flag off, but there is no way to
+  ask for no per-solve budget at all. It was previously enforced on the command line alone, while
+  the published description of the output states it unconditionally as a property of the
+  *document* — so building `Invocation(budget=0.0)` directly produced, without complaint, a report
+  contradicting the account it is published under. Nothing the command line can do changes, because
+  it refuses first and in its own words; code that builds an `Invocation` itself must pass a
+  positive finite number of seconds, and `None` only for the deadline. `elenctic.outcome` also now
+  exports `is_duration`, so that rule is one a caller can ask about rather than only discover.
+
+- **The exit statuses are a named type, `elenctic.outcome.ExitStatus`.** The numbers are unchanged
+  and so is everything a shell sees: it is an `IntEnum`, so it *is* an `int`, `sys.exit` takes it,
+  and a caller comparing a status against a literal is unaffected. What changes is that the ladder is
+  now the one place the rungs and their meanings are written, and `--help` is rendered from it —
+  where before the same mapping was stated in six places and checked in one. Two of those
+  statements were wrong: exit `0` was glossed as "every case passed", which is told to a reader who
+  ran `--explain` and solved nothing, and exit `2` omitted a declared solver this environment does
+  not have, which is the likeliest `2` a real user meets. `exit_status` and `main` return the type;
+  compare a status read back from a child process with `==` rather than `is`, since what a process
+  returns is a plain integer.
+
+  The ladder and `exit_status` live with the registers they read rather than with the console entry,
+  so reading a status is something an embedder can do: it is total and pure over what a run
+  produced, asks nothing about a process, and needs no command line to have been parsed.
+
+- **`--help` says what the run leaves with, and files each option under what it is for.** Nothing in
+  the help mentioned the exit status — the whole of what a script reads — and the six options were
+  one undifferentiated block holding two things that run something other than the corpus, one that
+  says who the report is written for, and three that bound or sharpen the run. Both are now in the
+  help. One consequence reaches beyond it: the usage line lists options in the order they are
+  defined, so the usage printed with a command-line error now names `--print-schema` second rather
+  than last.
+
+- **A failure now names the contract line it judged, and repeated claims no longer repeat one
+  sentence.** Every claim carries the line it was written on, so a diagnostic can be placed against
+  the claim rather than against the file, and a tag a contract may write more than once is shown
+  with the claim it carries. Where several claims failed for the same reason, the reason is stated
+  once and the claims follow it:
+
+  ```
+    [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
+
+    [FAIL] @cautious: no cautious consequences — AS(P) = ∅
+           applied to { tea } (line 10), { coffee } (line 11), { biscuit } (line 12)
+  ```
+
+  Anything reading this output by shape will need updating. Nothing about a verdict changed: the
+  case verdict folds a set, so sharing a row cannot move it.
+
+- **`@cautious`, `@brave`, `@cautious optimal` and `@brave optimal` may be written on more than one
+  line**, and each line is now its own check with its own verdict and its own diagnostic. Writing
+  the claims on one line remains equivalent — `L₁ ⊆ S` and `L₂ ⊆ S` together say exactly what
+  `L₁ ∪ L₂ ⊆ S` says — but a failure now names which line was false instead of the union.
+
+- **`Sat` and `Unsat` no longer construct without a line. This is a breaking change** for anyone
+  building either directly. Both now require `expect_line`, and
+  every contract cell but the prose one carries a `Claimed` value pairing what was claimed with the
+  line it was claimed on — `@note` holds documentation rather than a claim, so it holds bare
+  strings. `CheckReport` likewise gained the claim's subject, its line, and how the search
+  behind the verdict ended. Code that builds these directly — rather than through `parse` and
+  `run_case`, which is the ordinary path — must pass the coordinate.
+
+- **The records a machine-readable report is built from are constructed by keyword. This is a
+  breaking change** for anyone constructing one positionally. `CheckReport`
+  and the new `CaseOutcome`, `ErrorRecord`, `HygieneRecord` and `RunOutcome` take their fields by
+  name. A report's `message` and `subject` are neighbouring strings, so a transposed pair type-checks
+  clean and renders a plausible row against the wrong claim; and a report is identified by field
+  name wherever it is decoded, so position would be a second identity that a field added later
+  silently re-means.
+
+- **An invariant elenctic violated about its own result now raises `HarnessError`. This is a
+  breaking change** for a caller catching `ValueError` around these. The empty cost
+  vector on a proven optimum, the four consistent shapes built around an empty collection, and the
+  non-empty-census precondition on a conjunctive query raised `ValueError`, which no per-case handler
+  catches — so a result that could not be right ended the whole run and discarded every case still to
+  come. It now costs one case its verdict, like every other fault the runner isolates. What a caller
+  got wrong at a boundary is still `ValueError`: an unknown solver name, and the contract payloads a
+  parse re-raises with the author's provenance.
+
+- **Whether a search had to finish is now decided per check, not per run.** One solve serves
+  several checks and they do not all ask the same thing: a census, an intersection, a union or a
+  proven optimum is a claim about every member of a collection, so a search that stopped early
+  makes it a claim about an arbitrary part — while `@expect sat` reads nothing from the collection
+  and one model settles it whatever the rest of the search would have found. The requirement is
+  derived from what each check declares it reads, so it cannot drift from the reading it protects.
+  A reading that outran its search is still UNDECIDED, never FAIL and never a PASS it did not earn.
+
+- **An undecided report now says which kind of not-knowing it met** — the solve settled nothing,
+  or it settled satisfiability over a search that stopped short of covering what this check
+  reads, or one that was cut short from outside. Raising a budget and shrinking what a case
+  enumerates are different remedies, and the single previous message distinguished neither.
+
+- **`Collection` is now imported from `elenctic.result`** rather than `elenctic.run`; it describes
+  what a *field* is a reading of, so it belongs beside the field vocabulary. `elenctic.Collection`
+  is unchanged — but **`from elenctic.run import Collection` no longer resolves**, which is a
+  breaking change for anyone who reached past the curated surface for it.
+
+### Removed
+
+- **`HygieneReport.render` was removed. This is a breaking change** for anyone who called it —
+  `HygieneReport` is exported, so it was reachable as `elenctic.inspect_corpus(target).hygiene`.
+  What a run prints about corpus hygiene and what fails the run under `--strict` are now read off
+  the same records the run reports, rather than from a second rendering of the same facts. The
+  observations themselves are unchanged, and so is what elenctic itself prints. There is no
+  drop-in replacement: read `RunOutcome.hygiene` and render the `HygieneRecord`s, each of which
+  carries its `kind`, its `grade`, the file it concerns and its message.
+
+### Fixed
+
+- **A literal set whose body parses to nothing is refused, and refused as the author's mistake.**
+  `@cautious { () }` — or any body that tokenizes to no atom at all — was silently dropped, so a
+  contract that claimed something was checked for nothing and passed on that basis. Briefly it was
+  then reported as an elenctic bug, which sent the wrong reader to the wrong place. It is now a
+  contract error against the line that wrote it, naming what it read and what a litset needs, and
+  it costs that case its verdict rather than the run:
+
+  ```
+  CONTRACT ERROR — empty.lp:2: empty literal set {()}: it parses to no literals at all,
+  and a litset needs at least one (an atom or -atom)
+  ```
+
+- **A solve cut short by `--budget` no longer throws away the answer it did reach.** A cancelled
+  search still reports whether the program is satisfiable; elenctic decided the run was undecided
+  before reading that, so every check on it came back UNDECIDED — including checks the search had
+  already settled. Any corpus whose search outlives its budget met this, so it was not a corner
+  case but the ordinary behaviour of a hit budget.
+
+  Before, on a program with 2^20 answer sets under `--budget 0.5`:
+
+  ```
+  case.lp [clingo] — UNDECIDED
+    [UNDECIDED] @count: the solve did not settle the question — UNDECIDED, never FAIL
+    [UNDECIDED] @expect sat: the solve did not settle the question — UNDECIDED, never FAIL
+  ```
+
+  After — the satisfiability question was answered, so it is answered, and the census question
+  says why it was not and what would help:
+
+  ```
+  case.lp [clingo] — UNDECIDED
+    [UNDECIDED] @count (line 2): the search was cut short before covering the collection this
+    reads, so what it holds is part of the collection and not the collection — UNDECIDED, never
+    FAIL. The per-solve time budget is what stops a search this way from the command line, so a
+    larger --budget may decide it
+  ```
+
+- **An optimal-class run that could not finish enumerating no longer reports the program as having
+  no answer set.** The optimal-class modes solve twice: prove the optimum, then enumerate at it.
+  The second solve's "no model" answer was read as a statement about the program, when it is a
+  statement about that solve — by then the first has already found a model, so the program is known
+  to have an answer set. A case whose optimal class was too large to enumerate inside `--budget`
+  therefore came back with every optimal-base tag reporting `AS(P) = ∅`, as a definite failure,
+  contradicted in the same report by the `@expect sat` that passed. Such a case is now UNDECIDED —
+  it could not be decided, which is what happened — so a corpus that used to fail here will report
+  differently, and `@cost`, `@optimal`, `@cautious optimal`, `@brave optimal`, `@count optimal` and
+  `@assign optimal` are the tags affected.
+
+- **A solve cut short by `--budget` can no longer report that your program has no answer set.** A
+  cancelled solve sometimes comes back carrying clingo's "unsatisfiable" and "exhausted" bits
+  together — measured at two occurrences in 1,400 zero-budget solves of a program with 2^30 answer
+  sets, under the single-model configuration as much as the enumerating one. Read literally, that
+  says the search covered the space and found nothing. elenctic believed it, so a case whose solve
+  ran out of budget could report `AS(P) = ∅` as a decided fact about a program with more answer sets
+  than could be counted. Every model-bearing tag then failed, and `@expect unsat` — which rides its
+  own single-model run, one of the two configurations this was measured in — **passed**, upholding a
+  claim nothing had established.
+
+  A search cut short from outside is now believed about what it *found* and never about what it
+  *finished*. A model it produced is evidence a cancellation cannot take back, so a cut-short solve
+  still reports the satisfiability it settled; covering the space is a claim only a search that ran
+  to its own end can make, so neither "no answer set" nor "the space was covered" survives a
+  cancellation. Cases that met this now report UNDECIDED, which is what happened.
+
 ## [0.2.0] - 2026-08-01
 
 The minor bump is deliberate. Earlier releases changed what a *consumer* had to catch; this one can
@@ -283,7 +643,8 @@ This release also makes every in-source comment self-contained for external
 contributors, single-sources the version from `elenctic.__version__`, and runs CI on
 Linux and macOS.
 
-[Unreleased]: https://github.com/GregoryGelfond/elenctic/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/GregoryGelfond/elenctic/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.3.0
 [0.2.0]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.2.0
 [0.1.3]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.3
 [0.1.2]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.2

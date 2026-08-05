@@ -20,6 +20,7 @@ from typing import assert_never
 
 from clingo import Symbol, SymbolType
 
+from elenctic.result import HarnessError
 from elenctic.terms import contrary, parse_litset, parse_tupleset
 
 # The ASP lexical forms: a variable (upper-case / underscore initial), a constant (lower-case).
@@ -252,7 +253,12 @@ def conjunctive_answer(
     bug, raised rather than answered with a vacuous ``yes`` — a correctness oracle fails loud.
     """
     if not census:
-        raise ValueError("conjunctive_answer needs a non-empty census (AS(P)=∅ is upstream)")
+        raise HarnessError(
+            "conjunctive_answer needs a non-empty census, and this one is empty. AS(P) = ∅ is the "
+            "inconsistent arm, decided upstream and never reaching a query — so the caller that "
+            "handed one over is elenctic. Answering a query against no models at all would make "
+            "every conjunction vacuously true; an elenctic bug, never a verdict."
+        )
     contraries = tuple(contrary(conjunct) for conjunct in conjuncts)
     # Answer sets are consistent, so false-in-M (∃i l̄i∈M) ⇒ not-true-in-M; the yes-branch above
     # has excluded all-true, so this elif is sound (no model is both all-true and falsified).

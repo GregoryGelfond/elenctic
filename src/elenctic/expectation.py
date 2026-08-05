@@ -39,6 +39,43 @@ class ContractError(Exception):
     """An ill-formed or inconsistent contract block. Carries source:line provenance."""
 
 
+def require_line(line: int) -> None:
+    """Reject a line that is not 1-based. The one home for the invariant every carrier of a
+    contract coordinate shares — the claim, the two contract shapes, the check and the report it
+    produces — so they cannot come to disagree about it. Public because the last two of those live
+    in another module: the coordinate is a contract fact, so the predicate stays where the
+    tokenizer that computes one does."""
+    if line < 1:
+        raise ValueError(f"a contract line is 1-based, got {line}")
+
+
+@dataclass(frozen=True, slots=True)
+class Claimed[T]:
+    """A contract claim together with the 1-based line of the case file it was written on.
+
+    The line is what lets a consumer put a diagnostic where the claim is, rather than against the
+    file as a whole. It is required, not optional: a claim exists because someone wrote it
+    somewhere, so a claim without a line would be a state the contract cannot be in. A claim
+    brace-continued over several lines reports the line its tag opened on — one claim, one
+    coordinate, and the tag is where a reader looks for it.
+
+    Lines are counted by newlines alone, which is how clingo, a diff and a reviewer count them.
+    That is narrower than Python's own ``str.splitlines``, which also breaks on a vertical tab, a
+    form feed and several Unicode separators; resolving this coordinate with ``splitlines`` would
+    point at the wrong line in a file containing any of them.
+
+    This wraps a claim; it is not itself one. ``WitnessClaim`` is the other direction — a payload
+    shape, the thing a ``@model`` cell holds — so ``Claimed[WitnessClaim]`` is a witness payload
+    together with where it was written.
+    """
+
+    value: T
+    line: int
+
+    def __post_init__(self) -> None:
+        require_line(self.line)
+
+
 @dataclass(frozen=True, slots=True)
 class WitnessClaim:
     """A witness cell's claim: the shown model and an optional joint theory binding.
@@ -54,33 +91,54 @@ class WitnessClaim:
 
 @dataclass(frozen=True, slots=True)
 class Unsat:
-    """``@expect unsat``: ``AS(P) = ∅``; excludes every model-bearing tag."""
+    """``@expect unsat``: ``AS(P) = ∅``; excludes every model-bearing tag.
 
+    ``expect_line`` is the 1-based line ``@expect`` was written on — the coordinate the one check
+    this shape derives carries."""
+
+    expect_line: int
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
+
+    def __post_init__(self) -> None:
+        require_line(self.expect_line)
 
 
 @dataclass(frozen=True, slots=True)
 class Sat:
-    """``@expect sat`` with its base-tagged claims.
+    """``@expect sat`` with its base-tagged claims, each carrying the line it was written on.
 
-    ``None`` scalars and empty consequence sets mean "no such claim" — no run is derived and no
+    ``None`` cells and empty consequence tuples mean "no such claim" — no run is derived and no
     check emitted for them. The ``all`` and ``optimal`` bases occupy distinct fields
     (the ``(mode, base)`` cells), so ``@model`` and ``@model optimal`` coexist.
+
+    The single-valued cells hold one :class:`Claimed` each. The four consequence cells hold a
+    *tuple* of claims in surface order rather than one merged set: two ``@cautious`` lines are two
+    claims, each decided and reported against its own line. Checking them apart decides the case
+    identically — for any set ``S``, ``L₁ ⊆ S`` and ``L₂ ⊆ S`` hold exactly when ``(L₁ ∪ L₂) ⊆ S``
+    does, which is a fact about ⊆ and ∪ and so covers the ⋃ and Opt(P) readings as well as ⋂ —
+    while letting a failure that turns on which claim was false name that claim's line.
+
+    ``expect_line`` is a bare line rather than a :class:`Claimed` because the ``@expect`` value is
+    what this shape *is*; only its coordinate is left to carry.
     """
 
-    model: WitnessClaim | None = None
-    optimal_model: WitnessClaim | None = None
-    cautious: frozenset[Symbol] = frozenset()
-    cautious_optimal: frozenset[Symbol] = frozenset()
-    brave: frozenset[Symbol] = frozenset()
-    brave_optimal: frozenset[Symbol] = frozenset()
-    count: int | None = None
-    count_optimal: int | None = None
-    cost: tuple[int, ...] | None = None
-    assign: frozenset[tuple[Symbol, int]] = frozenset()
-    assign_optimal: frozenset[tuple[Symbol, int]] = frozenset()
-    queries: tuple[Query, ...] = ()
+    expect_line: int
+    model: Claimed[WitnessClaim] | None = None
+    optimal_model: Claimed[WitnessClaim] | None = None
+    cautious: tuple[Claimed[frozenset[Symbol]], ...] = ()
+    cautious_optimal: tuple[Claimed[frozenset[Symbol]], ...] = ()
+    brave: tuple[Claimed[frozenset[Symbol]], ...] = ()
+    brave_optimal: tuple[Claimed[frozenset[Symbol]], ...] = ()
+    count: Claimed[int] | None = None
+    count_optimal: Claimed[int] | None = None
+    cost: Claimed[tuple[int, ...]] | None = None
+    assign: Claimed[frozenset[tuple[Symbol, int]]] | None = None
+    assign_optimal: Claimed[frozenset[tuple[Symbol, int]]] | None = None
+    queries: tuple[Claimed[Query], ...] = ()
     notes: tuple[str, ...] = ()  # @note prose: documentation, not a contract term
+
+    def __post_init__(self) -> None:
+        require_line(self.expect_line)
 
     @property
     def has_optimal_base(self) -> bool:
@@ -95,7 +153,7 @@ class Sat:
             or bool(self.cautious_optimal)
             or bool(self.brave_optimal)
             or self.count_optimal is not None
-            or bool(self.assign_optimal)
+            or self.assign_optimal is not None
         )
 
     @property
@@ -122,7 +180,7 @@ class Sat:
         return (
             self.model is not None
             or self.count is not None
-            or bool(self.assign)
+            or self.assign is not None
             or bool(self.cautious)
             or bool(self.brave)
             or bool(self.queries)
@@ -134,10 +192,10 @@ class Sat:
         read the theory half of the observable, and a ``where``-qualified witness binds it jointly —
         all require clingcon. The precondition discovery checks against the case's solver."""
         return (
-            bool(self.assign)
-            or bool(self.assign_optimal)
-            or (self.model is not None and bool(self.model.assign))
-            or (self.optimal_model is not None and bool(self.optimal_model.assign))
+            self.assign is not None
+            or self.assign_optimal is not None
+            or (self.model is not None and bool(self.model.value.assign))
+            or (self.optimal_model is not None and bool(self.optimal_model.value.assign))
         )
 
 
@@ -351,24 +409,25 @@ class _Builder:
     """Mutable accumulator for one contract's tags; ``_finish`` freezes it into an ``Expectation``.
 
     A single-valued ``(mode, base)`` cell is realized as a field that starts ``None``
-    (or empty) and whose second assignment is the violation — the field *is* the record of whether
+    and whose second assignment is the violation — the field *is* the record of whether
     the cell is occupied, so no separate bookkeeping is needed. Consequence/query/prose tags
-    accumulate.
+    accumulate. Every cell but the prose one holds its claim wrapped in a :class:`Claimed`, so the
+    line a tag was written on survives the freeze into an ``Expectation``.
     """
 
-    expect: Literal["sat", "unsat"] | None = None
-    model: WitnessClaim | None = None
-    optimal_model: WitnessClaim | None = None
-    cautious: frozenset[Symbol] = frozenset()
-    cautious_optimal: frozenset[Symbol] = frozenset()
-    brave: frozenset[Symbol] = frozenset()
-    brave_optimal: frozenset[Symbol] = frozenset()
-    count: int | None = None
-    count_optimal: int | None = None
-    cost: tuple[int, ...] | None = None
-    assign: frozenset[tuple[Symbol, int]] = frozenset()
-    assign_optimal: frozenset[tuple[Symbol, int]] = frozenset()
-    queries: list[Query] = field(default_factory=list)
+    expect: Claimed[Literal["sat", "unsat"]] | None = None
+    model: Claimed[WitnessClaim] | None = None
+    optimal_model: Claimed[WitnessClaim] | None = None
+    cautious: list[Claimed[frozenset[Symbol]]] = field(default_factory=list)
+    cautious_optimal: list[Claimed[frozenset[Symbol]]] = field(default_factory=list)
+    brave: list[Claimed[frozenset[Symbol]]] = field(default_factory=list)
+    brave_optimal: list[Claimed[frozenset[Symbol]]] = field(default_factory=list)
+    count: Claimed[int] | None = None
+    count_optimal: Claimed[int] | None = None
+    cost: Claimed[tuple[int, ...]] | None = None
+    assign: Claimed[frozenset[tuple[Symbol, int]]] | None = None
+    assign_optimal: Claimed[frozenset[tuple[Symbol, int]]] | None = None
+    queries: list[Claimed[Query]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
 
@@ -383,69 +442,67 @@ def _apply(block: _Block, builder: _Builder) -> None:
         case "expect":
             if builder.expect is not None:
                 raise ValueError("at most one @expect per contract")
-            builder.expect = _expect_value(rest)
+            builder.expect = Claimed(_expect_value(rest), block.line)
         case "model":
             litset_text, assign = _split_where(rest)
             is_optimal, litset = _base_litset(litset_text)
             claim = WitnessClaim(shown=litset, assign=assign)
             if is_optimal:
-                _set_optimal_model(builder, claim)
+                _set_optimal_model(builder, claim, block.line)
             elif builder.model is not None:
                 raise ValueError("at most one @model per contract (the 'all' base)")
             else:
-                builder.model = claim
+                builder.model = Claimed(claim, block.line)
         case "optimal":  # sugar: @optimal ≡ @model optimal
             litset_text, assign = _split_where(rest)
-            _set_optimal_model(builder, WitnessClaim(shown=_litset(litset_text), assign=assign))
+            _set_optimal_model(
+                builder, WitnessClaim(shown=_litset(litset_text), assign=assign), block.line
+            )
         case "cautious":
             is_optimal, litset = _base_litset(rest)
-            if is_optimal:
-                builder.cautious_optimal |= litset
-            else:
-                builder.cautious |= litset
+            target = builder.cautious_optimal if is_optimal else builder.cautious
+            target.append(Claimed(litset, block.line))
         case "brave":
             is_optimal, litset = _base_litset(rest)
-            if is_optimal:
-                builder.brave_optimal |= litset
-            else:
-                builder.brave |= litset
+            target = builder.brave_optimal if is_optimal else builder.brave
+            target.append(Claimed(litset, block.line))
         case "count":
             is_optimal, n = _base_int(rest)
             if is_optimal:
                 if builder.count_optimal is not None:
                     raise ValueError("at most one @count optimal per contract")
-                builder.count_optimal = n
+                builder.count_optimal = Claimed(n, block.line)
             elif builder.count is not None:
                 raise ValueError("at most one @count per contract (the 'all' base)")
             else:
-                builder.count = n
+                builder.count = Claimed(n, block.line)
         case "cost":
             if builder.cost is not None:
                 raise ValueError("at most one @cost per contract")
-            builder.cost = _cost_vector(rest)
+            builder.cost = Claimed(_cost_vector(rest), block.line)
         case "assign":
             is_optimal, bindings = _base_assign(rest)
             if is_optimal:
-                if builder.assign_optimal:
+                if builder.assign_optimal is not None:
                     raise ValueError("at most one @assign optimal per contract")
-                builder.assign_optimal = bindings
-            elif builder.assign:
+                builder.assign_optimal = Claimed(bindings, block.line)
+            elif builder.assign is not None:
                 raise ValueError("at most one @assign per contract (the 'all' base)")
             else:
-                builder.assign = bindings
+                builder.assign = Claimed(bindings, block.line)
         case "query":
-            builder.queries.append(_query(rest))
+            builder.queries.append(Claimed(_query(rest), block.line))
         case "note":
             builder.notes.append(rest)
         case _:
             raise ValueError(f"unknown contract tag: @{block.tag} (known: {sorted(KNOWN_TAGS)})")
 
 
-def _set_optimal_model(builder: _Builder, claim: WitnessClaim) -> None:
+def _set_optimal_model(builder: _Builder, claim: WitnessClaim, line: int) -> None:
     """Set the optimal-witness cell, shared by ``@optimal`` and ``@model optimal``."""
     if builder.optimal_model is not None:
         raise ValueError("at most one @optimal / @model optimal per contract (the same cell)")
-    builder.optimal_model = claim
+    builder.optimal_model = Claimed(claim, line)
 
 
 # --- payload parsers (each raises ValueError; parse wraps with provenance) ---
@@ -575,15 +632,17 @@ def _split_top(body: str) -> list[str]:
 
 def _finish(builder: _Builder, source: str | None) -> Expectation:
     """Validate the cross-tag rules and freeze the builder into an ``Expectation``."""
-    if _validate(builder, source) == "unsat":
-        return Unsat(notes=tuple(builder.notes))
+    expect = _validate(builder, source)
+    if expect.value == "unsat":
+        return Unsat(expect_line=expect.line, notes=tuple(builder.notes))
     return Sat(
+        expect_line=expect.line,
         model=builder.model,
         optimal_model=builder.optimal_model,
-        cautious=builder.cautious,
-        cautious_optimal=builder.cautious_optimal,
-        brave=builder.brave,
-        brave_optimal=builder.brave_optimal,
+        cautious=tuple(builder.cautious),
+        cautious_optimal=tuple(builder.cautious_optimal),
+        brave=tuple(builder.brave),
+        brave_optimal=tuple(builder.brave_optimal),
         count=builder.count,
         count_optimal=builder.count_optimal,
         cost=builder.cost,
@@ -594,32 +653,34 @@ def _finish(builder: _Builder, source: str | None) -> Expectation:
     )
 
 
-def _validate(builder: _Builder, source: str | None) -> Literal["sat", "unsat"]:
-    """The cross-tag static semantics, returning the validated ``@expect``.
+def _validate(builder: _Builder, source: str | None) -> Claimed[Literal["sat", "unsat"]]:
+    """The cross-tag static semantics, returning the validated ``@expect`` and its line.
     Per-cell single-valuedness is enforced during parsing; the precondition rules
     (optimization, clingcon, contrary-shown) need the encoding and are checked at discovery."""
     expect = builder.expect
     if expect is None:  # rule 1
         _fail_contract(source, "a contract must declare exactly one @expect (sat|unsat)")
 
-    if expect == "unsat":  # rule 3: unsat excludes every model-bearing tag
+    if expect.value == "unsat":  # rule 3: unsat excludes every model-bearing tag
         if tags := _model_bearing_tags(builder):
             _fail_contract(
                 source,
                 f"@expect unsat excludes the model-bearing tag(s) {', '.join(tags)} "
                 "(only @count 0 / @count optimal 0 is consistent with it)",
             )
-    elif builder.count == 0 or builder.count_optimal == 0:  # rule 3: @count 0 ⟺ unsat
+    elif (builder.count is not None and builder.count.value == 0) or (
+        builder.count_optimal is not None and builder.count_optimal.value == 0
+    ):  # rule 3: @count 0 ⟺ unsat
         _fail_contract(source, "@count 0 ⟺ @expect unsat; it contradicts @expect sat")
 
     if (  # rule 3: Opt(P) ⊆ AS(P) requires m ≤ n
         builder.count is not None
         and builder.count_optimal is not None
-        and builder.count_optimal > builder.count
+        and builder.count_optimal.value > builder.count.value
     ):
         _fail_contract(
             source,
-            f"@count optimal {builder.count_optimal} > @count {builder.count}: "
+            f"@count optimal {builder.count_optimal.value} > @count {builder.count.value}: "
             "Opt(P) ⊆ AS(P) requires m ≤ n",
         )
     return expect
@@ -643,15 +704,15 @@ def _model_bearing_tags(builder: _Builder) -> list[str]:
         present.append("@brave optimal")
     if builder.cost is not None:
         present.append("@cost")
-    if builder.assign:
+    if builder.assign is not None:
         present.append("@assign")
-    if builder.assign_optimal:
+    if builder.assign_optimal is not None:
         present.append("@assign optimal")
     if builder.queries:
         present.append("@query")
-    if builder.count is not None and builder.count >= 1:
+    if builder.count is not None and builder.count.value >= 1:
         present.append("@count")
-    if builder.count_optimal is not None and builder.count_optimal >= 1:
+    if builder.count_optimal is not None and builder.count_optimal.value >= 1:
         present.append("@count optimal")
     return present
 

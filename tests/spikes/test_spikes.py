@@ -118,7 +118,7 @@ def test_maximize_cost_is_negated_internally() -> None:
 
 
 @pytest.mark.spike
-def test_timeout_path_yields_incomplete() -> None:
+def test_timeout_path_does_not_report_a_finished_search() -> None:
     # async solve + wait(budget) + cancel composes; a zero-poll is "not finished".
     ctl = Control(["--models=0"])
     ctl.add("base", [], "{ p(1..28) }.")  # 2^28 models: not finished at a zero-poll

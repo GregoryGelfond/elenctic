@@ -74,13 +74,13 @@ def test_an_undecided_solve_is_inconclusive(mode: Mode) -> None:
     # objective it visibly has.
     collector = _Collector()
     determination = _drive(_limited(mode), mode, collector, collector.on_model, 30.0)
-    assert isinstance(determination, Inconclusive)
+    assert isinstance(determination.determination, Inconclusive)
 
 
 def test_an_undecided_first_phase_of_the_optimal_driver_is_inconclusive() -> None:
     # Phase 1 proves the optimum. If it does not decide, there is no optimum to enumerate at.
     determination = _optimal_enum_two_phase(_limited(Mode.OPTIMAL_ENUM), _on_model_for, 30.0, False)
-    assert isinstance(determination, Inconclusive)
+    assert isinstance(determination.determination, Inconclusive)
 
 
 def test_an_undecided_second_phase_of_the_optimal_driver_is_inconclusive(
@@ -109,4 +109,33 @@ def test_an_undecided_second_phase_of_the_optimal_driver_is_inconclusive(
     control.ground([("base", [])])
     determination = _optimal_enum_two_phase(control, _on_model_for, 30.0, False)
     assert calls == 2, "phase 1 must have decided, so that phase 2 ran"
-    assert isinstance(determination, Inconclusive)
+    assert isinstance(determination.determination, Inconclusive)
+
+
+def test_an_unproven_optimum_is_undecided_not_an_accusation_against_the_program(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A first phase that is cut short may have collected no cost at all, because the search ended
+    # before it reached one. Reading a cost there would report "this program declares no objective"
+    # about a program that plainly declares one — an accusation the corpus did not earn. The
+    # honest form of that diagnostic belongs to a search that *finished* and still found no cost.
+    stopped_control = Control(list(Mode.ENUM_ALL.args), logger=_quiet)
+    stopped_control.add("base", [], "{ p(1..12) }.\n#show p/1.\n")
+    stopped_control.ground([("base", [])])
+    capped = _Collector(1)
+    stopped = _solve_under_budget(stopped_control, capped.on_model, 30.0)
+    assert stopped[1].satisfiable, "the captured result is expected to have decided satisfiable"
+    assert not stopped[1].exhausted, "and to have stopped before covering the space"
+
+    def cut_short_before_any_model(
+        control: Control, on_model: Callable[[Model], bool], budget: float
+    ) -> tuple[bool, SolveResult]:
+        return stopped  # the callback never runs, so the phase-1 collector stays empty
+
+    monkeypatch.setattr(solvers, "_solve_under_budget", cut_short_before_any_model)
+
+    control = Control(list(Mode.OPTIMAL_ENUM.args), logger=_quiet)
+    control.add("base", [], _EASY)  # _EASY carries a #minimize
+    control.ground([("base", [])])
+    outcome = _optimal_enum_two_phase(control, _on_model_for, 30.0, False)
+    assert isinstance(outcome.determination, Inconclusive)

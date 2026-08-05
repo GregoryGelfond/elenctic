@@ -63,9 +63,11 @@ def test_unknown_is_genuinely_distinguished_from_yes_and_no() -> None:
     # all three, not presence alone.
     program = (_KRBOOK / "encodings" / "cowardly" / "cowardly.lp").read_text()
     determination = run_clingo(Mode.CAUTIOUS_ALL, program)  # the singleton-query run reads ⋂
-    correct = query_matches(parse_query("unknown", "{ afraid(bob,math) }"))
+    correct = query_matches(parse_query("unknown", "{ afraid(bob,math) }"), line=1)
     assert correct(determination).verdict is Verdict.PASS
     for wrong_answer in ("yes", "no"):
-        report = query_matches(parse_query(wrong_answer, "{ afraid(bob,math) }"))(determination)
+        report = query_matches(parse_query(wrong_answer, "{ afraid(bob,math) }"), line=1)(
+            determination
+        )
         assert report.verdict is Verdict.FAIL
         assert "computed unknown" in report.message  # expected yes/no, computed unknown

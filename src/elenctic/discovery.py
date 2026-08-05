@@ -1,6 +1,6 @@
 """Case discovery — the content-keyed corpus walk.
 
-``discover(target)`` runs a single ``.lp`` file (issue #3) or walks a directory, collecting every
+``discover(target)`` runs a single ``.lp`` file or walks a directory, collecting every
 file that carries a contract. The **collection predicate**: a ``.lp`` file is a *case* iff it
 contains a known elenctic tag (:func:`~elenctic.expectation.has_contract`), else a *library* — an
 ``#include`` target, never run directly. The solver is **declared** (``@elenctic solver``, default
@@ -31,7 +31,6 @@ from pathlib import Path
 
 from clingo import Symbol
 
-from elenctic.display import legible
 from elenctic.expectation import ContractError, Expectation, Sat, has_contract, parse_contract
 from elenctic.program import ProgramError, ProgramFacts, inspect
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
@@ -96,16 +95,27 @@ class Case:
         return (self.path,)
 
 
+# What each hygiene observation says about the file it concerns. One home per observation, because
+# a run states them twice — once in the end-of-run summary a reader sees, once in the record a
+# consumer reads — and two copies of a sentence drift the first time either is edited.
+ORPHAN_LIBRARY = (
+    "carries no contract and no case #includes it (a forgotten case, or a dead library?)"
+)
+UNDECLARED_SOLVER = "defaulted to clingo (declare @elenctic solver for reproducibility)"
+
+
 @dataclass(frozen=True, slots=True)
 class HygieneReport:
     """Corpus hygiene — the third strictness axis, distinct from the always-error closed
-    vocabulary and soundness floor. These are observations, never verdicts, and the two records have
-    different default footing (the idiomatic asymmetry): an **orphan library** is a real corpus
-    smell — *warned* by default, an *error* under ``--strict`` (the CI gate). An **undeclared
-    solver** is a mere explicitness nudge — relying on the stated ``clingo`` default is legitimate,
-    so it is *silent* by default and an *error* only under ``--strict`` (the ``mypy --strict`` /
-    ``pytest --strict-markers`` posture: a default is fine until you opt into explicitness, and the
-    Unix rule of silence says do not nag about the expected case). :func:`render` applies this.
+    vocabulary and soundness floor. These are observations, never verdicts, and the two have
+    different default footing (the idiomatic asymmetry), which is why a run reports one of them
+    unasked and stays quiet about the other.
+
+    What this shape carries is the observation and nothing about how loudly to take it. How loudly
+    is a policy of the invocation rather than a property of what was seen, so it is decided once,
+    where a run records the observation, and every reading of it comes off that one decision — what
+    is printed, and what fails the run. Restating the footing here would be a second copy of it, and
+    the copy that is not consulted is the one that goes stale.
 
     ``orphan_libraries`` — contract-free ``.lp`` files in the walked tree that no case loads (the
     backstop: a forgotten case, or a dead library). ``undeclared_solvers`` — case files that did not
@@ -119,33 +129,15 @@ class HygieneReport:
     @property
     def clean(self) -> bool:
         """Whether the corpus carries no hygiene observations at all (no orphans, no undeclared
-        solvers) — the raw detection state, independent of the mode-aware :func:`render`."""
+        solvers) — the raw detection state, independent of what any invocation makes of it."""
         return not (self.orphan_libraries or self.undeclared_solvers)
-
-    def render(self, *, strict: bool) -> tuple[str, ...]:
-        """The hygiene lines to report in this mode (empty when there is nothing to show). Orphan
-        libraries are always reported (warned by default, error under ``--strict``); undeclared
-        solvers only under ``--strict`` (silent by default — the stated ``clingo`` default is
-        legitimate). Aggregated and reported together."""
-        lines = [
-            f"orphan library: {legible(str(path))} carries no contract and no case #includes it "
-            "(a forgotten case, or a dead library?)"
-            for path in self.orphan_libraries
-        ]
-        if strict and self.undeclared_solvers:
-            listed = ", ".join(legible(str(path)) for path in self.undeclared_solvers)
-            lines.append(
-                f"undeclared solver: {len(self.undeclared_solvers)} case(s) defaulted to clingo "
-                f"(declare @elenctic solver for reproducibility): {listed}"
-            )
-        return tuple(lines)
 
 
 @dataclass(frozen=True, slots=True)
 class Corpus:
     """The result of hygiene-aware discovery (:func:`inspect_corpus`): the cases to run and
-    the corpus :class:`HygieneReport`. The CLI runs ``cases`` and reports ``hygiene`` (warn-by-
-    default / error-under-``--strict``); issue #2 (``--json``) will serialize the same pair."""
+    the corpus :class:`HygieneReport`. This is what a run starts from; what it produced is the
+    runner's :class:`~elenctic.outcome.RunOutcome`, which is the shape a report is built from."""
 
     cases: tuple[Case, ...]
     hygiene: HygieneReport
@@ -167,7 +159,7 @@ class _Walk:
 
 
 def discover(target: Path) -> tuple[Case, ...]:
-    """Discover cases under ``target``. A single file is one case (issue #3); a
+    """Discover cases under ``target``. A single file is one case; a
     directory is walked (sorted, deterministic) for contract-bearing ``.lp`` files. An explicitly
     named contract-free file is loud (never a silent no-op); a contract-free file in a walked
     directory is a library (skipped). Raises :class:`DiscoveryError` on a precondition violation,
@@ -191,9 +183,10 @@ def inspect_corpus(target: Path) -> Corpus:
     (a contract-free ``.lp`` no case loads — the backstop) and undeclared-solver cases (defaulted
     to ``clingo``). A library is an orphan iff its resolved path is absent from ``used`` — the files
     clingo actually loads across all cases (:attr:`elenctic.program.ProgramFacts.sources`), so the
-    check matches clingo's include resolution exactly rather than re-scanning text. Hygiene is
-    warn-by-default / error-under-``--strict`` at the CLI, never a verdict. Raises the same loud
-    errors as :func:`discover` on a mis-shaped corpus.
+    check matches clingo's include resolution exactly rather than re-scanning text. What is reported
+    is the observation; how loudly a given invocation takes it is graded where the run records it,
+    and it is never a verdict. Raises the same loud errors as :func:`discover` on a mis-shaped
+    corpus.
     """
     walk = _classify(target)
     orphans = tuple(library for library in walk.libraries if library.resolve() not in walk.used)
@@ -333,6 +326,10 @@ def check_solver_available(solver: Solver, where: Path) -> None:
     module = BACKING_MODULES[solver]
     if _installed(module):
         return
+    # Only the theory branch is reachable today, and saying so is better than a fallback that
+    # cannot be exercised: the sole non-theory solver is clingo, and this module imports from clingo
+    # at load, so a process that got here has it. The branch stays because the registry is meant to
+    # grow, and a second optional backend makes it live the day it is added.
     remedy = (
         'install the theory extra: pip install "elenctic[theory]"'
         if provides_theory(solver)
@@ -382,12 +379,12 @@ def check_program(
         )
     if expectation.cost is not None and facts.has_maximize:
         raise DiscoveryError(
-            f"{where}: @cost over a #maximize objective is not supported in v1 — clingo reports a "
+            f"{where}: @cost over a #maximize objective is not supported — clingo reports a "
             "maximize cost in negated form, and natural-value normalisation is deferred. Use "
             "#minimize, or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
         )
     for query in expectation.queries:
-        if missing := _contraries_needed(query) - facts.shown:
+        if missing := _contraries_needed(query.value) - facts.shown:
             needed = ", ".join(f"{name}/{arity}" for name, arity in sorted(missing))
             have = ", ".join(f"{name}/{arity}" for name, arity in sorted(facts.shown))
             raise DiscoveryError(
@@ -408,7 +405,7 @@ def _contraries_needed(query: Query) -> frozenset[tuple[str, int]]:
       ⋃/⋂, so an unshown ``-q`` would under-compute it), or ``no`` with a **non-empty** set (an
       empty ``no`` set is vacuously satisfiable without ``-q``: the "non-empty" carve-out).
 
-    A ``yes`` query reads only the positive literal, covered by the (deferred) shown-vocabulary
+    A ``yes`` query reads only the positive literal, covered by no rule this version
     precondition, not this rule. Keyed by full ``(name, arity)`` signature, so a contrary
     ``#show``n at the wrong arity is caught loud rather than silently unobservable."""
     match query:
