@@ -14,6 +14,7 @@ from elenctic.checks import CheckReport
 from elenctic.discovery import Case, discover
 from elenctic.expectation import Sat, Unsat
 from elenctic.harness import case_verdict, render, run_case
+from elenctic.program import Unrestricted
 from elenctic.registry import Solver
 from elenctic.result import Conclusion, Verdict
 from elenctic.run import RoutingError
@@ -154,7 +155,7 @@ def test_case_verdict_folds_with_fail_dominating(
 
 
 def synthetic(expectation: Sat | Unsat, solver: Solver = "clingo") -> Case:
-    return Case(Path("tests/cases/x.lp"), solver, expectation, frozenset())
+    return Case(Path("tests/cases/x.lp"), solver, expectation, Unrestricted())
 
 
 def test_render_pass_case_is_a_terse_header() -> None:
@@ -197,7 +198,7 @@ def _rendered_with_an_escape_in(surface: str) -> str:
             expect_line=1,
             notes=(f"a note with {_ESCAPE} in it" if surface == "note" else "an ordinary note",),
         ),
-        frozenset(),
+        Unrestricted(),
     )
     failure = report(
         Verdict.FAIL,

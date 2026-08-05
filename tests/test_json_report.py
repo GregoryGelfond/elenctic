@@ -29,6 +29,7 @@ from elenctic.outcome import (
     RunOutcome,
     Scope,
 )
+from elenctic.program import Unrestricted
 from elenctic.result import Conclusion, Verdict
 
 _INVOCATION = Invocation(target=Path("corpus"), strict=False, budget=10.0, deadline=None)
@@ -43,7 +44,7 @@ def _case(
     path: Path = Path("a.lp"),
 ) -> CaseOutcome:
     return CaseOutcome(
-        case=Case(path, "clingo", Unsat(expect_line=1), frozenset()),
+        case=Case(path, "clingo", Unsat(expect_line=1), Unrestricted()),
         reports=(
             CheckReport(
                 verdict=verdict,

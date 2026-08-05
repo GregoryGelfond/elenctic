@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from clingo.ast import AST, ASTType, parse_string
 
-from elenctic.program import ProgramError, inspect
+from elenctic.program import ProgramError, Restricted, Unrestricted, inspect
 
 
 def _write(tmp_path: Path, name: str, body: str) -> Path:
@@ -42,12 +42,14 @@ def test_no_theory_atom_in_plain_asp(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "p(1). q :- p(1). #show q/0.\n")
     facts = inspect((case,))
     assert facts.has_theory_atom is False
-    assert facts.shown == frozenset({("q", 0)})
+    assert facts.shown == Restricted(signatures=frozenset({("q", 0)}), displayed=frozenset())
 
 
 def test_shown_vocabulary_is_sign_aware(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "#show reachable/1. #show -reachable/1.\n")
-    assert inspect((case,)).shown == frozenset({("reachable", 1), ("-reachable", 1)})
+    assert inspect((case,)).shown == Restricted(
+        signatures=frozenset({("reachable", 1), ("-reachable", 1)}), displayed=frozenset()
+    )
 
 
 def test_sources_are_the_files_clingo_actually_loads(tmp_path: Path) -> None:
@@ -66,14 +68,70 @@ def test_sources_are_the_files_clingo_actually_loads(tmp_path: Path) -> None:
     assert (tmp_path / "orphan.lp").resolve() not in sources  # block comment is not a dependency
 
 
-def test_bare_show_nothing_contributes_no_name(tmp_path: Path) -> None:
+# --- the two states a set of signatures spells the same way. Measured against clingo below: a
+# program with no declaration shows every atom and one whose only declaration is a bare `#show.`
+# shows none, so a vocabulary that is only a set cannot tell them apart. ---
+
+
+def test_a_bare_show_restricts_the_output_to_nothing(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "p(1).\n#show.\n")
-    assert inspect((case,)).shown == frozenset()
+    assert inspect((case,)).shown == Restricted(signatures=frozenset(), displayed=frozenset())
 
 
-def test_conditional_term_show_contributes_its_function_name(tmp_path: Path) -> None:
+def test_a_program_with_no_show_at_all_restricts_nothing(tmp_path: Path) -> None:
+    case = _write(tmp_path, "c.lp", "p(1). q(1).\n")
+    assert inspect((case,)).shown == Unrestricted()
+
+
+def test_the_two_are_not_the_same_value(tmp_path: Path) -> None:
+    # The point of the alternative, stated as the inequality it exists to make true. Under a bare
+    # frozenset both of these programs read `frozenset()`, and a refusal naming "the shown
+    # vocabulary {}" was printed about the one that shows everything.
+    nothing = _write(tmp_path, "nothing.lp", "p(1).\n#show.\n")
+    everything = _write(tmp_path, "everything.lp", "p(1).\n")
+    assert inspect((nothing,)).shown != inspect((everything,)).shown
+
+
+def test_a_conditional_term_show_alone_restricts_nothing(tmp_path: Path) -> None:
+    # `#show <term> : <body>.` displays a term; it does not switch clingo into selective output.
+    # So a program carrying only these still shows every atom, and reading one as a declaration
+    # would understate what is observable — a refusal for a literal that is in fact readable.
     case = _write(tmp_path, "c.lp", "p(1). q(1).\n#show p(X) : q(X).\n")
-    assert ("p", 1) in inspect((case,)).shown
+    assert inspect((case,)).shown == Unrestricted()
+
+
+def test_a_conditional_term_show_declares_nothing_beside_a_declaration(tmp_path: Path) -> None:
+    # And where a declaration is present, the term form is kept out of the vocabulary rather than
+    # added to it: the term reaches the output only where its body holds, so `p/1` is visible for
+    # some ground instances and not others. It is remembered separately, which is what lets a
+    # refusal name the directive the author actually wrote.
+    case = _write(tmp_path, "c.lp", "p(1). p(2). q(1).\n#show q/1.\n#show p(X) : q(X).\n")
+    assert inspect((case,)).shown == Restricted(
+        signatures=frozenset({("q", 1)}), displayed=frozenset({("p", 1)})
+    )
+
+
+def test_clingo_still_restricts_on_a_declaration_and_not_on_a_term(tmp_path: Path) -> None:
+    # The premise the two readings above rest on is a fact about clingo, not about elenctic, so it
+    # is pinned rather than assumed: if a future clingo made the term form restrictive, the
+    # vocabulary would understate what is observable and every reading built on it would follow.
+    import clingo
+
+    def shown(body: str) -> set[str]:
+        case = _write(tmp_path, f"probe{abs(hash(body))}.lp", body)
+        control = clingo.Control(["--models=1"])
+        control.load(str(case))
+        control.ground([("base", [])])
+        with control.solve(yield_=True) as handle:
+            return {str(symbol) for model in handle for symbol in model.symbols(shown=True)}
+
+    program = "p(a). p(b). q(a).\n"
+    assert shown(program) == {"p(a)", "p(b)", "q(a)"}, "no declaration shows every atom"
+    assert shown(program + "#show.\n") == set(), "a bare declaration shows none"
+    assert shown(program + "#show q/1.\n") == {"q(a)"}, "a declaration restricts to itself"
+    assert shown(program + "#show p(X) : q(X).\n") == {"p(a)", "p(b)", "q(a)"}, (
+        "a term directive adds to the output and does not restrict it"
+    )
 
 
 def test_optimization_and_maximize_by_weight_sign(tmp_path: Path) -> None:
@@ -125,7 +183,10 @@ def test_minimize_in_a_comment_is_not_optimization(tmp_path: Path) -> None:
 
 def test_commented_show_does_not_pollute_the_shown_vocabulary(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", "% #show -reachable/1.\n#show reachable/1.\n")
-    assert inspect((case,)).shown == frozenset({("reachable", 1)})  # commented -reachable is prose
+    # the commented -reachable is prose
+    assert inspect((case,)).shown == Restricted(
+        signatures=frozenset({("reachable", 1)}), displayed=frozenset()
+    )
 
 
 # --- nesting depth: the program under test decides it, so the walk must not borrow a limit from
@@ -139,7 +200,9 @@ five hundred), and a depth clingo itself handles without complaint."""
 def test_a_deeply_nested_arithmetic_term_is_walked(tmp_path: Path) -> None:
     # The hostile shape: a left-nested chain, one AST level per term.
     case = _write(tmp_path, "deep.lp", f"p(X) :- X = {'1' + '+1' * _DEEP}.\n#show p/1.\n")
-    assert inspect((case,)).shown == frozenset({("p", 1)})
+    assert inspect((case,)).shown == Restricted(
+        signatures=frozenset({("p", 1)}), displayed=frozenset()
+    )
 
 
 def test_a_long_cons_list_is_walked(tmp_path: Path) -> None:
@@ -150,15 +213,23 @@ def test_a_long_cons_list_is_walked(tmp_path: Path) -> None:
     for index in range(_DEEP):
         term = f"cons(a{index},{term})"
     case = _write(tmp_path, "list.lp", f"list({term}).\n#show list/1.\n")
-    assert inspect((case,)).shown == frozenset({("list", 1)})
+    assert inspect((case,)).shown == Restricted(
+        signatures=frozenset({("list", 1)}), displayed=frozenset()
+    )
 
 
 def test_a_long_strong_negation_chain_is_walked(tmp_path: Path) -> None:
     # The signature reader walks its own chain, so removing the limit from the node walk alone
     # would leave this one refused at the same depth. The accumulated sign is preserved exactly:
     # the reader records what was written, and folding -- away is not its decision to make.
-    case = _write(tmp_path, "neg.lp", f"q(1).\n#show {'-' * _DEEP}p(X) : q(X).\n")
-    assert inspect((case,)).shown == frozenset({("-" * _DEEP + "p", 1)})
+    #
+    # A negation chain this long is spellable only in the term form (a declaration carries one sign
+    # flag), and a term form is read only where a declaration puts the program in the restricted
+    # state — so the `#show q/1.` here is what keeps the input reaching the reader under test.
+    case = _write(tmp_path, "neg.lp", f"q(1).\n#show q/1.\n#show {'-' * _DEEP}p(X) : q(X).\n")
+    assert inspect((case,)).shown == Restricted(
+        signatures=frozenset({("q", 1)}), displayed=frozenset({("-" * _DEEP + "p", 1)})
+    )
 
 
 # --- the theory-native objective gate: what sets it, rather than what reads it. The gate refuses
@@ -213,9 +284,13 @@ def test_a_shown_non_predicate_term_declares_no_signature(tmp_path: Path) -> Non
     # raises when one is read off a string or a number rather than reporting that there is none —
     # so asking for a name without asking the type first refused a program that is valid.
     case = _write(tmp_path, "c.lp", '#show "text" : p.\n#show 42 : p.\np.\n#show p/0.\n')
-    assert inspect((case,)).shown == frozenset({("p", 0)})
+    assert inspect((case,)).shown == Restricted(
+        signatures=frozenset({("p", 0)}), displayed=frozenset()
+    )
 
 
 def test_percent_inside_a_string_term_is_not_a_comment(tmp_path: Path) -> None:
     case = _write(tmp_path, "c.lp", 'label("50% done"). #show label/1.\n')
-    assert inspect((case,)).shown == frozenset({("label", 1)})
+    assert inspect((case,)).shown == Restricted(
+        signatures=frozenset({("label", 1)}), displayed=frozenset()
+    )

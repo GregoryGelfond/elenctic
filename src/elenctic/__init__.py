@@ -126,7 +126,12 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         is_duration as is_duration,
         summary as summary,
     )
-    from elenctic.program import ProgramError as ProgramError
+    from elenctic.program import (
+        ProgramError as ProgramError,
+        Restricted as Restricted,
+        ShownVocabulary as ShownVocabulary,
+        Unrestricted as Unrestricted,
+    )
     from elenctic.query import Answer as Answer, Query as Query
     from elenctic.registry import SOLVERS as SOLVERS, Solver as Solver
     from elenctic.result import (
@@ -156,7 +161,8 @@ __version__ = "0.3.0"
 # The curated public API, grouped by home module — the single source for both __all__ and the lazy
 # resolver, so the two cannot drift. Internals (the eight concrete Consistent shapes, the field
 # accessors, the check builders, Field) are deliberately absent; the Consistent base is here
-# because Determination is not usable without it.
+# because Determination is not usable without it, and both members of ShownVocabulary for the same
+# reason — a Case's shown vocabulary is an alternative, and asking which one it is is its only use.
 _EXPORTS: dict[str, tuple[str, ...]] = {
     "elenctic.checks": ("CheckReport",),
     "elenctic.corpus": (
@@ -198,7 +204,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "is_duration",
         "summary",
     ),
-    "elenctic.program": ("ProgramError",),
+    "elenctic.program": ("ProgramError", "Restricted", "ShownVocabulary", "Unrestricted"),
     "elenctic.query": ("Answer", "Query"),
     "elenctic.registry": ("SOLVERS", "Solver"),
     "elenctic.result": (

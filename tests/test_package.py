@@ -19,6 +19,8 @@ _CURATED = {
     "Case", "Corpus", "discover", "inspect_corpus", "parse", "Expectation", "Sat", "Unsat",
     "Claimed", "runs_for", "Run", "Mode", "solve", "TIME_BUDGET", "run_case", "run_plan",
     "case_verdict", "render", "CheckReport", "Query", "Answer",
+    # what a program makes observable, which is what decides whether a @query can be answered
+    "ShownVocabulary", "Unrestricted", "Restricted",
     # the outcomes a solve produced, and how far the search behind them got
     "Determination", "Verdict", "Observable", "Optimum", "SolveOutcome", "Consistent",
     "Inconclusive", "Inconsistent", "Conclusion", "Collection",

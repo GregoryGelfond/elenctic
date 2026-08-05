@@ -22,13 +22,14 @@ from elenctic.checks import CheckReport
 from elenctic.discovery import Case
 from elenctic.expectation import Sat
 from elenctic.harness import case_verdict, render
+from elenctic.program import Unrestricted
 from elenctic.result import Conclusion, Verdict
 
 _UNSAT_CAUTIOUS = "no cautious consequences — AS(P) = ∅"
 
 
 def _case(*notes: str) -> Case:
-    return Case(Path("tests/cases/x.lp"), "clingo", Sat(expect_line=1, notes=notes), frozenset())
+    return Case(Path("tests/cases/x.lp"), "clingo", Sat(expect_line=1, notes=notes), Unrestricted())
 
 
 def _report(

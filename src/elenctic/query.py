@@ -21,7 +21,7 @@ from typing import assert_never
 from clingo import Symbol, SymbolType
 
 from elenctic.result import HarnessError
-from elenctic.terms import contrary, parse_litset, parse_tupleset
+from elenctic.terms import Signature, contrary, parse_litset, parse_tupleset, signature_of
 
 __all__ = [
     "Answer",
@@ -36,6 +36,7 @@ __all__ = [
     "conjunctive_answer",
     "contrary_literal",
     "parse_query",
+    "signatures_read",
     "singleton_answer",
     "unify",
 ]
@@ -314,6 +315,60 @@ def binding_set(
             return brave_domain - entailed_yes - entailed_no
         case _:
             assert_never(answer)
+
+
+def _goal_signature(goal: QueryLiteral) -> Signature:
+    """The signature of a binding goal — the goal-level counterpart of
+    :func:`~elenctic.terms.signature_of`, which needs a ground literal."""
+    return (goal.name if goal.positive else f"-{goal.name}", goal.arity)
+
+
+def signatures_read(query: Query) -> frozenset[Signature]:
+    """Every predicate signature this query's evaluation consults.
+
+    elenctic never sees an answer set: each of the evaluators above reads the *shown projection* of
+    one, so its computed answer is the Gelfond–Kahl answer exactly when the program makes every
+    signature listed here observable. That is the precondition discovery enforces, and this is the
+    one statement of it — written beside the evaluators it is derived from, and keyed on the same
+    query shapes :func:`classify` routes and reads by, so what is required and what is consulted
+    cannot drift apart.
+
+    Per form, derived from the evaluator and tight (drop any one and a program exists whose computed
+    answer differs from its true one):
+
+    - a **ground** query — singleton or conjunctive — reads *both* every conjunct and every
+      conjunct's contrary. It computes a three-valued answer, and ``no`` is distinguishable from
+      ``unknown`` only by seeing the contrary: with the conjunct unshown a true ``yes`` computes as
+      ``unknown``, and with the contrary unshown a true ``no`` computes as ``unknown``.
+    - a **binding** query reads only the goal whose tuples it collects: ``q`` for ``yes``, ``-q``
+      for ``no``, and both for ``unknown``, whose set is the brave domain of the two less the
+      settled ones. It computes the tuples whose answer is the stated one — one-sided — so the
+      other sign is genuinely not consulted, and requiring it would refuse contracts elenctic can
+      answer exactly.
+
+    The asymmetry between the two is therefore a fact about what each computes, not a policy.
+    """
+    match query:
+        case GroundQuery(_, conjuncts):
+            return frozenset(
+                signature
+                for conjunct in conjuncts
+                for signature in (signature_of(conjunct), signature_of(contrary(conjunct)))
+            )
+        case BindingQuery(answer, goal, _):
+            stated = _goal_signature(goal)
+            opposite = _goal_signature(contrary_literal(goal))
+            match answer:
+                case Answer.yes:
+                    return frozenset({stated})
+                case Answer.no:
+                    return frozenset({opposite})
+                case Answer.unknown:
+                    return frozenset({stated, opposite})
+                case _:
+                    assert_never(answer)
+        case _:
+            assert_never(query)
 
 
 def classify(query: Query) -> QueryForm:

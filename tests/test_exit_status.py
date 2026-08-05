@@ -34,13 +34,14 @@ from elenctic.outcome import (
     Scope,
     exit_status,
 )
+from elenctic.program import Unrestricted
 from elenctic.result import Conclusion, Verdict
 from support import child_environment
 
 
 def _case(verdict: Verdict) -> CaseOutcome:
     return CaseOutcome(
-        case=Case(Path("a.lp"), "clingo", Unsat(expect_line=1), frozenset()),
+        case=Case(Path("a.lp"), "clingo", Unsat(expect_line=1), Unrestricted()),
         reports=(
             CheckReport(
                 verdict=verdict,

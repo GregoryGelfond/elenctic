@@ -20,22 +20,38 @@ non-UTF-8 *library* is simply skipped, while a non-UTF-8 *case* is collected and
 a friendly, ``source:line``-carrying diagnostic — a ``ContractError`` if the bad byte falls in a
 parsed ``@``-payload, otherwise a ``ProgramError`` at the resolved-program inspection.
 
-The shown vocabulary is keyed by sign-aware predicate **signature** ``(name, arity)`` (from
-``program.inspect``), so a ``@query`` contrary ``#show``n at the wrong arity (an authoring typo) is
-a *loud* precondition failure, not a silent wrong PASS — the former name-only boundary is closed.
+A ``@query`` is answered off the *shown projection* of each answer set, so a program that does not
+make a queried literal observable cannot answer the query at all — elenctic's answer would then
+describe the program's ``#show`` directives rather than its answer sets. Every signature a query
+consults is enumerated once, by ``query.signatures_read``; this module's job is to refuse the case
+when the program's :data:`~elenctic.program.ShownVocabulary` does not cover them. The vocabulary is
+keyed by sign-aware signature ``(name, arity)``, so a literal ``#show``n at the wrong arity (an
+authoring typo) is a *loud* precondition failure and not a silent wrong PASS.
+
+Still short of a faithful account of observability, and deliberately: a ``#show <term> : <body>.``
+directive emits its term only where the body holds, so the predicate is visible for some ground
+instances and not others. Reading that partially — which is what a faithful reading would need —
+wants a grounding, not a parse. Until then such a directive establishes nothing, which refuses a
+query it might have been able to answer and never answers one wrongly.
 """
 
 from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
-
-from clingo import Symbol
+from typing import assert_never
 
 from elenctic.expectation import ContractError, Expectation, Sat, has_contract, parse_contract
-from elenctic.program import ProgramError, ProgramFacts, inspect
-from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral
+from elenctic.program import (
+    ProgramError,
+    ProgramFacts,
+    Restricted,
+    ShownVocabulary,
+    Unrestricted,
+    inspect,
+)
+from elenctic.query import signatures_read
 from elenctic.registry import BACKING_MODULES, Solver, provides_theory
-from elenctic.terms import contrary
+from elenctic.terms import Signature
 
 __all__ = [
     "Case",
@@ -73,16 +89,18 @@ class SolverUnavailableError(DiscoveryError, ImportError):
 class Case:
     """One case: a contract-bearing ``.lp`` file, its declared solver, parsed contract, and shown
     vocabulary. The program under test is this file plus its resolved ``#include``s — the loader
-    resolves them, so ``files`` is just this path. ``shown`` is the shown predicate **signatures**
-    ``(sign-aware-name, arity)`` (e.g. ``{("reachable", 1), ("-reachable", 1)}``) read from the
-    resolved program. Provenance-rich: the parsed ``expectation`` keeps its ``notes``, and
-    ``contract_source`` names the case file, so a renderer or docs tool reads it without re-parsing.
+    resolves them, so ``files`` is just this path. ``shown`` is what the resolved program makes
+    observable (:data:`~elenctic.program.ShownVocabulary`) — an alternative rather than a set,
+    because a program that shows nothing and a program that restricts nothing are opposite states
+    that a set of signatures spells the same way. Provenance-rich: the parsed ``expectation`` keeps
+    its ``notes``, and ``contract_source`` names the case file, so a renderer or docs tool reads it
+    without re-parsing.
     """
 
     path: Path
     solver: Solver
     expectation: Expectation
-    shown: frozenset[tuple[str, int]]
+    shown: ShownVocabulary
 
     @property
     def contract_source(self) -> Path:
@@ -353,8 +371,8 @@ def check_program(
     program** (``facts``), under the **declared** ``solver``. Loud (``DiscoveryError``), never a
     verdict. The gates: a theory atom under a non-theory solver (presence, never identity); a
     theory-bearing contract under a non-theory solver; the optimization gate, the
-    ``@cost``-over-``#maximize`` guard, and the shown contrary. The program-side and contract-side
-    theory gates are complementary duals; both are required."""
+    ``@cost``-over-``#maximize`` guard, and every ``@query``'s readability. The program-side and
+    contract-side theory gates are complementary duals; both are required."""
     if facts.has_theory_atom and not provides_theory(solver):
         raise DiscoveryError(
             f"{where}: the resolved program has a theory atom (&…), but the solver is {solver}, "
@@ -388,55 +406,75 @@ def check_program(
             "maximize cost in negated form, and natural-value normalisation is deferred. Use "
             "#minimize, or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
         )
-    for query in expectation.queries:
-        if missing := _contraries_needed(query.value) - facts.shown:
-            needed = ", ".join(f"{name}/{arity}" for name, arity in sorted(missing))
-            have = ", ".join(f"{name}/{arity}" for name, arity in sorted(facts.shown))
-            raise DiscoveryError(
-                f"{where}: a no/unknown @query reads the contrary literal(s) {needed} off the "
-                f"shown ⋂/⋃, but they are absent from the shown vocabulary {{{have}}}"
-            )
+    _check_queries_are_answerable(expectation, facts.shown, where)
 
 
-def _contraries_needed(query: Query) -> frozenset[tuple[str, int]]:
-    """The shown predicate *signatures* ``(sign-aware-name, arity)`` a query reads as *contraries*
-    off ⋂/⋃, which must therefore be shown:
+def _check_queries_are_answerable(expectation: Sat, shown: ShownVocabulary, where: Path) -> None:
+    """Refuse any ``@query`` whose answer the program does not determine.
 
-    - a ground ``no``/``unknown`` query needs **every** conjunct's contrary. Under the corrected ∀∃
-      "no" (each model may falsify a *different* conjunct), any conjunct's contrary may be the
-      witness, so requiring all of them is the conservative *sound* reading (it can over-require,
-      but never silently passes an unsound case);
-    - a binding query needs the goal's contrary when ``unknown`` (its unknown-set reads ``-q`` off
-      ⋃/⋂, so an unshown ``-q`` would under-compute it), or ``no`` with a **non-empty** set (an
-      empty ``no`` set is vacuously satisfiable without ``-q``: the "non-empty" carve-out).
-
-    A ``yes`` query reads only the positive literal, covered by no rule this version
-    precondition, not this rule. Keyed by full ``(name, arity)`` signature, so a contrary
-    ``#show``n at the wrong arity is caught loud rather than silently unobservable."""
-    match query:
-        case GroundQuery(answer, conjuncts) if answer in {Answer.no, Answer.unknown}:
-            return frozenset(_signed_signature(contrary(conjunct)) for conjunct in conjuncts)
-        case BindingQuery(Answer.unknown, goal, _):
-            return frozenset({_goal_contrary_signature(goal)})
-        case BindingQuery(Answer.no, goal, bindings) if bindings:
-            return frozenset({_goal_contrary_signature(goal)})
+    A query is answered off the shown projection of each answer set, so elenctic's answer is the
+    Gelfond–Kahl answer exactly when every signature the query consults
+    (:func:`~elenctic.query.signatures_read`) is observable. Where one is not, the literal is
+    indistinguishable from one no answer set contains, and the answer that would be computed is a
+    fact about the program's ``#show`` directives rather than about its answer sets — so it is
+    refused rather than reported, in either direction. That covers a wrong PASS on a false claim and
+    a FAIL on a true one, which is why the rule is about the answer and not about the verdict.
+    """
+    match shown:
+        case Unrestricted():
+            # Nothing to check: with no output restriction every literal of every answer set
+            # reaches the projection, so no query can read past what the program determines.
+            return
+        case Restricted(signatures=signatures, displayed=displayed):
+            for query in expectation.queries:
+                if missing := signatures_read(query.value) - signatures:
+                    raise DiscoveryError(
+                        _unanswerable(where, query.line, missing, signatures, displayed)
+                    )
         case _:
-            return frozenset()
+            assert_never(shown)
 
 
-def _signed_signature(literal: Symbol) -> tuple[str, int]:
-    """The ``(sign-aware-name, arity)`` signature of a ground literal, matching ``#show``
-    vocabulary."""
-    name = literal.name if literal.positive else f"-{literal.name}"
-    return (name, len(literal.arguments))
+def _unanswerable(
+    where: Path,
+    line: int,
+    missing: frozenset[Signature],
+    signatures: frozenset[Signature],
+    displayed: frozenset[Signature],
+) -> str:
+    """The refusal for a query the program cannot answer: what is unreadable, what the program does
+    show, why that decides the answer, and the declaration that would fix it.
+
+    Reached only where the program restricts its output, so the sentence naming what it shows is
+    true of it — the vocabulary being an alternative is what guarantees that rather than a check.
+    A signature the author wrote as ``#show <term> : <body>.`` gets a clause of its own, because a
+    reader looking at that line in their own file is otherwise told a predicate they can see
+    declared is absent."""
+    shows = (
+        f"it shows {{{_signature_list(signatures)}}}"
+        if signatures
+        else "its `#show.` restricts the output to nothing"
+    )
+    conditional = missing & displayed
+    aside = (
+        f" ({_signature_list(conditional)} appears in a `#show <term> : <body>.` directive, which "
+        "emits that term where its body holds rather than making the predicate observable.)"
+        if conditional
+        else ""
+    )
+    remedy = " ".join(f"#show {name}/{arity}." for name, arity in sorted(missing))
+    return (
+        f"{where}:{line}: this @query reads {_signature_list(missing)}, which the program does not "
+        f"make observable — {shows}.{aside} elenctic answers a query from the shown projection of "
+        "each answer set, so a literal that is not shown cannot be told apart from one no answer "
+        "set contains, and the answer would describe the #show directives rather than the program. "
+        f"Declare {remedy}, or drop the query"
+    )
 
 
-def _goal_contrary_signature(goal: QueryLiteral) -> tuple[str, int]:
-    """The ``(sign-aware-name, arity)`` of a binding goal's *contrary* literal:
-    ``-q`` for ``q``, ``q`` for ``-q`` — the dual of :func:`_signed_signature` for a (non-ground)
-    goal, carrying the goal's arity."""
-    name = f"-{goal.name}" if goal.positive else goal.name
-    return (name, goal.arity)
+def _signature_list(signatures: frozenset[Signature]) -> str:
+    """Signatures as a reader writes them — ``reachable/1, -reachable/1``, in a stable order."""
+    return ", ".join(f"{name}/{arity}" for name, arity in sorted(signatures))
 
 
 def _main() -> None:

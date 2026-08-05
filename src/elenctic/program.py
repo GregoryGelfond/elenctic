@@ -18,7 +18,16 @@ from typing import Final
 from clingo import SymbolType
 from clingo.ast import AST, ASTType, UnaryOperator, parse_files as _parse_files
 
-__all__ = ["ProgramError", "ProgramFacts", "inspect"]
+from elenctic.terms import Signature
+
+__all__ = [
+    "ProgramError",
+    "ProgramFacts",
+    "Restricted",
+    "ShownVocabulary",
+    "Unrestricted",
+    "inspect",
+]
 
 
 class ProgramError(Exception):
@@ -33,16 +42,54 @@ class ProgramError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class Unrestricted:
+    """The program declares no output restriction, so **every** literal of every answer set is
+    observable.
+
+    A program reaches this state by carrying no ``#show`` directive at all, or by carrying only
+    directives of the ``#show <term> : <body>.`` form — which display a term without switching the
+    solver into selective output (measured; see :func:`inspect`)."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Restricted:
+    """The program restricts its output, and ``signatures`` is what it makes observable.
+
+    An empty ``signatures`` is *show nothing*: a program whose only declaration is a bare
+    ``#show.``. That is the opposite of :class:`Unrestricted`, and keeping the two apart is the
+    whole reason this is an alternative rather than a set — under one every literal is readable and
+    under the other none is, and a set has the same emptiness for both.
+
+    ``displayed`` holds the signatures named by a ``#show <term> : <body>.`` directive, which is
+    **not** the same as declaring one observable: such a directive emits a chosen term where its
+    body holds, so the predicate is visible for some ground instances and not others. They are kept
+    apart from ``signatures`` for that reason, and remembered so that a refusal can say which of the
+    two an author wrote — an author looking at ``#show cost_of(A,T,C) : …`` in their own file and
+    told ``cost_of/3`` is absent is owed the distinction.
+
+    Built by keyword: the two fields are adjacent and share a type, so transposed they would
+    type-check clean and read as a plausible vocabulary while meaning the reverse of what was
+    written."""
+
+    signatures: frozenset[Signature]
+    displayed: frozenset[Signature]
+
+
+type ShownVocabulary = Unrestricted | Restricted
+"""What a program makes observable — the two states a ``#show`` declaration puts it in."""
+
+
+@dataclass(frozen=True, slots=True)
 class ProgramFacts:
     """The program-level facts the preconditions and the theory gate read.
 
     ``has_theory_atom`` — any ``&``-atom in the resolved program (presence, not identity).
-    ``shown`` — the shown predicate **signatures** ``(sign-aware-name, arity)`` (e.g.
-    ``{("reachable", 1), ("-reachable", 1)}``); empty for a bare ``#show.`` (show-nothing). Keyed by
-    full signature, not name, so a ``@query`` contrary ``#show``n at the wrong arity is a *loud*
-    precondition failure, not a silent miss. ``has_optimization`` — a ``#minimize``, ``#maximize``,
-    or ``:~`` is present. ``has_maximize`` — an objective uses ``#maximize`` (a negated-weight
-    ``Minimize`` node), which v1 cannot present a natural ``@cost`` over (the guarded miscompile).
+    ``shown`` — the :data:`ShownVocabulary`: what the program makes observable, keyed by full
+    sign-aware signature rather than by name, so a literal ``#show``n at the wrong arity is a
+    *loud* precondition failure and not a silent miss. ``has_optimization`` — a ``#minimize``,
+    ``#maximize``, or ``:~`` is present. ``has_maximize`` — an objective uses ``#maximize`` (a
+    negated-weight ``Minimize`` node), which v1 cannot present a natural ``@cost`` over (the
+    guarded miscompile).
     ``has_theory_optimization`` — a *theory-native* objective (``&minimize``/``&maximize``) is
     present. It is tracked apart from ``has_optimization`` because it is a different object: the
     theory's own propagator drives it, so clingo's optimization switches do not reach it, and a
@@ -56,7 +103,7 @@ class ProgramFacts:
     """
 
     has_theory_atom: bool
-    shown: frozenset[tuple[str, int]]
+    shown: ShownVocabulary
     has_optimization: bool
     has_maximize: bool
     has_theory_optimization: bool
@@ -84,7 +131,7 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
     with _walk_faults(files):
         nodes = [node for statement in statements for node in _descendants(statement)]
         has_theory_atom = any(node.ast_type is ASTType.TheoryAtom for node in nodes)
-        shown = frozenset(sig for node in nodes if (sig := _shown_signature(node)))
+        shown = _vocabulary(nodes)
         # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes — one signal.
         has_optimization = any(node.ast_type is ASTType.Minimize for node in nodes)
         has_maximize = any(_is_maximize(node) for node in nodes)
@@ -232,26 +279,57 @@ def _is_maximize(node: AST) -> bool:
     )
 
 
-def _shown_signature(node: AST) -> tuple[str, int] | None:
-    """The ``(sign-aware-name, arity)`` signature a ``#show`` node declares, or ``None`` if it
-    declares no predicate (a bare ``#show.`` restricts shown output to nothing). Handles the
-    signature form (``#show p/1.`` → ``ShowSignature`` with ``name``/``positive``/``arity``) and the
-    conditional-term form (``#show p(X) : body.`` → ``ShowTerm`` whose ``term`` carries name +
-    arity). Keyed by full signature, so a ``@query`` contrary ``#show``n at the wrong arity is a
-    loud precondition failure rather than a silent miss."""
-    if node.ast_type is ASTType.ShowSignature:
-        if not node.name:
-            return None
-        name = node.name if node.positive else f"-{node.name}"
-        return (name, node.arity)
-    if node.ast_type is ASTType.ShowTerm:
-        return _predicate_signature(node.term)
-    return None
+def _vocabulary(nodes: list[AST]) -> ShownVocabulary:
+    """Classify what the resolved program makes observable, from its ``#show`` nodes.
+
+    clingo has **two** ``#show`` statements and they do different jobs, which is measurable and is
+    the distinction this reads:
+
+    - the *declaration* form — ``#show p/1.``, and the bare ``#show.`` — switches the solver into
+      selective output. Its presence is what restricts the program at all, and each named one
+      adds a signature that is then projected faithfully: every atom over it appears, and nothing
+      else does.
+    - the *display* form — ``#show <term> : <body>.`` — emits a chosen term wherever its body holds
+      and **does not restrict anything**. A program carrying only these still shows every atom, so
+      reading one as a declaration understates what is observable; and where a declaration is
+      present too, reading one as a declaration *over*states it, since the term reaches the output
+      for some ground instances and not others (and need not name an atom of the program at all).
+
+    So a program is restricted exactly when it carries a declaration, and only declarations put a
+    signature in the vocabulary. Reading a display form as neither is the conservative direction: a
+    query over a conditionally-displayed predicate is refused rather than answered off a projection
+    that is not one.
+    """
+    declarations = [node for node in nodes if node.ast_type is ASTType.ShowSignature]
+    if not declarations:
+        return Unrestricted()
+    return Restricted(
+        signatures=frozenset(
+            signature
+            for node in declarations
+            if (signature := _declared_signature(node)) is not None
+        ),
+        displayed=frozenset(
+            signature
+            for node in nodes
+            if node.ast_type is ASTType.ShowTerm
+            and (signature := _predicate_signature(node.term)) is not None
+        ),
+    )
 
 
-def _predicate_signature(term: AST) -> tuple[str, int] | None:
-    """The ``(sign-aware-name, arity)`` of a shown term: ``(p, n)`` / ``(-p, n)`` for a (possibly
-    negated) function or constant; ``None`` for anything else (a non-predicate term has no name).
+def _declared_signature(node: AST) -> Signature | None:
+    """The signature a ``#show p/1.`` declaration names, or ``None`` for the bare ``#show.``, which
+    names none — it restricts the output to nothing and is what makes an empty vocabulary mean
+    *show nothing* rather than *no restriction*."""
+    if not node.name:
+        return None
+    return (node.name if node.positive else f"-{node.name}", node.arity)
+
+
+def _predicate_signature(term: AST) -> Signature | None:
+    """The signature of a displayed term: ``(p, n)`` / ``(-p, n)`` for a (possibly negated) function
+    or constant; ``None`` for anything else (a non-predicate term has no name).
 
     The negation chain is peeled with a loop for the same reason the node walk uses one: its length
     is the program's to choose, and clingo accepts one far longer than the interpreter would let
@@ -268,9 +346,9 @@ def _predicate_signature(term: AST) -> tuple[str, int] | None:
     return ("-" * negations + name, arity)
 
 
-def _unsigned_signature(term: AST) -> tuple[str, int] | None:
-    """The ``(name, arity)`` of a shown term with its negation chain already peeled: a function or
-    constant carries one, anything else carries none."""
+def _unsigned_signature(term: AST) -> Signature | None:
+    """The ``(name, arity)`` of a displayed term with its negation chain already peeled: a function
+    or constant carries one, anything else carries none."""
     if term.ast_type is ASTType.Function:
         return (term.name, len(term.arguments)) if term.name else None
     if term.ast_type is ASTType.SymbolicTerm:

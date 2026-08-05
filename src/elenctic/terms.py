@@ -1,22 +1,33 @@
-"""clingo term-parsing helpers shared by ``expectation.py`` and ``query.py``.
+"""clingo term and literal helpers shared by ``expectation.py``, ``query.py`` and ``program.py``.
 
 Litsets/tuplesets are delegated to clingo's term parser: the brace body
 is wrapped in parentheses and parsed as one term, so commas inside atoms
 (``included(s,a,2,1)``) and quotes are handled by the grounder's own parser rather
 than a hand-rolled splitter. A strong-negation literal ``-a`` parses to a
 ``Symbol`` with ``positive == False``.
+
+A :data:`Signature` is the predicate-level name of a literal — the granularity ``#show`` speaks in,
+and so the granularity at which a program's observable vocabulary can be stated at all.
 """
 
 from clingo import Function, Symbol, SymbolType, parse_term as _clingo_parse_term
 
 __all__ = [
+    "Signature",
     "contrary",
     "intersect_all",
     "parse_litset",
     "parse_term",
     "parse_tupleset",
+    "signature_of",
     "union_all",
 ]
+
+
+type Signature = tuple[str, int]
+"""A sign-aware predicate signature ``(name, arity)`` — ``("p", 1)`` for ``p(x)``, ``("-p", 1)`` for
+``-p(x)``. The sign belongs in the name because ``#show p/1.`` and ``#show -p/1.`` are two separate
+declarations and a program may make either observable without the other."""
 
 
 def parse_term(text: str) -> Symbol:
@@ -106,6 +117,14 @@ def contrary(literal: Symbol) -> Symbol:
     if literal.type is not SymbolType.Function:
         raise ValueError(f"not a literal (no contrary): {literal}")
     return Function(literal.name, list(literal.arguments), not literal.positive)
+
+
+def signature_of(literal: Symbol) -> Signature:
+    """The :data:`Signature` of a ground literal — what a ``#show`` declaration would have to name
+    for that literal to be observable."""
+    if literal.type is not SymbolType.Function:
+        raise ValueError(f"not a literal (no signature): {literal}")
+    return (literal.name if literal.positive else f"-{literal.name}", len(literal.arguments))
 
 
 def intersect_all(family: tuple[frozenset[Symbol], ...]) -> frozenset[Symbol]:

@@ -16,7 +16,7 @@ import pytest
 
 from elenctic.discovery import DiscoveryError, discover
 from elenctic.expectation import ContractError, Sat
-from elenctic.program import ProgramError
+from elenctic.program import ProgramError, Restricted, Unrestricted
 
 
 def write(path: Path, text: str) -> Path:
@@ -190,12 +190,20 @@ def test_malformed_contract_propagates_a_sourced_error(tmp_path: Path) -> None:
 
 def test_shown_vocabulary_is_sign_and_arity_aware(tmp_path: Path) -> None:
     case = write(tmp_path / "c.lp", "% @expect sat\n#show reachable/1.\n#show -reachable/1.\n")
-    assert discover(case)[0].shown == frozenset({("reachable", 1), ("-reachable", 1)})
+    assert discover(case)[0].shown == Restricted(
+        signatures=frozenset({("reachable", 1), ("-reachable", 1)}), displayed=frozenset()
+    )
 
 
 def test_bare_show_shows_nothing(tmp_path: Path) -> None:
     case = write(tmp_path / "c.lp", "% @expect sat\n#show.\n")
-    assert discover(case)[0].shown == frozenset()
+    assert discover(case)[0].shown == Restricted(signatures=frozenset(), displayed=frozenset())
+
+
+def test_a_case_with_no_show_restricts_nothing(tmp_path: Path) -> None:
+    # The case a discovered `shown` of `frozenset()` could not be told from the one above.
+    case = write(tmp_path / "c.lp", "% @expect sat\np(1).\n")
+    assert discover(case)[0].shown == Unrestricted()
 
 
 def test_query_unknown_with_a_wrong_arity_contrary_is_loud(tmp_path: Path) -> None:

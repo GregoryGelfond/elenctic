@@ -32,14 +32,14 @@ from elenctic.outcome import (
     is_duration,
     summary,
 )
-from elenctic.program import ProgramError
+from elenctic.program import ProgramError, Unrestricted
 from elenctic.registry import SOLVERS
 from elenctic.result import Conclusion, HarnessError, SeamError, Verdict
 from elenctic.run import RoutingError
 
 
 def _a_case() -> Case:
-    return Case(Path("a.lp"), "clingo", Unsat(expect_line=1), frozenset())
+    return Case(Path("a.lp"), "clingo", Unsat(expect_line=1), Unrestricted())
 
 
 # Every duration the published description refuses. Zero and the negatives are not lengths of time;
