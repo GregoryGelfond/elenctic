@@ -48,6 +48,7 @@ __all__ = [
     "parse",
     "parse_contract",
     "require_line",
+    "require_tag",
 ]
 
 
@@ -63,6 +64,18 @@ def require_line(line: int) -> None:
     tokenizer that computes one does."""
     if line < 1:
         raise ValueError(f"a contract line is 1-based, got {line}")
+
+
+def require_tag(label: str) -> None:
+    """Reject a label that is not a contract tag. The companion of :func:`require_line`, and here
+    for the same reason: a check and the report it produces both claim their label is the tag the
+    claim was written with, and the report's label is what the published document calls ``tag``.
+
+    The check enforced this and the report did not, which is the wrong way round — the report is the
+    shape a consumer constructs when driving a case from a runner of their own, so it is the one
+    place the invariant can actually be broken."""
+    if not label.startswith("@"):
+        raise ValueError(f"a check label must be a contract tag, got {label!r}")
 
 
 @dataclass(frozen=True, slots=True)

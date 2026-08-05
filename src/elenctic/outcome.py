@@ -42,6 +42,7 @@ from elenctic.harness import case_verdict
 from elenctic.program import ProgramError
 from elenctic.result import HarnessError, Verdict
 from elenctic.run import Run
+from elenctic.solvers import TIME_BUDGET
 
 __all__ = [
     "CaseOutcome",
@@ -340,10 +341,15 @@ class Invocation:
     library path rather than the diagnostic anybody typing a flag will meet.
     """
 
+    # Defaulted as the command line defaults them, so the two describe the same invocation and a
+    # caller who wants what `elenctic <target>` does writes `Invocation(target=…)` and nothing else.
+    # `target` is the one with no default, because there is no corpus to run by convention from a
+    # library: the command line's own default is a convention of *its* surface, and inheriting it
+    # here would run a directory the caller never named.
     target: Path
-    strict: bool
-    budget: float
-    deadline: float | None
+    strict: bool = False
+    budget: float = TIME_BUDGET
+    deadline: float | None = None
 
     def __post_init__(self) -> None:
         # The two are checked apart rather than in one loop, because they differ in exactly one way

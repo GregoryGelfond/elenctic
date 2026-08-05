@@ -293,6 +293,37 @@ def test_an_observer_that_raises_costs_the_run_nothing(tmp_path: Path) -> None:
     assert outcome.hygiene, "and the observations are still there to read"
 
 
+class _Unreachable:
+    """An observer whose announcements cannot be *reached*, rather than one whose announcements
+    raise when called.
+
+    Two ways a caller gets here and both are shapes the surface invites. An implementation checked
+    structurally rather than by inheritance has to supply every member — a protocol's default bodies
+    are inherited, never conjured — so one that misses a member fails at the lookup. And an
+    announcement exposed as a computed attribute fails where it is read. Either way the fault is in
+    the observer, which is the whole of what decides who pays for it.
+    """
+
+    def __getattr__(self, name: str) -> object:
+        raise ConnectionError(f"the caller cannot supply {name!r}")
+
+
+def test_an_observer_whose_announcements_cannot_be_reached_costs_the_run_nothing(
+    tmp_path: Path,
+) -> None:
+    # The other half of the guarantee above, and the half that was not held: reaching for the
+    # announcement is itself something that can fail, and while the *call* was inside the isolation
+    # the *lookup* was at the call site, outside it. So the guarantee held for an observer that
+    # raised and not for one that could not be asked — and the second is the likelier mistake, since
+    # it is what a structural implementation that misses a member does.
+    target = _corpus(tmp_path, good=_PASSES, bad=_FAILS, broken=_MALFORMED)
+
+    outcome = run_corpus(_asked(target), observer=_Unreachable())  # type: ignore[arg-type]
+
+    assert len(outcome.cases) == 2, "every case that reached a verdict still has one"
+    assert len(outcome.errors) == 1, "and every case that reached none still has its reason"
+
+
 def test_a_dry_run_survives_an_observer_that_raises_too(tmp_path: Path) -> None:
     # The same guarantee on the other mode, because the announcement sites are different code.
     target = _corpus(tmp_path, good=_PASSES, broken=_MALFORMED)

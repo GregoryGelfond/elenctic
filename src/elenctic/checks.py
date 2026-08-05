@@ -31,7 +31,7 @@ from typing import Final, assert_never
 
 from clingo import Symbol
 
-from elenctic.expectation import WitnessClaim, require_line
+from elenctic.expectation import WitnessClaim, require_line, require_tag
 from elenctic.query import (
     Answer,
     BindingQuery,
@@ -117,6 +117,7 @@ class CheckReport:
     conclusion: Conclusion
 
     def __post_init__(self) -> None:
+        require_tag(self.label)
         require_line(self.line)
 
 
@@ -221,8 +222,7 @@ class Check:
     subject: str = ""
 
     def __post_init__(self) -> None:
-        if not self.label.startswith("@"):
-            raise ValueError(f"a check label must be a contract tag, got {self.label!r}")
+        require_tag(self.label)
         require_line(self.line)
 
     @property

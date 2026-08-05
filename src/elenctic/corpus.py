@@ -172,8 +172,16 @@ _SILENT = _Silent()
 _log = logging.getLogger(__name__)
 
 
-def _tell[T](announce: Callable[[T], None], value: T) -> None:
+def _tell[O, T](told: O, announce: Callable[[O], Callable[[T], None]], value: T) -> None:
     """Make one announcement, and let nothing it does stop the run.
+
+    **The announcement is selected in here, not at the call site**, which is what makes the
+    guarantee below true of the *lookup* as well as of the call. Reaching for an observer's method
+    can fail on its own: an implementation checked structurally rather than by inheritance supplies
+    every member or none, and one that exposes an announcement as a computed attribute fails where
+    it is read. Written the other way round — the method resolved by the caller and handed in
+    already bound — those faults happen outside this frame and take the whole run with them, which
+    is the one thing the isolation exists to prevent.
 
     **Announcing is a courtesy; establishing is the work.** A caller hands in an observer to watch
     what happens, not to take part in it, so a fault in the watching cannot be allowed to change
@@ -196,7 +204,7 @@ def _tell[T](announce: Callable[[T], None], value: T) -> None:
     would report it to the wrong reader under the wrong locus.
     """
     try:
-        announce(value)
+        announce(told)(value)
     except Exception:
         # Deliberately every exception, including the ones a caller would normally want to
         # see. What is inside is a callback whose failure modes are unknown here by
@@ -303,7 +311,7 @@ def _discover(target: Path, told: Observer) -> Corpus | ErrorRecord:
         fault = _corpus_fault(
             error_kind(exc), str(exc), source=target if target.is_file() else None
         )
-        _tell(told.corpus_unreadable, fault)
+        _tell(told, lambda o: o.corpus_unreadable, fault)
         return fault
 
 
@@ -317,7 +325,7 @@ def _record_discovered(
         # Discovered but unusable — an unresolvable #include, an undecodable byte, a malformed
         # contract. Filed against the file it belongs to, in the same register as a case the runner
         # could not run, so one bad file never costs the corpus its other results.
-        _tell(told.case_unusable, record)
+        _tell(told, lambda o: o.case_unusable, record)
     return unrunnable, _hygiene_records(corpus.hygiene, strict=strict)
 
 
@@ -391,16 +399,16 @@ def _explain(
     plans: list[CasePlan] = []
     misroutes: list[ErrorRecord] = []
     for case in cases:
-        _tell(told.case_started, case)
+        _tell(told, lambda o: o.case_started, case)
         try:
             derived = runs_for(case.expectation, provides_theory(case.solver))
         except HarnessError as exc:
             misroutes.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-            _tell(told.case_unjudged, misroutes[-1])
+            _tell(told, lambda o: o.case_unjudged, misroutes[-1])
             continue
         case_plan = CasePlan(case=case, runs=tuple(derived))
         plans.append(case_plan)
-        _tell(told.case_planned, case_plan)
+        _tell(told, lambda o: o.case_planned, case_plan)
     return tuple(plans), tuple(misroutes)
 
 
@@ -453,9 +461,9 @@ def _run(
                         message=passed,
                     )
                 )
-                _tell(told.case_unjudged, errors[-1])
+                _tell(told, lambda o: o.case_unjudged, errors[-1])
             break
-        _tell(told.case_started, case)
+        _tell(told, lambda o: o.case_started, case)
         try:
             # The declared solver is checked here, per case, so an absent optional backend costs
             # only the cases that declare it rather than the whole run.
@@ -467,14 +475,14 @@ def _run(
             # check above runs per case, here, after the corpus walk is over. The message carries
             # its own provenance, as every diagnostic raised from `discovery` does.
             errors.append(_case_error(ErrorKind.ENVIRONMENT, case, str(exc)))
-            _tell(told.case_unjudged, errors[-1])
+            _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         except ProgramError as exc:
             # the program under test cannot be run (it will not ground, an #include is unresolvable)
             # — its author fixes the .lp. Not a verdict, and not elenctic's fault either, so it is
             # filed apart from both and the remaining cases still run.
             errors.append(_case_error(ErrorKind.PROGRAM, case, str(exc)))
-            _tell(told.case_unjudged, errors[-1])
+            _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         except MemoryError:
             # Filed against the case that ran out of it, and with the other cases that could not be
@@ -483,20 +491,20 @@ def _run(
             # costs is one case's result rather than the whole run's. A resource the caller is the
             # one able to bound, so not elenctic's own fault to report.
             errors.append(_case_error(ErrorKind.RESOURCE, case, _OUT_OF_MEMORY))
-            _tell(told.case_unjudged, errors[-1])
+            _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         except HarnessError as exc:
             # a solve-time invariant breach (a seam, a missing cost) is a harness bug too, never a
             # verdict — filed like a misroute, and the other cases still run.
             errors.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-            _tell(told.case_unjudged, errors[-1])
+            _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         outcome = CaseOutcome(case=case, reports=reports)
         outcomes.append(outcome)
         # Announced whatever the verdict is. Which verdicts are worth a reader's attention is a
         # rendering policy and the caller's to set; a run that announced only the ones it judged
         # interesting would be deciding that for every caller at once.
-        _tell(told.case_judged, outcome)
+        _tell(told, lambda o: o.case_judged, outcome)
     return RunOutcome(cases=tuple(outcomes), errors=tuple(errors), hygiene=hygiene)
 
 
@@ -518,7 +526,7 @@ def _validate_plans(
             runs_for(case.expectation, provides_theory(case.solver))
         except HarnessError as exc:
             misroutes.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
-            _tell(told.case_unjudged, misroutes[-1])
+            _tell(told, lambda o: o.case_unjudged, misroutes[-1])
         else:
             valid.append(case)
     return valid, misroutes
