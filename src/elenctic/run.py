@@ -456,6 +456,7 @@ def _main() -> None:
     import sys
     from pathlib import Path
 
+    from elenctic.display import legible
     from elenctic.expectation import parse
 
     arguments = sys.argv[1:]
@@ -468,7 +469,9 @@ def _main() -> None:
         # decision (which needs the solver — narrated by the CLI's --explain, which has the case).
         print(f"{run.mode.name}:")
         for check in run.checks:
-            name = f"{check.label} ({check.subject})" if check.subject else check.label
+            # The subject is built from the literals the contract author wrote — corpus text, and
+            # this prints to a terminal like every other surface, so it is sanitized like them.
+            name = f"{check.label} ({legible(check.subject)})" if check.subject else check.label
             reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
             print(f"    {name} — reads {{{reads}}}")
 

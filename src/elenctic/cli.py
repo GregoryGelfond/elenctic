@@ -541,8 +541,10 @@ class _TerminalPlan(_Terminal):
             projects = "yes" if plan.projects_to_shown else "no"
             print(f"    {plan.mode.name} (projects: {projects}):")
             for check in plan.checks:
-                # subject discerns the repeatable @query tag before any solve.
-                name = f"{check.label} ({check.subject})" if check.subject else check.label
+                # subject discerns the repeatable @query tag before any solve. It is built from the
+                # literals the contract author wrote, so it is corpus text and goes through the
+                # sanitizer; the label beside it is elenctic's own, from a fixed vocabulary.
+                name = f"{check.label} ({_text(check.subject)})" if check.subject else check.label
                 reads = ", ".join(sorted(field.value for field in check.reads)) or "—"
                 print(f"        {name} — reads {{{reads}}}")
 

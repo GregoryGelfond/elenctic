@@ -229,6 +229,16 @@ def test_no_string_the_corpus_chose_reaches_a_reader_as_a_terminal_escape(
     )
     put(f"bad{_ERASES_THE_LINE}.lp", f"% @expect ban{_ERASES_THE_LINE}ana\na.\n")
     put(f"orphan{_ERASES_THE_LINE}.lp", "% nothing includes this.\nhelper(1).\n")
+    # A REPEATABLE tag, so `check.subject` is non-empty and the frame that names a check by its
+    # subject is actually entered. Every other fixture here uses a tag that can occur once, whose
+    # subject is "", so that branch was never taken and the frame went unswept while this test
+    # read as covering it. The hostile text rides a quoted string term, which carries whatever the
+    # author put between the quotes all the way to the renderer.
+    put(
+        f"subj{_ERASES_THE_LINE}.lp",
+        f'% @expect sat\n% @cautious {{ p("x{_ERASES_THE_LINE}y") }}\n'
+        f'p("x{_ERASES_THE_LINE}y").\n#show p/1.\n',
+    )
 
     # Both target shapes, because they reach different frames: a directory sends an unusable file
     # to `case_unusable`, while naming that same file makes its fault the whole run's and sends it

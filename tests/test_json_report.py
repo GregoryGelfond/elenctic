@@ -279,7 +279,9 @@ def test_a_source_name_that_is_not_valid_utf8_still_serializes() -> None:
     # reading. Everything the corpus controls passes through the same sanitizer first.
     text = dumps(as_json(_run(errors=(_error(source=Path("case\udcff.lp")),)), _INVOCATION))
     text.encode("utf-8")  # must not raise
-    assert json.loads(text)["errors"][0]["source"] == "case\\xdcff.lp"
+    # Four hex digits, because U+DCFF needs four: `\x` names exactly two wherever a reader has met
+    # it, so a six-character `\xdcff` reads as U+00DC followed by a literal "ff".
+    assert json.loads(text)["errors"][0]["source"] == "case\\udcff.lp"
 
 
 def test_a_line_separator_in_corpus_text_does_not_reach_the_document() -> None:
@@ -290,7 +292,7 @@ def test_a_line_separator_in_corpus_text_does_not_reach_the_document() -> None:
     separators = "\u2028\u2029"
     text = dumps(as_json(_run(errors=(_error(message=f"broke{separators}here"),)), _INVOCATION))
     assert not set(separators) & set(text), "no raw line separator reaches the document"
-    assert json.loads(text)["errors"][0]["message"] == "broke\\x2028\\x2029here"
+    assert json.loads(text)["errors"][0]["message"] == "broke\\u2028\\u2029here"
 
 
 @pytest.mark.parametrize(
@@ -331,7 +333,7 @@ def test_every_field_the_corpus_can_reach_is_sanitized() -> None:
     text = dumps(as_json(outcome, invocation))
     text.encode("utf-8")  # a lone surrogate anywhere would make the document unwritable
     assert not set(acted_on) & set(text), "no field carries a character a reader would act on"
-    assert text.count("\\xdcff") == 8, "and every one of them still says something was there"
+    assert text.count("\\udcff") == 8, "and every one of them still says something was there"
 
 
 def test_text_the_sanitizer_leaves_alone_is_written_as_itself() -> None:

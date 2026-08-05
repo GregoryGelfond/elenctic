@@ -48,6 +48,21 @@ def test_run_module_prints_the_derived_plan(tmp_path: Path) -> None:
     assert result.stderr == ""
 
 
+def test_the_run_module_does_not_print_a_corpus_escape_to_a_terminal(tmp_path: Path) -> None:
+    # This entry point renders the same corpus-chosen subject the CLI's --explain does, through a
+    # frame of its own, and it writes to a terminal like any other. The subject rides a quoted
+    # string term, which carries whatever the author put between the quotes all the way here.
+    erases_the_line = "\x1b[2K"
+    contract = write(
+        tmp_path / "c.lp",
+        f'% @expect sat\n% @cautious {{ p("x{erases_the_line}y") }}\np("x{erases_the_line}y").\n',
+    )
+    result = run_module("run", str(contract))
+    assert result.returncode == ExitStatus.OK
+    assert erases_the_line not in result.stdout, "the escape reached the reader's terminal intact"
+    assert "\\x1b[2K" in result.stdout, "and nothing was silently dropped"
+
+
 def test_discovery_module_lists_cases(tmp_path: Path) -> None:
     write(tmp_path / "encodings/g/e.lp", "#show p/0.\n% @expect sat\n")
     result = run_module("discovery", str(tmp_path / "encodings"))
