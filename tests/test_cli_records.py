@@ -256,7 +256,9 @@ def test_the_dry_run_records_the_plan_it_could_not_build(
     # Surfacing a plan that cannot be built is what the dry run is for, and such a plan is
     # elenctic's own fault rather than the corpus's — so it must reach the status the same way a
     # misroute met while solving does.
-    def misroute(expectation: object, theory_in_force: bool = False) -> object:
+    def misroute(
+        expectation: object, theory_in_force: bool = False, *, has_projection: bool = False
+    ) -> object:
         raise RoutingError("a stale route")
 
     monkeypatch.setattr(corpus, "runs_for", misroute)
@@ -306,10 +308,16 @@ def test_every_case_a_dry_run_meets_reaches_exactly_one_register(
 ) -> None:
     # The same accounting a real run keeps. A case is planned, or the reason it was not is
     # recorded; a corpus of three cannot come back as a corpus of two.
-    def misroute_the_marked_one(expectation: object, theory_in_force: bool = False) -> object:
+    def misroute_the_marked_one(
+        expectation: object, theory_in_force: bool = False, *, has_projection: bool = False
+    ) -> object:
         if "BOOM" in getattr(expectation, "notes", ()):
             raise RoutingError("a stale route")
-        return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
+        return real_runs_for(
+            expectation,  # type: ignore[arg-type]
+            theory_in_force,
+            has_projection=has_projection,
+        )
 
     monkeypatch.setattr(corpus, "runs_for", misroute_the_marked_one)
     target = _corpus(

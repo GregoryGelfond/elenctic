@@ -422,7 +422,9 @@ def _plan_for(case: Case) -> CasePlan | ErrorRecord:
     A plan that cannot be built is elenctic's own fault rather than the corpus's, which is why the
     reason comes back as a record filed under the harness locus rather than as a raise."""
     try:
-        derived = runs_for(case.expectation, provides_theory(case.solver))
+        derived = runs_for(
+            case.expectation, provides_theory(case.solver), has_projection=case.has_projection
+        )
     except HarnessError as exc:
         return _case_error(ErrorKind.HARNESS, case, str(exc))
     return CasePlan(case=case, runs=tuple(derived))

@@ -94,13 +94,15 @@ class Case:
     because a program that shows nothing and a program that restricts nothing are opposite states
     that a set of signatures spells the same way. Provenance-rich: the parsed ``expectation`` keeps
     its ``notes``, and ``contract_source`` names the case file, so a renderer or docs tool reads it
-    without re-parsing.
+    without re-parsing. ``has_projection`` records a ``#project`` directive, which narrows the
+    solver's own enumeration and so decides whether a run may add its own projection flag.
     """
 
     path: Path
     solver: Solver
     expectation: Expectation
     shown: ShownVocabulary
+    has_projection: bool = False
 
     @property
     def contract_source(self) -> Path:
@@ -324,7 +326,8 @@ def _make_case(path: Path, text: str, root: Path) -> tuple[Case, bool, frozenset
     facts = inspect((path,))
     _within_root(facts.sources, root, path)
     check_program(contract.expectation, facts, solver, path)
-    return Case(path, solver, contract.expectation, facts.shown), declared, facts.sources
+    case = Case(path, solver, contract.expectation, facts.shown, facts.has_projection)
+    return case, declared, facts.sources
 
 
 def _installed(module: str) -> bool:

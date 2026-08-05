@@ -30,6 +30,7 @@ def _facts(
     *,
     theory: bool = False,
     shown: ShownVocabulary = SHOWS_NOTHING,
+    projection: bool = False,
     opt: bool = False,
     maxi: bool = False,
     theory_opt: bool = False,
@@ -37,6 +38,7 @@ def _facts(
     return ProgramFacts(
         has_theory_atom=theory,
         shown=shown,
+        has_projection=projection,
         has_optimization=opt,
         has_maximize=maxi,
         has_theory_optimization=theory_opt,

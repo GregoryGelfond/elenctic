@@ -76,6 +76,13 @@ class Observable:
     are distinct observables, which the value equality of this frozen dataclass
     realises directly.
 
+    Invariant (a projection, not a transcript): ``shown`` is a **subset of the answer set** — every
+    member is an atom the model contains. That is what makes ⋂, ⋃ and the census readings *of* the
+    answer sets rather than of whatever the solver chose to print, and it is not free: a
+    ``#show <term> : <body>.`` directive can print a term that is in no answer set at all. The
+    restriction is applied where the observable is built, since only the frame holding the model can
+    ask it what it contains.
+
     Invariant (single-valued): ``assign`` holds at most one ``(v, k)`` per CSP variable ``v`` — the
     hashable realisation of a ``Mapping[Symbol, int]``. A frozenset of pairs cannot say so by its
     type, so the constructor says it instead: one model assigns one value, and a pair of them would

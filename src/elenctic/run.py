@@ -305,7 +305,9 @@ def reads_full_census(check: Check) -> bool:
     return bool(check.reads & _PROJECTION_SENSITIVE)
 
 
-def should_project(theory_in_force: bool, mode: Mode, checks: tuple[Check, ...]) -> bool:
+def should_project(
+    theory_in_force: bool, mode: Mode, checks: tuple[Check, ...], has_projection: bool = False
+) -> bool:
     """Whether a run may project its census onto shown atoms — the contract-induced projection rule.
     Pure; carried on the :class:`Run`. A mode with nothing to collapse is read off its lowering row
     rather than listed here, so a projecting mode added to the table projects. With no theory in
@@ -320,12 +322,21 @@ def should_project(theory_in_force: bool, mode: Mode, checks: tuple[Check, ...])
     separately from this soundness predicate."""
     if _LOWERING[mode].collapse is None:
         return False
+    if has_projection:
+        # The program carries a `#project` directive, which redefines what projecting enumerates:
+        # clingo then returns one model per class over the projected atoms rather than per class
+        # over the shown ones, and a census missing members is a reading over part of AS(P). The
+        # directive is inert unless a projection is asked for, so declining to ask restores the
+        # behaviour of running the program without one, at the cost of the deduplication only.
+        return False
     if not theory_in_force:
         return True
     return not any(reads_full_census(check) for check in checks)
 
 
-def runs_for(exp: Expectation, theory_in_force: bool = False) -> tuple[Run, ...]:
+def runs_for(
+    exp: Expectation, theory_in_force: bool = False, *, has_projection: bool = False
+) -> tuple[Run, ...]:
     """Derive the coalesced runs an expectation requires (pure). ``theory_in_force`` (whether the
     case's solver is a theory solver) parameterizes the per-run projection decision; it defaults
     ``False`` (pure clingo) so the solver-less dry-run and existing callers are unaffected."""
@@ -339,12 +350,12 @@ def runs_for(exp: Expectation, theory_in_force: bool = False) -> tuple[Run, ...]
                 ),
             )
         case Sat():
-            return _sat_runs(exp, theory_in_force)
+            return _sat_runs(exp, theory_in_force, has_projection)
         case _:
             assert_never(exp)
 
 
-def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
+def _sat_runs(exp: Sat, theory_in_force: bool, has_projection: bool = False) -> tuple[Run, ...]:
     """Coalesce a satisfiable contract's tags onto the run-configuration taxonomy.
 
     Output order is deterministic: ``bucket`` is insertion-ordered and the add-sequence is fixed.
@@ -427,7 +438,7 @@ def _sat_runs(exp: Sat, theory_in_force: bool) -> tuple[Run, ...]:
         Run(
             mode,
             tuple(carried),
-            project=should_project(theory_in_force, mode, tuple(carried)),
+            project=should_project(theory_in_force, mode, tuple(carried), has_projection),
             theory_in_force=theory_in_force,
         )
         for mode, carried in bucket.items()

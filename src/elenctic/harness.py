@@ -79,7 +79,10 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
     A caller that has already derived the plan — because it validated every plan before solving
     anything, which is what running a corpus does — passes it to :func:`run_plan` instead and does
     not derive it a second time."""
-    return run_plan(case, runs_for(case.expectation, provides_theory(case.solver)), budget=budget)
+    runs = runs_for(
+        case.expectation, provides_theory(case.solver), has_projection=case.has_projection
+    )
+    return run_plan(case, runs, budget=budget)
 
 
 def run_plan(

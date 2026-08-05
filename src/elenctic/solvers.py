@@ -23,10 +23,12 @@ test ties it to ``shape_for``/``populates`` so the construction here and the typ
 do not drift.
 A single ``_Collector`` dispatches on ``model.type``:
 ``StableModel`` rows become observables (with cost); a final ``CautiousConsequences`` /
-``BraveConsequences`` model carries ⋂/⋃. clingo enumeration always projects onto shown atoms
-(information-preserving there, ``assign ≡ ∅``); clingcon projects only when no rider reads the full
-census — a contract-induced decision (``run.should_project``), since projecting clingcon collapses
-the CSP multiplicity that ``@count``/``@assign`` observe.
+``BraveConsequences`` model carries ⋂/⋃. Whether a run projects is decided once, by
+``run.should_project``, and both facades do as they are told: on clingo projection onto shown atoms
+is information-preserving (``assign ≡ ∅``) and so is taken wherever it is offered, on clingcon it
+collapses the CSP multiplicity that ``@count``/``@assign`` observe and so is taken only when no
+rider reads the full census, and on either it is declined when the program's own ``#project``
+directive would make it project onto something narrower than the shown atoms.
 
 Known v1 limitation: a ``#maximize`` objective is reported by clingo in negated
 minimize-internal form, so :func:`optimum_of`'s cost is natural for ``#minimize`` (the
@@ -85,6 +87,29 @@ TIME_BUDGET: float = 30.0
 MODEL_CAP: int = 1_000_000
 
 
+def _projection_of(model: Model) -> frozenset[Symbol]:
+    """The answer set restricted to what the program shows — which is *not* the same thing as what
+    the solver printed, and the difference is a wrong answer rather than a cosmetic one.
+
+    A ``#show <term> : <body>.`` directive emits a chosen term wherever its body holds, and the term
+    need not be an atom of the program at all: ``#show hello : p.`` puts ``hello`` in the output of
+    every model although ``hello`` occurs in no answer set. Taking the output as the projection then
+    puts that symbol in ⋂, in ⋃ and in every member of the census — so a contract claiming it is
+    entailed is certified, and the reading is not a projection of anything.
+
+    Every reading elenctic performs is defined over the answer sets, so what it needs is the answer
+    set restricted to the shown vocabulary. Asking the model which of the symbols it printed it
+    actually contains is that restriction, stated once, here, where the observable is built.
+
+    Unconditional, and deliberately: the cheaper form skips the test for a program carrying no
+    display directive, which is sound only while it is true that nothing else can print a non-atom.
+    That is a claim about particular solvers — measured for clingo and for clingcon, and unmeasured
+    for the next one — and this seam is meant to grow a family of backends. An invariant that holds
+    for whoever reports a model is worth more than one that holds for the two who were checked.
+    """
+    return frozenset(symbol for symbol in model.symbols(shown=True) if model.contains(symbol))
+
+
 class _Collector:
     """Accumulates a solve's observations, dispatching on ``model.type``.
 
@@ -110,7 +135,7 @@ class _Collector:
         verdict vocabulary of its own. Note that clingo does *not* set its interrupted bit for a
         callback that asks it to stop: the bit is for an interruption from outside the search."""
         # The lists stay index-aligned because the StableModel branch is the only writer of both.
-        shown = frozenset(model.symbols(shown=True))
+        shown = _projection_of(model)
         match model.type:
             case ModelType.CautiousConsequences:
                 self._cautious = shown
@@ -529,12 +554,6 @@ def _optimal_enum_two_phase(
     return SolveOutcome(shape, conclusion)
 
 
-# clingo's enumeration modes always project: ``--project`` is information-preserving here (the
-# theory assignment is empty, so deduplicating by shown atoms equals deduplicating by observable),
-# a pure performance win that never changes the result.
-_CLINGO_ENUM_MODES: Final = frozenset({Mode.ENUM_ALL, Mode.OPTIMAL_ENUM})
-
-
 def _capture(messages: list[str]) -> Callable[[object, str], None]:
     """A clingo logger that records diagnostics into ``messages`` rather than letting them reach
     stderr — elenctic owns its own output, and the routine ones ("atom does not occur in any rule
@@ -588,14 +607,17 @@ def run_clingo(
     budget: float = TIME_BUDGET,
     project: bool = False,
 ) -> SolveOutcome:
-    """Run pure clingo for ``mode`` over ``program`` + ``files``; collect a ``SolveOutcome``. The
-    enumeration modes always project (information-preserving on clingo: ``assign ≡ ∅``), a pure
-    performance win; a projecting clingo run still yields the full shape (``projects_to_shown`` is
-    always ``False`` for a non-theory solver)."""
+    """Run pure clingo for ``mode`` over ``program`` + ``files``; collect a ``SolveOutcome``.
+
+    Whether to project is the caller's, exactly as it is for the theory backend: this frame states
+    no rule of its own. It used to, and the rule it stated — that clingo's enumeration modes always
+    project, since deduplicating by shown atoms equals deduplicating by observable when the
+    assignment is empty — is sound only while the projection *is* onto the shown atoms. A
+    ``#project`` directive redefines it to something narrower, and a second statement of a decision
+    made elsewhere is a decision the caller cannot revise. A projecting clingo run still yields the
+    full shape (``projects_to_shown`` is always ``False`` for a non-theory solver)."""
     messages: list[str] = []
-    control = Control(
-        _solver_args(mode, project or mode in _CLINGO_ENUM_MODES), logger=_capture(messages)
-    )
+    control = Control(_solver_args(mode, project), logger=_capture(messages))
     faults = partial(_program_faults, files, messages)
     with faults():
         _add_program(control, program, files)

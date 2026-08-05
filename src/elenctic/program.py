@@ -97,6 +97,10 @@ class ProgramFacts:
     ``#maximize``, or ``:~`` is present. ``has_maximize`` — an objective uses ``#maximize`` (a
     negated-weight ``Minimize`` node), which v1 cannot present a natural ``@cost`` over (the
     guarded miscompile).
+    ``has_projection`` — a ``#project`` directive is present. Presence, not identity, for the same
+    reason the theory-atom gate reads presence: what matters is that the program narrows the
+    solver's own projection, and elenctic cannot tell from a parse whether the narrowing reaches
+    below what a reading consults.
     ``has_theory_optimization`` — a *theory-native* objective (``&minimize``/``&maximize``) is
     present. It is tracked apart from ``has_optimization`` because it is a different object: the
     theory's own propagator drives it, so clingo's optimization switches do not reach it, and a
@@ -111,6 +115,7 @@ class ProgramFacts:
 
     has_theory_atom: bool
     shown: ShownVocabulary
+    has_projection: bool
     has_optimization: bool
     has_maximize: bool
     has_theory_optimization: bool
@@ -139,6 +144,10 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
         nodes = [node for statement in statements for node in _descendants(statement)]
         has_theory_atom = any(node.ast_type is ASTType.TheoryAtom for node in nodes)
         shown = _vocabulary(nodes)
+        # Both spellings: `#project p/1.` is a signature and `#project q(a).` an atom.
+        has_projection = any(
+            node.ast_type in {ASTType.ProjectSignature, ASTType.ProjectAtom} for node in nodes
+        )
         # `#minimize`, `#maximize`, AND `:~` all lower to `Minimize` nodes — one signal.
         has_optimization = any(node.ast_type is ASTType.Minimize for node in nodes)
         has_maximize = any(_is_maximize(node) for node in nodes)
@@ -150,6 +159,7 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
     return ProgramFacts(
         has_theory_atom=has_theory_atom,
         shown=shown,
+        has_projection=has_projection,
         has_optimization=has_optimization,
         has_maximize=has_maximize,
         has_theory_optimization=has_theory_optimization,

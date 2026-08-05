@@ -92,7 +92,9 @@ def test_run_case_propagates_a_misrouted_plan_as_a_harness_error(
     # (it does NOT swallow it as a CheckReport). runs_for is correct-by-construction, so inject it.
     case = self_contained(tmp_path, "a. #show a/0.\n% @expect sat\n")
 
-    def misrouted(_expectation: object, _theory_in_force: bool = False) -> tuple[object, ...]:
+    def misrouted(
+        _expectation: object, _theory_in_force: bool = False, *, has_projection: bool = False
+    ) -> tuple[object, ...]:
         raise RoutingError("a stale route")
 
     monkeypatch.setattr("elenctic.harness.runs_for", misrouted)

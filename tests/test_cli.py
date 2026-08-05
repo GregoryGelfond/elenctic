@@ -101,10 +101,16 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
     write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
     write(tmp_path / "encodings/bad/e.lp", "a. #show a/0.\n% @expect sat\n% @note BOOM\n")
 
-    def selectively_misroute(expectation: object, theory_in_force: bool = False) -> object:
+    def selectively_misroute(
+        expectation: object, theory_in_force: bool = False, *, has_projection: bool = False
+    ) -> object:
         if "BOOM" in getattr(expectation, "notes", ()):
             raise RoutingError("a stale route")
-        return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
+        return real_runs_for(
+            expectation,  # type: ignore[arg-type]
+            theory_in_force,
+            has_projection=has_projection,
+        )
 
     monkeypatch.setattr(corpus, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings")])
@@ -188,10 +194,16 @@ def test_the_dry_run_reports_a_misroute_it_meets_and_names_the_case(
     write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
     write(tmp_path / "encodings/bad/e.lp", "a. #show a/0.\n% @expect sat\n% @note BOOM\n")
 
-    def selectively_misroute(expectation: object, theory_in_force: bool = False) -> object:
+    def selectively_misroute(
+        expectation: object, theory_in_force: bool = False, *, has_projection: bool = False
+    ) -> object:
         if "BOOM" in getattr(expectation, "notes", ()):
             raise RoutingError("a stale route")
-        return real_runs_for(expectation, theory_in_force)  # type: ignore[arg-type]
+        return real_runs_for(
+            expectation,  # type: ignore[arg-type]
+            theory_in_force,
+            has_projection=has_projection,
+        )
 
     monkeypatch.setattr(corpus, "runs_for", selectively_misroute)
     status = main([str(tmp_path / "encodings"), "--explain"])
