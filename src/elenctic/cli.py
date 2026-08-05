@@ -33,7 +33,7 @@ import sys
 import textwrap
 import traceback
 from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import assert_never
 
@@ -96,6 +96,26 @@ _SCHEMA_UNREADABLE = (
     "is something a packaging or vendoring step did rather than anything you configured. "
     "Reinstalling elenctic from a released wheel or from its source tree restores it. Nothing else "
     "is affected: running a corpus never reads this file."
+)
+
+# What a reader is told when nothing was left to write to. It is not a fault — not in the corpus,
+# and not in elenctic — so it files no record and changes no status: whatever the process was going
+# to leave with, it still leaves with. What it owes the reader is the one fact they cannot see from
+# where they are standing, which is that what they hold is not all of it.
+#
+# Three of its words are chosen against a path each. It opens on a noun, as every other heading this
+# program writes does, so a reader meeting it at the end of a log has a subject rather than an
+# adjective; "output" rather than "report", because the description of the report's shape is written
+# the same way and is answered without a corpus being looked at. It does not say the writing stopped
+# *part-way*, because a reader can go before the first byte lands and then nothing reached them at
+# all. And the reassurance names its subject, because on a run the backstop has already reported an
+# unqualified "nothing else is affected" reads as a claim about the run, directly under a line
+# saying the run went wrong.
+_REPORT_CUT_SHORT = (
+    "output cut short: nothing is reading standard output, so what reached the other end is "
+    "incomplete. Losing the reader affected nothing else — this leaves with the status it would "
+    "have left with anyway. Whoever needs the whole of it should read to the end, or write it to a "
+    "file and read the file."
 )
 
 # Everything below here is said to whoever typed a command line that cannot be run, and unlike the
@@ -250,6 +270,9 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
     The invocation is settled in this frame rather than one below it: below here it is a value of
     a type that cannot express a mode which produces no run, which is what lets running be total
     rather than something that has to refuse."""
+    # First, and before the parser can write a word: everything past this line assumes there are
+    # two streams to write to, and a process can be started with only one.
+    _establish_standard_error()
     args = _build_parser().parse_args(argv)
     if (refusal := _refusal(args)) is not None:
         # A command line that cannot be run has produced no run, so there is nothing to report
@@ -281,6 +304,11 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
                 else run_corpus(invocation, observer=_TerminalRun())
             )
             _render_tail(produced, invocation)
+            # This format writes prose to standard output for the length of the run, so this is
+            # where it is handed over; the other writes one document, and hands it over itself.
+            # After the tail rather than around it: the tail writes to both streams, and a frame
+            # that answered for either of them would answer the wrong one.
+            _hand_over_standard_output()
             return exit_status(produced)
         # Discovery is inside the region with the rest of the run, because discovery grounds, and
         # the grounder writes where rebinding a Python stream cannot follow it. So is the tail: the
@@ -389,7 +417,7 @@ def _print_schema() -> ExitStatus:
 
 def _publish(document: str) -> None:
     """Put a published artefact on standard output, encoded as UTF-8 whatever this environment's
-    locale would have chosen.
+    locale would have chosen — or say why the reader did not get it.
 
     Both things written this way are JSON — the report, and the description of the report's shape —
     and JSON is UTF-8 by its own specification. Written through the text layer they would be encoded
@@ -398,16 +426,102 @@ def _publish(document: str) -> None:
     reaches the consumer is a failure to produce a report rather than the report. The encoding of a
     published artefact belongs to the artefact.
 
-    The text layer is emptied first so that anything already written to it stays ahead of these
-    bytes. On both of today's call paths that buffer is provably empty — the report is written
-    after the redirect region has flushed, and the description is written before anything else
-    has printed — so this is defence in depth against a third caller rather than something
-    either of these two needs. These bytes are not flushed here: what a stream that cannot take them
-    should do is one question and this is another, and leaving it to the interpreter keeps that
-    answer in one place.
+    Handing the bytes over is part of publishing rather than something left for the interpreter to
+    finish, because a reader who has stopped reading can be answered while this frame is still
+    standing and cannot be answered after it has returned. Left pending, that arrives too late to
+    say anything about, and what reaches the reader instead is the name of an exception and a status
+    this program's ladder does not publish. How much a stream holds before it writes through decides
+    which of the two a given run meets, and that number belongs to the language rather than to this
+    project.
+
+    Both the encoding above and the handing over below are the artefact's own business, which is why
+    they are one step and not two: an artefact half encoded and never delivered is the shape this
+    exists to make impossible.
     """
-    sys.stdout.flush()
-    sys.stdout.buffer.write(document.encode("utf-8"))
+    _hand_over_standard_output(document.encode("utf-8"))
+
+
+def _hand_over_standard_output(published: bytes = b"") -> None:
+    """Write anything still owed to standard output, empty it, and answer once if no reader is
+    left.
+
+    A reader that stops — a pager quit, a ``head`` that had enough, a consumer that found what it
+    came for — leaves every further write with nowhere to land. It is neither a fault in the corpus
+    nor a fault in elenctic, and the only thing owed is to say so: whatever the process was going to
+    leave with, it still leaves with. A status saying otherwise would fail a job for the plumbing
+    around it, and *which* wrong status it said would depend on where the write happened to be.
+
+    Emptying the stream here is what makes that one answer possible. Whatever is still held is
+    written where a failure can still be reported, rather than after the last frame that could say
+    anything has returned — and the descriptor is then pointed at the null device, so that what is
+    still pending is discarded rather than met a second time by an interpreter that answers
+    differently.
+
+    **Every write this can fail on is one this frame makes**, which is what lets a failure be read
+    as a fact about standard output. Written as a region wrapped around a caller's work instead, it
+    would answer for whatever that work wrote — and the tail of a run writes to *both* streams, so
+    a broken standard error came back as a sentence about standard output and took a healthy
+    standard output down with it, discarding the report a reader was going to keep.
+
+    That is a property of this frame and not of every write the program makes. A write to standard
+    output made anywhere else is answered by whatever catches it there, and the tail's own tally is
+    one: on a stream that writes through rather than holding what it is given, that write fails
+    before this is ever reached. Bringing it in means the tail handing its tally back to be written
+    here instead of writing it, which moves the tally after the diagnostics that currently follow
+    it — a change to what a reader of the two streams together sees, and so not one to make in
+    passing.
+
+    That event and no other. Standard output can refuse the bytes for reasons that are nothing to do
+    with a reader — no space left, a device that failed — and those have a different remedy, a
+    different owner, and no answer this frame is in a position to give.
+
+    Afterwards, on the path that answered, standard output is the null device for the rest of the
+    process: what was pending has nowhere left to fail, and anything written later goes nowhere and
+    is not reported again.
+    """
+    # A process can be started with standard output closed, and then there is nothing to hand over:
+    # this language leaves ``sys.stdout`` unbuilt, ``print`` writes nowhere without complaining, and
+    # no bytes are held anywhere. It is not the missing standard error ``main`` establishes on the
+    # way in — that absence costs the document its stream, and this one means there is no document
+    # to write — so the two are not answered the same way.
+    if sys.stdout is None:
+        return
+    try:
+        # The text layer first, so that anything already written to it stays ahead of these bytes;
+        # then the bytes; then the whole of it, so the hand-over either happens or is reported.
+        #
+        # Nothing to publish is the ordinary case — a run that wrote its report as it went is here
+        # only to have it handed over — and asking for the byte layer at all is what a caller who
+        # replaced standard output with a text stream of their own cannot answer. Writing no bytes
+        # must not be the thing that narrows what this accepts.
+        sys.stdout.flush()
+        if published:
+            sys.stdout.buffer.write(published)
+        sys.stdout.flush()
+    except BrokenPipeError:
+        # Saying it can meet the very fault it is about. Standard error redirected onto standard
+        # output — `2>&1 | head`, an ordinary way to read a long report — puts this sentence on the
+        # stream that stopped being read, and there is then nowhere left to answer from. Nothing can
+        # be done about that, and it must not become a second failure stacked on the first: the
+        # frame whose whole job is to answer a reader who has gone cannot itself die of one.
+        with suppress(OSError):
+            print(_REPORT_CUT_SHORT, file=sys.stderr)
+        # The descriptor standard output actually is, asked of the stream rather than assumed to be
+        # the usual number. Reaching this arm means a write to that stream raised, so it has one; a
+        # caller who moved standard output elsewhere would otherwise have a descriptor they were
+        # still using pointed at the null device instead.
+        null = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(null, sys.stdout.fileno())
+        finally:
+            os.close(null)
+    except OSError:
+        # Left exactly where it was already answered. The bytes stay pending, so the interpreter
+        # meets the same failure emptying this stream on its way out and reports it as it always
+        # has. Taken any further, a full disk becomes a fault filed against elenctic: answered here
+        # it would be given a sentence about a reader, and let past it reaches the backstop above,
+        # which tells the reader they have found a bug in this program.
+        pass
 
 
 def _unowned_fault(kind: ErrorKind, message: str) -> ErrorRecord:
@@ -435,6 +549,51 @@ def _fault_outcome(record: ErrorRecord) -> RunOutcome:
     produced, and the status is then the ordinary reading of an outcome rather than a number chosen
     beside one."""
     return RunOutcome(cases=(), errors=(record,), hygiene=())
+
+
+def _establish_standard_error() -> None:
+    """Give this process a standard error where it has none, before anything is written.
+
+    A process can be started with the descriptor closed rather than redirected — ``2>&-`` in a
+    shell — and one absence then costs the run two different things, which is why it is established
+    here rather than guarded twice.
+
+    The first is that this language answers a missing standard error by leaving ``sys.stderr`` as
+    ``None``, and ``print`` writes to standard output when handed that. Under a machine-readable
+    format standard output is the document's alone, so every diagnostic written outside the
+    redirect region lands in the middle of the report and no consumer can parse it. Nothing about
+    the run went wrong, so a passing corpus reports success and hands back something unreadable —
+    the worst shape a defect can take, because the status says there is nothing to look into.
+
+    The second is that a closed descriptor is the lowest free number, so it is the first thing
+    handed out: the copy of standard output the redirect region takes on its way in *becomes*
+    descriptor 2, and the region then points standard output at standard output and moves nothing
+    anywhere.
+
+    The null device is what goes there, because closing the descriptor and pointing it at the null
+    device are two spellings of one wish and only one of them worked. Nothing is written that would
+    not have been written anyway, and what is written goes nowhere — which is what closing the
+    descriptor asked for.
+    """
+    try:
+        os.fstat(2)
+    except OSError:
+        # The same rule that causes the second problem answers this one: the lowest free descriptor
+        # is what gets handed out, and descriptor 2 is free — so opening the null device *is*
+        # opening descriptor 2, and there is nothing further to do. Only where a lower descriptor is
+        # missing as well does the copy have to be moved into place and the original released; doing
+        # it unconditionally closes descriptor 2 again, one statement after opening it.
+        null = os.open(os.devnull, os.O_WRONLY)
+        if null != 2:
+            try:
+                os.dup2(null, 2)
+            finally:
+                os.close(null)
+        # Rebuilt only where this language left it unbuilt, so a caller who supplied a stream of
+        # their own keeps it. Line buffered and lenient about a character it cannot encode, which is
+        # what an interpreter gives a standard error it builds for itself.
+        if sys.stderr is None:
+            sys.stderr = os.fdopen(2, "w", buffering=1, errors="backslashreplace", closefd=False)
 
 
 @contextmanager
@@ -465,6 +624,9 @@ def _stdout_to_stderr() -> Iterator[None]:
     The caller's side of the bargain: nothing inside the region may write to standard output, since
     for the length of it there is no way to reach it. Anything that asks the descriptor about itself
     — whether it is a terminal, how wide it is — is answered for standard error while it is open.
+    And there has to *be* a standard error: a process whose descriptor 2 is closed has none to
+    divert to, and the free number that leaves behind is the one the copy below would be given.
+    ``main`` establishes one before any of this runs.
     """
     sys.stdout.flush()
     saved = os.dup(1)
@@ -479,8 +641,12 @@ def _stdout_to_stderr() -> Iterator[None]:
         try:
             sys.stdout.flush()
         finally:
-            os.dup2(saved, 1)
-            os.close(saved)
+            # The release is owed even where putting it back failed. A copy that could not be
+            # restored is still a descriptor this process holds, and the next region takes another.
+            try:
+                os.dup2(saved, 1)
+            finally:
+                os.close(saved)
 
 
 class _Terminal(Observer):

@@ -30,6 +30,12 @@ __all__ = [
     "document_of",
     "opt_mode_in_force",
     "run_cli",
+    "run_cli_with_neither_stream_reachable",
+    "run_cli_with_nobody_reading",
+    "run_cli_with_nobody_reading_diagnostics",
+    "run_cli_without_standard_error",
+    "run_cli_without_standard_output",
+    "without_standard_error",
 ]
 
 # How long a child may take before it is a hang rather than a slow run. It has to exceed the largest
@@ -93,8 +99,17 @@ def child_environment(
     picks its own, which is what makes two runs two seeds; *inheriting* it would mean two runs under
     whatever single seed the parent happened to have, and a comparison of two such runs is a run
     compared against itself — anything ordered by a hash would survive it.
+
+    ``PYTHONUNBUFFERED`` is cleared for a different reason and can be set back through ``env``. It
+    decides whether the child's standard output hands each write straight to the descriptor or holds
+    it, which decides *when* a write to a stream nobody is reading fails — and that is the axis
+    several measurements here are about. Inherited, a developer's shell or a CI image would be
+    setting it, so a run could take a different path on one machine than on another and say nothing
+    about it.
     """
     environment = {**os.environ, **(env or {})}
+    environment.pop("PYTHONUNBUFFERED", None)
+    environment.update(env or {})
     if hash_seed is None:
         environment.pop("PYTHONHASHSEED", None)
     else:
@@ -128,16 +143,8 @@ def run_cli(
     need nothing from the console entry, do not drag its whole import graph — and the package's
     lazy attribute resolution — into every test session that wants them.
     """
-    import elenctic.cli
-
     finished = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            _CHILD.format(prelude=prelude, loaded=elenctic.cli.__file__),
-            str(target),
-            *flags,
-        ],
+        _child_command(target, flags, prelude),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -146,6 +153,173 @@ def run_cli(
         env=child_environment(env, hash_seed),
     )
     return Streams(finished.stdout, finished.stderr, finished.returncode)
+
+
+def _child_command(target: Path, flags: tuple[str, ...], prelude: str) -> list[str]:
+    """The command that runs elenctic's console entry as a child process.
+
+    Shared by every way a run is spawned below, because the part that must not vary between them is
+    the child's proof that it loaded the tree under test: an instrument measuring a different
+    installation reports on code nobody changed, and says nothing while doing it.
+    """
+    import elenctic.cli
+
+    return [
+        sys.executable,
+        "-c",
+        _CHILD.format(prelude=prelude, loaded=elenctic.cli.__file__),
+        str(target),
+        *flags,
+    ]
+
+
+def _with_stream_closed(descriptor: int, command: list[str]) -> list[str]:
+    """``command``, arranged so that ``descriptor`` is **closed** — gone, not pointed elsewhere —
+    before the program starts.
+
+    A shell closes it and then hands the process over, so the condition is established ahead of the
+    program and this process is never left in it. ``subprocess`` has no way to ask for this: every
+    value it takes for a stream leaves the descriptor open on something.
+
+    That distinction is the whole measurement. A stream that is merely *redirected* — to a pipe, to
+    a file, to the null device — is still there, and everything behaves. One that is gone is a
+    stream this language leaves unbuilt, so writes to it go wherever the fallback goes, and the
+    number it no longer holds is free to be handed out to something else. Anything that starts a
+    process on your behalf keeps both streams open, so a reading taken through one is a reading of
+    a run that never met the condition.
+    """
+    return ["sh", "-c", f'exec "$@" {descriptor}>&-', "sh", *command]
+
+
+def without_standard_error(command: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run ``command`` with standard error closed, capturing what it puts on standard output."""
+    return subprocess.run(
+        _with_stream_closed(2, command),
+        stdout=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        timeout=_CHILD_TIMEOUT_SECONDS,
+        check=False,
+        env=child_environment(),
+    )
+
+
+def run_cli_without_standard_error(target: Path, *flags: str, prelude: str = "") -> tuple[str, int]:
+    """One invocation of elenctic that has no standard error: what reached standard output, and the
+    status it left with.
+
+    Two values rather than three, because there is no third stream for one to be about.
+    """
+    finished = without_standard_error(_child_command(target, flags, prelude))
+    return finished.stdout, finished.returncode
+
+
+def run_cli_without_standard_output(
+    target: Path, *flags: str, prelude: str = ""
+) -> tuple[str, int]:
+    """One invocation of elenctic that has no standard output: what it said on standard error, and
+    the status it left with.
+
+    The other half of the pair above, and not the same condition read from the other end: a run with
+    no standard error has nowhere to put its diagnostics, and a run with no standard output has
+    nothing to publish at all.
+    """
+    finished = subprocess.run(
+        _with_stream_closed(1, _child_command(target, flags, prelude)),
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        timeout=_CHILD_TIMEOUT_SECONDS,
+        check=False,
+        env=child_environment(),
+    )
+    return finished.stderr, finished.returncode
+
+
+def run_cli_with_nobody_reading(target: Path, *flags: str, prelude: str = "") -> tuple[str, int]:
+    """One invocation of elenctic whose standard output is a pipe with **no reader** on it: what it
+    said on standard error, and the status it left with.
+
+    The read end is closed **before the child exists**, so the pipe has no reader for a single
+    instant of its life and the first write to reach the descriptor fails. Piping into a command
+    that exits — ``| head -1`` — raises the same exception, but it is not the same situation: a real
+    reader drains up to the pipe's capacity before it goes, so a run whose whole output fits never
+    breaks the pipe at all. This is the stronger relative, chosen because it arrives at a moment a
+    test can name rather than whenever the buffers decide.
+
+    Two values again, and this time it is standard output that is missing: whatever the run put
+    there went nowhere, which is the condition under test.
+    """
+    read_end, write_end = os.pipe()
+    # Before the child is started, not after it returns: a read end still open across the fork is a
+    # reader, however briefly, and "no reader" would then be an argument about timing rather than
+    # something arranged.
+    os.close(read_end)
+    try:
+        child = subprocess.Popen(
+            _child_command(target, flags, prelude),
+            stdout=write_end,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=child_environment(),
+        )
+    finally:
+        os.close(write_end)
+    with child:
+        said = child.communicate(timeout=_CHILD_TIMEOUT_SECONDS)[1]
+    return said, child.returncode
+
+
+def run_cli_with_nobody_reading_diagnostics(
+    target: Path, *flags: str, report: Path, prelude: str = ""
+) -> tuple[str, int]:
+    """One invocation whose standard **error** is a pipe with no reader, while standard output is a
+    real file being kept: what that file ended up holding, and the status the run left with.
+
+    The mirror of the pair above, and the one that catches a frame answering about the wrong stream.
+    Here the reader who went away is standard error's, and standard output is healthy — so anything
+    that treats a broken pipe as a fact about standard output empties a file its reader was keeping.
+    """
+    read_end, write_end = os.pipe()
+    os.close(read_end)
+    with report.open("wb") as kept:
+        try:
+            child = subprocess.Popen(
+                _child_command(target, flags, prelude),
+                stdout=kept,
+                stderr=write_end,
+                env=child_environment(),
+            )
+        finally:
+            os.close(write_end)
+        with child:
+            child.wait(timeout=_CHILD_TIMEOUT_SECONDS)
+    return report.read_text(encoding="utf-8"), child.returncode
+
+
+def run_cli_with_neither_stream_reachable(target: Path, *flags: str) -> int:
+    """One invocation with standard error **closed** and no reader on standard output: the status,
+    and nothing else, because nothing else survives.
+
+    The two conditions the helpers above arrange separately, met together — which is the shape a
+    consumer reaches by silencing the diagnostics and then piping the report into something that
+    stops reading. Nothing elenctic says can be seen, so the status is the entire signal and the
+    only thing there is to assert.
+    """
+    read_end, write_end = os.pipe()
+    os.close(read_end)
+    try:
+        child = subprocess.Popen(
+            _with_stream_closed(2, _child_command(target, flags, "")),
+            stdout=write_end,
+            env=child_environment(),
+        )
+    finally:
+        os.close(write_end)
+    with child:
+        child.wait(timeout=_CHILD_TIMEOUT_SECONDS)
+    return child.returncode
 
 
 def cli_help_text() -> str:
