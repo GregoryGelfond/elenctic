@@ -337,7 +337,7 @@ def test_a_large_finite_duration_is_the_remedy_and_is_accepted(
 
 
 @pytest.mark.parametrize("kind", list(ErrorKind))
-def test_every_locus_a_case_can_fail_under_says_something_to_a_reader(
+def test_every_locus_a_case_can_fail_under_is_accounted_for_to_a_reader(
     kind: ErrorKind, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # A case that produced no verdict must not disappear. The register accounts for it either way,
@@ -362,7 +362,9 @@ def test_every_locus_a_case_can_fail_under_says_something_to_a_reader(
     assert said == _SAID_ABOUT[kind], f"what a reader is told about a {kind.value} fault"
 
 
-# What each locus says, whole. Written out per locus rather than derived from the vocabulary,
+# What each locus says, whole — including the one that says nothing here, which is why the test
+# above is named for a locus being *accounted for* rather than for it saying something. Written
+# out per locus rather than derived from the vocabulary,
 # because a table that computes the heading agrees with any implementation that computes it the
 # same way — including a wrong one. The deadline says nothing here because it is said once at the
 # end, from the whole register: one passed deadline is one event costing many cases their result,
@@ -383,6 +385,10 @@ _SAID_ABOUT: dict[ErrorKind, str] = {
 # contract was malformed is not a different thing depending on which part of elenctic noticed.
 # Written out here too, so that the two tables agreeing is a fact about the renderer rather than
 # about one expression shared between them.
+# The deadline row is loud here and silent in the table above, and that is not an oversight: the
+# per-case renderer stays quiet because the tail says it once from the whole register, and this
+# frame has no tail to defer to. Neither is reachable — discovery files no deadline — so what the
+# two rows record is the rule each frame would follow, not a difference a run can produce.
 _SAID_ABOUT_AN_UNUSABLE_FILE: dict[ErrorKind, str] = {
     ErrorKind.DEADLINE: "DEADLINE ERROR — the reason it produced none\n",
     ErrorKind.CONTRACT: "CONTRACT ERROR — the reason it produced none\n",

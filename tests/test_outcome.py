@@ -160,10 +160,15 @@ def test_each_root_maps_to_its_own_locus(exc: Exception, kind: ErrorKind) -> Non
     assert error_kind(exc) is kind
 
 
-def test_a_declared_solver_this_environment_lacks_is_a_discovery_fault() -> None:
-    # It is deliberately both a DiscoveryError and an ImportError, so either idiom catches it. The
-    # ladder must resolve it by the root it belongs to rather than by whichever arm it also fits.
-    assert error_kind(SolverUnavailableError("no clingcon")) is ErrorKind.DISCOVERY
+def test_a_declared_solver_this_environment_lacks_is_an_environment_fault() -> None:
+    # The one place the ordering of the ladder is load-bearing, and the one exception class that
+    # serves two loci: it is a DiscoveryError by inheritance, and the corpus walk never met it —
+    # the declared solver is checked per case at run time. Filed where the fault is.
+    #
+    # This test asserted `DISCOVERY` until the locus vocabulary gained `ENVIRONMENT`, at which point
+    # it was a green test defending a disagreement between two published surfaces: `run_corpus`
+    # filed the same condition as `environment` while this said `discovery`.
+    assert error_kind(SolverUnavailableError("no clingcon")) is ErrorKind.ENVIRONMENT
 
 
 def test_an_unrecognised_exception_is_re_raised_never_costumed() -> None:

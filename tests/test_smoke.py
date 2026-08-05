@@ -11,4 +11,7 @@ def test_package_imports() -> None:
     # one place — `elenctic.__version__`, which the build backend reads and which the README's pin
     # example is checked against — and restating it here made a fourth statement of it whose only
     # effect was that cutting a release edited a test named for something else.
-    assert re.fullmatch(r"\d+\.\d+\.\d+", elenctic.__version__), elenctic.__version__
+    # Deliberately loose about what follows the three numbers: a pre-release or a development
+    # version is a legitimate thing to build, and a test named for whether the package imports
+    # must not fail the day one is cut.
+    assert re.match(r"\d+\.\d+\.\d+", elenctic.__version__), elenctic.__version__

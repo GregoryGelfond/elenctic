@@ -12,6 +12,14 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [0.3.0] - 2026-08-04
 
+The minor bump is deliberate, and this is the release with the most to re-check in it so far.
+Six things can stop working: a fault in elenctic now exits `3` rather than `2`; **every**
+diagnostic heading changed; `HygieneReport.render` is gone; `Sat`, `Unsat` and `CheckReport`
+gained required fields and are keyword-only; `Collection` moved module; and four invariant
+breaches raise `HarnessError` where they raised `ValueError`. Each is marked below. If you only
+run the command line, the first two are the ones to look at; if you import elenctic, read the
+rest.
+
 ### Added
 
 - **`--format json` — a machine-readable report, as one JSON object on standard output.** Everything
@@ -37,8 +45,9 @@ means for them — a reader deciding whether to upgrade should not have to read 
   *run's* outcome as the published document, this version describing no document for a plan — which
   is why the command line refuses `--explain --format json`. The console entry is now these calls
   with a command line in front of them rather than the place the work is done, so an editor plugin,
-  a CI script or another test runner gets the same values it does. Working one case at a time with `run_case` is unchanged and
-  still the right thing when you want elenctic's checks inside a runner of your own.
+  a CI script or another test runner gets the same values it does. Working one case at a time with
+  `run_case` is unchanged and still the right thing when you want elenctic's checks inside a runner
+  of your own.
 
 - **Both runners are silent, and take an observer if you want to watch.** They used to print as they
   went, which meant embedding elenctic also meant taking its prose: the only way to quieten it was
@@ -64,7 +73,9 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 - **The package publishes where to report a bug**, in its metadata and in the one diagnostic that
   asks you to. `Homepage`, `Repository`, `Issues` and `Changelog` are now in the project metadata,
-  and the internal-error backstop names the issue tracker instead of asking you to find it.
+  and the backstop that meets a fault no register anticipated names the issue tracker instead of
+  asking you to find it. The other diagnostic that asks you to report something — a harness fault
+  against a single case — still names only the locus, `harness`, which is the word to search for.
 
 - **`py.typed`.** elenctic is annotated throughout and checked under `mypy --strict`, and none of
   that reached anyone who installed it: without this marker a type checker skips the package
@@ -80,10 +91,11 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 - **A new error locus, `environment`,** for a fault in the machine a corpus was run on rather than
   in the corpus: a declared solver this installation does not have, and a copy of elenctic that
-  cannot read its own packaged output description. Both were filed as `discovery` before, which was
-  never quite true — the declared solver is checked per case while the run is under way, not during
-  the corpus walk at all — and the published description of `discovery` had grown an "or the
-  environment … including a declared solver that is not installed" to cover it. Nothing about a
+  cannot read its own packaged output description. The first was filed as `discovery` before, which
+  was never quite true — the declared solver is checked per case while the run is under way, not
+  during the corpus walk at all — and the published description of `discovery` had grown an "or the
+  environment … including a declared solver that is not installed" to cover it. The second is new
+  with `--print-schema` and has never been anything else. Nothing about a
   corpus would change if either fault were fixed, which is the line between the two. `kind` is
   open-valued, so this needs no `schema_version` change; `is_elenctic_bug` is `false` for it, so
   the exit status is what it was.
@@ -132,12 +144,13 @@ means for them — a reader deciding whether to upgrade should not have to read 
   | `corpus error: ` | `contract error: ` / `discovery error: ` / `program error: `, by locus |
   | `internal error: ` | `harness error: ` |
   | `DEADLINE — ` | `DEADLINE ERROR — ` |
-  | `environment error: ` | unchanged |
   | `resource error: ` | unchanged |
   | `PROGRAM` / `RESOURCE` / `HARNESS ERROR — ` | unchanged |
 
   Of the unchanged ones, only `PROGRAM ERROR — ` is now printed where it was not before — when
-  discovery, rather than the runner, is what met the program it could not load.
+  discovery, rather than the runner, is what met the program it could not load. Two headings are
+  new rather than changed, so nothing matched them in 0.2.0: `ENVIRONMENT ERROR — ` and
+  `environment error: `, which belong to the new locus below.
 
   `usage error:` is deliberately untouched, and it is the one line that is not in this scheme: a
   command line that cannot be run has produced no run and so no record, and a heading names a locus
@@ -163,8 +176,9 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 - **A corpus-health observation now carries the grade the run gave it.** `HygieneRecord` — new in
   this release — carries a `grade`: `error` under `--strict`, and otherwise `warning` for an orphan
-  library and `silent` for an undeclared solver — the footing each observation already had. What is printed, what fails
-  the run, and what a consumer is told are now read off that one field rather than each deriving it
+  library and `silent` for an undeclared solver — the footing each observation already had. What is
+  printed, what fails the run, and what a consumer is told are now read off that one field rather
+  than each deriving it
   again from the flag, so they cannot come to disagree about a single observation. Nothing a run
   prints changed.
 
@@ -237,21 +251,24 @@ means for them — a reader deciding whether to upgrade should not have to read 
   the claims on one line remains equivalent — `L₁ ⊆ S` and `L₂ ⊆ S` together say exactly what
   `L₁ ∪ L₂ ⊆ S` says — but a failure now names which line was false instead of the union.
 
-- **`Sat` and `Unsat` no longer construct without a line.** Both now require `expect_line`, and
+- **`Sat` and `Unsat` no longer construct without a line. This is a breaking change** for anyone
+  building either directly. Both now require `expect_line`, and
   every contract cell but the prose one carries a `Claimed` value pairing what was claimed with the
   line it was claimed on — `@note` holds documentation rather than a claim, so it holds bare
   strings. `CheckReport` likewise gained the claim's subject, its line, and how the search
   behind the verdict ended. Code that builds these directly — rather than through `parse` and
   `run_case`, which is the ordinary path — must pass the coordinate.
 
-- **The records a machine-readable report is built from are constructed by keyword.** `CheckReport`
+- **The records a machine-readable report is built from are constructed by keyword. This is a
+  breaking change** for anyone constructing one positionally. `CheckReport`
   and the new `CaseOutcome`, `ErrorRecord`, `HygieneRecord` and `RunOutcome` take their fields by
   name. A report's `message` and `subject` are neighbouring strings, so a transposed pair type-checks
   clean and renders a plausible row against the wrong claim; and a report is identified by field
   name wherever it is decoded, so position would be a second identity that a field added later
   silently re-means.
 
-- **An invariant elenctic violated about its own result now raises `HarnessError`.** The empty cost
+- **An invariant elenctic violated about its own result now raises `HarnessError`. This is a
+  breaking change** for a caller catching `ValueError` around these. The empty cost
   vector on a proven optimum, the four consistent shapes built around an empty collection, and the
   non-empty-census precondition on a conjunctive query raised `ValueError`, which no per-case handler
   catches — so a result that could not be right ended the whole run and discarded every case still to
@@ -274,7 +291,9 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 - **`Collection` is now imported from `elenctic.result`** rather than `elenctic.run`; it describes
   what a *field* is a reading of, so it belongs beside the field vocabulary. `elenctic.Collection`
-  is unchanged.
+  is unchanged — but **`from elenctic.run import Collection` no longer resolves**, which is a
+  breaking change for anyone who reached past the curated surface for it.
+
 ### Removed
 
 - **`HygieneReport.render` was removed. This is a breaking change** for anyone who called it —

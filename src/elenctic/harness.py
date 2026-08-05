@@ -61,7 +61,9 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
     - :class:`~elenctic.program.ProgramError` — the program under test will not ground, or an
       ``#include`` will not resolve. The corpus author fixes the ``.lp``.
     - :class:`~elenctic.discovery.DiscoveryError` — a discovery-time precondition this case fails.
-      Its subclass ``SolverUnavailableError`` is the common one and is worth heading off: call
+      Its subclass ``SolverUnavailableError`` is the common one, and it is a fault in the
+      *environment* rather than in the corpus — :func:`~elenctic.outcome.error_kind` files it
+      under that locus. It is worth heading off: call
       ``discovery.check_solver_available`` per case before running, which is what turns "this
       machine has no clingcon" into a report about that case rather than an exception midway.
     - ``MemoryError`` — the machine ran out. Nothing about the encoding is wrong, and the frame that

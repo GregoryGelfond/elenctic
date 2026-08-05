@@ -72,8 +72,9 @@ def _observation(
     *,
     kind: HygieneKind = HygieneKind.ORPHAN_LIBRARY,
     message: str = "nothing includes it",
+    source: Path = Path("lib.lp"),
 ) -> HygieneRecord:
-    return HygieneRecord(kind=kind, grade=grade, source=Path("lib.lp"), message=message)
+    return HygieneRecord(kind=kind, grade=grade, source=source, message=message)
 
 
 def _run(
@@ -321,13 +322,16 @@ def test_every_field_the_corpus_can_reach_is_sanitized() -> None:
     outcome = _run(
         cases=(_case(Verdict.FAIL, message=hostile, subject=hostile, path=Path(hostile)),),
         errors=(_error(source=Path(hostile), message=hostile),),
-        hygiene=(_observation(message=hostile),),
+        # The file name too, and not only the message: this was the one corpus-chosen path the
+        # sweep left fixed, so a hygiene record's source could be written raw into the document
+        # with nothing noticing — and a name carrying a lone surrogate makes it unwritable.
+        hygiene=(_observation(message=hostile, source=Path(hostile)),),
     )
     invocation = Invocation(target=Path(hostile), strict=False, budget=1.0, deadline=None)
     text = dumps(as_json(outcome, invocation))
     text.encode("utf-8")  # a lone surrogate anywhere would make the document unwritable
     assert not set(acted_on) & set(text), "no field carries a character a reader would act on"
-    assert text.count("\\xdcff") == 7, "and every one of them still says something was there"
+    assert text.count("\\xdcff") == 8, "and every one of them still says something was there"
 
 
 def test_text_the_sanitizer_leaves_alone_is_written_as_itself() -> None:

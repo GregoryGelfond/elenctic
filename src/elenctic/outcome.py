@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import assert_never
 
 from elenctic.checks import CheckReport
-from elenctic.discovery import Case, DiscoveryError
+from elenctic.discovery import Case, DiscoveryError, SolverUnavailableError
 from elenctic.expectation import ContractError
 from elenctic.harness import case_verdict
 from elenctic.program import ProgramError
@@ -219,9 +219,10 @@ class ExitStatus(IntEnum):
     USER_FAULT = (
         2,
         "a fault you can fix: a command line that cannot be used, a bad contract, a mis-shaped "
-        "corpus, a declared solver this environment does not have, a program that will not ground, "
-        "a case that ran out of memory or that the deadline never reached, or corpus hygiene this "
-        "run graded an error",
+        "corpus, an environment that cannot do what the corpus asks — a declared solver it does "
+        "not have, or an installation of elenctic missing its own data files — a program that "
+        "will not ground, a case that ran out of memory or that the deadline never reached, or "
+        "corpus hygiene this run graded an error",
     )
     HARNESS_FAULT = (3, "a fault in elenctic itself, which outranks every other signal")
 
@@ -438,14 +439,26 @@ def exit_status(outcome: Outcome) -> ExitStatus:
 def error_kind(exc: Exception) -> ErrorKind:
     """Where an exception says the fault lies.
 
-    An ordered test against disjoint roots, so a subclass resolves to the root it belongs to and no
-    root can absorb another. An exception from outside the taxonomy is re-raised rather than filed
-    under the nearest match: reporting an unknown fault as a known one is how a defect gets
-    described as something the user could have prevented.
+    An ordered test, and the order is load-bearing in one place. The roots are otherwise disjoint,
+    so each resolves to the root it belongs to and none can absorb another — but a solver this
+    environment does not have is a ``SolverUnavailableError``, which *is* a ``DiscoveryError``, and
+    it belongs to the environment rather than to the corpus walk that never met it. One exception
+    class serving two loci is exactly why a locus cannot simply be read off a class, and the
+    specific case is therefore tested before the root that would otherwise swallow it.
+
+    Without that arm this function and :func:`~elenctic.corpus.run_corpus` answered differently
+    about one fault: a caller driving cases themselves was told ``discovery`` while a document
+    produced from the same corpus said ``environment``.
+
+    An exception from outside the taxonomy is re-raised rather than filed under the nearest match:
+    reporting an unknown fault as a known one is how a defect gets described as something the user
+    could have prevented.
     """
     match exc:
         case ContractError():
             return ErrorKind.CONTRACT
+        case SolverUnavailableError():
+            return ErrorKind.ENVIRONMENT
         case DiscoveryError():
             return ErrorKind.DISCOVERY
         case ProgramError():

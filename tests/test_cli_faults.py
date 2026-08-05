@@ -198,3 +198,72 @@ def test_a_path_the_corpus_chose_is_sanitized_before_a_reader_sees_it(
     said = capsys.readouterr().err
     assert _ERASES_THE_LINE not in said, "the escape reached the reader's terminal intact"
     assert "ev\\x1b[2Kil.lp" in said, "and the name is still legible enough to find the file by"
+
+
+def test_no_string_the_corpus_chose_reaches_a_reader_as_a_terminal_escape(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One sweep over every frame that prints, rather than one test per frame.
+
+    The guarantee is stated per module — "every string a corpus had a hand in passes through the
+    sanitizer" — and was held per call site, which is why three frames were reachable with hostile
+    text and unsanitized while two were pinned. A frame added later inherits this test; it would not
+    have inherited a fourth per-frame one.
+
+    The corpus is built so that every string a corpus can choose is hostile at once: a case file's
+    name, a library's name, a note's prose, and the payload a contract error quotes back. Run in
+    both modes, because the dry run prints through a renderer of its own.
+    """
+
+    def put(name: str, text: str) -> None:
+        (tmp_path / name).write_text(text, encoding="utf-8")
+
+    put(f"ev{_ERASES_THE_LINE}il.lp", '% @expect sat\n% @count 1\n#include "nowhere.lp".\n')
+    put(
+        f"no{_ERASES_THE_LINE}te.lp",
+        f"% @expect sat\n% @model {{ a }}\n% @note a{_ERASES_THE_LINE}side\na.\n#show a/0.\n",
+    )
+    put(f"bad{_ERASES_THE_LINE}.lp", f"% @expect ban{_ERASES_THE_LINE}ana\na.\n")
+    put(f"orphan{_ERASES_THE_LINE}.lp", "% nothing includes this.\nhelper(1).\n")
+
+    # Both target shapes, because they reach different frames: a directory sends an unusable file
+    # to `case_unusable`, while naming that same file makes its fault the whole run's and sends it
+    # to `corpus_unreadable`. Only the first was covered, so the second was reachable with hostile
+    # text and unsanitized.
+    targets = [str(tmp_path), str(tmp_path / f"ev{_ERASES_THE_LINE}il.lp")]
+    for target, flags in [(t, f) for t in targets for f in ([], ["--strict"], ["--explain"])]:
+        main([target, *flags])
+        seen = capsys.readouterr()
+        shown = seen.out + seen.err
+        where = f"{Path(target).name} {flags or ''}".strip()
+        assert _ERASES_THE_LINE not in shown, f"an escape reached the reader under {where}"
+        assert "\\x1b" in shown, f"and nothing was silently dropped under {where}"
+
+
+def test_the_deadline_notice_is_not_printed_for_a_case_that_simply_could_not_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The notice is rendered from the register by filtering it to the deadline locus, and every test
+    # that asserted the notice whole handed it a register holding nothing else — so filtering on the
+    # scope instead of the locus agreed with them, and a corpus with one ungroundable case and no
+    # --deadline at all announced that a deadline it never had was passed.
+    (tmp_path / "broken.lp").write_text(_UNSAFE, encoding="utf-8")
+
+    assert main([str(tmp_path)]) == ExitStatus.USER_FAULT
+
+    said = capsys.readouterr().err
+    assert "DEADLINE" not in said, "no deadline was given, so none can have been passed"
+
+
+def test_a_corpus_that_could_not_be_read_reports_no_tally(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `0/0 passed` under a corpus-scoped fault answers a question nobody asked: it reads as a corpus
+    # that was looked at and found to hold nothing, which is a different thing from one that could
+    # not be read at all. The suppression was reasoned about in a docstring and held by nothing —
+    # every test of this path read standard error and none read standard output.
+    assert main([str(tmp_path / "no_such_directory")]) == ExitStatus.USER_FAULT
+
+    seen = capsys.readouterr()
+    assert seen.out == "", "nothing ran, so there is nothing to tally"
+    assert "passed" not in seen.out

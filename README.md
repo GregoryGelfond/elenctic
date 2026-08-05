@@ -109,9 +109,9 @@ and the claims follow it:
 
 ## Querying a program with `@query`
 
-The modes above ask about a program's *consequences*. `@query` asks a different question — Gelfond's
-three-valued epistemic query: *what answer does the program give to a goal?* — and the answer is
-**yes**, **no**, or **unknown**.
+The tags above ask about a program's *consequences* — what holds in every answer set, what holds in
+some, how many there are. `@query` asks a different question, Gelfond's three-valued epistemic
+query: *what answer does the program give to a goal?* The answer is **yes**, **no**, or **unknown**.
 
 Here is the classic Tweety example in miniature (the full Gelfond & Kahl §5.4.3 program is in the test
 suite): birds fly by default, but penguins, more specifically, do not. Sam is a (non-penguin) bird,
@@ -177,7 +177,7 @@ in force. Hidden atoms are not checkable. A **strong-negation literal** `-a` is 
 
 **The base.** A model-base tag is evaluated over a chosen set of answer sets. Writing `optimal`
 before the payload chooses the optimal class `Opt(P)`; writing nothing chooses every answer set
-`AS(P)`, which is what the tables below mean by a base of `all`. So `@cautious optimal { L }` reads
+`AS(P)`, which is what the grammar table below means by a base of `all`. So `@cautious optimal { L }` reads
 "`L` holds in every optimal model." The default has a name so that it can be talked about, but it
 has no spelling: `optimal` is the only qualifier a contract may write, and `@cautious all { L }` is
 a contract error.
@@ -214,8 +214,9 @@ and shares its cell. Only `@expect` and `@cost` are one to a contract outright.
 A litset `{ … }` is comma-separated and paren-aware (an atom may contain commas, e.g.
 `included(s,a,2,1)`), and may span continuation `%` lines while a brace stays open. An `@`-tag's
 payload runs to the end of its line, so write explanatory comments on their own lines (a `%%` or `%`
-line), not after the payload — `% @count 2  % two answer sets` would read the comment as part of the
-count. (Inline-comment support after a payload is a planned convenience.)
+line), not after the payload — `% @count 2  % two answer sets` reads the comment as part of the
+count and refuses the line, loudly, rather than miscounting. (Inline-comment support after a payload
+is a planned convenience.)
 
 ### The three-valued query
 
@@ -238,8 +239,9 @@ precondition tags are checked at discovery **against the actual encoding**, not 
 Those discovery-time preconditions are the ones most likely to surprise, so in full. `@cost` and the
 `optimal` base need an optimizing encoding (a `#minimize`, `#maximize` or `:~`). `@assign`, `@assign
 optimal` and a `where`-witness need clingcon. A `no` or `unknown` `@query` needs the contrary
-`#show`n, since an unshown literal can never enter ⋂ or ⋃. And two that the grammar above gives no
-hint of:
+`#show`n, since an unshown literal can never enter ⋂ or ⋃. A program with a theory atom needs a
+theory solver declared, since plain clingo grounds theory atoms and silently ignores the constraints
+— a wrong PASS. And two more that the grammar above gives no hint of:
 
 - **`@cost` is refused over a `#maximize` objective.** clingo reports such a cost in negated form,
   and elenctic will not present a number that is not the one you wrote. Use `#minimize`, or an
@@ -280,17 +282,19 @@ report carries:
 | --- | --- | --- |
 | `contract` | the `@`-contract is ill-formed | yours |
 | `discovery` | the corpus is mis-shaped: a target that does not exist, a precondition above | yours |
-| `environment` | the machine cannot do what the corpus asks: a declared solver that is not installed | yours |
+| `environment` | the machine cannot do what the corpus asks: a declared solver that is not installed, or an installation of elenctic missing its own data files | yours |
 | `program` | the program will not load, ground or solve — an unresolvable `#include`, an unsafe variable | yours |
 | `deadline` | the run's `--deadline` passed before this case was tried | yours |
 | `resource` | the case ran out of memory | yours |
 | `harness` | elenctic violated one of its own invariants | **ours** |
 
 Loci name *places*, not exception classes, and deliberately: a deadline raises no exception at all
-and a resource running out arrives as a built-in. Four of them do have an exception a library
-consumer can catch — `elenctic.ContractError`, `elenctic.DiscoveryError`, `elenctic.ProgramError`
-and `elenctic.HarnessError` (plus `elenctic.SolverUnavailableError`, which is both a
-`DiscoveryError` and an `ImportError`, so either idiom catches a missing backend). The one closed
+and a resource running out arrives as a built-in — and the mapping is not one-to-one in the other
+direction either, since `elenctic.SolverUnavailableError` is a `DiscoveryError` by inheritance while
+the fault it reports belongs to the environment. Five of the seven do have an exception a library
+consumer can catch: `elenctic.ContractError`, `elenctic.DiscoveryError`, `elenctic.ProgramError`,
+`elenctic.HarnessError`, and `elenctic.SolverUnavailableError` — which is also an `ImportError`, so
+either idiom catches a missing backend. The one closed
 question about a locus is `is_elenctic_bug` on `elenctic.ErrorKind` — whether to report it or fix
 it — and that is what the exit status reads, so a locus added later never changes what a status
 means. A case that cannot be run does not stop the others: it is reported on its own and the rest
@@ -352,12 +356,21 @@ Discovery is **content-keyed**: a `.lp` file is a *case* iff it carries a contra
 `@`-tag), otherwise it is a *library* (an `#include` target, never run directly). A directory is
 walked for contract-bearing files; a single file is run directly. The program under test is the case
 file plus its resolved `#include`s, and the solver is **declared** in the contract
-(`% @elenctic solver clingcon`, default `clingo`), never inferred from a filename. An undeclared
-theory program is a loud error: elenctic never silently mis-solves a theory program under plain clingo.
+(`% @elenctic solver clingcon`, default `clingo`; clingcon is the optional theory solver — see
+Installation), never inferred from a filename. An undeclared
+theory program is a loud error: elenctic never silently mis-solves a theory program under plain
+clingo.
+
+Two more rules belong here, because both are decided while the corpus is walked. **A case may only
+`#include` files from inside the corpus it belongs to** — a corpus is run as given, so an include
+reaching past it would read a file the run was never pointed at. And **naming a contract-free file
+directly is a loud error**, although the same file inside a walked directory is simply a library:
+tolerance belongs to the walk, not to the one file you pointed at, where a summary saying nothing ran
+would bury the only thing that was asked about.
 
 ## Installation
 
-elenctic runs on **Python ≥ 3.14** (a deliberate floor: the implementation uses modern Python
+elenctic is installed from git; it is not published to PyPI. It runs on **Python ≥ 3.14** (a deliberate floor: the implementation uses modern Python
 idioms) and needs **clingo**, plus **clingcon** for the theory fragment (`@assign` and CSP `@count`).
 Both solvers are on conda-forge *and* on PyPI.
 
@@ -414,9 +427,10 @@ $ elenctic tests/ --format json    # the machine-readable report (below)
 $ elenctic --print-schema          # the JSON schema of that report, without running anything
 ```
 
-`--budget` and `--deadline` each take a **positive finite** number of seconds. A run that wants no
-practical per-solve limit asks for a large number; a run that wants no deadline leaves `--deadline`
-off, which is the default.
+`--budget` and `--deadline` each take a **positive finite** number of seconds: a run that wants no
+practical per-solve limit asks for a large number, and one that wants no deadline leaves the flag
+off. What each of them actually bounds is worth knowing before you rely on either — see *What the
+bounds actually bound* below.
 
 **The two streams are split under every format, not only under `--format json`.** Standard output
 carries the *report* — the rendering of each case that did not pass, and the tally. Standard error
@@ -430,6 +444,11 @@ code), and an **undeclared solver** (a case that did not say which solver it wan
 default). Without `--strict` the first is a warning and the second is recorded silently; under
 `--strict` both become errors and the run exits `2` however every contract fared. Nothing else
 changes: a verdict is never affected by the flag.
+
+Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation <file.lp>`
+(the parsed contract), `python -m elenctic.run <file.lp>` (the derived run plan),
+`python -m elenctic.discovery <file-or-dir>` (the discovered cases), and
+`python -m elenctic.solvers <MODE> <file.lp>` (one solve's outcome, with clingo).
 
 ### Machine-readable output
 
@@ -497,9 +516,6 @@ $ elenctic menu.lp --format json
 }
 ```
 
-(`invocation`, `summary` and each check are shown on one line here for brevity; the real output is
-indented throughout.)
-
 **Three registers, and confusing them is the one mistake worth guarding against.** A case in `cases`
 received a judgment about the program under test. An entry in `errors` says *no* judgment could be
 made, and why — usually not a fault in the contract at all. An entry in `hygiene` is an observation
@@ -541,16 +557,16 @@ built to be well-behaved about that — a case may only `#include` files from in
 belongs to; text from a case cannot rewrite the report it appears in; and one unusable file costs
 its own result and no other's.
 
+### What the bounds actually bound
+
+Four limits are worth stating plainly rather than leaving to be discovered. The first is the one
+that bounds nothing; the last is the one to read first if an honest `@count` comes back `UNDECIDED`.
+
 **Grounding is not bounded at all.** A program can be small and still ground to something enormous,
 and clingo offers no way to cap that — it is not a limit elenctic can lift. Running an untrusted
 corpus therefore belongs inside whatever your platform already gives you: a container with a memory
 limit and a job timeout. Running out of memory is reported against the case that ran out of it, and
 costs that case's result rather than the whole run's — but it cannot be prevented from here.
-
-### What the bounds actually bound
-
-Three limits are worth stating plainly rather than leaving to be discovered, and the last is the
-one to read first if an honest `@count` comes back `UNDECIDED`.
 
 **`--budget` bounds a solve, not a run.** It is per solve, and a case can route to several. Use
 `--deadline` to bound the solving.
@@ -569,11 +585,6 @@ stream of models, and only the latest is kept — nothing accumulates to bound. 
 enumeration is a stream of models like any other** and meets the same bound: an optimal class of
 more than a million members is truncated exactly as `AS(P)` is, and every optimal-base tag reading
 over it is then `UNDECIDED`.
-
-Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation <file.lp>`
-(the parsed contract), `python -m elenctic.run <file.lp>` (the derived run plan),
-`python -m elenctic.discovery <file-or-dir>` (the discovered cases), and
-`python -m elenctic.solvers <MODE> <file.lp>` (one solve's outcome, with clingo).
 
 ## Using elenctic as a library
 
@@ -625,7 +636,9 @@ the records are the deliverable and the channel an observer writes to is the par
 
 For one case at a time rather than a corpus: `elenctic.discover` yields cases, `elenctic.run_case`
 yields the per-check reports, `elenctic.case_verdict` folds them, and `elenctic.render` formats the
-diagnostic — which is what you want to drive `pytest.mark.parametrize` with.
+diagnostic — which is what you want to drive `pytest.mark.parametrize` with. `elenctic.discover`
+also hands back a `elenctic.HygieneReport`, whose `clean` says whether the corpus carried any
+health observation at all — the raw detection state, before any invocation grades it.
 
 elenctic ships `py.typed`, so all of this is typed for whatever checker you run.
 

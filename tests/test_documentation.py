@@ -134,7 +134,13 @@ def test_the_readmes_library_example_runs_and_does_what_it_says(tmp_path: Path) 
     import subprocess
     import sys
 
-    section = _README.split("## Using elenctic as a library", 1)[1].split("## Discovery", 1)[0]
+    # Bounded by the next top-level heading rather than by a named one. It was named, and the
+    # section it named later moved *above* this one — so the split stopped cutting anything and
+    # the slice ran to the end of the file. It kept passing because exactly one Python block
+    # happened to follow, which is an instrument that has silently stopped measuring.
+    after = _README.split("## Using elenctic as a library", 1)[1]
+    assert "\n## " in after, "the library section is last, so nothing bounds the slice below"
+    section = after.split("\n## ", 1)[0]
     block = re.search(r"```python\n(.*?)```", section, re.S)
     assert block is not None, "the library section no longer holds a Python block to check"
 
@@ -150,9 +156,32 @@ def test_the_readmes_library_example_runs_and_does_what_it_says(tmp_path: Path) 
     )
 
     assert done.returncode == 0, f"the example did not leave cleanly: {done.stderr}"
+    assert done.stderr == "", (
+        "the section this example sits under opens by saying the library is silent, so anything "
+        "the library wrote on its own would contradict the prose it is there to demonstrate"
+    )
     assert done.stdout == "running case.lp\n  pass\n", (
         "the observer is what prints, and it prints as the run goes — a case announced when it is "
         "taken up and again when it is judged"
     )
     document = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert document["summary"]["passed"] == 1, "and the document it wrote reports the run"
+
+
+def test_the_changelog_has_a_dated_section_for_the_version_being_shipped() -> None:
+    """The link a release cut is most likely to break, and the one nothing was watching.
+
+    Bumping ``__version__`` and forgetting to rename ``[Unreleased]`` ships a package whose
+    changelog has no section for it — silently, because every other check here compares the version
+    against the README rather than against the changelog. Cutting a release is exactly when a
+    document goes stale, so the cut is what this holds.
+    """
+    dated = re.search(r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$", _CHANGELOG, re.M)
+    assert dated is not None, "no dated release section at all"
+    assert dated.group(1) == elenctic.__version__, (
+        f"the newest dated section is {dated.group(1)} and this is {elenctic.__version__}; a "
+        f"release whose changelog does not describe it tells an upgrader nothing"
+    )
+    assert f"\n[{elenctic.__version__}]: " in _CHANGELOG, (
+        "and the link definition at the foot has to resolve, or the heading is a dead link"
+    )

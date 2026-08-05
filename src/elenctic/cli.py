@@ -233,6 +233,10 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
     """Run the ``elenctic`` CLI; return the process exit status (0 pass / 1 fail or undecided /
     2 a fault in the corpus / 3 an elenctic bug).
 
+    Returns it on every path this module owns. ``argparse`` leaves by raising ``SystemExit`` instead
+    for the two it owns — ``--help``, and a value it cannot parse — so a caller that invokes this
+    directly rather than through the console script catches that as well.
+
     The two outermost handlers are here because a fault that reaches this frame is by definition one
     no inner register anticipated, and the user still has to be told something they can act on. Each
     files the fault it met into an outcome of its own and reads the status off that, so the status
@@ -360,13 +364,18 @@ def _print_schema() -> ExitStatus:
     exist must not turn the question into a fault. Written rather than printed, so what a reader
     redirects into a file is the file.
 
+    Both the absent file and the unreadable one, because the argument below covers both: a step
+    that drops a data file and a step that re-encodes it are the same kind of accident, and only
+    the first raises ``OSError``. Catching one and not the other sent half of those readers to
+    the backstop that asks for a bug report.
+
     An unreadable description is the environment being mis-shaped rather than elenctic being wrong
     about something, which is why it is graded as a fault the reader can fix and not as a bug to
     report. The status is read off a record like every other, rather than chosen beside one.
     """
     try:
         description = schema_text()
-    except OSError:
+    except OSError, UnicodeDecodeError:
         unreadable = _unowned_fault(ErrorKind.ENVIRONMENT, _SCHEMA_UNREADABLE)
         print(
             f"{_heading(unreadable.kind, unreadable.scope)} {unreadable.message}", file=sys.stderr
@@ -388,8 +397,12 @@ def _publish(document: str) -> None:
     published artefact belongs to the artefact.
 
     The text layer is emptied first so that anything already written to it stays ahead of these
-    bytes. They are not flushed here: what a stream that cannot take them should do is one question
-    and this is another, and leaving it to the interpreter keeps that answer in one place.
+    bytes. On both of today's call paths that buffer is provably empty — the report is written
+    after the redirect region has flushed, and the description is written before anything else
+    has printed — so this is defence in depth against a third caller rather than something
+    either of these two needs. These bytes are not flushed here: what a stream that cannot take them
+    should do is one question and this is another, and leaving it to the interpreter keeps that
+    answer in one place.
     """
     sys.stdout.flush()
     sys.stdout.buffer.write(document.encode("utf-8"))
@@ -490,10 +503,10 @@ class _Terminal(Observer):
     # of these it calls, so nothing here has to ask a record what it was.
 
     def corpus_unreadable(self, record: ErrorRecord) -> None:
-        print(f"{_heading(record.kind, record.scope)} {legible(record.message)}", file=sys.stderr)
+        print(f"{_heading(record.kind, record.scope)} {_text(record.message)}", file=sys.stderr)
 
     def case_unusable(self, record: ErrorRecord) -> None:
-        print(f"{_heading(record.kind, record.scope)} {legible(record.message)}", file=sys.stderr)
+        print(f"{_heading(record.kind, record.scope)} {_text(record.message)}", file=sys.stderr)
 
 
 class _TerminalRun(_Terminal):
@@ -515,11 +528,11 @@ class _TerminalPlan(_Terminal):
     to."""
 
     def case_started(self, case: Case) -> None:
-        print(f"{legible(str(case.contract_source))} [{case.solver}]")
+        print(f"{_text(case.contract_source)} [{case.solver}]")
         # The @note prose leads the narration — the author's what/why above the harness's how.
         # Both Sat and Unsat carry notes; documentation, never a verdict.
         for note in case.expectation.notes:
-            print(f"    note: {legible(note)}")
+            print(f"    note: {_text(note)}")
 
     def case_planned(self, case_plan: CasePlan) -> None:
         for plan in case_plan.runs:
@@ -575,16 +588,32 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
             # A malformed contract is met while a case is being read, so it reaches a reader
             # through `unusable` and not here. The arm is what keeps this total: were a run ever
             # to file one, it would be shown the way every other contract fault is shown.
-            return f"{_heading(record.kind, record.scope)} {legible(record.message)}"
+            return f"{_heading(record.kind, record.scope)} {_text(record.message)}"
         case ErrorKind.DISCOVERY | ErrorKind.ENVIRONMENT:
             # An environment fault reaches a reader here and not through `unusable`, because the
             # declared solver is checked per case at run time rather than during the corpus walk.
             # Its message names the case, as every diagnostic raised from discovery does.
-            return f"{_heading(record.kind, record.scope)} {legible(record.message)}"
+            return f"{_heading(record.kind, record.scope)} {_text(record.message)}"
         case ErrorKind.PROGRAM | ErrorKind.RESOURCE | ErrorKind.HARNESS:
             return f"{_heading(record.kind, record.scope)} {_against(record)}"
         case unreachable:
             assert_never(unreachable)
+
+
+def _text(value: str | Path) -> str:
+    """Anything the corpus had a hand in, made safe to show.
+
+    One seam for every such string rather than a judgment per call site, because which of them a
+    corpus can reach is a question whose answer changes: a message is elenctic's own prose until the
+    day it quotes the solver, and a path is corpus-chosen always. Text a reader's terminal would act
+    on rather than display can move the cursor over a line already printed, so a diagnostic that
+    reproduces one can erase the verdict above it.
+
+    The document seam states the same rule for the same reason. Both exist because a *renderer added
+    later* inherits the guarantee only if there is one place to inherit it from — three call sites
+    here were reachable with hostile text and unsanitized, each having been judged individually.
+    """
+    return legible(str(value))
 
 
 def _heading(kind: ErrorKind, scope: Scope) -> str:
@@ -628,11 +657,14 @@ def _against(record: ErrorRecord) -> str:
     rather than display can move a cursor over a line already printed, which is how a diagnostic
     forges a verdict in the report it appears in.
 
-    Every record reaching here carries a source, because every frame that files a case-scoped fault
-    of these loci has a case in hand to name. That is a precondition and not a check: a record
-    without one renders the word ``None``, which is a fault in this renderer rather than something
-    to be handled here."""
-    return f"{legible(str(record.source))}: {legible(record.message)}"
+    Every record reaching here carries a source today, because every frame that files a case-scoped
+    fault of these loci has a case in hand to name. It is not written as a precondition, because the
+    only way to state one here is to render the word ``None`` at a reader — which says a file called
+    None rather than no file at all, and is worse than saying nothing. A record without a source
+    gets the message, which is what the loci that never name a file get."""
+    if record.source is None:
+        return _text(record.message)
+    return f"{_text(record.source)}: {_text(record.message)}"
 
 
 def _render_tail(outcome: Outcome, invocation: Invocation) -> None:
@@ -705,7 +737,7 @@ def _report_hygiene(hygiene: tuple[HygieneRecord, ...]) -> None:
         match kind:
             case HygieneKind.ORPHAN_LIBRARY:
                 lines.extend(
-                    f"orphan library: {legible(str(record.source))} {record.message}"
+                    f"orphan library: {_text(record.source)} {_text(record.message)}"
                     for record in observed
                 )
             case HygieneKind.UNDECLARED_SOLVER:
@@ -713,9 +745,10 @@ def _report_hygiene(hygiene: tuple[HygieneRecord, ...]) -> None:
                 # case, and the observation is about the corpus's habit rather than about any one
                 # file. The sentence is stated once because it is one observation, and every record
                 # of a kind carries the same one.
-                listed = ", ".join(legible(str(record.source)) for record in observed)
+                listed = ", ".join(_text(record.source) for record in observed)
                 lines.append(
-                    f"undeclared solver: {len(observed)} case(s) {observed[0].message}: {listed}"
+                    f"undeclared solver: {len(observed)} case(s) "
+                    f"{_text(observed[0].message)}: {listed}"
                 )
             case _:
                 assert_never(kind)

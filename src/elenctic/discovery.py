@@ -326,6 +326,10 @@ def check_solver_available(solver: Solver, where: Path) -> None:
     module = BACKING_MODULES[solver]
     if _installed(module):
         return
+    # Only the theory branch is reachable today, and saying so is better than a fallback that
+    # cannot be exercised: the sole non-theory solver is clingo, and this module imports from clingo
+    # at load, so a process that got here has it. The branch stays because the registry is meant to
+    # grow, and a second optional backend makes it live the day it is added.
     remedy = (
         'install the theory extra: pip install "elenctic[theory]"'
         if provides_theory(solver)

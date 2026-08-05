@@ -47,7 +47,7 @@ instead and returns a :class:`PlanOutcome`; :func:`exit_status` reads either aga
 :class:`ExitStatus` ladder, and :func:`as_json` renders one as the published document. Both runners
 are silent, and a caller who wants to watch a long run as it happens supplies a
 :class:`RunObserver` or a :class:`PlanObserver`, which is told each verdict, plan and fault as it
-is established. ``elenctic.cli`` is these five calls with a command line in front of them; a
+is established. ``elenctic.cli`` is these calls with a command line in front of them; a
 consumer who wants elenctic's results somewhere else has the same pieces, and can equally work one
 case at a time with :func:`run_case`.
 
@@ -153,8 +153,9 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
 __version__ = "0.3.0"
 
 # The curated public API, grouped by home module — the single source for both __all__ and the lazy
-# resolver, so the two cannot drift. Internals (the Consistent shapes, accessors, check builders,
-# Field) are deliberately absent.
+# resolver, so the two cannot drift. Internals (the eight concrete Consistent shapes, the field
+# accessors, the check builders, Field) are deliberately absent; the Consistent base is here
+# because Determination is not usable without it.
 _EXPORTS: dict[str, tuple[str, ...]] = {
     "elenctic.checks": ("CheckReport",),
     "elenctic.corpus": (

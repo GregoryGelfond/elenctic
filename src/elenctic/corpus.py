@@ -108,11 +108,15 @@ class Observer(Protocol):
     def case_started(self, case: Case) -> None:
         """A case has been taken up — its plan is about to be derived, or it is about to be run.
 
-        Announced before the work rather than after it, because the work is what can fail: a case
-        that reaches :meth:`case_unjudged` has been announced here first, so a caller narrating the
-        corpus can always say which case it is talking about. It is also the only announcement that
-        arrives while something is still happening, which is what a caller showing progress on a
-        long run needs."""
+        Announced before the work rather than after it, because the work is what can fail. It is
+        also the only announcement that arrives while something is still happening, which is what a
+        caller showing progress on a long run needs.
+
+        **A case can reach :meth:`case_unjudged` without having been announced here**, and the two
+        ways are the two where there was no work to start: a plan that would not build, which is
+        settled for the whole corpus before any case is taken up, and a case the deadline never
+        reached. Each such record names its own file in ``source``, which is what a caller narrating
+        the corpus reads in those cases rather than the name this announcement would have given."""
         return None
 
     def case_unjudged(self, record: ErrorRecord) -> None:

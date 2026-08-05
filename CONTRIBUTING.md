@@ -1,14 +1,16 @@
 # Contributing to elenctic
 
-Thanks for looking. Bugs, questions and patches are all welcome, and the
-[issue tracker](https://github.com/GregoryGelfond/elenctic/issues) is the place for all three.
+Thanks for looking. Bugs, questions and patches are all welcome: bugs and questions on the
+[issue tracker](https://github.com/GregoryGelfond/elenctic/issues), patches as pull requests.
 
 elenctic is MIT-licensed. There is no contributor agreement to sign.
 
 ## Getting set up
 
 The toolchain is pinned with [pixi](https://pixi.sh), which brings its own Python, clingo and
-clingcon — you do not need any of them installed already.
+clingcon — you do not need any of them installed already. **Linux and macOS**: those are the
+platforms the pinned environment resolves for, and the two CI runs on. Windows is not in the set,
+so `pixi install` will fail there rather than build something untested.
 
 ```console
 $ git clone https://github.com/GregoryGelfond/elenctic
@@ -36,19 +38,21 @@ $ pixi run cov          # pytest with a coverage report
 ## Reporting a bug
 
 The most useful report contains the `.lp` file — contract and program — that provokes it, what you
-expected, and what elenctic said. If elenctic printed `harness error:` or asked you to report
-something, please do: that heading means elenctic violated one of its own invariants, and it is
-ours to fix rather than yours.
+expected, and what elenctic said. If elenctic named the **harness** locus — `HARNESS ERROR —` for
+one case, `harness error:` where it cost the whole run — please report it: that word means
+elenctic violated one of its own invariants, and it is ours to fix rather than yours.
 
 If you can, include the output of `elenctic <target> --format json`, which carries the same run in a
 form that does not depend on how your terminal rendered it.
 
 ## What the gate holds you to
 
-**`mypy --strict`, plus three settings beyond it.** `warn_unreachable`, `strict_equality`, and
-`possibly-undefined` — the last because a fault handler runs precisely because something above it
-did not finish, so a name bound up there may be unbound down here, and the failure then arrives as
-a second error raised while reporting the first.
+**`mypy --strict`, plus two settings beyond it.** `warn_unreachable` and `possibly-undefined` —
+the second because a fault handler runs precisely because something above it did not finish, so a
+name bound up there may be unbound down here, and the failure then arrives as a second error
+raised while reporting the first. (`strict_equality` is set in `pyproject.toml` too, but it is
+already inside `--strict`; it is written out because it is load-bearing here, not because it adds
+anything.)
 
 **A lint selection chosen by measuring, not by reputation.** Most of the families in
 `pyproject.toml` were already clean when they were adopted, so they hold a property the code has
@@ -80,20 +84,30 @@ compare against the whole of it.
 
 **A test that asserts something is refused should check the input really is faulty.** A green test
 can defend a bug — two cases in one test here asserted that valid programs were rejected, and the
-rejection was the defect. Relatedly, `pytest.raises` takes a `match=`; the lint will ask for one.
+rejection was the defect. Relatedly, give `pytest.raises` a `match=`: without one it passes on any
+exception of that class raised anywhere underneath, including for a reason that has nothing to do
+with what is being rejected. The lint asks for one on the broad built-in families (`ValueError`,
+`OSError`, `Exception`) and cannot ask on elenctic's own — write one there anyway.
 
 **Comments say *why*, and are self-contained.** A reader of this repository has the repository and
-nothing else, so a comment should not reach for anything they do not have.
+nothing else — so no `see §3.2`, no `per decision #131`, no milestone or task numbers, and no
+reference to a discussion that happened somewhere they cannot read.
 
 **Changelog entries land under `[Unreleased]` as work merges**, not at release time; cutting a
 release renames and dates that section. Write for someone deciding whether to upgrade — what
 changed for them, and what it means — rather than summarizing the diff. If your change moves
 anything a script might match on, say so plainly and give the before and after.
 
-**Never hand-write a transcript.** Every console block in the README and the changelog is generated
-from a real run. One that was typed out by hand was indented two columns short of what the tool
-actually prints, and a reader would have chased the difference. The README's library example is
-extracted and executed by the test suite for the same reason.
+**Never hand-write a transcript.** Run the command and paste what it printed, verbatim, including
+the indentation — do not retype it or tidy it. One that was typed out by hand was indented two
+columns short of what the tool actually prints, and a reader would have chased the difference;
+another was compacted onto fewer lines "for readability" and then described output no invocation
+produced. Only one block is mechanically held — the README's library example is extracted and
+executed by `tests/test_documentation.py` — so the rest is on you.
+
+**The corpus to try things against is the project's own.** `pixi run elenctic tests/krbook/encodings`
+runs four programs from the Gelfond and Kahl textbook end to end, and `--strict` and `--explain`
+are the two flags worth trying on it first.
 
 **Names in the documents are checked.** A dotted name written as `` `elenctic.run_corpus` `` in the
 README or changelog is verified to name the place that thing actually lives — so writing them dotted
@@ -101,7 +115,8 @@ gets you that check for free.
 
 ## Where things are
 
-`src/elenctic/` holds seventeen modules, arranged as a pipeline that a reader can walk in order.
+`src/elenctic/` holds sixteen modules arranged as a pipeline a reader can walk in order, plus the
+package surface in `__init__.py`.
 Each of `expectation`, `run`, `discovery` and `solvers` is runnable on its own for inspection:
 
 ```console
@@ -112,12 +127,26 @@ $ pixi run python -m elenctic.solvers <MODE> <file.lp>   # one solve's outcome
 ```
 
 `solvers.py` is the only impure module, and the boundary is sharper than "it uses clingo" — several
-modules do, for symbols and for parsing. It is the only one that *runs a solve*: nothing else
-constructs a `Control` or calls `.solve()`, and everything above it is a pure function of what it
-returned. A patch that puts a solve somewhere else is a patch that will be asked to move it.
+modules do, for symbols and for parsing. It is the only one under `src/elenctic/` that *runs a
+solve*: nothing else there constructs a `Control` or calls `.solve()`, and everything above it is a
+pure function of what it returned. (`tests/spikes/` does drive clingo directly, deliberately — its
+whole job is to confirm the solver behaviour elenctic relies on.) A patch that puts a solve somewhere else is a patch that will be asked to move it.
 
 `tests/` mirrors that shape. `tests/krbook/` vendors four programs from the Gelfond and Kahl
 textbook, checked end to end against the semantics they are published with.
+
+Three things about `tests/` that are easy to trip over:
+
+- **`tests/support.py`** holds the shared scaffolding — running elenctic as a real process,
+  capturing both streams, decoding a document. `tests/` is on the path, so `from support import …`
+  works. A CLI test that re-invents stream capture is a test that will be asked to use it.
+- **`tests/spikes/`** confirms clingo and clingcon behaviour elenctic relies on. It is collected by
+  the suite, carries the project's one marker (`@pytest.mark.spike`, declared in
+  `tests/conftest.py`), and is **excluded from mypy**. The suite runs under `--strict-markers`, so
+  a marker you have not declared is an error rather than a warning.
+- **Line length is 100**, and mathematical Unicode in comments and docstrings (`⋂ ⋃ ⊆ ∅ ∈`) is
+  deliberate house vocabulary — the ambiguous-Unicode lint rules are switched off for it, so it is
+  not an accident to be tidied away.
 
 ## Opening a pull request
 

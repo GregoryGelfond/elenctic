@@ -126,7 +126,7 @@ pythonpath = ["tests"]  # so shared test scaffolding (tests/support.py) is impor
 [tool.mypy]
 strict = true
 warn_unreachable = true
-strict_equality = true
+strict_equality = true  # already implied by strict; written out because it is load-bearing here
 # A name that is bound on some paths and read on all of them. Off under `strict`, and the defect it
 # names is the one a fault handler is most exposed to: the handler runs because something above it
 # did not finish, so anything bound up there may be unbound down here — and the failure arrives as a

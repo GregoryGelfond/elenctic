@@ -16,6 +16,7 @@ a stream, which is the reason the machine-readable tests need a child.
 import pytest
 
 from elenctic.cli import main
+from elenctic.outcome import ExitStatus
 from support import cli_help_section, cli_help_sections, cli_help_text
 
 # Where every option elenctic defines is filed, written out rather than read off the parser, so
@@ -78,6 +79,27 @@ def test_every_option_is_filed_under_a_heading_that_says_what_it_is_for() -> Non
     assert {option: homes.get(option) for option in _HOMES} == _HOMES
 
 
+# What each rung's gloss must actually tell a reader. Stated here rather than derived, because it
+# is the *meaning* of the number and not anything the number computes — the same reason the
+# conclusion glosses are written out. Without it the ladder can be rendered from the type, satisfy
+# every structural check, and still say nothing: collapsing `USER_FAULT`'s sentence to "a fault you
+# can fix" passed the whole suite, and `--help` is the only place a script author reads this.
+_GLOSSED: dict[int, tuple[str, ...]] = {
+    0: ("nothing went wrong",),
+    1: ("decided wrong", "could not be decided"),
+    2: (
+        "bad contract",
+        "corpus",
+        "environment",
+        "will not ground",
+        "memory",
+        "deadline",
+        "hygiene",
+    ),
+    3: ("elenctic itself", "outranks"),
+}
+
+
 def test_the_help_says_what_each_exit_status_means() -> None:
     # The numbers alone would be a list a reader still has to interpret. Which statuses are
     # documented is checked against the ladder that produces them, in test_exit_status.py.
@@ -85,6 +107,17 @@ def test_the_help_says_what_each_exit_status_means() -> None:
     glossed = [line.strip() for line in ladder if line.strip()[:1].isdigit()]
     assert len(glossed) >= 4, f"each status is worth a sentence, not just a number: {glossed}"
     assert all(len(line.split(maxsplit=1)) == 2 for line in glossed), f"bare numbers in {glossed}"
+
+
+@pytest.mark.parametrize("status", list(ExitStatus))
+def test_the_gloss_of_a_status_says_what_lands_a_reader_there(status: ExitStatus) -> None:
+    # Rendering from the type keeps a gloss from landing on the wrong rung; it does not keep one
+    # from going empty on the right rung. `2` is the rung this matters most for, because it is the
+    # one a reader meets for seven different reasons and the only place they are enumerated.
+    for expected in _GLOSSED[status.value]:
+        assert expected in status.gloss, (
+            f"exit {status.value} is reached by something the help does not mention: {expected!r}"
+        )
 
 
 def test_the_help_says_what_a_command_line_that_cannot_be_run_does(help_text: str) -> None:

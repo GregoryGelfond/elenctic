@@ -128,6 +128,10 @@ def test_an_unexpected_fault_is_framed_as_an_elenctic_bug(
     )
     assert "elenctic" in captured.err.lower(), "the user must be told whose fault this is"
     assert "ZeroDivisionError" in captured.err, "the cause is still reported, not swallowed"
+    assert cli._ISSUES in captured.err, (
+        "and told where to take it — asking someone to report a fault without saying where "
+        "leaves them searching for a project they may know only by the name of a command"
+    )
 
 
 def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_status(
