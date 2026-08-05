@@ -380,3 +380,17 @@ def test_the_conservation_law_holds_for_any_outcome(
     counts = summary(outcome)
     unrun = sum(1 for error in outcome.errors if error.scope is Scope.CASE)
     assert counts["total"] == counts["passed"] + counts["failed"] + counts["undecided"] + unrun
+
+
+def test_a_locus_is_spelled_the_same_way_in_both_registers() -> None:
+    # Not a style rule — it is the reason one known substitution is currently invisible. The
+    # terminal heading is built from a locus's *value* and its member is named after it, and while
+    # every name uppercased equals its value uppercased, building the heading from the name instead
+    # produces identical output and no test can see the difference. Stating the coincidence here
+    # makes it a property that can fail rather than an accident two expressions happen to share: the
+    # day a locus is spelled with two words, this fails and says why before the heading does.
+    apart = {kind.name: kind.value for kind in ErrorKind if kind.name != kind.value.upper()}
+    assert not apart, (
+        f"these loci are named one way and spelled another: {apart}. Anything deriving a display "
+        f"form from the name rather than the value now differs, silently"
+    )
