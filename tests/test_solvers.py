@@ -12,6 +12,7 @@ property — ``type(solve(mode)) is shape_for(mode)`` and its readable fields ar
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Final
 
 import pytest
 from clingo import Control, Function, Model, Symbol
@@ -45,8 +46,14 @@ from elenctic.result import (
     shown_optimal_census_of,
     witness_of,
 )
-from elenctic.run import Mode, populates, shape_for
+from elenctic.run import (
+    _LOWERING,  # the taxonomy's declaration of where each objective is set
+    Mode,
+    populates,
+    shape_for,
+)
 from elenctic.solvers import run_clingo, solve
+from support import opt_mode_in_force
 
 # clingo's own solve-result bitset, for constructing a result a race would otherwise have to win.
 _UNSATISFIABLE = 2
@@ -136,6 +143,95 @@ def test_optimal_enum_pins_the_collision_class_to_the_proven_optimum() -> None:
     assert isinstance(det, ConsistentOptimalEnumeration)
     assert optimum_of(det).cost == (0,)
     assert shown_names(optimal_observables_of(det)) == {frozenset({"mark"})}
+
+
+# What each mode's solves must run under, in order, on `_MINIMIZE` -- written out here rather than
+# read back off the lowering, because a table checked against itself agrees with itself however it
+# is edited. `opt` for DEFAULT is clingo's own default, which a witness reading may keep because an
+# objective moves neither whether an answer set exists nor what one contains; every other entry is
+# a setting some mode or driver has to put there. `enum,1` is the bound phase 2 takes from the
+# optimum phase 1 proves, and `_MINIMIZE`'s optimal cost is (1,) -- pinned two tests above.
+_OBJECTIVE_AT_EACH_SOLVE: Final[dict[Mode, list[str]]] = {
+    Mode.DEFAULT: ["opt"],
+    Mode.ENUM_ALL: ["ignore"],
+    Mode.BRAVE_ALL: ["ignore"],
+    Mode.CAUTIOUS_ALL: ["ignore"],
+    Mode.OPTIMAL: ["opt"],
+    Mode.OPTIMAL_ENUM: ["opt", "enum,1"],
+}
+
+
+def _objective_at_each_solve(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record the optimization in force on the control each solve is about to consult.
+
+    Read at the solve, off the configuration, rather than at whatever set it: that is the whole of
+    what the collection invariant claims, and the two came apart once — `OPTIMAL_ENUM` carried a
+    `--opt-mode=optN` through a release without it governing a single solve. A recorder watching
+    the *call* that sets the objective would rest on `_set_opt_mode` being the only writer of the
+    configuration proxy, and on the facade building its control from `mode.args` unchanged; neither
+    is enforced, and this needs neither to be true.
+    """
+    in_force: list[str] = []
+    real = solvers._solve_under_budget
+
+    def record(
+        control: Control, on_model: Callable[[Model], bool], budget: float
+    ) -> tuple[bool, SolveResult]:
+        in_force.append(opt_mode_in_force(control))
+        return real(control, on_model, budget)
+
+    monkeypatch.setattr(solvers, "_solve_under_budget", record)
+    return in_force
+
+
+@pytest.mark.parametrize("facade", ["clingo", "clingcon"])
+@pytest.mark.parametrize("mode", list(Mode))
+def test_every_solve_runs_under_the_optimization_its_collection_requires(
+    mode: Mode, facade: Solver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The collection invariant, read where it is in force: on the control, at each solve, for every
+    # mode and both backends. A mode that names its objective among its construction flags is right
+    # about them only while nothing overrides them afterwards; a mode whose driver sets its own must
+    # have one that does, and must set the objective its collection requires before the phase that
+    # proves the optimum. Both directions fall out of comparing the whole recorded sequence.
+    if facade == "clingcon":
+        pytest.importorskip("clingcon")
+    in_force = _objective_at_each_solve(monkeypatch)
+    solve(facade, mode, _MINIMIZE)
+
+    assert in_force == _OBJECTIVE_AT_EACH_SOLVE[mode], (
+        f"{mode.name} under {facade} solved under {in_force}, and its collection "
+        f"({mode.asks.value}) requires {_OBJECTIVE_AT_EACH_SOLVE[mode]}"
+    )
+    assert (len(in_force) > 1) == _LOWERING[mode].objective_per_phase, (
+        f"{mode.name} declares objective_per_phase={_LOWERING[mode].objective_per_phase} and "
+        f"solved {len(in_force)} time(s) — a mode whose objective is set per phase has phases"
+    )
+
+
+# Two priority levels, so a bound that names only the first is a different bound. {a} costs (1,0)
+# and {b} costs (1,1), so Opt(P) = { {a} } and a truncated bound admits {b} as well.
+_TWO_LEVEL = "1 { a; b } 1. #minimize { 1@2,a : a; 1@2,b : b; 1@1,b : b }. #show a/0. #show b/0."
+
+
+def test_the_phase_two_bound_names_every_level_of_the_proven_optimum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Every other optimal-enum fixture in this file holds the objective at ONE priority level, so
+    # each of them is satisfied by a bound built from the first level alone -- and such a bound
+    # leaves the lower levels unconstrained, enumerating a superset of Opt(P) under a name that says
+    # it is Opt(P). Measured on this program: `enum,1` yields { {a}, {b} } where `enum,1,0` yields
+    # { {a} }, so the class would be wrong while `@cost` still read the true optimum and agreed.
+    in_force = _objective_at_each_solve(monkeypatch)
+    det = run_clingo(Mode.OPTIMAL_ENUM, _TWO_LEVEL).determination
+
+    assert isinstance(det, ConsistentOptimalEnumeration)
+    assert optimum_of(det).cost == (1, 0)
+    assert shown_names(optimal_observables_of(det)) == {frozenset({"a"})}
+    assert in_force == ["opt", "enum,1,0"], (
+        "the phase-2 bound names every priority level of the optimum phase 1 proved; one naming "
+        "fewer admits models outside Opt(P) into the optimal class"
+    )
 
 
 def test_an_optimal_enum_under_a_hit_budget_never_claims_a_complete_optimal_class() -> None:

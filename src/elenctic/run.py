@@ -11,11 +11,14 @@ The wiring rule (the field-compatibility invariant): a check declares ``reads`` 
 stale route fails loud at plan construction (a :class:`~elenctic.result.HarnessError`), before any
 solve — never as a costumed verdict.
 
-The optimization rule (the collection invariant): a mode declares, as :class:`Collection`, which
-answer-set collection its reading ranges over, and its ``args`` must state the optimization that
-collection requires rather than inherit the solver's default. A gating test holds every mode to it,
-because the two are silently separable — a mode reading AS(P) under an active objective still
-returns *an* answer, just to a question nobody asked.
+The optimization rule (the collection invariant): the answer-set collection a mode's reading ranges
+over (:class:`Collection`) fixes the optimization its solve must run under — a mode reading AS(P)
+under an active objective still returns *an* answer, just to a question nobody asked. Only a witness
+reading may leave the setting to the solver's default, because an objective moves neither whether an
+answer set exists nor what one contains. The lowering here derives the setting from the collection,
+so no mode can state one its reading does not call for; what derivation cannot settle is whether
+that setting is still in force when the solve runs, since a mode driven in more than one phase sets
+its own on the built control. The gating tests read it at the solve, for that reason.
 """
 
 from dataclasses import dataclass
@@ -56,13 +59,13 @@ __all__ = [
 
 class Mode(Enum):
     """One solve configuration of the fixed run-configuration taxonomy. The taxonomy is
-    solver-agnostic; ``args`` is its **clingo** lowering (the search-config flags this mode runs
-    as). The facade adds output flags such as ``--project``; the explain surface names the
-    mode itself, which another backend would lower differently.
+    solver-agnostic; ``args`` is its **clingo** lowering (the flags this mode runs as). The facade
+    adds output flags such as ``--project``; the explain surface names the mode itself, which
+    another backend would lower differently.
 
-    ``asks`` names the collection the mode's reading ranges over; it is what makes the mode's
-    optimization flag derivable by a reader rather than a fact about clingo's defaults, and a
-    gating test holds ``args`` to it."""
+    ``asks`` names the collection the mode's reading ranges over, and ``opt_mode`` is the
+    optimization that collection requires — derived from it rather than declared, so a mode cannot
+    state an optimization its own reading does not call for."""
 
     DEFAULT = "default"
     ENUM_ALL = "enum-all"
@@ -73,13 +76,19 @@ class Mode(Enum):
 
     @property
     def args(self) -> tuple[str, ...]:
-        """The clingo arg tuple this mode is constructed with — its search-config flags; another
-        backend would lower the same mode differently.
+        """The clingo arg tuple this mode contributes to its control — the flags naming the search,
+        plus the optimization its reading requires. The facade adds the output flags on top (see the
+        class docstring), and another backend would lower the same mode differently.
 
-        These are construction flags, not always the configuration a solve finally runs under:
-        ``OPTIMAL_ENUM`` is driven in two phases that set the optimization mode on the already-built
-        control, so its ``--opt-mode=optN`` here is overridden before either phase solves."""
-        return _ARGS[self]
+        The optimization appears here only when one setting governs the whole solve. A mode whose
+        objective is set per phase states none: the setting is made on the built control, once per
+        phase, and one fixed at construction would be overwritten before any solve while still
+        reading — to anyone who looked here — as the setting in force."""
+        lowering = _LOWERING[self]
+        if lowering.objective_per_phase:
+            return lowering.search
+        opt_mode = self.opt_mode
+        return lowering.search if opt_mode is None else (*lowering.search, f"--opt-mode={opt_mode}")
 
     @property
     def asks(self) -> Collection:
@@ -88,47 +97,132 @@ class Mode(Enum):
         lowers it to whatever switches its own optimization off or on."""
         return _ASKS[self]
 
+    @property
+    def opt_mode(self) -> str | None:
+        """The optimization the collection this mode reads requires, in clingo's lowering, or
+        ``None`` where the reading is invariant under an objective and the mode states nothing,
+        inheriting clingo's default. **Where** the setting is made is a separate fact: among
+        :attr:`args` when one setting governs the whole solve, and by the driver when the phases
+        need different ones — and a per-phase driver refines this for its later phases, so it is
+        what the *first* solve runs under rather than the only setting that mode ever sees."""
+        return _OPT_MODE[self.asks]
 
-# Every entry states its own optimization: an AS(P) reading switches the objective off
-# (``--opt-mode=ignore``), an Opt(P) reading switches it on, and DEFAULT reads only what an
-# objective cannot change. None inherits clingo's optimize-by-default, which would confine an
-# enumerating solve to the improving sequence — see ``Collection``. A gating test holds each tuple
-# to the collection its mode reads, so a mode added here cannot quietly omit the flag.
-_ARGS: Final[dict[Mode, tuple[str, ...]]] = {
-    Mode.DEFAULT: (),
-    Mode.ENUM_ALL: ("--models=0", "--opt-mode=ignore"),
-    Mode.BRAVE_ALL: ("--enum-mode=brave", "--models=0", "--opt-mode=ignore"),
-    Mode.CAUTIOUS_ALL: ("--enum-mode=cautious", "--models=0", "--opt-mode=ignore"),
-    Mode.OPTIMAL_ENUM: ("--opt-mode=optN", "--models=0"),
-    Mode.OPTIMAL: ("--opt-mode=opt",),
+
+@dataclass(frozen=True, slots=True)
+class _Collapse:
+    """What a projecting run of a projecting mode gives up, and the shape it builds instead: under
+    a theory ``--project`` erases the multiplicity/assignment a full-census token carries, so the
+    run sheds that token (``sheds``) and is read through a shown-only ``shape``. One record rather
+    than two tables, because the two are one fact — a run cannot build the shown-only shape while
+    still offering the token projection erased, nor shed the token and keep the full shape."""
+
+    sheds: Field
+    shape: type[Consistent]
+
+
+@dataclass(frozen=True, slots=True)
+class _Lowering:
+    """One mode's lowering, in one row: a mode is in the table completely or it is not there at all.
+
+    ``search`` is the mode's clingo configuration *other than* the objective — the flags that say
+    what to look for (``--models=0``, ``--enum-mode=…``). The objective is deliberately not written
+    here: it follows from the collection the mode reads (``_OPT_MODE``), and ``Mode.args`` appends
+    it, so a row cannot state an optimization its reading does not call for.
+
+    ``objective_per_phase`` marks a mode whose objective ``search`` **cannot** carry. Its driver
+    solves more than once under *different* settings, so no single construction-time value governs
+    its solve; the driver sets each phase's on the built control, and the gating test reads the
+    setting in force rather than the tuple.
+
+    ``populates`` is the fields a ``Consistent`` result makes readable and ``shape`` the type it is
+    read through. ``collapse`` is present exactly for the modes whose projection erases information,
+    and what it sheds must be a field the mode populates — a row promising to give up what it never
+    had would leave ``populates`` and ``shape_for`` describing different runs.
+    """
+
+    search: tuple[str, ...]
+    populates: frozenset[Field]
+    shape: type[Consistent]
+    collapse: _Collapse | None = None
+    objective_per_phase: bool = False
+
+    def __post_init__(self) -> None:
+        if self.collapse is not None and self.collapse.sheds not in self.populates:
+            # raised, not asserted, so it survives `python -O`; at import, before any solve
+            raise AssertionError(
+                f"a lowering row sheds {self.collapse.sheds.value} when it projects, but does not "
+                "populate it"
+            )
+
+
+# The optimization each collection requires, in clingo's lowering. An AS(P) reading switches the
+# objective off, or the search prunes the enumeration to the improving sequence; an Opt(P) reading
+# switches it on, since only an active objective identifies Opt(P); a witness reading is invariant
+# under an objective and states nothing, inheriting clingo's optimize-by-default — see
+# ``Collection``. Keyed on the collection rather than on the mode, because the collection is what
+# fixes it: the requirement has one home and no mode restates it.
+_OPT_MODE: Final[dict[Collection, str | None]] = {
+    Collection.ALL: "ignore",
+    Collection.OPTIMAL: "opt",
+    Collection.WITNESS: None,
 }
 
-_POPULATES: Final[dict[Mode, frozenset[Field]]] = {
-    Mode.DEFAULT: frozenset({Field.WITNESS}),
-    Mode.ENUM_ALL: frozenset({Field.SHOWN_CENSUS, Field.FULL_CENSUS, Field.CAUTIOUS, Field.BRAVE}),
-    Mode.BRAVE_ALL: frozenset({Field.BRAVE}),
-    Mode.CAUTIOUS_ALL: frozenset({Field.CAUTIOUS}),
-    Mode.OPTIMAL_ENUM: frozenset(
-        {Field.SHOWN_OPTIMAL_CENSUS, Field.FULL_OPTIMAL_CENSUS, Field.OPTIMUM}
+_LOWERING: Final[dict[Mode, _Lowering]] = {
+    Mode.DEFAULT: _Lowering(
+        search=(),
+        populates=frozenset({Field.WITNESS}),
+        shape=ConsistentWitness,
     ),
-    Mode.OPTIMAL: frozenset({Field.OPTIMUM}),
+    Mode.ENUM_ALL: _Lowering(
+        search=("--models=0",),
+        populates=frozenset({Field.SHOWN_CENSUS, Field.FULL_CENSUS, Field.CAUTIOUS, Field.BRAVE}),
+        shape=ConsistentEnumeration,
+        collapse=_Collapse(Field.FULL_CENSUS, ConsistentShownCensus),
+    ),
+    Mode.BRAVE_ALL: _Lowering(
+        search=("--enum-mode=brave", "--models=0"),
+        populates=frozenset({Field.BRAVE}),
+        shape=ConsistentBrave,
+    ),
+    Mode.CAUTIOUS_ALL: _Lowering(
+        search=("--enum-mode=cautious", "--models=0"),
+        populates=frozenset({Field.CAUTIOUS}),
+        shape=ConsistentCautious,
+    ),
+    Mode.OPTIMAL_ENUM: _Lowering(
+        search=("--models=0",),
+        populates=frozenset({Field.SHOWN_OPTIMAL_CENSUS, Field.FULL_OPTIMAL_CENSUS, Field.OPTIMUM}),
+        shape=ConsistentOptimalEnumeration,
+        collapse=_Collapse(Field.FULL_OPTIMAL_CENSUS, ConsistentShownOptimalCensus),
+        # Enumerating the optimal class is two solves under different objectives (prove c*, then
+        # enumerate at it), which is why this mode's args name no optimization.
+        objective_per_phase=True,
+    ),
+    Mode.OPTIMAL: _Lowering(
+        search=(),
+        populates=frozenset({Field.OPTIMUM}),
+        shape=ConsistentOptimum,
+    ),
 }
+
+if frozenset(_LOWERING) != frozenset(Mode):  # raised, not asserted, so it survives `python -O`
+    raise AssertionError("run._LOWERING does not cover the Mode taxonomy")
 
 # Derived, never declared: a mode reads whatever its fields read, so it cannot claim one collection
 # while populating another's. Built at import, so a mode whose fields disagree — or a field absent
-# from _READS — fails before any solve rather than mis-lowering one. Projection is a no-op here: it
-# sheds a full-census token whose collection its siblings already carry, which a test pins.
+# from the field→collection partition — fails before any solve rather than mis-lowering one.
+# Projection is a no-op here: it sheds a full-census token whose collection its siblings already
+# carry, which a test pins.
 _ASKS: Final[dict[Mode, Collection]] = {
-    mode: collection_of(fields) for mode, fields in _POPULATES.items()
+    mode: collection_of(lowering.populates) for mode, lowering in _LOWERING.items()
 }
 
-# The projection-sensitive (full-census) token each projecting mode SHEDS when it projects to shown:
-# under a theory ``--project`` erases the multiplicity/assignment that token carries. Non-projecting
-# modes are absent here, so the projection coordinate is a no-op for them.
-_FULL_TOKEN: Final[dict[Mode, Field]] = {
-    Mode.ENUM_ALL: Field.FULL_CENSUS,
-    Mode.OPTIMAL_ENUM: Field.FULL_OPTIMAL_CENSUS,
-}
+# The projection-sensitive tokens: exactly what some mode sheds when it projects. Derived from the
+# same rows, so a projecting mode added there extends ``reads_full_census`` rather than needing a
+# second edit somebody could miss.
+_PROJECTION_SENSITIVE: Final[frozenset[Field]] = frozenset(
+    lowering.collapse.sheds for lowering in _LOWERING.values() if lowering.collapse is not None
+)
 
 
 def populates(mode: Mode, projects_to_shown: bool = False) -> frozenset[Field]:
@@ -137,37 +231,22 @@ def populates(mode: Mode, projects_to_shown: bool = False) -> frozenset[Field]:
     shown view and the consequence views (both derivable from the shown set). The lowering
     postcondition for ``solvers.py`` — a ``Consistent`` of ``(mode, projects_to_shown)`` carries
     exactly these fields — is the accessor seam's second unreachability premise."""
-    fields = _POPULATES[mode]
-    if projects_to_shown and mode in _FULL_TOKEN:
-        return fields - {_FULL_TOKEN[mode]}
-    return fields
-
-
-_SHAPE: Final[dict[Mode, type[Consistent]]] = {
-    Mode.DEFAULT: ConsistentWitness,
-    Mode.ENUM_ALL: ConsistentEnumeration,
-    Mode.BRAVE_ALL: ConsistentBrave,
-    Mode.CAUTIOUS_ALL: ConsistentCautious,
-    Mode.OPTIMAL_ENUM: ConsistentOptimalEnumeration,
-    Mode.OPTIMAL: ConsistentOptimum,
-}
-
-# The shown-only shape each projecting mode builds when projecting to shown (a theory phenomenon).
-_PROJECTED_SHAPE: Final[dict[Mode, type[Consistent]]] = {
-    Mode.ENUM_ALL: ConsistentShownCensus,
-    Mode.OPTIMAL_ENUM: ConsistentShownOptimalCensus,
-}
+    lowering = _LOWERING[mode]
+    if projects_to_shown and lowering.collapse is not None:
+        return lowering.populates - {lowering.collapse.sheds}
+    return lowering.populates
 
 
 def shape_for(mode: Mode, projects_to_shown: bool = False) -> type[Consistent]:
     """The ``Consistent`` shape ``solvers.py`` must produce for ``(mode, projects_to_shown)`` — the
     source-level Mode→shape arrow of the lowering contract. A projecting run of a projecting mode
     builds the shown-only shape; everything else builds the full shape. The fields an instance makes
-    readable through the accessor seam are exactly ``populates(mode, projects_to_shown)``; a seam
-    test ties the two so the lowering postcondition cannot silently drift."""
-    if projects_to_shown and mode in _PROJECTED_SHAPE:
-        return _PROJECTED_SHAPE[mode]
-    return _SHAPE[mode]
+    readable through the accessor seam are exactly ``populates(mode, projects_to_shown)``; the two
+    read the same ``collapse`` off the same row, so the pair cannot silently come apart."""
+    lowering = _LOWERING[mode]
+    if projects_to_shown and lowering.collapse is not None:
+        return lowering.collapse.shape
+    return lowering.shape
 
 
 class RoutingError(HarnessError):
@@ -221,15 +300,17 @@ class Run:
 def reads_full_census(check: Check) -> bool:
     """Whether ``check`` reads a projection-sensitive full-census token (the multiplicity/assignment
     view). A pure vocabulary-membership test over ``check.reads`` — no stored bool to drift, so a
-    future check that reads a full token is automatically an assignment/multiplicity observer."""
-    return bool(check.reads & {Field.FULL_CENSUS, Field.FULL_OPTIMAL_CENSUS})
+    future check that reads a full token is automatically an assignment/multiplicity observer, and
+    the vocabulary it is tested against is the one the lowering rows shed."""
+    return bool(check.reads & _PROJECTION_SENSITIVE)
 
 
 def should_project(theory_in_force: bool, mode: Mode, checks: tuple[Check, ...]) -> bool:
     """Whether a run may project its census onto shown atoms — the contract-induced projection rule.
-    Pure; carried on the :class:`Run`. A non-enumeration mode has nothing to collapse. With no
-    theory in force the assignment is empty, so projection is information-preserving and always
-    safe. Under a theory, project iff no rider observes the full (multiplicity/assignment) census.
+    Pure; carried on the :class:`Run`. A mode with nothing to collapse is read off its lowering row
+    rather than listed here, so a projecting mode added to the table projects. With no theory in
+    force the assignment is empty, so projection is information-preserving and always safe. Under a
+    theory, project iff no rider observes the full (multiplicity/assignment) census.
 
     Soundness is enforced, not assumed: a mis-derive (projecting with a full-view reader present)
     builds the ``Run`` against the projected ``populates``, the full token is absent, and
@@ -237,7 +318,7 @@ def should_project(theory_in_force: bool, mode: Mode, checks: tuple[Check, ...])
     the ``reads ⊆ populates`` feasibility check. No ``bool(checks)`` guard: a check-less enumeration
     has no verdict to preserve, so the facade default (``solve(project=False)``) handles raw callers
     separately from this soundness predicate."""
-    if mode not in {Mode.ENUM_ALL, Mode.OPTIMAL_ENUM}:
+    if _LOWERING[mode].collapse is None:
         return False
     if not theory_in_force:
         return True
@@ -377,10 +458,11 @@ def _main() -> None:
 
     from elenctic.expectation import parse
 
-    if len(sys.argv) != 2:
+    arguments = sys.argv[1:]
+    if len(arguments) != 1:
         print("usage: python -m elenctic.run <file.lp>", file=sys.stderr)
         raise SystemExit(2)
-    path = Path(sys.argv[1])
+    path = Path(arguments[0])
     for run in runs_for(parse(path.read_text(encoding="utf-8"), source=str(path))):
         # solver-independent: the dry-run shows the mode and each check's reads, not the projection
         # decision (which needs the solver — narrated by the CLI's --explain, which has the case).

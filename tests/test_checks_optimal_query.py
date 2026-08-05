@@ -1,7 +1,8 @@
 """Unit tests for the optimal-base checks and the ``@query`` check.
 
 The optimal-base modes aggregate over ``ConsistentOptimalEnumeration``'s ``optimal_observables``
-(the ``--opt-mode=optN`` solve). The ``@query`` check is errata-corrected (Def 2.2.2): a
+(the two-phase optimal solve: prove the optimum, then enumerate at it). The ``@query`` check is
+errata-corrected (Def 2.2.2): a
 singleton ground query reads the cautious consequences ⋂; a *conjunctive* (n≥2) ground query reads
 the model census; a yes/no binding reads ⋂; an unknown binding reads ⋂ and ⋃. Every arm short-
 circuits: ``Inconsistent`` (AS(P)=∅) → FAIL (every query is vacuously yes-and-no). A

@@ -41,7 +41,7 @@ from elenctic.result import (
     witness_of,
 )
 
-# --- Observable / Verdict (unchanged) ---
+# --- Observable and Verdict ---
 
 
 def test_observable_is_hashable_and_value_equal() -> None:
@@ -58,6 +58,32 @@ def test_observable_distinct_by_assignment() -> None:
     o1 = Observable(frozenset({a}), frozenset({(Function("x"), 1)}))
     o2 = Observable(frozenset({a}), frozenset({(Function("x"), 2)}))
     assert o1 != o2  # equal shown, different assign ⇒ distinct observables
+
+
+def test_an_assignment_giving_one_variable_two_values_is_refused() -> None:
+    # The two observables above are what a doubled variable is legitimately spelled as: one value
+    # each, in two models. Both pairs inside ONE assignment is a model in which x holds 1 and 2 at
+    # once, which no CSP model does. A frozenset of pairs cannot rule it out by its type, and it is
+    # not caught downstream either -- @assign would read x as satisfying a claim about both values
+    # while @count counted the observable once -- so it is refused where it is built.
+    #
+    # HarnessError, for the reason the test below this section states for every other invariant in
+    # this module: an observable is built inside the model callback, so a class the per-case
+    # register does not recognise ends the run instead of costing one case.
+    x, y = Function("x"), Function("y")
+    whole = re.escape(
+        "an observable's assignment gives more than one value to x, and one model assigns each "
+        "CSP variable one value."
+    )
+    with pytest.raises(HarnessError, match=rf"^{whole}"):
+        Observable(frozenset({Function("a")}), frozenset({(x, 1), (x, 2)}))
+    # The diagnostic names the variable that is doubled and not the one beside it.
+    with pytest.raises(HarnessError, match=r"more than one value to x, and"):
+        Observable(frozenset(), frozenset({(x, 1), (x, 2), (y, 3)}))
+    # One value each is the ordinary case, and several variables in one model are ordinary too.
+    assert Observable(frozenset(), frozenset({(x, 1), (y, 3)})).assign == frozenset(
+        {(x, 1), (y, 3)}
+    )
 
 
 def test_verdict_three_valued() -> None:

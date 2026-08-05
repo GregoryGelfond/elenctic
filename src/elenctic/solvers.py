@@ -305,7 +305,8 @@ def _conclusion(completed: bool, result: SolveResult) -> Conclusion:
     What ``exhausted`` certifies is that the space was covered *under the configuration the run was
     given*, so it says nothing about whether that configuration was the right one: an enumeration
     under an active objective exhausts having visited only the improving sequence. That second
-    requirement is carried by each mode's ``args`` and gated separately."""
+    requirement is carried by each mode's ``args``, or by its driver where the objective is set per
+    phase, and gated separately."""
     if _cut_short(completed, result):
         return Conclusion.INTERRUPTED
     if result.exhausted:
@@ -461,8 +462,17 @@ def _optimal_enum_two_phase(
     was hit, or the search gave up — yields ``Inconclusive``. So does a first phase that decides but
     does not finish: an unproven optimum is not a bound there is anything to enumerate at, which is
     a fact about this driver rather than about what will be read, so it is settled here. UNSAT in
-    phase 1 yields ``Inconsistent``. Setting ``opt_mode`` overrides the construction
-    ``--opt-mode=optN``.
+    phase 1 yields ``Inconsistent``.
+
+    This driver is the whole of where ``OPTIMAL_ENUM``'s objective is switched on. Its two phases
+    run under *different* settings, so the mode's construction args state none and each phase sets
+    its own on the built control: phase 1 the setting that proves an optimum, which is the one that
+    mode's collection requires (``Mode.OPTIMAL_ENUM.opt_mode``, held to it by a gating test), and
+    phase 2 ``enum,c*`` — a *different* setting, not phase 1's with a bound added. The distinction
+    is not pedantic: ``opt,c*`` is also a setting clingo accepts, and it keeps improving from that
+    bound rather than enumerating at it, which is the very thing two phases exist to avoid. The
+    bound names **every** priority level of the proven optimum; one naming fewer leaves the rest
+    unconstrained and admits models outside Opt(P) into the class.
 
     ``faults`` covers each solve and nothing between them: the reduction that decides whether there
     is a second phase is elenctic's own, and so is ``_set_opt_mode``, which builds its argument
@@ -748,17 +758,18 @@ def _main() -> None:
     ``SolveOutcome``."""
     import sys
 
-    if len(sys.argv) != 3:
+    arguments = sys.argv[1:]
+    if len(arguments) != 2:
         print("usage: python -m elenctic.solvers <MODE> <file.lp>", file=sys.stderr)
         print(f"  MODE one of: {', '.join(mode.name for mode in Mode)}", file=sys.stderr)
         raise SystemExit(2)
     try:
-        mode = Mode[sys.argv[1]]
+        mode = Mode[arguments[0]]
     except KeyError:
         known = ", ".join(mode.name for mode in Mode)
-        print(f"unknown mode {sys.argv[1]!r}; one of: {known}", file=sys.stderr)
+        print(f"unknown mode {arguments[0]!r}; one of: {known}", file=sys.stderr)
         raise SystemExit(2) from None
-    print(run_clingo(mode, files=(Path(sys.argv[2]),)))
+    print(run_clingo(mode, files=(Path(arguments[1]),)))
 
 
 if __name__ == "__main__":

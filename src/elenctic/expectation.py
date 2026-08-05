@@ -765,10 +765,11 @@ def _main() -> None:
     import sys
     from pathlib import Path
 
-    if len(sys.argv) != 2:
+    arguments = sys.argv[1:]
+    if len(arguments) != 1:
         print("usage: python -m elenctic.expectation <file.lp>", file=sys.stderr)
         raise SystemExit(2)
-    path = Path(sys.argv[1])
+    path = Path(arguments[0])
     print(parse(path.read_text(encoding="utf-8"), source=str(path)))
 
 

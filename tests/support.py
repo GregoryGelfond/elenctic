@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import pytest
+from clingo import Control
 
 from elenctic.result import Conclusion, Determination, SolveOutcome
 
@@ -27,6 +28,7 @@ __all__ = [
     "cli_help_text",
     "decided",
     "document_of",
+    "opt_mode_in_force",
     "run_cli",
 ]
 
@@ -35,6 +37,15 @@ __all__ = [
 # the interpreter to start; a number without that reasoning beside it is one nobody can safely
 # change.
 _CHILD_TIMEOUT_SECONDS = 300
+
+
+def opt_mode_in_force(control: Control) -> str:
+    """The optimization setting ``control`` will solve under — read back off the configuration
+    rather than inferred from the flags or the call that set it, because the configuration is what
+    the solver consults. clingo's configuration proxy is dynamically typed, the same boundary
+    ``solvers._set_opt_mode`` isolates for the write, so the narrowing lives here once instead of at
+    each reading."""
+    return str(control.configuration.solve.opt_mode)  # type: ignore[union-attr]
 
 
 def decided(determination: Determination) -> SolveOutcome:

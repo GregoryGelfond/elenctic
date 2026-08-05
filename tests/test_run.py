@@ -19,7 +19,7 @@ from collections import Counter
 from typing import assert_never
 
 import pytest
-from clingo import Function, Symbol
+from clingo import Control, Function, Symbol
 from hypothesis import given, strategies as st
 
 from elenctic import checks
@@ -35,6 +35,7 @@ from elenctic.result import (
     collection_of,
 )
 from elenctic.run import (
+    _LOWERING,  # the taxonomy's own table, and this file is its gate
     Mode,
     RoutingError,
     Run,
@@ -44,6 +45,7 @@ from elenctic.run import (
     shape_for,
     should_project,
 )
+from support import opt_mode_in_force
 
 
 def runs(contract: str) -> tuple[Run, ...]:
@@ -70,35 +72,63 @@ def test_mode_lowers_to_its_solver_args() -> None:
     assert Mode.ENUM_ALL.args == ("--models=0", "--opt-mode=ignore")
     assert Mode.CAUTIOUS_ALL.args == ("--enum-mode=cautious", "--models=0", "--opt-mode=ignore")
     assert Mode.BRAVE_ALL.args == ("--enum-mode=brave", "--models=0", "--opt-mode=ignore")
-    assert Mode.OPTIMAL_ENUM.args == ("--opt-mode=optN", "--models=0")
+    # No objective among these: this mode's two phases run under different ones, so its driver sets
+    # each on the built control and anything named here is overwritten before either phase solves.
+    assert Mode.OPTIMAL_ENUM.args == ("--models=0",)
     assert Mode.OPTIMAL.args == ("--opt-mode=opt",)
 
 
-def test_every_mode_states_the_optimization_its_collection_requires() -> None:
-    # The invariant the lowering table exists to keep: a mode's optimization flag is fixed by the
-    # collection its reading ranges over, and no mode may leave it to clingo's default. clingo
-    # defaults to --opt-mode=opt, which prunes an enumerating solve to the branch-and-bound
-    # improving sequence -- neither AS(P) nor Opt(P), and dependent on the search heuristic. Pinning
-    # the arg tuples (above) records what each mode lowers to; this pins *why*, so a mode added
-    # without an opt-mode fails here rather than answering a question nobody asked.
+def _quiet(_code: object, _message: str) -> None:
+    """Swallow clingo's construction notices: the subject here is the configuration, not the log."""
+
+
+def test_every_mode_runs_under_the_optimization_its_collection_requires() -> None:
+    # The invariant the lowering exists to keep: the objective a solve runs under is fixed by the
+    # collection the mode's reading ranges over, and no mode may leave it to clingo's default --
+    # which is --opt-mode=opt, and confines an enumerating solve to the branch-and-bound improving
+    # sequence: neither AS(P) nor Opt(P), and dependent on the search heuristic.
+    #
+    # Read off a built control rather than by scanning the arg tuple for a `--opt-mode=` prefix. A
+    # tuple states an intention, a control holds the setting, and the two came apart: OPTIMAL_ENUM
+    # carried `--opt-mode=optN` through a release without it governing a single solve, and a prefix
+    # scan called that stated. Where a driver sets the objective per phase instead, what is checked
+    # here is that the tuple names none; what the driver sets is read at the solve, in
+    # tests/test_solvers.py.
+    #
+    # Each arm names the setting it requires here, rather than reading it back off the lowering: a
+    # table checked against itself agrees with itself however it is edited. The AS(P) arm is the
+    # discriminating one -- clingo's default IS `opt`, so the Opt(P) arm's control read cannot
+    # distinguish a stated flag from an absent one, and what pins that flag is the literal tuple in
+    # the test above.
     for mode in Mode:
         stated = tuple(arg for arg in mode.args if arg.startswith("--opt-mode="))
+        if _LOWERING[mode].objective_per_phase:
+            assert stated == (), (
+                f"{mode.name}'s objective is set per phase on the built control, so one among its "
+                "construction args governs no solve while reading as the setting in force"
+            )
+            continue
         match mode.asks:
             case Collection.ALL:
-                assert stated == ("--opt-mode=ignore",), (
-                    f"{mode.name} reads AS(P), so it must switch the objective off"
-                )
+                requires = "ignore"
             case Collection.OPTIMAL:
-                assert stated in (("--opt-mode=opt",), ("--opt-mode=optN",)), (
-                    f"{mode.name} reads Opt(P), so it must switch the objective on"
-                )
+                requires = "opt"
             case Collection.WITNESS:
                 assert stated == (), (
-                    f"{mode.name} reads satisfiability and one arbitrary witness, both invariant "
-                    "under an objective, so it states no opt-mode"
+                    f"{mode.name} reads {mode.asks.value}, whose answer an objective cannot move, "
+                    "so it states none and inherits clingo's default"
                 )
+                continue
             case _:
                 assert_never(mode.asks)
+        assert mode.opt_mode == requires, (
+            f"{mode.name} reads {mode.asks.value}, which requires --opt-mode={requires}"
+        )
+        in_force = opt_mode_in_force(Control(list(mode.args), logger=_quiet))
+        assert in_force == requires, (
+            f"{mode.name} reads {mode.asks.value}, which requires --opt-mode={requires}, but a "
+            f"control built from its args solves under {in_force!r}"
+        )
 
 
 def test_every_collection_states_the_search_its_reading_requires() -> None:

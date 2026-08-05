@@ -76,13 +76,40 @@ class Observable:
     are distinct observables, which the value equality of this frozen dataclass
     realises directly.
 
-    Invariant (single-valued, not enforced by the type): ``assign`` holds at most one ``(v, k)`` per
-    CSP variable ``v`` — the hashable realisation of a ``Mapping[Symbol, int]``; the
-    solver facade constructs it so.
+    Invariant (single-valued): ``assign`` holds at most one ``(v, k)`` per CSP variable ``v`` — the
+    hashable realisation of a ``Mapping[Symbol, int]``. A frozenset of pairs cannot say so by its
+    type, so the constructor says it instead: one model assigns one value, and a pair of them would
+    make ``@assign`` read a variable as holding both while ``@count`` counted the observable once.
+    It raises the harness root for the reason its siblings here do — an observable is built inside
+    the model callback, so an exception the per-case register does not recognise costs the run
+    every case still to come.
     """
 
     shown: frozenset[Symbol]
     assign: frozenset[tuple[Symbol, int]] = frozenset()
+
+    def __post_init__(self) -> None:
+        # One observable is built per model shown to a solve, so this is a per-model cost and its
+        # shape is stated. A pure-clingo model carries no assignment and stops at the first test.
+        # A theory model pays a fresh hash per variable — clingo's Symbol does not cache one — so
+        # the cost is a set build proportional to the assignment, on the order of the work that
+        # produced it. Naming the offenders is a scan per variable, and only where the next
+        # statement raises.
+        if not self.assign:
+            return
+        variables = {variable for variable, _ in self.assign}
+        if len(variables) != len(self.assign):
+            doubled = sorted(
+                str(variable)
+                for variable in variables
+                if sum(1 for other, _ in self.assign if other == variable) > 1
+            )
+            raise HarnessError(
+                f"an observable's assignment gives more than one value to {', '.join(doubled)}, "
+                "and one model assigns each CSP variable one value. Either the theory boundary was "
+                "misread or a solver reported something elenctic relies on it never to report — "
+                "please report it. Never a verdict."
+            )
 
 
 class Verdict(Enum):

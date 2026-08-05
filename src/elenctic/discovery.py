@@ -443,10 +443,11 @@ def _main() -> None:
     """Inspect discovery: walk a target (a file or a directory) and list the discovered cases."""
     import sys
 
-    if len(sys.argv) != 2:
+    arguments = sys.argv[1:]
+    if len(arguments) != 1:
         print("usage: python -m elenctic.discovery <file.lp | directory>", file=sys.stderr)
         raise SystemExit(2)
-    for case in discover(Path(sys.argv[1])):
+    for case in discover(Path(arguments[0])):
         print(f"{case.contract_source} [{case.solver}]")
 
 
