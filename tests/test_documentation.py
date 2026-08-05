@@ -23,6 +23,7 @@ from elenctic.solvers import TIME_BUDGET
 _ROOT = Path(__file__).resolve().parent.parent
 _README = (_ROOT / "README.md").read_text(encoding="utf-8")
 _CHANGELOG = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+_CONTRIBUTING = (_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
 
 # A dotted name under this package, written as code — `elenctic.outcome.ExitStatus` and the like.
 # Anchored at `elenctic.` so that a backticked flag, path or scrap of ASP is not mistaken for one.
@@ -68,10 +69,14 @@ def test_every_name_the_documents_tell_a_reader_to_import_is_one_they_can() -> N
     # nothing to say about where the thing went. That is not hypothetical: the entry announcing the
     # exit-status type named it under the console entry, which is not where it lives.
     #
-    # Both documents at once, and asserted whole rather than one name at a time, so a reader of a
+    # Every document at once, and asserted whole rather than one name at a time, so a reader of a
     # failure sees every name that has come adrift rather than the first.
     mentioned = sorted(
-        {name for text in (_README, _CHANGELOG) for name in _DOTTED_NAME.findall(text)}
+        {
+            name
+            for text in (_README, _CHANGELOG, _CONTRIBUTING)
+            for name in _DOTTED_NAME.findall(text)
+        }
     )
     assert mentioned, "the pattern found nothing at all, which means it is no longer the pattern"
     adrift = [name for name in mentioned if not _is_a_home(name)]

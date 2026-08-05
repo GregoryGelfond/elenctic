@@ -395,6 +395,10 @@ $ cd elenctic && pixi install
 $ pixi run check        # ruff + mypy --strict + pytest
 ```
 
+That one command is the whole gate, and it is what CI runs. [CONTRIBUTING.md](CONTRIBUTING.md) has
+the rest: what the gate holds you to, the conventions a patch is read against, and how to report a
+bug usefully.
+
 ## Running
 
 The standalone runner discovers cases under a target (a single `.lp` file or a directory) and runs them:
