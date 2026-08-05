@@ -5,6 +5,16 @@ Thanks for looking. Bugs, questions and patches are all welcome: bugs and questi
 
 elenctic is MIT-licensed. There is no contributor agreement to sign.
 
+**Using an AI assistant is fine.** Claude or anything else, for any part of it — some projects
+disallow this and elenctic does not, and there is nothing you need to disclose. The one thing that
+does not change is that the contribution is yours: you are the one vouching for it, and it is read
+on the same terms as anything else.
+
+If it helps, the conventions further down are the ones worth pointing an assistant at. Several of
+them are there because a confident, plausible, wrong answer got as far as a commit in this
+repository — a failure mode people and assistants share, and the reason the gate is shaped the way
+it is.
+
 ## Getting set up
 
 The toolchain is pinned with [pixi](https://pixi.sh), which brings its own Python, clingo and
