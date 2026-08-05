@@ -96,8 +96,12 @@ def test_a_conditional_term_show_alone_restricts_nothing(tmp_path: Path) -> None
     # `#show <term> : <body>.` displays a term; it does not switch clingo into selective output.
     # So a program carrying only these still shows every atom, and reading one as a declaration
     # would understate what is observable — a refusal for a literal that is in fact readable.
+    #
+    # It is recorded as displayed even here, where nothing is restricted, because unrestricted is
+    # not the same as faithful: the output holds every literal of the answer set AND whatever the
+    # directive emits on top, which need not be an atom of the program at all.
     case = _write(tmp_path, "c.lp", "p(1). q(1).\n#show p(X) : q(X).\n")
-    assert inspect((case,)).shown == Unrestricted()
+    assert inspect((case,)).shown == Unrestricted(displayed=frozenset({("p", 1)}))
 
 
 def test_a_conditional_term_show_declares_nothing_beside_a_declaration(tmp_path: Path) -> None:
@@ -118,7 +122,7 @@ def test_clingo_still_restricts_on_a_declaration_and_not_on_a_term(tmp_path: Pat
     import clingo
 
     def shown(body: str) -> set[str]:
-        case = _write(tmp_path, f"probe{abs(hash(body))}.lp", body)
+        case = _write(tmp_path, f"probe{len(body)}-{body.count(chr(35))}.lp", body)
         control = clingo.Control(["--models=1"])
         control.load(str(case))
         control.ground([("base", [])])
@@ -129,7 +133,9 @@ def test_clingo_still_restricts_on_a_declaration_and_not_on_a_term(tmp_path: Pat
     assert shown(program) == {"p(a)", "p(b)", "q(a)"}, "no declaration shows every atom"
     assert shown(program + "#show.\n") == set(), "a bare declaration shows none"
     assert shown(program + "#show q/1.\n") == {"q(a)"}, "a declaration restricts to itself"
-    assert shown(program + "#show p(X) : q(X).\n") == {"p(a)", "p(b)", "q(a)"}, (
+    # The displayed term names a predicate that is in NO answer set, so this observes both halves
+    # at once: the output is not narrowed, AND it gains a symbol the answer set does not contain.
+    assert shown(program + "#show seen(X) : q(X).\n") == {"p(a)", "p(b)", "q(a)", "seen(a)"}, (
         "a term directive adds to the output and does not restrict it"
     )
 

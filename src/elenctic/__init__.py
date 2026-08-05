@@ -155,6 +155,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         runs_for as runs_for,
     )
     from elenctic.solvers import TIME_BUDGET as TIME_BUDGET, solve as solve
+    from elenctic.terms import Signature as Signature
 
 __version__ = "0.3.0"
 
@@ -207,6 +208,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
     "elenctic.program": ("ProgramError", "Restricted", "ShownVocabulary", "Unrestricted"),
     "elenctic.query": ("Answer", "Query"),
     "elenctic.registry": ("SOLVERS", "Solver"),
+    "elenctic.terms": ("Signature",),
     "elenctic.result": (
         "Collection",
         "Conclusion",

@@ -326,12 +326,14 @@ def _goal_signature(goal: QueryLiteral) -> Signature:
 def signatures_read(query: Query) -> frozenset[Signature]:
     """Every predicate signature this query's evaluation consults.
 
-    elenctic never sees an answer set: each of the evaluators above reads the *shown projection* of
-    one, so its computed answer is the Gelfond–Kahl answer exactly when the program makes every
-    signature listed here observable. That is the precondition discovery enforces, and this is the
-    one statement of it — written beside the evaluators it is derived from, and keyed on the same
-    query shapes :func:`classify` routes and reads by, so what is required and what is consulted
-    cannot drift apart.
+    elenctic never sees an answer set: each of the evaluators above reads what the solver put in the
+    output, so its computed answer is the Gelfond–Kahl answer when that output agrees with the
+    answer set on every signature listed here — which needs more than the signatures being
+    observable, since a ``#show`` directive can also put in the output a term no answer set
+    contains. This function states *what is read*; what it takes for the output to agree on those
+    signatures is discovery's question. Written beside the evaluators it is derived from, and keyed
+    on the same query shapes :func:`classify` routes and reads by, so what is required and what is
+    consulted cannot drift apart.
 
     Per form, derived from the evaluator and tight (drop any one and a program exists whose computed
     answer differs from its true one):

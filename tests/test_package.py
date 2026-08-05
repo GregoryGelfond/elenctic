@@ -20,7 +20,7 @@ _CURATED = {
     "Claimed", "runs_for", "Run", "Mode", "solve", "TIME_BUDGET", "run_case", "run_plan",
     "case_verdict", "render", "CheckReport", "Query", "Answer",
     # what a program makes observable, which is what decides whether a @query can be answered
-    "ShownVocabulary", "Unrestricted", "Restricted",
+    "ShownVocabulary", "Unrestricted", "Restricted", "Signature",
     # the outcomes a solve produced, and how far the search behind them got
     "Determination", "Verdict", "Observable", "Optimum", "SolveOutcome", "Consistent",
     "Inconclusive", "Inconsistent", "Conclusion", "Collection",
@@ -92,6 +92,26 @@ def test_the_package_tells_a_type_checker_that_it_is_typed() -> None:
         "elenctic is annotated throughout and gated on a strict type check; without this marker "
         "none of that reaches anyone who installs it"
     )
+
+
+def test_a_consumer_can_match_on_what_a_case_makes_observable(tmp_path: Path) -> None:
+    # `ShownVocabulary` is on the surface because asking which of the two a case carries is its only
+    # use, and asking means matching on it. This is that question asked entirely through the curated
+    # names, which is what the export is for — the members are keyword-only, so a positional pattern
+    # would not work and the keyword form is the one a consumer is owed.
+    (tmp_path / "declared.lp").write_text(
+        "% @expect sat\n% @model { a }\na.\n#show a/0.\n", encoding="utf-8"
+    )
+    (tmp_path / "open.lp").write_text("% @expect sat\n% @model { a }\na.\n", encoding="utf-8")
+    seen: dict[str, object] = {}
+    for case in elenctic.discover(tmp_path):
+        match case.shown:
+            case elenctic.Restricted(signatures=signatures, displayed=displayed):
+                seen["restricted"] = (signatures, displayed)
+            case elenctic.Unrestricted(displayed=displayed):
+                seen["unrestricted"] = displayed
+    assert seen["restricted"] == (frozenset({("a", 0)}), frozenset())
+    assert seen["unrestricted"] == frozenset()
 
 
 def test_public_api_is_curated_not_dumped() -> None:

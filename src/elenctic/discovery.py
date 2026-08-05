@@ -412,63 +412,92 @@ def check_program(
 def _check_queries_are_answerable(expectation: Sat, shown: ShownVocabulary, where: Path) -> None:
     """Refuse any ``@query`` whose answer the program does not determine.
 
-    A query is answered off the shown projection of each answer set, so elenctic's answer is the
-    Gelfond–Kahl answer exactly when every signature the query consults
-    (:func:`~elenctic.query.signatures_read`) is observable. Where one is not, the literal is
-    indistinguishable from one no answer set contains, and the answer that would be computed is a
-    fact about the program's ``#show`` directives rather than about its answer sets — so it is
-    refused rather than reported, in either direction. That covers a wrong PASS on a false claim and
-    a FAIL on a true one, which is why the rule is about the answer and not about the verdict.
+    A query is answered off what the solver puts in the output, so elenctic's answer is the
+    Gelfond–Kahl answer when that output is the answer set restricted to the signatures the query
+    consults (:func:`~elenctic.query.signatures_read`) — which needs the restriction to lose none of
+    them **and** to add nothing to them. Each half fails in its own way and neither implies the
+    other, so each is asked separately:
+
+    - a signature the program does not declare observable is missing from every answer set elenctic
+      can see, so it cannot be told from one no answer set contains;
+    - a signature a ``#show <term> : <body>.`` directive displays reaches the output on the
+      directive's terms rather than the answer set's, and can arrive when no answer set contains it
+      at all.
+
+    Either way the answer that would be computed is a fact about the program's ``#show`` directives
+    rather than about its answer sets, so it is refused rather than reported — in either direction,
+    which covers a wrong PASS on a false claim and a FAIL on a true one. That is why the rule is
+    about the answer and not about the verdict.
     """
-    match shown:
-        case Unrestricted():
-            # Nothing to check: with no output restriction every literal of every answer set
-            # reaches the projection, so no query can read past what the program determines.
-            return
-        case Restricted(signatures=signatures, displayed=displayed):
-            for query in expectation.queries:
-                if missing := signatures_read(query.value) - signatures:
-                    raise DiscoveryError(
-                        _unanswerable(where, query.line, missing, signatures, displayed)
-                    )
-        case _:
-            assert_never(shown)
+    for query in expectation.queries:
+        reads = signatures_read(query.value)
+        # Asked first, and of both states: an unrestricted program loses nothing, which says
+        # nothing about what a display directive may add on top.
+        if displayed := reads & shown.displayed:
+            raise DiscoveryError(_displayed_not_declared(where, query.line, displayed))
+        match shown:
+            case Restricted(signatures=signatures):
+                if missing := reads - signatures:
+                    raise DiscoveryError(_undeclared(where, query.line, missing, signatures))
+            case Unrestricted():
+                # Every literal of every answer set reaches the output, and the clause above has
+                # already established that nothing this query reads arrives by any other route.
+                continue
+            case _:
+                assert_never(shown)
 
 
-def _unanswerable(
-    where: Path,
-    line: int,
-    missing: frozenset[Signature],
-    signatures: frozenset[Signature],
-    displayed: frozenset[Signature],
+def _why_it_matters(remedy: str) -> str:
+    """The half of both refusals that is the same sentence: what elenctic reads, and what to do."""
+    return (
+        " elenctic answers a query from what the solver puts in the output, so a literal that does "
+        "not reach it exactly when the answer set contains it cannot be told apart from one no "
+        f"answer set contains, and the answer would describe the #show directives rather than the "
+        f"program. {remedy}, or drop the query"
+    )
+
+
+def _undeclared(
+    where: Path, line: int, missing: frozenset[Signature], signatures: frozenset[Signature]
 ) -> str:
-    """The refusal for a query the program cannot answer: what is unreadable, what the program does
-    show, why that decides the answer, and the declaration that would fix it.
+    """The refusal for a query reading a signature the program does not declare observable.
 
-    Reached only where the program restricts its output, so the sentence naming what it shows is
-    true of it — the vocabulary being an alternative is what guarantees that rather than a check.
-    A signature the author wrote as ``#show <term> : <body>.`` gets a clause of its own, because a
-    reader looking at that line in their own file is otherwise told a predicate they can see
-    declared is absent."""
-    shows = (
-        f"it shows {{{_signature_list(signatures)}}}"
+    The sentence says what the program *declares*, which is what this vocabulary knows. It
+    deliberately does not say what the program *shows*: a display directive emits its term whatever
+    the declarations are, so a program declaring nothing can still put something in the output, and
+    a claim about the output would be false for it."""
+    declares = (
+        f"it declares {{{_signature_list(signatures)}}} observable"
         if signatures
-        else "its `#show.` restricts the output to nothing"
+        else "its only `#show` is the bare form, which declares nothing observable"
     )
-    conditional = missing & displayed
-    aside = (
-        f" ({_signature_list(conditional)} appears in a `#show <term> : <body>.` directive, which "
-        "emits that term where its body holds rather than making the predicate observable.)"
-        if conditional
-        else ""
-    )
-    remedy = " ".join(f"#show {name}/{arity}." for name, arity in sorted(missing))
+    remedy = "Declare " + " ".join(f"#show {name}/{arity}." for name, arity in sorted(missing))
     return (
         f"{where}:{line}: this @query reads {_signature_list(missing)}, which the program does not "
-        f"make observable — {shows}.{aside} elenctic answers a query from the shown projection of "
-        "each answer set, so a literal that is not shown cannot be told apart from one no answer "
-        "set contains, and the answer would describe the #show directives rather than the program. "
-        f"Declare {remedy}, or drop the query"
+        f"declare observable — {declares}." + _why_it_matters(remedy)
+    )
+
+
+def _displayed_not_declared(where: Path, line: int, displayed: frozenset[Signature]) -> str:
+    """The refusal for a query reading a signature a ``#show <term> : <body>.`` directive displays.
+
+    Named as its own refusal rather than folded into the one above, because it is a different fault
+    with a different remedy: the signature is not missing from the output, it arrives there on terms
+    elenctic cannot read as a projection. An author who wrote that directive can see the predicate
+    named in their own file, so a message telling them it is absent would be false to them."""
+    several = len(displayed) > 1
+    directives = (
+        "`#show <term> : <body>.` directives" if several else "a `#show <term> : <body>.` directive"
+    )
+    declarations = " ".join(f"#show {name}/{arity}." for name, arity in sorted(displayed))
+    dropped = "directives" if several else "directive"
+    remedy = f"Declare {declarations} and drop the displaying {dropped}"
+    return (
+        f"{where}:{line}: this @query reads {_signature_list(displayed)}, which the program "
+        f"displays with {directives}. Such a directive emits its term wherever its body holds, so "
+        "the predicate reaches the output for some ground instances and not others — and the term "
+        "need not be an atom of the program at all, so the output can carry a symbol no answer set "
+        "contains." + _why_it_matters(remedy)
     )
 
 

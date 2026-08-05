@@ -41,19 +41,25 @@ class ProgramError(Exception):
     ever a verdict about the program's answer-set behaviour."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Unrestricted:
-    """The program declares no output restriction, so **every** literal of every answer set is
-    observable.
+    """The program declares no output restriction, so every literal of every answer set reaches
+    the output.
 
     A program reaches this state by carrying no ``#show`` directive at all, or by carrying only
     directives of the ``#show <term> : <body>.`` form — which display a term without switching the
-    solver into selective output (measured; see :func:`inspect`)."""
+    solver into selective output (measured; see :func:`inspect`).
+
+    ``displayed`` is carried here for the same reason it is carried below, and the reason is that
+    *unrestricted is not the same as faithful*: the output contains every literal of the answer set,
+    and it may also contain terms that are in no answer set at all."""
+
+    displayed: frozenset[Signature] = frozenset()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Restricted:
-    """The program restricts its output, and ``signatures`` is what it makes observable.
+    """The program restricts its output, and ``signatures`` is what it declares observable.
 
     An empty ``signatures`` is *show nothing*: a program whose only declaration is a bare
     ``#show.``. That is the opposite of :class:`Unrestricted`, and keeping the two apart is the
@@ -61,22 +67,23 @@ class Restricted:
     under the other none is, and a set has the same emptiness for both.
 
     ``displayed`` holds the signatures named by a ``#show <term> : <body>.`` directive, which is
-    **not** the same as declaring one observable: such a directive emits a chosen term where its
-    body holds, so the predicate is visible for some ground instances and not others. They are kept
-    apart from ``signatures`` for that reason, and remembered so that a refusal can say which of the
-    two an author wrote — an author looking at ``#show cost_of(A,T,C) : …`` in their own file and
-    told ``cost_of/3`` is absent is owed the distinction.
+    **not** the same as declaring one observable, and is not weaker than it either — it is a
+    different thing in two directions. Such a directive emits its term where the body holds, so the
+    predicate is visible for some ground instances and not others; and the term it emits need not be
+    an atom of the program at all, so the output can carry a symbol no answer set contains. A
+    reading over such a signature is therefore not a projection of the answer set in either
+    direction, which is why the two sets are kept apart rather than merged.
 
-    Built by keyword: the two fields are adjacent and share a type, so transposed they would
-    type-check clean and read as a plausible vocabulary while meaning the reverse of what was
-    written."""
+    Built by keyword: the fields are adjacent and share a type, so transposed they would type-check
+    clean and read as a plausible vocabulary while meaning the reverse of what was written."""
 
     signatures: frozenset[Signature]
-    displayed: frozenset[Signature]
+    displayed: frozenset[Signature] = frozenset()
 
 
 type ShownVocabulary = Unrestricted | Restricted
-"""What a program makes observable — the two states a ``#show`` declaration puts it in."""
+"""What a program's ``#show`` directives make of its output — whether they restrict it, to what, and
+which signatures they display rather than declare."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,28 +300,30 @@ def _vocabulary(nodes: list[AST]) -> ShownVocabulary:
       and **does not restrict anything**. A program carrying only these still shows every atom, so
       reading one as a declaration understates what is observable; and where a declaration is
       present too, reading one as a declaration *over*states it, since the term reaches the output
-      for some ground instances and not others (and need not name an atom of the program at all).
+      for some ground instances and not others, and need not name an atom of the program at all.
 
     So a program is restricted exactly when it carries a declaration, and only declarations put a
-    signature in the vocabulary. Reading a display form as neither is the conservative direction: a
-    query over a conditionally-displayed predicate is refused rather than answered off a projection
-    that is not one.
+    signature in the vocabulary. A display is recorded separately rather than dropped, because it is
+    not silence: it is the one thing that can put in the output a symbol the answer set does not
+    contain, which no amount of restriction describes and which a reader of the output has to be
+    told about whichever state the program is in.
     """
     declarations = [node for node in nodes if node.ast_type is ASTType.ShowSignature]
+    displayed = frozenset(
+        signature
+        for node in nodes
+        if node.ast_type is ASTType.ShowTerm
+        and (signature := _predicate_signature(node.term)) is not None
+    )
     if not declarations:
-        return Unrestricted()
+        return Unrestricted(displayed=displayed)
     return Restricted(
         signatures=frozenset(
             signature
             for node in declarations
             if (signature := _declared_signature(node)) is not None
         ),
-        displayed=frozenset(
-            signature
-            for node in nodes
-            if node.ast_type is ASTType.ShowTerm
-            and (signature := _predicate_signature(node.term)) is not None
-        ),
+        displayed=displayed,
     )
 
 

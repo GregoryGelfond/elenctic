@@ -168,10 +168,26 @@ _READS: list[tuple[str, frozenset[Signature]]] = [
     # collects `reachable` tuples.
     ("@query no { -reachable(X) } = { a }", frozenset({_R})),
     ("@query yes { -reachable(X) } = { a }", frozenset({_NR})),
+    # Arity, on both axes that a one-argument goal cannot separate. A binding goal's SIGNATURE
+    # carries its argument count, while its binding tuples carry its distinct-variable count, and
+    # `q(X, X)` is the program where those two numbers differ — so a signature built from the
+    # variables rather than the arguments reads `q/1` here and is caught nowhere else.
+    ("@query yes { link(X, X) } = { a }", frozenset({("link", 2)})),
+    ("@query no { link(X, Y) } = { (a, b) }", frozenset({("-link", 2)})),
+    ("@query unknown { link(X, Y) } = { (a, b) }", frozenset({("link", 2), ("-link", 2)})),
+    # 0-arity, which renders as `p/0` and would be lost by any signature reader that keys on the
+    # presence of arguments rather than on their number.
+    ("@query yes { settled }", frozenset({("settled", 0), ("-settled", 0)})),
+    # A conjunction whose conjuncts differ in arity and in sign, so the per-conjunct fold is not
+    # exercised only over lookalikes.
+    (
+        "@query unknown { settled, -link(a, b) }",
+        frozenset({("settled", 0), ("-settled", 0), ("link", 2), ("-link", 2)}),
+    ),
 ]
 
 
-@pytest.mark.parametrize(("query_tag", "reads"), _READS, ids=lambda value: str(value)[:44])
+@pytest.mark.parametrize(("query_tag", "reads"), _READS, ids=[row for row, _ in _READS])
 def test_a_query_is_admitted_when_the_program_shows_exactly_what_it_reads(
     query_tag: str, reads: frozenset[Signature]
 ) -> None:
@@ -179,7 +195,7 @@ def test_a_query_is_admitted_when_the_program_shows_exactly_what_it_reads(
     check_program(exp, _facts(shown=_shows(*reads)), "clingo", WHERE)  # no raise
 
 
-@pytest.mark.parametrize(("query_tag", "reads"), _READS, ids=lambda value: str(value)[:44])
+@pytest.mark.parametrize(("query_tag", "reads"), _READS, ids=[row for row, _ in _READS])
 def test_a_query_is_refused_when_any_one_signature_it_reads_is_unshown(
     query_tag: str, reads: frozenset[Signature]
 ) -> None:
@@ -205,43 +221,73 @@ def test_a_program_that_restricts_nothing_answers_every_query_form(query_tag: st
 @pytest.mark.parametrize("query_tag", [row for row, _ in _READS], ids=lambda value: value[:44])
 def test_a_program_that_shows_nothing_answers_no_query_form(query_tag: str) -> None:
     exp = parse(f"% @expect sat\n% {query_tag}\n")
-    with pytest.raises(DiscoveryError, match=r"`#show\.` restricts the output to nothing"):
+    with pytest.raises(DiscoveryError, match=r"its only `#show` is the bare form"):
         check_program(exp, _facts(shown=SHOWS_NOTHING), "clingo", WHERE)
 
 
-def test_the_refusal_says_what_is_unreadable_what_is_shown_and_what_to_declare() -> None:
+def test_the_undeclared_refusal_states_what_is_read_what_is_declared_and_what_to_add() -> None:
     # The whole line, because a substring of a diagnostic pins almost nothing: every clause here is
-    # a separate claim about the program, and the one this replaced was false about a program that
-    # declared no #show at all.
+    # a separate claim about the program.
+    #
+    # It says what the program DECLARES, never what it shows. That is not a nicety: a display
+    # directive emits its term whatever the declarations are, so a program declaring nothing can
+    # still put something in the output, and a sentence about the output would be false for it —
+    # which is exactly the defect this whole refusal was rewritten to stop repeating.
     exp = parse("% @expect sat\n% @query no { reachable(a) }\n")
     with pytest.raises(DiscoveryError) as caught:
         check_program(exp, _facts(shown=_shows(("reachable", 1))), "clingo", WHERE)
     assert str(caught.value) == (
-        "case.lp:2: this @query reads -reachable/1, which the program does not make observable — "
-        "it shows {reachable/1}. elenctic answers a query from the shown projection of each answer "
-        "set, so a literal that is not shown cannot be told apart from one no answer set contains, "
-        "and the answer would describe the #show directives rather than the program. Declare "
-        "#show -reachable/1., or drop the query"
+        "case.lp:2: this @query reads -reachable/1, which the program does not declare "
+        "observable — it declares {reachable/1} observable. elenctic answers a query from what "
+        "the solver puts in the output, so a literal that does not reach it exactly when the "
+        "answer set contains it "
+        "cannot be told apart from one no answer set contains, and the answer would describe the "
+        "#show directives rather than the program. Declare #show -reachable/1., or drop the query"
     )
 
 
-def test_the_refusal_names_a_conditional_directive_as_the_reason() -> None:
-    # An author who wrote `#show -reachable(X) : …` can see the predicate declared in their own
-    # file, so being told it is not observable reads as false unless the directive is named.
-    exp = parse("% @expect sat\n% @query no { reachable(a) }\n")
-    shown = _shows(("reachable", 1), displayed=frozenset({("-reachable", 1)}))
-    aside = r"-reachable/1 appears in a `#show <term> : <body>\.`"
-    with pytest.raises(DiscoveryError, match=aside):
+def test_a_signature_only_ever_displayed_is_refused_as_its_own_fault() -> None:
+    # An author who wrote `#show reachable(X) : …` can see the predicate named in their own file, so
+    # a message telling them it is absent would be false to them. It is a different fault from an
+    # undeclared signature and it gets its own sentence: the predicate is not missing from the
+    # output, it arrives there on the directive's terms rather than the answer set's.
+    exp = parse("% @expect sat\n% @query yes { reachable(a) }\n")
+    shown = _shows(("reachable", 1), ("-reachable", 1), displayed=frozenset({("reachable", 1)}))
+    displays = r"displays with a `#show <term> : <body>\.` directive"
+    with pytest.raises(DiscoveryError, match=displays):
         check_program(exp, _facts(shown=shown), "clingo", WHERE)
+
+
+def test_the_displayed_refusal_fires_even_where_nothing_is_restricted() -> None:
+    # The half that a `Restricted`-only check would miss, and the one that was measured reporting
+    # `1/1 passed` on a false claim: an unrestricted program loses nothing, which says nothing at
+    # all about what a display directive may ADD on top of it.
+    exp = parse("% @expect sat\n% @query yes { reachable(a) }\n")
+    shown = Unrestricted(displayed=frozenset({("reachable", 1)}))
+    with pytest.raises(DiscoveryError, match=r"the output can carry a symbol no answer set"):
+        check_program(exp, _facts(shown=shown), "clingo", WHERE)
+
+
+def test_a_displayed_signature_the_query_does_not_read_is_no_obstacle() -> None:
+    # The other side of it: a display directive over an unrelated predicate says nothing about the
+    # signatures this query consults, so it must not refuse.
+    exp = parse("% @expect sat\n% @query yes { reachable(a) }\n")
+    shown = _shows(("reachable", 1), ("-reachable", 1), displayed=frozenset({("label", 1)}))
+    check_program(exp, _facts(shown=shown), "clingo", WHERE)  # no raise
 
 
 def test_the_refusal_names_the_line_the_query_was_written_on() -> None:
     # @query is repeatable, so a file carrying several of them has to say which one is unanswerable.
+    # The offending one is in the MIDDLE, with an answerable query on either side, so a refusal that
+    # reported the first line, the last line, or the largest one would each be caught here.
     exp = parse(
-        "% @expect sat\n% @query yes { reachable(x) }\n% @note aside\n% @query no { blocked(y) }\n"
+        "% @expect sat\n"
+        "% @query yes { reachable(x) }\n"
+        "% @query no { blocked(y) }\n"
+        "% @query yes { reachable(z) }\n"
     )
     shown = _shows(("reachable", 1), ("-reachable", 1), ("blocked", 1))
-    with pytest.raises(DiscoveryError, match=r"^case\.lp:4: this @query reads -blocked/1,"):
+    with pytest.raises(DiscoveryError, match=r"^case\.lp:3: this @query reads -blocked/1,"):
         check_program(exp, _facts(shown=shown), "clingo", WHERE)
 
 
