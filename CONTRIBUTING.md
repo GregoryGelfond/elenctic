@@ -10,6 +10,13 @@ disallow this and elenctic does not, and there is nothing you need to disclose. 
 does not change is that the contribution is yours: you are the one vouching for it, and it is read
 on the same terms as anything else.
 
+**The assistant's own files must not go in, though.** No `.claude/`, `.serena/`, `.cursor/` or the
+equivalent; no assistant instruction files; no session transcripts, generated plans or working
+notes. Whatever your tooling keeps beside your checkout stays out of the commit — it is
+configuration for how *you* work, and someone cloning elenctic should find the project rather than
+anyone's setup. Stage the paths you mean rather than reaching for `git add -A`, which is how these
+arrive by accident.
+
 If it helps, the conventions further down are the ones worth pointing an assistant at. Several of
 them are there because a confident, plausible, wrong answer got as far as a commit in this
 repository — a failure mode people and assistants share, and the reason the gate is shaped the way
