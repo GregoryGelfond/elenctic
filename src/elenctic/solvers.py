@@ -652,9 +652,7 @@ def run_clingcon(
         # A direct facade call bypasses the per-case check, so the same condition is reported here
         # with the same type and the same remedy — catchable either as an ImportError, which is
         # what a missing optional dependency is, or by name.
-        raise SolverUnavailableError(
-            f"clingcon is not installed — {THEORY_EXTRA_ADVICE}"
-        ) from exc
+        raise SolverUnavailableError(f"clingcon is not installed — {THEORY_EXTRA_ADVICE}") from exc
 
     # clingcon is untyped; isolate the dynamic boundary to this one Any (the theory handle), so the
     # downstream register/rewrite/prepare/on_model/assignment calls need no scattered ignores.

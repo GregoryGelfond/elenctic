@@ -368,11 +368,7 @@ def check_solver_available(solver: Solver, where: Path) -> None:
     # cannot be exercised: the sole non-theory solver is clingo, and this module imports from clingo
     # at load, so a process that got here has it. The branch stays because the registry is meant to
     # grow, and a second optional backend makes it live the day it is added.
-    remedy = (
-        THEORY_EXTRA_ADVICE
-        if provides_theory(solver)
-        else f"add {module} to your environment"
-    )
+    remedy = THEORY_EXTRA_ADVICE if provides_theory(solver) else f"add {module} to your environment"
     raise SolverUnavailableError(
         f"{where}: this case declares @elenctic solver {solver}, but {module} is not installed "
         f"— {remedy}"
