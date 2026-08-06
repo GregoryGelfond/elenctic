@@ -16,6 +16,7 @@ import pytest
 from elenctic import cli, corpus, discovery
 from elenctic.cli import main
 from elenctic.corpus import explain_corpus, run_corpus
+from elenctic.discovery import DiscoveryError
 from elenctic.outcome import (
     ErrorKind,
     ExitStatus,
@@ -91,6 +92,32 @@ def test_a_declared_solver_this_environment_lacks_is_filed_against_the_environme
     assert record.kind is ErrorKind.ENVIRONMENT
     assert record.scope is Scope.CASE
     assert record.source == target / "theory.lp"
+
+
+def test_a_discovery_fault_that_is_not_the_missing_solver_still_costs_only_its_own_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `run_case` states that four families reach a caller and that the corpus catches all four per
+    # case; the register caught one *subclass* of one of them. A bare DiscoveryError would leave
+    # the per-case register and cost every remaining case its result, against the guarantee that a
+    # case which cannot be run costs its own verdict and no other's.
+    #
+    # Forced rather than waited for: no path raises one today, which is what makes it a latent
+    # hole rather than a defect — and what makes the guard the only thing that will notice when a
+    # precondition added later does raise one.
+    def refuses(case: object, runs: object, budget: float) -> None:
+        raise DiscoveryError("a precondition this case fails")
+
+    monkeypatch.setattr(corpus, "run_plan", refuses)
+    target = _corpus(tmp_path, passes=_PASSES)
+    outcome = run_corpus(_asked(target))
+    (record,) = outcome.errors
+    # `discovery`, where the missing solver is `environment`: the locus is asked of the one mapping
+    # that knows the two apart, rather than named again at the point that files the record.
+    assert record.kind is ErrorKind.DISCOVERY
+    assert record.scope is Scope.CASE
+    assert record.source == target / "passes.lp"
+    assert "a precondition this case fails" in record.message
 
 
 def test_a_case_that_runs_out_of_a_resource_is_filed_apart_from_a_broken_program(

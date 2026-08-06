@@ -31,7 +31,6 @@ from elenctic.discovery import (
     Corpus,
     DiscoveryError,
     HygieneReport,
-    SolverUnavailableError,
     check_solver_available,
     inspect_corpus,
 )
@@ -489,12 +488,20 @@ def _run(
             check_solver_available(case.solver, case.contract_source)
             # The plan built and proved above, carried out — not derived a second time.
             reports = run_plan(case, plan.runs, budget=budget)
-        except SolverUnavailableError as exc:
-            # The environment cannot run this case: its declared solver is not installed. Filed
-            # under the environment and not under discovery, because discovery never met it — the
-            # check above runs per case, here, after the corpus walk is over. The message carries
-            # its own provenance, as every diagnostic raised from `discovery` does.
-            errors.append(_case_error(ErrorKind.ENVIRONMENT, case, str(exc)))
+        except DiscoveryError as exc:
+            # A discovery-time precondition this case fails, which is one of the four families
+            # `run_case` states reach a caller. The common one by far is its subclass
+            # `SolverUnavailableError` — the declared solver is not installed — and that one is
+            # filed under the *environment* rather than under discovery, because discovery never
+            # met it: the check above runs per case, here, after the corpus walk is over. The
+            # message carries its own provenance, as every diagnostic raised from `discovery` does.
+            #
+            # The family, not that subclass alone, and the locus is asked of `error_kind` rather
+            # than named here: catching the subclass left the family able to escape this register
+            # and cost the whole corpus what it owes one case, and naming the locus here made a
+            # second statement of a mapping that already has one home — where a locus is read off
+            # a class, and where the ordering that keeps these two apart is written down.
+            errors.append(_case_error(error_kind(exc), case, str(exc)))
             _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         except ProgramError as exc:
