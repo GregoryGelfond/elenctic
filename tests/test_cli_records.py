@@ -8,15 +8,18 @@ a machine-readable report is mostly made of, so it is asserted here directly, ag
 run produces rather than against the sentence it happened to print.
 """
 
+from collections.abc import Iterable
 from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
 from elenctic import cli, corpus, discovery
+from elenctic.checks import CheckReport
 from elenctic.cli import main
 from elenctic.corpus import explain_corpus, run_corpus
-from elenctic.discovery import DiscoveryError
+from elenctic.discovery import Case, DiscoveryError
+from elenctic.harness import run_plan as real_run_plan
 from elenctic.outcome import (
     ErrorKind,
     ExitStatus,
@@ -28,7 +31,7 @@ from elenctic.outcome import (
     exit_status,
 )
 from elenctic.result import Verdict
-from elenctic.run import RoutingError, runs_for as real_runs_for
+from elenctic.run import RoutingError, Run, runs_for as real_runs_for
 from elenctic.solvers import TIME_BUDGET
 from support import a_clock_the_deadline_has_already_passed_on
 
@@ -105,18 +108,24 @@ def test_a_discovery_fault_that_is_not_the_missing_solver_still_costs_only_its_o
     # Forced rather than waited for: no path raises one today, which is what makes it a latent
     # hole rather than a defect — and what makes the guard the only thing that will notice when a
     # precondition added later does raise one.
-    def refuses(case: object, runs: object, budget: float) -> None:
-        raise DiscoveryError("a precondition this case fails")
+    def refuses(case: Case, runs: Iterable[Run], budget: float) -> tuple[CheckReport, ...]:
+        if case.path.name == "refused.lp":
+            raise DiscoveryError("a precondition this case fails")
+        return real_run_plan(case, runs, budget=budget)
 
     monkeypatch.setattr(corpus, "run_plan", refuses)
-    target = _corpus(tmp_path, passes=_PASSES)
+    # Two cases, and only one of them refused: with a single case there is nothing else for the
+    # fault to cost, so an implementation that files the record and then stops passes unchanged —
+    # which is the whole of what this name claims.
+    target = _corpus(tmp_path, refused=_PASSES, survives=_PASSES)
     outcome = run_corpus(_asked(target))
     (record,) = outcome.errors
+    assert [case.case.contract_source.name for case in outcome.cases] == ["survives.lp"]
     # `discovery`, where the missing solver is `environment`: the locus is asked of the one mapping
     # that knows the two apart, rather than named again at the point that files the record.
     assert record.kind is ErrorKind.DISCOVERY
     assert record.scope is Scope.CASE
-    assert record.source == target / "passes.lp"
+    assert record.source == target / "refused.lp"
     assert "a precondition this case fails" in record.message
 
 

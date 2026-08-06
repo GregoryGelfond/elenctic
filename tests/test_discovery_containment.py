@@ -15,7 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from elenctic.discovery import DiscoveryError, discover, inspect_corpus
+from elenctic.discovery import discover, inspect_corpus
+from elenctic.outcome import ErrorKind, error_kind
+from elenctic.program import ContainmentError
 
 _LIBRARY = "fact(1).\n"
 _CASE = "% @expect sat\n% @count  1\n\n#include {include}.\nfact(2).\n#show fact/1.\n"
@@ -87,7 +89,7 @@ def test_an_explicitly_named_case_is_rooted_at_its_own_directory(tmp_path: Path)
     # library is reachable; the tree above it is not.
     _write(tmp_path / "outside/secret.lp", 'secret("do not read me").\n')
     case = _write(tmp_path / "corpus/case.lp", _CASE.format(include='"../outside/secret.lp"'))
-    with pytest.raises(DiscoveryError, match=r"outside the corpus") as caught:
+    with pytest.raises(ContainmentError, match=r"outside the corpus") as caught:
         discover(case)
     # The rule is at its narrowest here and the reader did not choose it: running the directory
     # above admits the very same case. So the diagnostic has to say where the boundary came from
@@ -128,7 +130,7 @@ def test_an_escaping_include_that_fails_to_parse_discloses_nothing_from_inside_i
     escaped = str(fault)
     assert "secret.lp" in escaped, "naming the escaping path is the diagnostic"
     assert "confidential_marker" not in escaped
-    assert "3:" not in escaped, "nor how far into it the parse got"
+    assert "secret.lp:3" not in escaped, "nor how far into it the parse got"
     assert "syntax error" not in escaped, "nor what the solver made of its contents"
 
     # The control, and the test says nothing without it: the SAME broken file inside the root does
@@ -142,12 +144,98 @@ def test_an_escaping_include_that_fails_to_parse_discloses_nothing_from_inside_i
     assert "syntax error" in str(published)
 
 
-def test_a_corpus_path_containing_a_colon_still_gets_its_own_diagnostic(tmp_path: Path) -> None:
-    # The containment rule reads the file name out of clingo's diagnostic, which is `path:line:col`,
-    # so a path that itself contains a colon is where that reading could go wrong. It must not cost
-    # an ordinary author their syntax error.
-    root = tmp_path / "a:b" / "corpus"
+@pytest.mark.parametrize(
+    "directory",
+    [
+        pytest.param("run-2026-08-06T12:30:00", id="a-timestamp"),
+        pytest.param("v1:2:3", id="a-version"),
+        pytest.param("a:b", id="a-colon-and-a-letter"),
+    ],
+)
+def test_a_corpus_path_that_looks_like_a_coordinate_still_gets_its_own_diagnostic(
+    tmp_path: Path, directory: str
+) -> None:
+    # The containment rule reads file names out of clingo's diagnostic, which is `path:line:col`, so
+    # a path that itself contains `:N:M` is where that reading goes wrong — and it is an ordinary
+    # thing for a directory to be named: a timestamp, a version. The first two rows fail against a
+    # rule that takes one guess at the split; the third does not, and is kept to say so, because the
+    # test that used to stand here used only that shape and so passed over every rule there is,
+    # including the one that was wrong.
+    root = tmp_path / directory / "corpus"
     _write(root / "case.lp", "% @expect sat\n% @count 1\nthis is not asp\n")
     (_path, fault) = inspect_corpus(root).unrunnable[0]
     assert "syntax error" in str(fault), "the case's own fault is still reported in full"
-    assert "outside the corpus" not in str(fault)
+    assert "outside the corpus" not in str(fault), "and it is not accused of reading anything"
+
+
+def test_a_corpus_cannot_choose_where_the_diagnostic_is_split(tmp_path: Path) -> None:
+    # The other side of the same ambiguity, and the reason one guess cannot be the rule: the text
+    # being split is the corpus author's. A committed directory named for a time, and an include
+    # spelled through it, put the `:N:M` wherever they like — here so that the shortest split lands
+    # *inside* the corpus and the escape reads as ordinary.
+    _write(tmp_path / "outside/secret.lp", "ok(1).\nconfidential_marker this is not asp\n")
+    root = tmp_path / "corpus"
+    (root / "12:30:00").mkdir(parents=True)
+    _write(root / "case.lp", _CASE.format(include='"12:30:00/../../outside/secret.lp"'))
+
+    (_path, fault) = inspect_corpus(root).unrunnable[0]
+    said = str(fault)
+    assert "secret.lp" in said, "the escaping path is named"
+    assert "confidential_marker" not in said
+    assert "syntax error" not in said, "and the solver's account of it is not"
+
+
+def test_a_relative_escape_that_fails_to_parse_is_refused_like_one_that_parses(
+    tmp_path: Path,
+) -> None:
+    # `..` climbing out of the corpus, on a file that does *not* parse — so the sources check never
+    # sees it and the diagnostic is all there is. Containment is decided on the resolved path, and
+    # it has to be: a parts-prefix test on the text reads `root/deep/../../outside` as under `root`,
+    # which is the shape that made the absolute-path fixtures beside this one insufficient.
+    _write(tmp_path / "outside/secret.lp", "ok(1).\nbroken syntax here\n")
+    root = tmp_path / "corpus"
+    _write(root / "deep/case.lp", _CASE.format(include='"../../outside/secret.lp"'))
+
+    (_path, fault) = inspect_corpus(root).unrunnable[0]
+    assert "outside the corpus" in str(fault)
+    assert "syntax error" not in str(fault), "the solver's account of the escaping file is withheld"
+
+
+def test_a_sibling_whose_name_extends_the_roots_is_outside_it(tmp_path: Path) -> None:
+    # Containment compares resolved *parts*, never text. Under a prefix test `…/corpus-private`
+    # reads as under `…/corpus`, and every other fixture here puts the escaping file in a sibling
+    # whose name shares no prefix with the root — so a prefix test would have passed all of them.
+    _write(tmp_path / "corpus-private/keys.lp", 'secret("do not read me").\n')
+    root = tmp_path / "corpus"
+    _write(root / "case.lp", _CASE.format(include='"../corpus-private/keys.lp"'))
+
+    corpus = inspect_corpus(root)
+    assert corpus.cases == ()
+    assert "outside the corpus" in str(corpus.unrunnable[0][1])
+
+
+def test_the_narrower_boundary_is_explained_whichever_frame_refuses(tmp_path: Path) -> None:
+    # One rule, two frames — which one notices is decided by whether the escaping file happens to
+    # parse, and a reader has no use for that difference. The explanation of where the boundary came
+    # from has to be on both paths, or the same mistake gets a better diagnostic on the luckier one.
+    _write(tmp_path / "outside/parses.lp", "fact(9).\n")
+    _write(tmp_path / "outside/broken.lp", "ok(1).\nbroken syntax here\n")
+    for name, include in (("a", '"../outside/parses.lp"'), ("b", '"../outside/broken.lp"')):
+        case = _write(tmp_path / f"corpus/{name}.lp", _CASE.format(include=include))
+        with pytest.raises(ContainmentError, match=r"outside the corpus") as caught:
+            discover(case)
+        assert "you named a single case" in str(caught.value), f"{name}: on both paths"
+
+
+def test_one_containment_rule_is_one_locus(tmp_path: Path) -> None:
+    # And the same fact in the register a consumer reads. Filed by the frame that noticed, these
+    # would be `program` or `discovery` depending on the offending file's syntax — one mistake in
+    # two buckets, which is the shape this package already fixed once for a broken `#include`.
+    _write(tmp_path / "outside/parses.lp", "fact(9).\n")
+    _write(tmp_path / "outside/broken.lp", "ok(1).\nbroken syntax here\n")
+    _write(tmp_path / "corpus/a.lp", _CASE.format(include='"../outside/parses.lp"'))
+    _write(tmp_path / "corpus/b.lp", _CASE.format(include='"../outside/broken.lp"'))
+
+    faults = [fault for _path, fault in inspect_corpus(tmp_path / "corpus").unrunnable]
+    assert len(faults) == 2, "one that parses, one that does not"
+    assert {error_kind(fault) for fault in faults} == {ErrorKind.CONTAINMENT}

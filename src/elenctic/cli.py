@@ -146,7 +146,7 @@ _NO_MACHINE_READABLE_DRY_RUN = (
 # for a document with nowhere to write it is a contradiction; running a corpus with nobody to
 # narrate to is an ordinary thing to want, and it still earns its exit status.
 _NOWHERE_TO_PUBLISH = (
-    "this run was asked to write to standard output, and this process has none: it was started "
+    "elenctic was asked to write to standard output, and this process has none: it was started "
     "with standard output closed. --format json writes one document there, and --print-schema "
     "writes the description of that document there. Leave standard output open, or ask for the "
     "human format, which writes prose when there is somewhere to write it and is silent when "
@@ -339,9 +339,14 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         # document alone.
         with _stdout_to_stderr():
             outcome = run_corpus(invocation, observer=_TerminalRun())
-            # Written inside the region, where standard output is standard error: under this format
-            # the tally is a diagnostic like the two above it, and the document owns the stream.
-            print(_render_tail(outcome, invocation), end="")
+            # Written inside the region, where standard output is standard error: under this
+            # format the tally is a diagnostic like the two above it, and the document owns the
+            # stream. Answered like them too — a stream that will not take a diagnostic does not
+            # get to stop the document being published, and this was the last of the three that
+            # could still reach the backstop and be reported as a bug in elenctic.
+            tally = _render_tail(outcome, invocation)
+            with suppress(OSError):
+                print(tally, end="")
     except MemoryError:
         # The backstop, for an allocation that fails where no case owns it. A case that runs out of
         # memory is caught in the run loop and costs only its own result; reaching this frame means
@@ -504,12 +509,18 @@ def _hand_over_standard_output(published: bytes = b"", *, prose: str = "") -> No
     a broken standard error came back as a sentence about standard output and took a healthy
     standard output down with it, discarding the report a reader was going to keep.
 
-    That was a property of this frame before it was one of the program. The tail's own tally used to
-    be the exception — a standard-output write made elsewhere, which on a stream that writes through
-    rather than holding what it is given failed before this was ever reached, and was answered by
-    the backstop as a bug in elenctic. It hands the tally back to be written here now, so the two
-    are the same property: every standard-output write this program makes on the human path is one
-    this frame makes.
+    The property is narrower than *every* write this program makes to standard output, and saying
+    which is the difference between a reader predicting the runtime and being surprised by it. A run
+    narrating itself writes a line per case, through an observer — and those writes are isolated by
+    the corpus's announcement seam, which swallows a lost reader, reports it once to a logger nobody
+    has configured, and lets the run go on writing into a dead pipe. On a stream that writes through
+    it is the *first* of those, not this frame, that meets the lost reader; what is lost with it
+    is a case's report, and the run says nothing about that until it arrives here.
+
+    What holds is that every standard-output write whose failure would otherwise reach the backstop
+    is one this frame makes. The tail's own tally used to be the exception — written elsewhere, it
+    failed before this was ever reached and was answered as a bug in elenctic. It hands the tally
+    back to be written here now.
 
     That event and no other. Standard output can refuse the bytes for reasons that are nothing to do
     with a reader — no space left, a device that failed — and those have a different remedy, a
@@ -802,10 +813,11 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
             # through `unusable` and not here. The arm is what keeps this total: were a run ever
             # to file one, it would be shown the way every other contract fault is shown.
             return f"{_heading(record.kind, record.scope)} {_text(record.message)}"
-        case ErrorKind.DISCOVERY | ErrorKind.ENVIRONMENT:
+        case ErrorKind.DISCOVERY | ErrorKind.ENVIRONMENT | ErrorKind.CONTAINMENT:
             # An environment fault reaches a reader here and not through `unusable`, because the
             # declared solver is checked per case at run time rather than during the corpus walk.
-            # Its message names the case, as every diagnostic raised from discovery does.
+            # Its message names the case, as every diagnostic raised from discovery does — and so
+            # does a containment refusal, whichever of the two frames raised it.
             return f"{_heading(record.kind, record.scope)} {_text(record.message)}"
         case ErrorKind.PROGRAM | ErrorKind.RESOURCE | ErrorKind.HARNESS:
             return f"{_heading(record.kind, record.scope)} {_against(record)}"
@@ -894,8 +906,9 @@ def _render_tail(outcome: Outcome, invocation: Invocation) -> str:
     the frame that answers for standard output, so on a stream that writes through rather than
     holding what it is given — which is what ``PYTHONUNBUFFERED`` in an ordinary CI image makes it —
     a reader that had stopped reading was met by this write first, and reported as a bug in
-    elenctic. Handing it back lifts *this function makes no standard-output write* into the
-    signature, where it is checked rather than remembered.
+    elenctic. Handing it back puts *this function makes no standard-output write* where a reader
+    can see it — in the signature and in the two statements at the call site, rather than in a
+    promise made somewhere else about what this body does.
 
     What it costs is that the tally now follows the two diagnostics instead of standing between
     them. There was no order to preserve: measured, the merged view already flipped on buffering, so

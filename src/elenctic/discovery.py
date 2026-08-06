@@ -42,6 +42,8 @@ from typing import assert_never
 
 from elenctic.expectation import ContractError, Expectation, Sat, has_contract, parse_contract
 from elenctic.program import (
+    Boundary,
+    ContainmentError,
     ProgramError,
     ProgramFacts,
     Restricted,
@@ -245,7 +247,7 @@ def _classify(target: Path) -> _Walk:
         # A named file gives no directory to take as the corpus, so its own is the boundary: a
         # sibling library is reachable, the tree above it is not.
         case, declared, sources = _make_case(
-            target, text, target.parent.resolve(), from_named_file=True
+            target, text, Boundary(target.parent.resolve(), from_named_file=True)
         )
         defaulted: tuple[Path, ...] = () if declared else (target,)
         # An explicitly named file is not walked, so it keeps the loud contract: the one thing the
@@ -267,7 +269,7 @@ def _classify(target: Path) -> _Walk:
             if not has_contract(text):
                 libraries.append(path)
                 continue
-            case, declared, sources = _make_case(path, text, root)
+            case, declared, sources = _make_case(path, text, Boundary(root))
         except (ContractError, DiscoveryError, ProgramError) as exc:
             unrunnable.append((path, exc))
             continue
@@ -293,9 +295,7 @@ def _read(path: Path) -> str:
         raise DiscoveryError(f"{path}: cannot read this .lp entry — {exc}") from exc
 
 
-def _within_root(
-    sources: frozenset[Path], root: Path, path: Path, *, from_named_file: bool = False
-) -> None:
+def _within_root(sources: frozenset[Path], boundary: Boundary, path: Path) -> None:
     """Refuse a case that loads a file from outside ``root`` — the corpus containment rule.
 
     ``#include`` resolution belongs to clingo, which opens whatever path it is handed, so a corpus
@@ -315,26 +315,15 @@ def _within_root(
     reading a corpus author does not predict, since running the directory above admits the very same
     case. Naming a case to re-run it after a failure is the first thing anyone does, so where the
     boundary came from is said out loud rather than left to be inferred from a path."""
-    escaped = sorted(str(source) for source in sources if not source.is_relative_to(root))
+    # `is_relative_to` compares resolved parts, never text: a prefix test on the string would admit
+    # a sibling whose name merely extends the root's, and `sources` is resolved so a `..` that
+    # climbs out is judged where it lands.
+    escaped = sorted(str(source) for source in sources if not source.is_relative_to(boundary.root))
     if escaped:
-        because = (
-            " The boundary is that directory and not a wider one because you named a single case, "
-            "and a file names no corpus to take as the root; run the corpus directory itself to "
-            "make the tree around it reachable."
-            if from_named_file
-            else ""
-        )
-        raise DiscoveryError(
-            f"{path}: this case loads {', '.join(escaped)}, which is outside the corpus at {root}. "
-            "A case may only include files from the corpus it belongs to — a corpus is run as "
-            f"given, so an include reaching past it would read a file the run was never pointed at."
-            f"{because}"
-        )
+        raise ContainmentError(f"{path}: {boundary.refusal(escaped)}")
 
 
-def _make_case(
-    path: Path, text: str, root: Path, *, from_named_file: bool = False
-) -> tuple[Case, bool, frozenset[Path]]:
+def _make_case(path: Path, text: str, boundary: Boundary) -> tuple[Case, bool, frozenset[Path]]:
     """Build one case from a contract-bearing file: parse the contract (behavioral + declared
     solver, default ``clingo``), inspect the resolved program, enforce the preconditions. Returns
     the case, whether its solver was *declared* (vs defaulted to clingo), and the resolved source
@@ -346,8 +335,8 @@ def _make_case(
     # The boundary goes *into* the inspection as well as being applied to what it returns: a parse
     # that fails inside an escaping file returns no sources to judge, and clingo's diagnostic about
     # that file is the disclosure the rule exists to prevent.
-    facts = inspect((path,), within=root)
-    _within_root(facts.sources, root, path, from_named_file=from_named_file)
+    facts = inspect((path,), within=boundary)
+    _within_root(facts.sources, boundary, path)
     check_program(contract.expectation, facts, solver, path)
     case = Case(path, solver, contract.expectation, facts.shown, facts.has_projection)
     return case, declared, facts.sources

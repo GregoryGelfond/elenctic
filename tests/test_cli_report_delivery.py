@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from elenctic.cli import _hand_over_standard_output, main
+from elenctic.cli import _NOWHERE_TO_PUBLISH, _hand_over_standard_output, main
 from elenctic.outcome import ExitStatus
 from support import (
     run_cli,
@@ -181,8 +181,13 @@ def test_a_reader_that_stopped_leaves_the_run_with_its_own_status(
     [
         ("written through", ("--format", "json"), _A_SMALL_BUFFER),
         ("still held", ("--format", "json"), _A_LARGE_BUFFER),
+        # The claim is about what a reader is handed, and the human path hands them the most: the
+        # rows above were both machine-readable, so the format that prints for the length of a run
+        # was outside a guarantee whose name does not qualify itself.
+        ("prose, written through", (), _WRITES_THROUGH),
+        ("prose, still held", (), _A_LARGE_BUFFER),
     ],
-    ids=["written", "held"],
+    ids=["written", "held", "prose-written", "prose-held"],
 )
 def test_a_reader_that_stopped_is_reported_as_a_sentence_and_never_as_a_traceback(
     tmp_path: Path, described: str, flags: tuple[str, ...], prelude: str
@@ -348,6 +353,40 @@ def test_asking_for_an_artefact_with_nowhere_to_put_it_is_refused(
     assert status == ExitStatus.USER_FAULT, f"{described}: their own doing, and theirs to undo"
     assert "usage error: " in said, f"{described}: refused before anything is looked at"
     assert "elenctic bug" not in said, f"{described}: and never filed against elenctic"
+    # The sentence itself, verbatim, for the reason _CUT_SHORT is pinned above: the message
+    # *is* the behaviour of a refusal, and every assertion here short of it is satisfied by
+    # any refusal at all — including one about flags this reader never passed.
+    assert _NOWHERE_TO_PUBLISH in said, f"{described}: and says which thing has nowhere to go"
+
+
+# A standard *error* that will not take the bytes for a reason that has nothing to do with a reader.
+# The tail writes its two diagnostics there, ahead of the tally, so this is the other way that write
+# can fail — and the one every fixture here would otherwise miss, since a pipe with no reader is
+# always EPIPE.
+_DIAGNOSTICS_CANNOT_BE_WRITTEN = """
+import io
+
+
+class _Full(io.TextIOWrapper):
+    def write(self, text):
+        raise OSError(28, "No space left on device")
+
+
+sys.stderr = _Full(io.BufferedWriter(io.FileIO(2, "wb", closefd=False)), encoding="utf-8")
+"""
+
+
+def test_a_standard_error_that_fails_for_its_own_reasons_keeps_the_report(tmp_path: Path) -> None:
+    # A diagnostic that cannot be delivered does not stop the report being delivered, and that has
+    # to hold for every way the stream can refuse it — not only for the lost reader every other
+    # fixture here arranges. Narrowed to that one errno, a full disk on standard error takes a
+    # healthy standard output's report with it and is filed against elenctic.
+    corpus = _corpus(tmp_path / "corpus", drinks=_PASSES, orphan=_ORPHAN)
+    streams = run_cli(corpus, "--strict", prelude=_DIAGNOSTICS_CANNOT_BE_WRITTEN)
+
+    assert "1/1 passed" in streams.out, "the report is its reader's"
+    assert streams.status == ExitStatus.USER_FAULT, "and --strict still fails the run"
+    assert "elenctic bug" not in streams.out
 
 
 def test_the_run_still_reaches_its_verdict_with_nobody_reading(tmp_path: Path) -> None:

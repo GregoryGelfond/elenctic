@@ -39,7 +39,7 @@ from elenctic.checks import CheckReport
 from elenctic.discovery import Case, DiscoveryError, SolverUnavailableError
 from elenctic.expectation import ContractError
 from elenctic.harness import case_verdict
-from elenctic.program import ProgramError
+from elenctic.program import ContainmentError, ProgramError
 from elenctic.result import HarnessError, Verdict
 from elenctic.run import Run
 from elenctic.solvers import TIME_BUDGET
@@ -83,6 +83,12 @@ class ErrorKind(Enum):
     CONTRACT = "contract"
     DISCOVERY = "discovery"
     PROGRAM = "program"
+    # Apart from `program`, and for the same reason `environment` is apart from `discovery`: what is
+    # wrong is not the encoding but where it reaches. A case loading a file from outside its corpus
+    # is refused whether or not that file parses — and *which* of the two frames notices is decided
+    # by exactly that, so filing it by the frame would announce one mistake as two problems and
+    # leave a consumer counting it in two buckets.
+    CONTAINMENT = "containment"
     DEADLINE = "deadline"
     RESOURCE = "resource"
     # Apart from `discovery`, and the distinction is the machine rather than the corpus. A declared
@@ -445,12 +451,14 @@ def exit_status(outcome: Outcome) -> ExitStatus:
 def error_kind(exc: Exception) -> ErrorKind:
     """Where an exception says the fault lies.
 
-    An ordered test, and the order is load-bearing in one place. The roots are otherwise disjoint,
+    An ordered test, and the order is load-bearing in two places. The roots are otherwise disjoint,
     so each resolves to the root it belongs to and none can absorb another — but a solver this
     environment does not have is a ``SolverUnavailableError``, which *is* a ``DiscoveryError``, and
-    it belongs to the environment rather than to the corpus walk that never met it. One exception
-    class serving two loci is exactly why a locus cannot simply be read off a class, and the
-    specific case is therefore tested before the root that would otherwise swallow it.
+    it belongs to the environment rather than to the corpus walk that never met it; and a case
+    reaching outside its corpus is a ``ContainmentError``, which *is* a ``ProgramError``, and what
+    is wrong with it is not the encoding. One exception class serving two loci is exactly why a
+    locus cannot simply be read off a class, and each specific case is therefore tested before the
+    root that would otherwise swallow it.
 
     Without that arm this function and :func:`~elenctic.corpus.run_corpus` answered differently
     about one fault: a caller driving cases themselves was told ``discovery`` while a document
@@ -467,6 +475,8 @@ def error_kind(exc: Exception) -> ErrorKind:
             return ErrorKind.ENVIRONMENT
         case DiscoveryError():
             return ErrorKind.DISCOVERY
+        case ContainmentError():
+            return ErrorKind.CONTAINMENT
         case ProgramError():
             return ErrorKind.PROGRAM
         case HarnessError():

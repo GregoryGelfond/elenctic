@@ -201,6 +201,7 @@ def test_only_a_harness_fault_is_elenctic_s_to_fix() -> None:
                 "CONTRACT": "contract",
                 "DISCOVERY": "discovery",
                 "PROGRAM": "program",
+                "CONTAINMENT": "containment",
                 "DEADLINE": "deadline",
                 "RESOURCE": "resource",
                 "ENVIRONMENT": "environment",

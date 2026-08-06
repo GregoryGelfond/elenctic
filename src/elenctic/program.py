@@ -22,6 +22,8 @@ from clingo.ast import AST, ASTType, UnaryOperator, parse_files as _parse_files
 from elenctic.terms import Signature
 
 __all__ = [
+    "Boundary",
+    "ContainmentError",
     "ProgramError",
     "ProgramFacts",
     "Restricted",
@@ -29,6 +31,39 @@ __all__ = [
     "Unrestricted",
     "inspect",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class Boundary:
+    """The directory a case's program may not reach past, and why it is where it is.
+
+    A value rather than a bare path because the rule is enforced in two frames — the one that judges
+    the files a completed parse resolved, and the one that judges the diagnostics a failed parse
+    left behind — and which of them a reader meets is decided by whether the escaping file happened
+    to parse. Everything they say about the boundary therefore has to come from one place, or the
+    same mistake gets a better explanation on the luckier path.
+
+    ``from_named_file`` says the run was pointed at one case rather than at a directory."""
+
+    root: Path
+    from_named_file: bool = False
+
+    def refusal(self, escaped: list[str]) -> str:
+        """What a case that loads ``escaped`` is told — the rule, and where the boundary came from
+        when a reader would not have predicted it."""
+        because = (
+            " The boundary is that directory and not a wider one because you named a single case, "
+            "and a file names no corpus to take as the root; run the corpus directory itself to "
+            "make the tree around it reachable."
+            if self.from_named_file
+            else ""
+        )
+        return (
+            f"this case loads {', '.join(escaped)}, which is outside the corpus at {self.root}. "
+            "A case may only include files from the corpus it belongs to — a corpus is run as "
+            f"given, so an include reaching past it would read a file the run was never pointed "
+            f"at.{because}"
+        )
 
 
 class ProgramError(Exception):
@@ -40,6 +75,23 @@ class ProgramError(Exception):
     ``HarnessError``, which claims elenctic violated one of its own invariants and should be
     reported. The two are disjoint roots so that neither can be caught as the other, and neither is
     ever a verdict about the program's answer-set behaviour."""
+
+
+class ContainmentError(ProgramError):
+    """A case that loads a file from outside the corpus it belongs to.
+
+    Its own class because it is its own locus, and because one rule met at two moments must not
+    read as two problems. Whether the escaping file *parses* decides which frame notices — the
+    sources a completed parse resolved, or the diagnostics a failed one left behind — and that is an
+    accident of the offending file's syntax, not a difference the author has any use for. Reported
+    as two kinds it would need two buckets in a consumer's report and a rule for merging them; this
+    package has made that mistake once already, when one broken ``#include`` was announced as a case
+    fault or a program fault depending on which phase walked into it.
+
+    A ``ProgramError`` by inheritance so that every register already catching that family keeps
+    catching this, and so the discovery layer can raise it without either layer importing the
+    other's errors. What a reader is told is the *locus*, which
+    :func:`~elenctic.outcome.error_kind` reads from the class ahead of the family."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -123,7 +175,7 @@ class ProgramFacts:
     sources: frozenset[Path]
 
 
-def inspect(files: tuple[Path, ...], *, within: Path | None = None) -> ProgramFacts:
+def inspect(files: tuple[Path, ...], *, within: Boundary | None = None) -> ProgramFacts:
     """Inspect the resolved program (``files`` + their ``#include``s) into ``ProgramFacts``. Raises
     ``ProgramError`` with provenance on an unreadable/missing/cyclic include, a parse error, or a
     source byte that is not UTF-8.
@@ -176,30 +228,65 @@ def inspect(files: tuple[Path, ...], *, within: Path | None = None) -> ProgramFa
     )
 
 
-# Every clingo diagnostic opens with `path:line:col…`, which is the only place the name of a file
-# the parse *failed* inside can be read — the statements it returned carry no trace of it, since a
-# file whose parse failed contributed none. Non-greedy, so a path containing a colon is cut short
-# and then reads as a stranger: that refuses to publish where it might have published, which is the
-# safe direction for a rule about disclosure.
-_DIAGNOSTIC_ORIGIN = re.compile(r"^(?P<path>.*?):\d+:\d+", re.M)
+# A clingo diagnostic opens with `path:line:col…`, which is the only place the name of a file the
+# parse *failed* inside can be read — the statements it returned carry no trace of it, since a file
+# whose parse failed contributed none. Where the path itself contains `:N:M` the split is genuinely
+# ambiguous, so this matches the *separator* and every prefix of it is a candidate; picking one is
+# what cannot be done safely, and picking the shortest could be steered by a corpus that committed
+# a directory named for a time.
+_DIAGNOSTIC_SEPARATOR = re.compile(r":\d+:\d+")
 
 
-def _strangers(messages: list[str], within: Path) -> list[str]:
-    """The files these diagnostics are about that lie outside ``within``, sorted. A diagnostic about
-    a file the run was never pointed at may not be published at all: it would report that the file
-    exists, how far into it the solver got, and which characters it objected to — an
-    existence-and-shape oracle over anything the process can read, driven from a corpus."""
-    origins = {match.group("path") for match in _DIAGNOSTIC_ORIGIN.finditer("\n".join(messages))}
+def _origins(line: str) -> list[Path]:
+    """Every file a diagnostic line could be about: each prefix that a ``:line:col`` follows, kept
+    when it names something that exists.
+
+    Existence is the disambiguator, and it is the right one because a diagnostic is always *about* a
+    file the solver opened. A prefix naming nothing was never the origin — it is where a colon in
+    somebody's directory name happened to look like a coordinate — so it neither licenses
+    publication nor forbids it."""
+    return [
+        candidate
+        for match in _DIAGNOSTIC_SEPARATOR.finditer(line)
+        if (candidate := Path(line[: match.start()])).exists()
+    ]
+
+
+def _strangers(detail: list[str], within: Path) -> list[str]:
+    """The files these diagnostics are about that lie outside ``within``, sorted.
+
+    A diagnostic about a file the run was never pointed at may not be published at all: it would
+    report that the file exists, how far into it the solver got, and which characters it objected
+    to — an existence-and-shape oracle over anything the process can read, driven from a corpus.
+
+    **Every** candidate origin is judged, not the likeliest one. The split is ambiguous exactly when
+    a path carries `:N:M`, and the text being split is the corpus author's to choose: a committed
+    directory named for a time, and an include spelled through it, put the ambiguity where they
+    want it. Judging one guess is then a rule the thing it constrains gets to aim.
+
+    Resolution comes *after* the existence test, so a ``..`` that climbs out of the boundary is
+    judged where it lands rather than where it is spelled — a containment test on the text is
+    defeated by that spelling, since a parts-prefix check reads ``root/deep/../../elsewhere`` as
+    under ``root``.
+
+    A prefix that names nothing was never an origin, and the whole detail is scanned rather than the
+    logged messages alone, so a fault reported through the exception's own text is judged too. That
+    a line carries no identifiable origin is not a reason to withhold it: the leak is a *location*,
+    naming a real file with real coordinates, and a line without one has none to give."""
     return sorted(
-        str(candidate)
-        for name in origins
-        if not (candidate := Path(name).resolve()).is_relative_to(within)
+        {
+            str(resolved)
+            for message in detail
+            for line in message.splitlines()
+            for origin in _origins(line)
+            if not (resolved := origin.resolve()).is_relative_to(within)
+        }
     )
 
 
 @contextmanager
 def _parse_faults(
-    files: tuple[Path, ...], messages: list[str], within: Path | None = None
+    files: tuple[Path, ...], messages: list[str], within: Boundary | None = None
 ) -> Iterator[None]:
     """Translate a failure raised by the parse into a ``ProgramError`` naming the program and
     carrying clingo's own captured diagnostic — unless that diagnostic is about a file outside
@@ -229,17 +316,17 @@ def _parse_faults(
         # `messages`); UnicodeDecodeError: a source byte reaching Python through a diagnostic;
         # OSError: unreadable.
         names = ", ".join(str(path) for path in files)
-        if within is not None and (escaped := _strangers(messages, within)):
-            raise ProgramError(
-                f"cannot resolve the program ({names}): it reads {', '.join(escaped)}, which is "
-                f"outside the corpus at {within}. A case may only include files from the corpus "
-                "it belongs to, and the solver's own diagnostic is withheld rather than repeated "
-                "here: it would describe a file the run was never pointed at."
-            ) from exc
         # Both, never one or the other: the logger holds the provenance but accumulates routine
         # notices too, so a fault raised after a clean parse would otherwise be reported as
         # whichever harmless notice was logged first, with the real cause dropped.
-        detail = "; ".join([*messages, str(exc)])
+        parts = [*messages, str(exc)]
+        if within is not None and (escaped := _strangers(parts, within.root)):
+            raise ContainmentError(
+                f"{names}: {within.refusal(escaped)} The solver's own diagnostic is withheld "
+                "rather than repeated here — part of it describes a file the run was never "
+                "pointed at, and the parts cannot be separated safely."
+            ) from exc
+        detail = "; ".join(parts)
         # The include advice is specific enough to act on, so it is offered only when it is the
         # remedy. Attached to a syntax error it sends the author to check paths that are fine.
         hint = (
