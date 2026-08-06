@@ -244,7 +244,9 @@ def _classify(target: Path) -> _Walk:
             )
         # A named file gives no directory to take as the corpus, so its own is the boundary: a
         # sibling library is reachable, the tree above it is not.
-        case, declared, sources = _make_case(target, text, target.parent.resolve())
+        case, declared, sources = _make_case(
+            target, text, target.parent.resolve(), from_named_file=True
+        )
         defaulted: tuple[Path, ...] = () if declared else (target,)
         # An explicitly named file is not walked, so it keeps the loud contract: the one thing the
         # user asked about must not be reported as a corpus that happened to contain nothing.
@@ -291,7 +293,9 @@ def _read(path: Path) -> str:
         raise DiscoveryError(f"{path}: cannot read this .lp entry — {exc}") from exc
 
 
-def _within_root(sources: frozenset[Path], root: Path, path: Path) -> None:
+def _within_root(
+    sources: frozenset[Path], root: Path, path: Path, *, from_named_file: bool = False
+) -> None:
     """Refuse a case that loads a file from outside ``root`` — the corpus containment rule.
 
     ``#include`` resolution belongs to clingo, which opens whatever path it is handed, so a corpus
@@ -304,17 +308,33 @@ def _within_root(sources: frozenset[Path], root: Path, path: Path) -> None:
     and across to a shared encoding is the ordinary shape of a corpus, and a rule that cost that
     would buy nothing anyone would keep. ``sources`` is already resolved, so a symlink is judged by
     where it lands rather than where it sits. The diagnostic names the escaping path and nothing
-    from inside it, since disclosure is the thing being prevented."""
+    from inside it, since disclosure is the thing being prevented.
+
+    ``from_named_file`` says the run was pointed at one case rather than at a directory, and so the
+    boundary is that file's own directory — which is the *narrowest* the rule ever is, and the one
+    reading a corpus author does not predict, since running the directory above admits the very same
+    case. Naming a case to re-run it after a failure is the first thing anyone does, so where the
+    boundary came from is said out loud rather than left to be inferred from a path."""
     escaped = sorted(str(source) for source in sources if not source.is_relative_to(root))
     if escaped:
+        because = (
+            " The boundary is that directory and not a wider one because you named a single case, "
+            "and a file names no corpus to take as the root; run the corpus directory itself to "
+            "make the tree around it reachable."
+            if from_named_file
+            else ""
+        )
         raise DiscoveryError(
             f"{path}: this case loads {', '.join(escaped)}, which is outside the corpus at {root}. "
             "A case may only include files from the corpus it belongs to — a corpus is run as "
-            "given, so an include reaching past it would read a file the run was never pointed at."
+            f"given, so an include reaching past it would read a file the run was never pointed at."
+            f"{because}"
         )
 
 
-def _make_case(path: Path, text: str, root: Path) -> tuple[Case, bool, frozenset[Path]]:
+def _make_case(
+    path: Path, text: str, root: Path, *, from_named_file: bool = False
+) -> tuple[Case, bool, frozenset[Path]]:
     """Build one case from a contract-bearing file: parse the contract (behavioral + declared
     solver, default ``clingo``), inspect the resolved program, enforce the preconditions. Returns
     the case, whether its solver was *declared* (vs defaulted to clingo), and the resolved source
@@ -323,8 +343,11 @@ def _make_case(path: Path, text: str, root: Path) -> tuple[Case, bool, frozenset
     contract = parse_contract(text, source=str(path))
     declared = contract.solver is not None
     solver: Solver = contract.solver or "clingo"  # the stated default
-    facts = inspect((path,))
-    _within_root(facts.sources, root, path)
+    # The boundary goes *into* the inspection as well as being applied to what it returns: a parse
+    # that fails inside an escaping file returns no sources to judge, and clingo's diagnostic about
+    # that file is the disclosure the rule exists to prevent.
+    facts = inspect((path,), within=root)
+    _within_root(facts.sources, root, path, from_named_file=from_named_file)
     check_program(contract.expectation, facts, solver, path)
     case = Case(path, solver, contract.expectation, facts.shown, facts.has_projection)
     return case, declared, facts.sources

@@ -9,6 +9,7 @@ defeat) is retired. Theory **presence** only — never identity (the gate is the
 Principle: *contract-level facts read the case file; program-level facts read the resolved program.*
 """
 
+import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -122,10 +123,17 @@ class ProgramFacts:
     sources: frozenset[Path]
 
 
-def inspect(files: tuple[Path, ...]) -> ProgramFacts:
+def inspect(files: tuple[Path, ...], *, within: Path | None = None) -> ProgramFacts:
     """Inspect the resolved program (``files`` + their ``#include``s) into ``ProgramFacts``. Raises
     ``ProgramError`` with provenance on an unreadable/missing/cyclic include, a parse error, or a
     source byte that is not UTF-8.
+
+    ``within`` is the directory the program may not reach past — the caller's containment boundary,
+    ``None`` for an inspection with none. It is here rather than only at the caller because a parse
+    that *fails* inside an escaping file never returns the sources the caller would judge, while
+    clingo's own diagnostic names that file, how far into it the parse got, and the coordinates it
+    objected to. The boundary has to be known where the reading happens, or it is applied one step
+    too late to matter.
 
     Three phases, because they have three different owners and a region can only name one. The
     parse is clingo's over the corpus author's text, so its failures are the program's. The walk
@@ -134,7 +142,7 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
     the source names needs no clingo state at all and comes last, outside both regions."""
     statements: list[AST] = []
     messages: list[str] = []  # clingo's own diagnostics (with file:line:col), captured not printed
-    with _parse_faults(files, messages):
+    with _parse_faults(files, messages, within):
         _parse_files(
             [str(path) for path in files],
             statements.append,
@@ -168,10 +176,34 @@ def inspect(files: tuple[Path, ...]) -> ProgramFacts:
     )
 
 
+# Every clingo diagnostic opens with `path:line:col…`, which is the only place the name of a file
+# the parse *failed* inside can be read — the statements it returned carry no trace of it, since a
+# file whose parse failed contributed none. Non-greedy, so a path containing a colon is cut short
+# and then reads as a stranger: that refuses to publish where it might have published, which is the
+# safe direction for a rule about disclosure.
+_DIAGNOSTIC_ORIGIN = re.compile(r"^(?P<path>.*?):\d+:\d+", re.M)
+
+
+def _strangers(messages: list[str], within: Path) -> list[str]:
+    """The files these diagnostics are about that lie outside ``within``, sorted. A diagnostic about
+    a file the run was never pointed at may not be published at all: it would report that the file
+    exists, how far into it the solver got, and which characters it objected to — an
+    existence-and-shape oracle over anything the process can read, driven from a corpus."""
+    origins = {match.group("path") for match in _DIAGNOSTIC_ORIGIN.finditer("\n".join(messages))}
+    return sorted(
+        str(candidate)
+        for name in origins
+        if not (candidate := Path(name).resolve()).is_relative_to(within)
+    )
+
+
 @contextmanager
-def _parse_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[None]:
+def _parse_faults(
+    files: tuple[Path, ...], messages: list[str], within: Path | None = None
+) -> Iterator[None]:
     """Translate a failure raised by the parse into a ``ProgramError`` naming the program and
-    carrying clingo's own captured diagnostic.
+    carrying clingo's own captured diagnostic — unless that diagnostic is about a file outside
+    ``within``, in which case the escaping path is named and nothing else is.
 
     Everything under this region is clingo reading the corpus author's text, so every failure it
     reports is that author's to fix. A harness-logic bug (``AttributeError``/``KeyError``/...) is
@@ -197,6 +229,13 @@ def _parse_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[None
         # `messages`); UnicodeDecodeError: a source byte reaching Python through a diagnostic;
         # OSError: unreadable.
         names = ", ".join(str(path) for path in files)
+        if within is not None and (escaped := _strangers(messages, within)):
+            raise ProgramError(
+                f"cannot resolve the program ({names}): it reads {', '.join(escaped)}, which is "
+                f"outside the corpus at {within}. A case may only include files from the corpus "
+                "it belongs to, and the solver's own diagnostic is withheld rather than repeated "
+                "here: it would describe a file the run was never pointed at."
+            ) from exc
         # Both, never one or the other: the logger holds the provenance but accumulates routine
         # notices too, so a fault raised after a clean parse would otherwise be reported as
         # whichever harmless notice was logged first, with the real cause dropped.
