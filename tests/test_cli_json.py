@@ -522,17 +522,19 @@ def test_printing_the_description_is_not_a_document_and_asks_nothing_of_a_corpus
     assert document_of(streams)["title"] == "elenctic run report", "the description, not a report"
 
 
-def test_the_description_outranks_the_dry_run_rather_than_being_dropped_by_it(
-    tmp_path: Path,
-) -> None:
-    # Two actions asked for at once, each of which is the whole of what an invocation does. The
-    # description wins, because it is the one that reads nothing about the run — and which wins is
-    # written down here so that it is a decision rather than a consequence of statement order.
+def test_asking_for_two_actions_at_once_is_refused_rather_than_ranked(tmp_path: Path) -> None:
+    # Two actions asked for at once, each of which is the whole of what an invocation does. What
+    # this held before was that *which one won* was a decision rather than a consequence of
+    # statement order — and it was a decision written down only here, in a test, where the reader
+    # who typed both could not find it. The same guarantee is kept and the decision is different:
+    # neither wins, and the exclusion is stated by the parser, so it reaches the usage line the
+    # refusal itself prints.
     streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--explain", "--print-schema")
 
-    assert streams.status == ExitStatus.OK
-    assert document_of(streams)["title"] == "elenctic run report"
-    assert streams.err == "", "and no plan was narrated"
+    assert streams.status == ExitStatus.USER_FAULT
+    assert streams.out == "", "neither action ran"
+    assert "not allowed with argument --explain" in streams.err
+    assert "[--explain | --print-schema]" in streams.err, "the usage line says so on its own"
 
 
 def test_a_command_line_that_cannot_be_run_is_refused_even_when_it_asks_only_for_the_description(

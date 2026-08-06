@@ -198,12 +198,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     instead = parser.add_argument_group("instead of running the corpus")
-    instead.add_argument(
+    # Each of these replaces the run, so at most one of them can be what this invocation is. Said
+    # to the parser rather than checked afterwards: a pairing the parser can refuse itself is one
+    # `_refusal` should not have to remember, and the alternative is a precedence — whichever
+    # branch happens to be tested first — which is a decision no surface states.
+    actions = instead.add_mutually_exclusive_group()
+    actions.add_argument(
         "--explain",
         action="store_true",
         help="narrate the derived run plan per case, without solving (a dry-run)",
     )
-    instead.add_argument(
+    actions.add_argument(
         "--print-schema",
         action="store_true",
         help="write the JSON schema of the machine-readable report to standard output and exit, "
@@ -235,8 +240,10 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help="per-solve time budget, a positive finite number of seconds. A budget hit before the "
         "solve decides is UNDECIDED and never FAIL; one hit after it decides keeps what was "
+        # `:g` because the default is a float and its bare repr is `30.0`, which reads as a
+        # precision the dial does not have; the README states the same number and states it as 30.
         f"decided, and only the checks that needed more of the search are UNDECIDED (default "
-        f"{TIME_BUDGET}s)",
+        f"{TIME_BUDGET:g}s)",
     )
     run.add_argument(
         "--deadline",

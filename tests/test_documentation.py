@@ -19,6 +19,7 @@ from pathlib import Path
 
 import elenctic
 from elenctic.solvers import TIME_BUDGET
+from support import cli_help_text
 
 _ROOT = Path(__file__).resolve().parent.parent
 _README = (_ROOT / "README.md").read_text(encoding="utf-8")
@@ -44,10 +45,24 @@ def test_the_release_a_reader_is_told_to_pin_is_this_release() -> None:
 
 def test_the_default_budget_the_readme_states_is_the_default_the_package_has() -> None:
     # Stated twice in the README — as the gloss on the flag, and as a value inside the one worked
-    # machine-readable document — and held by nothing. The help does not have this problem, because
-    # it interpolates the constant rather than quoting it; these two quote it.
+    # machine-readable document — and held by nothing; these quote the constant where the help
+    # interpolates it.
     assert f"(default {TIME_BUDGET:g}s)" in _README, "the flag's gloss names the shipped default"
     assert f'"budget": {TIME_BUDGET}' in _README, "and so does the worked document"
+
+
+def test_the_help_states_the_default_budget_the_way_the_readme_does() -> None:
+    # Interpolating the constant is not enough on its own, which is how these two came to disagree:
+    # the default is a float, so its bare repr reads `30.0s` where the README says `30s`, and a
+    # reader comparing the flag's gloss with the documentation found two different numbers.
+    #
+    # What is held is the *agreement*, read out of the README rather than written here a third
+    # time: an expectation spelled with the same format string as the line under test would follow
+    # it wherever it went.
+    (gloss,) = re.findall(r"\(default [0-9][^)]*\)", _README)
+    assert gloss in " ".join(cli_help_text().split()), (
+        f"the README's gloss {gloss!r} is not how --help says it"
+    )
 
 
 def test_the_readme_does_not_keep_a_second_copy_of_the_exit_status_ladder() -> None:
