@@ -6,12 +6,19 @@ pure and total in the sense that every input either yields an ``Expectation`` or
 ``ContractError`` naming what is wrong (and, given a ``source``, where) — it never silently
 defaults or discards.
 
-Three responsibilities:
+Four responsibilities:
 
-- **Brace-bounded continuation.** A litset may span continuation ``%`` lines *while a
-  brace remains unclosed*; once the brace closes, a following ``%`` line is prose (e.g. a
-  ``% Run: …`` header), not part of the litset. ``_blocks`` tracks the open brace so a
-  continuation absorbs only the unfinished litset.
+- **One comment reader of record.** ``_comments`` is the only thing here that decides what a
+  comment is, and it decides it as clingo's lexer does; both ``_tag_comments`` (behind the
+  collection predicate) and ``_blocks`` (behind the parse) read it. The two must come from one
+  reading: split them and either a trailing ``% @expect …`` is still never collected, or a file
+  is collected and then told it declares no ``@expect`` while its author is looking straight at
+  one.
+- **Brace-bounded, contiguous continuation.** A litset may span continuation comments *while a
+  brace remains unclosed*; once the brace closes, a following comment is prose (e.g. a
+  ``% Run: …`` header), not part of the litset. The run must also be unbroken — each
+  continuation on the line after the last — so a litset never absorbs a comment written on the
+  far side of a rule. ``_blocks`` tracks both.
 - **Provenance.** ``parse(text, source=None)`` carries ``source:line`` (or ``line N``)
   into every diagnostic; discovery passes the file path as ``source``.
 - **Single source of truth via a typed builder.** Tags accumulate into a typed
@@ -328,18 +335,204 @@ def _interpret_directives(blocks: list[_Block], source: str | None) -> Solver | 
     return solver
 
 
-# --- block tokenization (brace-bounded continuation) ---
+# --- the comment lexis ---
 
-# A contract line is `% @<tag> <payload>`; a continuation is any later `%` line absorbed while the
-# preceding tag's litset brace is still open. A tag line is tried first, so a continuation never
-# starts a new tag (litset elements are ASP literals, which never begin with `@`).
-_TAG = re.compile(r"^\s*%\s*@(?P<tag>\w+)\b(?P<rest>.*)$")
-_CONT = re.compile(r"^\s*%\s*(?P<rest>.*)$")
+# The contract channel is comments, so what elenctic reads as an annotation has to be exactly what
+# clingo reads as a comment: a divergence is either a contract nobody reading the file believes is
+# in force, or one nobody knows is missing. Four constructs decide it, each measured against clingo:
+#
+#   `%` … end of line    a line comment.
+#   `%*` … `*%`          a block comment, and it NESTS. A `%` inside opens a line comment — part of
+#                        the block, not a comment of its own — so a `*%` standing after one on the
+#                        same line does not close the block. An unterminated block is a lexer error
+#                        for which clingo reports no comment at all, so neither does this.
+#   `"` … `"`            a string term, in which a `%` is inert. `\` escapes the next character but
+#                        cannot carry the string across a newline; where the closing quote is
+#                        missing clingo reports the error at the opening quote and resumes right
+#                        after it, so the rest of that line is ordinary input.
+#   `#script` … `#end`   a script body, opaque — a `%` in it is program text. The opener needs the
+#                        parenthesized language name (`#script`, whitespace, `(`); a bare `#script`
+#                        opens nothing. The closer is the literal `#end`, with no word boundary and
+#                        no dot: `#end % c` with the `.` on the next line lexes cleanly, and `% c`
+#                        is a comment.
+_SCRIPT_OPEN = "#script"
+_SCRIPT_CLOSE = "#end"
 
-# A `%`-line whose content begins with a `where {` clause (the keyword then a brace) — the dangling-
+# clingo's lexer takes exactly these four as whitespace. `str.isspace` is a different claim — it
+# also takes `\v` and `\f`, which clingo rejects between `#script` and its `(`.
+_SPACE = " \t\r\n"
+
+
+@dataclass(frozen=True, slots=True)
+class _Comment:
+    """One comment as clingo's lexer sees it: the 1-based line it opens on, its text with the
+    delimiters removed, which of the two forms it takes, and whether anything but whitespace
+    precedes it on its line — which is what separates a comment line from a comment trailing a
+    rule, and clingo has no opinion about it because clingo does not read contracts."""
+
+    line: int
+    body: str
+    block: bool
+    starts_line: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _Unterminated:
+    """The construct that was left open and so swallowed the rest of the file: which one, and the
+    1-based line it opened on."""
+
+    construct: str
+    line: int
+
+
+@dataclass(frozen=True, slots=True)
+class _Lexis:
+    """A file's comments, and whether the reading ran out before the file did.
+
+    Running out is a fact about the file rather than a limit of this reader — an unterminated
+    ``%*`` or ``#script`` swallows everything below it, for clingo exactly as here — and it is
+    kept rather than discarded because the two answers differ in kind. *No comments here* and *I
+    could not read past line N* both leave the comment list short, and only the second is a reason
+    to refuse a file rather than file it away as a library."""
+
+    comments: list[_Comment]
+    unterminated: _Unterminated | None
+
+
+def _lex(text: str) -> _Lexis:
+    r"""Every comment in ``text``, in order, read as clingo reads them.
+
+    Total: it cannot raise, does no I/O and does not invoke clingo. That is what lets it serve
+    ``has_contract``, which must classify a file that does not parse — and must do so without
+    opening whatever path an ``#include`` in that file happens to name.
+
+    Single-pass and per-character, with no per-line rescan and no per-line copy: this runs before
+    clingo is invoked and before any budget exists, so nothing else would stop superlinear work.
+    Lines are counted on ``\n`` alone, which is where clingo ends one; ``str.splitlines`` would
+    also break on ``\v``, ``\f``, the separators and ``\x85``, and a tag beyond one of those is a
+    contract nobody reviewing the file can see.
+    """
+    found: list[_Comment] = []
+    unterminated: _Unterminated | None = None
+    line, position, end = 1, 0, len(text)
+    blank = True  # every character since this line began has been whitespace
+    while position < end:
+        character = text[position]
+        if character == "%":
+            read = _read_comment(text, position, line, starts_line=blank)
+            if read is None:
+                unterminated = _Unterminated("%*", line)
+                break
+            comment, after = read
+            found.append(comment)
+            blank = False
+        elif character == '"':
+            after, blank = _past_string(text, position), False
+        elif character == "#" and _opens_script(text, position):
+            closed = _past_script(text, position)
+            if closed is None:
+                unterminated = _Unterminated(_SCRIPT_OPEN, line)
+                break
+            after, blank = closed, False
+        else:
+            blank = character == "\n" or (blank and character in _SPACE)
+            after = position + 1
+        line += text.count("\n", position, after)
+        position = after
+    return _Lexis(found, unterminated)
+
+
+def _read_comment(
+    text: str, position: int, line: int, *, starts_line: bool
+) -> tuple[_Comment, int] | None:
+    """The comment opening at ``position`` (a ``%``) and where lexing resumes after it, or ``None``
+    for an unterminated ``%*``: that is a lexer error, and clingo reports no comment for it — the
+    tail of such a file is not annotation, in either reading."""
+    if not text.startswith("%*", position):
+        end_of_line = text.find("\n", position)
+        end_of_line = len(text) if end_of_line < 0 else end_of_line
+        # A lone `\r` neither ends a comment nor a line — only `\n` does, for clingo as here — but
+        # a `\r` run at the end of one is the CRLF terminator rather than comment text, and clingo
+        # drops it. Interior carriage returns are text to both, and a block comment keeps its own.
+        body = text[position + 1 : end_of_line].rstrip("\r")
+        return _Comment(line, body, block=False, starts_line=starts_line), end_of_line
+    scan = _past_block(text, position)
+    if scan is None:
+        return None
+    body = text[position + 2 : scan - 2]
+    return _Comment(line, body, block=True, starts_line=starts_line), scan
+
+
+def _past_block(text: str, position: int) -> int | None:
+    """Where lexing resumes after the block comment opening at ``position`` (a ``%*``), or ``None``
+    where it is never closed and so runs to end of input.
+
+    A ``%`` inside a block opens a line comment, exactly as one outside does, so a ``*%`` standing
+    after one on the same line does not close the block: ``%* a % b *%`` reaches end of input still
+    open, and is no comment at all."""
+    depth, scan, end = 1, position + 2, len(text)
+    while scan < end and depth > 0:
+        if text.startswith("%*", scan):
+            depth, scan = depth + 1, scan + 2
+        elif text.startswith("*%", scan):
+            depth, scan = depth - 1, scan + 2
+        elif text[scan] == "%":
+            end_of_line = text.find("\n", scan)
+            scan = end if end_of_line < 0 else end_of_line
+        else:
+            scan += 1
+    return None if depth > 0 else scan
+
+
+def _past_string(text: str, position: int) -> int:
+    """Where lexing resumes after the string term opening at ``position`` (a ``"``) — past its
+    closing quote, or, when it has none before the newline, at the character after the opening one,
+    which is where clingo resumes having reported the error there."""
+    scan, end = position + 1, len(text)
+    while scan < end and text[scan] != "\n":
+        if text[scan] == '"':
+            return scan + 1
+        # A backslash escapes the next character but never the newline: a string may not span one.
+        scan += 2 if text[scan] == "\\" and scan + 1 < end and text[scan + 1] != "\n" else 1
+    return position + 1
+
+
+def _opens_script(text: str, position: int) -> bool:
+    """Whether a script body opens at ``position``: ``#script``, whitespace, then the parenthesized
+    language name. A bare ``#script`` is not an opener, and clingo takes no comment in between."""
+    if not text.startswith(_SCRIPT_OPEN, position):
+        return False
+    scan = position + len(_SCRIPT_OPEN)
+    while scan < len(text) and text[scan] in _SPACE:
+        scan += 1
+    return scan < len(text) and text[scan] == "("
+
+
+def _past_script(text: str, position: int) -> int | None:
+    """Where lexing resumes after the script body ``_opens_script`` found at ``position`` — right
+    past its ``#end`` — or ``None`` where it has none and so runs to end of input. The body is
+    opaque, so the search runs over its raw text: an ``#end`` inside a string in the script's own
+    language still closes it."""
+    language = text.index("(", position)  # `_opens_script` has established that this is here
+    closed = text.find(_SCRIPT_CLOSE, language)
+    return None if closed < 0 else closed + len(_SCRIPT_CLOSE)
+
+
+# --- block tokenization (brace-bounded, contiguous continuation) ---
+
+# A contract annotation is a comment whose body reads `@<tag> <payload>`; a continuation is the
+# comment on the line immediately after, absorbed while the preceding tag's litset brace is still
+# open. A tag is tried first, so a comment that reads as one is a tag and not a continuation; a
+# litset element that would be captured that way is refused by the term layer in any case, so the
+# ordering costs a loud diagnostic and never a silent reading. Both patterns read a comment *body*,
+# so neither carries a `%` or a line anchor, and both are applied only to a line comment: a tag
+# inside `%* … *%` is one the author has visibly commented out.
+_TAG = re.compile(r"^\s*@(?P<tag>\w+)\b(?P<rest>.*)$")
+
+# A comment whose body begins with a `where {` clause (the keyword then a brace) — the dangling-
 # witness shape. NOT merely the word "where" (an ordinary `% where the cost is…` prose comment, no
-# brace, stays a comment). When such a line is not absorbed by an open brace it is a loud error.
-_DANGLING_WHERE = re.compile(r"^\s*%\s*where\s*\{")
+# brace, stays a comment). When such a comment is not absorbed by an open brace it is a loud error.
+_DANGLING_WHERE = re.compile(r"^\s*where\s*\{")
 
 # Only these tags carry a brace-delimited litset/tupleset, so only they may span a continuation.
 # Gating on the tag keeps the continuation invariant honest ("join an unfinished *litset*", not
@@ -365,15 +558,20 @@ class _Block:
 
 
 def _blocks(text: str, source: str | None = None) -> list[_Block]:
-    """Tokenize the contract line(s) into ``_Block``s, joining continuation ``%`` lines into the
-    preceding tag's payload *only while its brace is unclosed* (prose lines after a closed litset
-    are left alone). A ``%``-line that begins a ``where { … }`` clause but is not absorbed by an
-    open brace is a *dangling witness* — a loud ``ContractError`` with provenance, never silently
-    dropped, wherever in the file it stands and whatever tag came before it."""
+    """Tokenize the contract annotation(s) into ``_Block``s, joining continuation comments into the
+    preceding tag's payload *only while its brace is unclosed and the run of comment lines is
+    unbroken* (prose after a closed litset is left alone, and so is a comment on the far side of a
+    rule). A comment that begins a ``where { … }`` clause but is not absorbed by an open brace is a
+    *dangling witness* — a loud ``ContractError`` with provenance, never silently dropped, wherever
+    in the file it stands and whatever tag came before it."""
+    lexis = _lex(text)
+    if lexis.unterminated is not None:
+        _refuse_unterminated(lexis.unterminated, source)
     blocks: list[_Block] = []
     fragments: list[str] = []  # the open litset's payload, kept unjoined until its brace closes
     depth = 0
     in_quote = False
+    continues_at = 0  # the line the open litset's next continuation must stand on; no line is 0
 
     def close() -> None:
         """Join the open litset's fragments into its block and forget the open state."""
@@ -382,34 +580,47 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
             blocks[-1] = replace(blocks[-1], payload=" ".join(fragments).strip())
         fragments, depth, in_quote = [], 0, False
 
-    # `split("\n")`, not `splitlines()`: a clingo `%` comment runs to a newline, and splitlines
-    # also breaks on \v, \f, the file/group/record separators, NEL and the Unicode line/paragraph
-    # separators. Ending a line anywhere clingo does not would let a file carry a tag that is one
-    # physical line to clingo, to a diff, and to a reviewer — a contract nobody reviewing it sees.
-    for line_number, line in enumerate(text.split("\n"), start=1):
-        if (tag := _TAG.match(line)) is not None:
+    for comment in lexis.comments:
+        if comment.block:
+            continue  # `%* … *%` is how an author turns a contract off, not how they write one
+        if comment.line != continues_at or not comment.starts_line:
+            # A contract annotation is a contiguous run of comment *lines*, so anything else ends
+            # one: a comment further down the file, and equally one trailing a rule on the very
+            # next line, where the rule stands between the two halves of a litset just as surely
+            # as it would on a line of its own.
+            #
+            # The asymmetry with the tag itself is deliberate. A tag names itself — `@word` — so
+            # it is unambiguous wherever it stands, trailing a rule included, which is the whole
+            # of the trailing-tag repair. A continuation names nothing: it is ordinary text that
+            # means something only because of where it sits. Where the information separating a
+            # continuation from a remark is not in the line, the settled principle takes the
+            # refusal, and a brace left open fails loudly at `_base_litset`.
+            close()
+        if (tag := _TAG.match(comment.body)) is not None:
             close()
             payload = tag.group("rest").strip()
-            blocks.append(_Block(tag.group("tag"), payload, line_number))
+            blocks.append(_Block(tag.group("tag"), payload, comment.line))
             if tag.group("tag") in _LITSET_TAGS:
                 depth, in_quote = _scan_braces(payload, 0, False)
                 if depth > 0:
-                    fragments = [payload]
-        elif depth > 0 and (cont := _CONT.match(line)) is not None:
+                    fragments, continues_at = [payload], comment.line + 1
+        elif depth > 0:
             # The open brace is tracked as the payload grows rather than re-derived from the whole
             # payload per line, and the pieces are joined once at the end rather than copied per
             # line. Both were quadratic in the continued region, and this scan runs before clingo
             # is invoked and before any budget exists, so nothing else would have stopped it.
-            piece = cont.group("rest").strip()
+            piece = comment.body.strip()
             fragments.append(piece)
             depth, in_quote = _scan_braces(piece, depth, in_quote)
+            continues_at = comment.line + 1
             if depth <= 0:
                 close()
-        elif _DANGLING_WHERE.match(line):
-            # Reached only once the litset's brace has closed, since the continuation branch above
-            # absorbs a clause written while one is open — which is the placement that works. No
-            # condition on what came before: a stranded clause costs the author the same binding
-            # whether the tag above it is a witness, a `@note`, or nothing at all.
+        elif _DANGLING_WHERE.match(comment.body):
+            # Reached once the litset's brace has closed, or once the run of comment lines has
+            # been broken — the continuation branch above absorbs a clause written while a brace
+            # is open on the next line, which is the placement that works. No condition on what
+            # came before: a stranded clause costs the author the same binding whether the tag
+            # above it is a witness, a `@note`, or nothing at all.
             #
             # It costs a comment line that opens `where {` and meant nothing by it — set-builder
             # notation in prose. That is the right way round to be wrong: the alternative reads
@@ -418,7 +629,7 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
             # stop — is the shape that decided it, since dropping that one is a wrong answer
             # while refusing a comment is a refusal the author can answer.
             raise ContractError(
-                f"{_location(source, line_number)}: dangling `where`: a `where {{ … }}` clause "
+                f"{_location(source, comment.line)}: dangling `where`: a `where {{ … }}` clause "
                 "qualifies a @model / @optimal witness — write it on that tag's litset-closing "
                 "line, or on a continuation line while the litset's brace is still open"
             )
@@ -426,14 +637,34 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
     return blocks
 
 
-def _tag_lines(text: str) -> Iterator[_Block]:
-    """Yield one ``_Block`` per ``% @tag`` line (tag + raw rest + 1-based line), with no
+def _refuse_unterminated(unterminated: _Unterminated, source: str | None) -> NoReturn:
+    """Refuse a file whose comment structure never closes, naming the construct and where it
+    opened. The refusal is the point: everything below the opener is inside it, so a contract there
+    is not in force — and clingo cannot read the file either, so nothing is refused here that would
+    otherwise have run."""
+    remedy = (
+        "close it with `*%` — and note that a `%` inside a block opens a line comment, so a `*%` "
+        "standing after one on the same line is inside that comment and does not close the block"
+        if unterminated.construct == "%*"
+        else "close it with `#end.`"
+    )
+    _fail_at(
+        source,
+        unterminated.line,
+        f"unterminated `{unterminated.construct}`: it runs to the end of the file, so anything "
+        f"below it is inside it and no contract there is in force — {remedy}",
+    )
+
+
+def _tag_comments(comments: list[_Comment]) -> Iterator[_Block]:
+    """Yield one ``_Block`` per ``@tag`` comment (tag + raw rest + 1-based line), with no
     continuation join and no raises — the lexical tag-recognition (the shared ``_TAG`` pattern)
     that ``has_contract`` reads. Continuation / dangling-``where`` handling lives in ``_blocks``;
-    both read ``_TAG``, so there is one tag recognizer of record."""
-    for line_number, line in enumerate(text.split("\n"), start=1):
-        if (tag := _TAG.match(line)) is not None:
-            yield _Block(tag.group("tag"), tag.group("rest").strip(), line_number)
+    both read ``_lex`` and then ``_TAG``, so there is one comment reader of record and one tag
+    recognizer of record."""
+    for comment in comments:
+        if not comment.block and (tag := _TAG.match(comment.body)) is not None:
+            yield _Block(tag.group("tag"), tag.group("rest").strip(), comment.line)
 
 
 def has_contract(text: str) -> bool:
@@ -442,8 +673,20 @@ def has_contract(text: str) -> bool:
     target, never run directly). Content-keyed, not filename-keyed (the "pytest-shaped" surface is
     the *invocation*, not pytest's filename collection). An unknown ``@word`` in a tag-free file is
     just prose (a library, no error); a known tag with a missing ``@expect`` is still a case (it
-    fails loud at ``parse``, never silently reclassified — loud over silent). Never raises."""
-    return any(block.tag in KNOWN_TAGS for block in _tag_lines(text))
+    fails loud at ``parse``, never silently reclassified — loud over silent).
+
+    Never raises, and never invokes clingo: it must answer for every ``.lp`` file in the tree,
+    libraries included, and a file that cannot be parsed still has a plain answer to *what is
+    written in it* — with one exception, which is why the reading reports it. Where an
+    unterminated ``%*`` or ``#script`` swallows the rest of the file, there is no such answer:
+    everything below the opener is unread. Answering **library** there would file the case away on
+    the strength of the part that could not be read, and a library nothing runs is silent — the
+    author's contract would never run and the corpus would still come back green. So such a file
+    is a case, and ``parse_contract`` says what is wrong with it."""
+    lexis = _lex(text)
+    return lexis.unterminated is not None or any(
+        block.tag in KNOWN_TAGS for block in _tag_comments(lexis.comments)
+    )
 
 
 def _scan_braces(fragment: str, depth: int, in_quote: bool) -> tuple[int, bool]:
