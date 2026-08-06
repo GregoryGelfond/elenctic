@@ -332,7 +332,13 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
             # that answered for that stream would answer the wrong one. The tally comes back here
             # to be written rather than being written there, so that every standard-output write a
             # broken reader can meet is one the hand-over made.
-            _hand_over_standard_output(prose=_render_tail(produced, invocation))
+            # Two statements, so that what the tail writes to standard error and what is then
+            # written to standard output are in the order they happen, on the page. Nested as
+            # one expression the ordering rested on argument evaluation, which is invisible at
+            # exactly the point somebody would reorder it — and it is the order this seam was
+            # changed to establish.
+            tally = _render_tail(produced, invocation)
+            _hand_over_standard_output(prose=tally)
             return exit_status(produced)
         # Discovery is inside the region with the rest of the run, because discovery grounds, and
         # the grounder writes where rebinding a Python stream cannot follow it. So is the tail: the
