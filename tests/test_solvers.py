@@ -264,8 +264,9 @@ def test_a_second_phase_that_reports_no_model_never_calls_the_program_unsatisfia
     # definite FAIL saying AS(P) = ∅ over a program with models — a decided-wrong verdict where
     # nothing was decided, contradicted inside the same report by the `@expect sat` that rides its
     # own run and PASSes. No tag that PASSes on an empty AS(P) can reach an optimal-enumeration run
-    # (`@expect unsat` routes to DEFAULT; `@count 0` is legal only with `@expect unsat` and is
-    # dropped there), so the reachable damage was the wrong verdict, not a claim wrongly upheld.
+    # (`@expect unsat` routes to DEFAULT; `@count 0` and `@count optimal 0` are legal only with
+    # `@expect unsat` and ride that same DEFAULT run, reading nothing), so the reachable damage was
+    # the wrong verdict, not a claim wrongly upheld.
     #
     # Forced rather than waited for. The state showed up on one platform's continuous integration
     # and never here, and a test that can only be reached by losing a race is a test that reports

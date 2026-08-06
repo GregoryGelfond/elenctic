@@ -122,6 +122,9 @@ def test_counting_the_optimal_class_to_zero_is_settled_without_an_optimal_solve(
         "expected 0 optimal models, but AS(P) ≠ ∅ — a model exists, and Opt(P) is empty only "
         "where AS(P) is"
     )
+    # The PASSing arm's sentence too, and it must not be the all-base one: both tags PASS here and
+    # a published document that gave them the same line would make them indistinguishable.
+    assert count_optimal_is(0, line=1)(decided(Inconsistent())).message == "|optimal models| = 0"
 
 
 def test_optimal_base_singleton_class() -> None:

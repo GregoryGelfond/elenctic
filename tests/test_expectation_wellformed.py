@@ -48,6 +48,13 @@ from elenctic.expectation import ContractError, Sat, Unsat, parse
         pytest.param("% @expect unsat\n% @assign { v=1 }\n", r"unsat", id="unsat-with-assign"),
         pytest.param("% @expect unsat\n% @query yes { a }\n", r"unsat", id="unsat-with-query"),
         pytest.param("% @expect unsat\n% @count 2\n", r"unsat", id="unsat-with-positive-count"),
+        # 1 as well as 2: the unsat shape now *carries* its count, so a positive one slipping past
+        # this rule would build a check that reads the census onto a witness solve — a routing
+        # fault reported as an elenctic bug, where the author wrote a contract error.
+        pytest.param("% @expect unsat\n% @count 1\n", r"unsat", id="unsat-with-count-of-one"),
+        pytest.param(
+            "% @expect unsat\n% @count optimal 1\n", r"unsat", id="unsat-with-count-optimal-of-one"
+        ),
         pytest.param("% @expect sat\n% @count 0\n", r"unsat", id="sat-with-zero-count"),
         pytest.param(
             "% @expect sat\n% @count optimal 0\n", r"unsat", id="sat-with-zero-count-optimal"
@@ -214,8 +221,8 @@ def test_assign_and_assign_optimal_coexist() -> None:
 # A `where { … }` clause qualifies a witness and must ride the litset's closing line. Written on a
 # `%` line of its own it is absorbed by nothing, and the binding it carries would go with it —
 # silently *weakening* the contract, since `requires_theory` goes too and the solver precondition
-# that would have caught the case then does not fire either. Which line is a clause is decided by
-# the line's own shape, so every placement below is refused alike.
+# that would have caught the case then does not fire either. A `%` line opening `where {` is
+# therefore read as a clause wherever it stands and whatever tag came before it.
 
 _STRANDED = [
     pytest.param("% @expect sat\n% @model { a }\n%   where { v=1 }\n", id="after-the-witness"),
@@ -233,6 +240,14 @@ _STRANDED = [
         "% @expect sat\n% @model { a }\n% @note aside\n% where { v=1,\n%   w=2 }\n",
         id="brace-continued-onto-the-next-line",
     ),
+    # The two that decided the rule's shape. A clause followed by anything at all is still a
+    # clause, and reading further along the line to decide would let both of these through — a
+    # binding dropped without a word, which is the one outcome the guard exists to prevent.
+    pytest.param(
+        "% @expect sat\n% @model { a }\n% where { v=1 }   % the theory binding\n",
+        id="trailed-by-a-comment",
+    ),
+    pytest.param("% @expect sat\n% @model { a }\n% where { v=1 }.\n", id="trailed-by-a-full-stop"),
 ]
 
 
@@ -240,6 +255,16 @@ _STRANDED = [
 def test_a_stranded_where_clause_is_refused_wherever_it_stands(text: str) -> None:
     with pytest.raises(ContractError, match=r"dangling `where`"):
         parse(text)
+
+
+def test_the_stranded_where_diagnostic_names_the_file_and_the_line() -> None:
+    # The guard fires anywhere in the file now, so the coordinate *is* the diagnostic: a reader can
+    # no longer find the offending line by looking just under the witness. `match` is a search, so
+    # asserting only the phrase leaves the whole provenance free.
+    with pytest.raises(ContractError, match=r"^cases/x\.lp:4: dangling `where`"):
+        parse(
+            "% @expect sat\n% @model { a }\n% @note aside\n% where { v=1 }\n", source="cases/x.lp"
+        )
 
 
 def test_the_same_clauses_written_on_the_witness_line_parse_and_bind() -> None:
@@ -263,33 +288,38 @@ def test_empty_where_is_rejected() -> None:
         parse("% @expect sat\n% @model { a } where { }\n")
 
 
-def test_prose_where_without_a_brace_stays_a_comment() -> None:
-    # 'where' as ordinary prose (no following brace) is a comment, not a stranded clause.
-    exp = parse("% @expect sat\n% @model { a }\n% where the cost is low\n% @count 1\n")
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param(
+            "% @expect sat\n% @model { a }\n% where the cost is low\n% @count 1\n",
+            id="where-then-no-brace",
+        ),
+        pytest.param(
+            "% @expect sat\n% @model { a }\n% the set where {x : p(x)} lives\n% @count 1\n",
+            id="where-not-first-on-the-line",
+        ),
+        pytest.param(
+            "% @expect sat\n% @model { a }\n% wherever { x } appears\n% @count 1\n",
+            id="a-longer-word-beginning-where",
+        ),
+    ],
+)
+def test_prose_that_does_not_open_a_where_clause_stays_a_comment(text: str) -> None:
+    # The whole of the acceptance side, and it is narrow on purpose: a comment is prose when it does
+    # not *open* `where {`. The claim after it is read as usual, which is what shows the line was
+    # passed over rather than swallowed into something.
+    exp = parse(text)
     assert isinstance(exp, Sat)
     assert exp.count is not None
     assert exp.count.value == 1
 
 
-@pytest.mark.parametrize(
-    "text",
-    [
-        pytest.param(
-            "% @expect sat\n% where {x : p(x)} ranges over the grid\n% @model { a }\n",
-            id="before-the-witness",
-        ),
-        pytest.param(
-            "% @expect sat\n% @model { a }\n% where {x : p(x)} ranges over the grid\n",
-            id="after-the-witness",
-        ),
-    ],
-)
-def test_prose_that_merely_contains_a_brace_group_stays_a_comment(text: str) -> None:
-    # Set-builder notation in a comment is prose, and the discriminator is the *shape* of the line
-    # rather than the tag above it: a clause owns the rest of its line, so text after the closing
-    # brace says this was never one. Both positions are pinned because the rule no longer reads the
-    # neighbourhood — the second used to be refused for the accident of standing after a witness.
-    exp = parse(text)
-    assert isinstance(exp, Sat)
-    assert exp.model is not None
-    assert not exp.model.value.assign, "prose must not arrive as a binding either"
+def test_a_comment_opening_a_where_clause_is_refused_even_as_prose() -> None:
+    # The cost of the rule, pinned rather than left to be discovered: set-builder notation written
+    # at the start of a comment is refused, because it is indistinguishable from a stranded clause
+    # and guessing between them is what lets a real binding through. Refusing a comment is a
+    # refusal its author can answer by rewording; dropping a binding is a contract quietly
+    # weakened. Neither corpus this project runs contains such a line.
+    with pytest.raises(ContractError, match=r"dangling `where`"):
+        parse("% @expect sat\n% @model { a }\n% where {x : p(x)} ranges over the grid\n")

@@ -126,17 +126,28 @@ def test_a_check_needs_an_exhausted_search_exactly_when_it_reads_a_collection() 
     assert {"@expect sat", "@expect unsat"} <= seen, "both exempt checks must be covered"
 
 
-def test_the_exempt_checks_are_exactly_the_two_that_read_no_collection() -> None:
+def test_the_exempt_checks_are_exactly_those_that_read_no_collection() -> None:
     # The closed companion to the derivation above, which is otherwise a tautology: if a future
     # check joins the exempt set, this names it and a reader has to justify it.
+    #
+    # The justification for the two count claims, which are exempt because they read nothing at all:
+    # `@count 0` and `@count optimal 0` assert AS(P) = ∅ and Opt(P) = ∅, which the arm settles —
+    # PASS where the search found no answer set, refuted by any single model. Neither ranges over a
+    # collection, so neither has anything the rest of a search could still change. Note the corpus
+    # below: an earlier version held only two contracts, and its every instance happened to hold
+    # "no count is zero" fixed, so the two exemptions this list gained went unnamed.
     exempt = {
         check.label
-        for text in ("% @expect sat\n% @count 2\n% @cautious { a }\n", "% @expect unsat\n")
+        for text in (
+            "% @expect sat\n% @count 2\n% @cautious { a }\n",
+            "% @expect unsat\n",
+            "% @expect unsat\n% @count 0\n% @count optimal 0\n",
+        )
         for run in runs_for(parse(text))
         for check in run.checks
         if not check.needs_exhausted_search
     }
-    assert exempt == {"@expect sat", "@expect unsat"}
+    assert exempt == {"@expect sat", "@expect unsat", "@count", "@count optimal"}
 
 
 def test_a_case_under_a_hit_budget_still_reports_the_satisfiability_it_settled(

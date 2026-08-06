@@ -254,6 +254,19 @@ def test_a_line_is_1_based_wherever_one_is_carried() -> None:
         )
 
 
+def test_an_unsat_contract_cannot_be_built_carrying_a_count_that_denies_it() -> None:
+    # The cross-tag rule refuses `@expect unsat` beside a positive `@count` while parsing, and this
+    # is the same fact where the shape can no longer be built without it. It is not redundant: the
+    # shape is exported, so a consumer driving a case from a runner of their own builds it directly
+    # — and a positive count there derives a check that reads the census onto a witness solve,
+    # which arrives as an elenctic bug rather than as the contract error it is.
+    with pytest.raises(ValueError, match=r"@count 0"):
+        Unsat(expect_line=1, count=Claimed(5, 2))
+    with pytest.raises(ValueError, match=r"@count optimal 0"):
+        Unsat(expect_line=1, count_optimal=Claimed(1, 2))
+    assert Unsat(expect_line=1, count=Claimed(0, 2)).count == Claimed(0, 2)  # zero is the contract
+
+
 def test_a_line_is_counted_the_way_clingo_counts_one() -> None:
     # A contract line ends at a newline and nowhere else, because that is where clingo's comment
     # ends. Python's splitlines() also breaks on \v, \f, NEL and the Unicode separators, so a
@@ -302,9 +315,9 @@ def test_a_query_report_carries_its_subject() -> None:
 # The unsat shape carries cells too, and they are the ones a freeze can quietly leave behind: it
 # builds a new record rather than copying the builder, so a cell it forgets to name simply is not
 # there. The same totality argument therefore has to range over this shape as well.
-_UNSAT_CELLS: list[tuple[str, str]] = [
-    ("@count 0", "count"),
-    ("@count optimal 0", "count_optimal"),
+_UNSAT_CELLS: list[tuple[str, str, str]] = [
+    ("@count 0", "count", "@count"),
+    ("@count optimal 0", "count_optimal", "@count optimal"),
 ]
 
 
@@ -314,15 +327,21 @@ def test_the_unsat_cell_table_covers_every_cell_that_shape_can_carry() -> None:
         for name in Unsat.__dataclass_fields__
         if name not in {"expect_line", "notes"}  # not cells: the shape's own line, and prose
     }
-    assert {cell for _tag, cell in _UNSAT_CELLS} == carrying
+    assert {cell for _tag, cell, _label in _UNSAT_CELLS} == carrying
 
 
-@pytest.mark.parametrize(("tag", "cell"), _UNSAT_CELLS, ids=[tag for tag, _ in _UNSAT_CELLS])
-def test_every_unsat_cell_carries_its_line_and_derives_a_check_there(tag: str, cell: str) -> None:
+@pytest.mark.parametrize(
+    ("tag", "cell", "label"), _UNSAT_CELLS, ids=[tag for tag, _, _ in _UNSAT_CELLS]
+)
+def test_every_unsat_cell_carries_its_line_and_derives_its_own_check_there(
+    tag: str, cell: str, label: str
+) -> None:
     expectation = parse(f"% a comment\n% @expect unsat\n% {tag}\n")
     assert isinstance(expectation, Unsat)
     claim = getattr(expectation, cell)
     assert claim is not None, "the cell survives the freeze"
     assert claim.line == 3
-    answered = {check.line for run in runs_for(expectation) for check in run.checks}
-    assert 3 in answered, "and a check answers the line it was written on"
+    # The pair, not the line alone: a derivation that answered line 3 with some *other* tag's check
+    # would satisfy a coordinate-only assertion while reporting the wrong claim at the right place.
+    answered = {(check.label, check.line) for run in runs_for(expectation) for check in run.checks}
+    assert (label, 3) in answered

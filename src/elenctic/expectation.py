@@ -118,6 +118,23 @@ class WitnessClaim:
     assign: frozenset[tuple[Symbol, int]] = frozenset()
 
 
+def _require_zero(claim: Claimed[int] | None, tag: str) -> None:
+    """Reject a non-zero count on an unsat contract. ``@count n`` for ``n ≥ 1`` asserts a model
+    exists, which is what ``@expect unsat`` denies; the cross-tag rule refuses the pair, and this is
+    the same fact stated where the shape can no longer be built without it — the module's illegal
+    states are unrepresentable, not merely rejected on one path in.
+
+    It earns its place because the shape is *exported*: a consumer driving a case from a runner of
+    their own constructs it directly, and a non-zero count there would derive a check that reads the
+    census onto a witness solve, which is a routing fault reported as an elenctic bug rather than
+    the contract error it is. ``ValueError`` for the reason :func:`require_line` gives — this is a
+    consumer's bad argument, not a value elenctic built mid-solve."""
+    if claim is not None and claim.value != 0:
+        raise ValueError(
+            f"@expect unsat admits only {tag} 0 (it asserts AS(P) = ∅), got {tag} {claim.value}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class Unsat:
     """``@expect unsat``: ``AS(P) = ∅``; excludes every model-bearing tag.
@@ -140,6 +157,8 @@ class Unsat:
 
     def __post_init__(self) -> None:
         require_line(self.expect_line)
+        _require_zero(self.count, "@count")
+        _require_zero(self.count_optimal, "@count optimal")
 
 
 @dataclass(frozen=True, slots=True)
@@ -317,10 +336,10 @@ def _interpret_directives(blocks: list[_Block], source: str | None) -> Solver | 
 _TAG = re.compile(r"^\s*%\s*@(?P<tag>\w+)\b(?P<rest>.*)$")
 _CONT = re.compile(r"^\s*%\s*(?P<rest>.*)$")
 
-# A `%`-line whose content opens a `where {` clause (the keyword then a brace) — the candidate for
-# the dangling-witness shape. NOT merely the word "where": an ordinary `% where the cost is…` prose
-# comment, with no brace, stays a comment. Which candidates are clauses is `_is_dangling_where`.
-_WHERE_LINE = re.compile(r"^\s*%\s*(?P<clause>where\s*\{.*)$", re.S)
+# A `%`-line whose content begins with a `where {` clause (the keyword then a brace) — the dangling-
+# witness shape. NOT merely the word "where" (an ordinary `% where the cost is…` prose comment, no
+# brace, stays a comment). When such a line is not absorbed by an open brace it is a loud error.
+_DANGLING_WHERE = re.compile(r"^\s*%\s*where\s*\{")
 
 # Only these tags carry a brace-delimited litset/tupleset, so only they may span a continuation.
 # Gating on the tag keeps the continuation invariant honest ("join an unfinished *litset*", not
@@ -348,9 +367,9 @@ class _Block:
 def _blocks(text: str, source: str | None = None) -> list[_Block]:
     """Tokenize the contract line(s) into ``_Block``s, joining continuation ``%`` lines into the
     preceding tag's payload *only while its brace is unclosed* (prose lines after a closed litset
-    are left alone). A ``%``-line that *is* a ``where { … }`` clause (:func:`_is_dangling_where`)
-    and is not absorbed by an open brace is a *dangling witness* — a loud ``ContractError`` with
-    provenance, never silently dropped, wherever in the file it stands."""
+    are left alone). A ``%``-line that begins a ``where { … }`` clause but is not absorbed by an
+    open brace is a *dangling witness* — a loud ``ContractError`` with provenance, never silently
+    dropped, wherever in the file it stands and whatever tag came before it."""
     blocks: list[_Block] = []
     fragments: list[str] = []  # the open litset's payload, kept unjoined until its brace closes
     depth = 0
@@ -386,9 +405,18 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
             depth, in_quote = _scan_braces(piece, depth, in_quote)
             if depth <= 0:
                 close()
-        elif _is_dangling_where(line):
-            # reached only once the litset's brace has closed, since the continuation branch above
-            # absorbs a clause written while one is open — which is the placement that works.
+        elif _DANGLING_WHERE.match(line):
+            # Reached only once the litset's brace has closed, since the continuation branch above
+            # absorbs a clause written while one is open — which is the placement that works. No
+            # condition on what came before: a stranded clause costs the author the same binding
+            # whether the tag above it is a witness, a `@note`, or nothing at all.
+            #
+            # It costs a comment line that opens `where {` and meant nothing by it — set-builder
+            # notation in prose. That is the right way round to be wrong: the alternative reads
+            # further along the line to guess which was meant, and every such rule is a character
+            # away from letting a real clause through. `% where { v=1 }.` — a clause and a full
+            # stop — is the shape that decided it, since dropping that one is a wrong answer
+            # while refusing a comment is a refusal the author can answer.
             raise ContractError(
                 f"{_location(source, line_number)}: dangling `where`: a `where {{ … }}` clause "
                 "qualifies a @model / @optimal witness — write it on that tag's litset-closing "
@@ -430,28 +458,6 @@ def _scan_braces(fragment: str, depth: int, in_quote: bool) -> tuple[int, bool]:
         elif not in_quote:
             depth += (char == "{") - (char == "}")
     return depth, in_quote
-
-
-def _is_dangling_where(line: str) -> bool:
-    """Whether ``line`` is a ``where { … }`` clause standing on a ``%`` line of its own — a witness
-    qualifier with no witness to qualify, which nothing downstream would look at.
-
-    Recognized by the shape the clause has on a witness line rather than by what precedes it: a
-    clause **owns the rest of its line**, either closing at the end of it (``_WHERE_SPLIT``, the
-    very pattern that splits an inline clause off a witness payload) or leaving its brace open to
-    continue onto the next ``%`` line (the litset's own continuation rule). Prose that merely
-    contains a brace group — set-builder notation in a comment, ``% where {x : p(x)} ranges over
-    the grid`` — has text after the closing brace and is left alone.
-
-    Reading the line and not its neighbourhood is what makes the guard unconditional. The binding a
-    stranded clause carries is lost the same way whether the tag above it is a witness, a ``@note``,
-    or nothing at all, and losing it silently *weakens* the contract: the theory binding vanishes
-    and with it ``requires_theory``, so the solver precondition that would have caught the case does
-    not fire either."""
-    if (match := _WHERE_LINE.match(line)) is None:
-        return False
-    clause = match.group("clause")
-    return _WHERE_SPLIT.match(clause) is not None or _scan_braces(clause, 0, False)[0] > 0
 
 
 # --- the typed builder and per-tag dispatch ---
@@ -566,10 +572,7 @@ _BASE_INT = re.compile(r"^(?P<base>optimal\s+)?(?P<n>\d+)$")
 _COST = re.compile(r"^\{\s*(?P<ints>-?\d+(?:\s+-?\d+)*)\s*\}$")
 _BIND = re.compile(r"^(?P<term>.+?)\s*=\s*(?P<value>-?\d+)$")
 # A `where { … }` suffix on a witness payload, split BEFORE the litset braces so the greedy litset
-# regex never swallows it; the keyword `where` immediately preceding `{` is the marker. Anchored at
-# the end because a clause runs to the end of what it qualifies — which is also what lets the
-# tokenizer read it as the shape of a clause standing alone (`_is_dangling_where`), so the two
-# agree on what a `where` clause looks like by reading one pattern.
+# regex never swallows it; the keyword `where` immediately preceding `{` is the marker.
 _WHERE_SPLIT = re.compile(r"\bwhere\s*(?P<where>\{.*\})\s*$", re.S)
 
 

@@ -495,7 +495,14 @@ def count_is(n: int, *, line: int) -> Check:
     the rest of the search would have found. So it reads **nothing** — which is what lets the claim
     ride the cheap witness solve an unsat contract already runs, instead of demanding an enumeration
     to count to zero. The refutation names no witness because the ``@expect unsat`` beside it
-    reports one: the contract language admits ``@count 0`` only under that tag."""
+    reports one: the contract language admits ``@count 0`` only under that tag.
+
+    Reading nothing is the established reading for a claim answered by the arm alone, not a licence
+    taken here: :func:`expect_sat` reads nothing and states *the same fact* about the same arm, from
+    the other side — ``@count 0`` FAILs exactly where ``@expect sat`` PASSes, and on exactly the
+    evidence ``Consistent`` is defined to carry (the program has ≥1 answer set). A check reading
+    nothing satisfies the wiring rule against every mode, so what pins these two to the witness
+    solve is the derivation in ``run`` and the test over it, not the rule."""
     if n == 0:
         return _check(
             "@count",
@@ -651,9 +658,22 @@ def count_optimal_is(n: int, *, line: int) -> Check:
 
     ``@count optimal 0`` is the ``Opt(P)`` reading of ``@expect unsat``, and reads nothing for the
     same reason :func:`count_is` gives. Its refutation is one step longer and does not need an
-    optimal solve to take it: an objective is minimised over a finite grounding, so the optimum is
-    attained wherever there is anything to attain it — ``Opt(P)`` is empty exactly when ``AS(P)``
-    is, and a single model settles both."""
+    optimal solve to take it: **Opt(P) is empty exactly when AS(P) is**, so a single model settles
+    both. The step that carries that is the *finiteness of AS(P)* rather than of the grounding — a
+    ground program is finite, so its answer sets are finitely many, so their costs are a finite set
+    of integer vectors, and a finite non-empty set of them has a lexicographic minimum, which
+    Opt(P) is the preimage of. Negative weights and ``#maximize`` (lowered to a negated
+    ``#minimize``) leave the image a finite integer set and cannot make a minimum unattained; with
+    no objective at all every answer set carries the same cost and Opt(P) = AS(P).
+
+    Reading nothing is what makes the claim *well-defined* here, which is more than a saving. An
+    unsat contract is not a ``Sat``, so discovery's optimization precondition never runs over it —
+    ``@count optimal 0`` is admitted on a program with no objective at all. An optimal enumeration
+    of such a program raises rather than deciding anything, so a route through ``OPTIMAL_ENUM``
+    would answer this claim with a program fault on exactly the corpora that are entitled to write
+    it. (The Opt(P) = AS(P) identity above is a fact about the semantics, not about what this
+    package can build: an :class:`~elenctic.result.Optimum` needs a cost vector, and an
+    objective-free program has none to give.)"""
     if n == 0:
         return _check(
             "@count optimal",
