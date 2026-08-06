@@ -58,6 +58,7 @@ from elenctic.outcome import (
     Scope,
     exit_status,
     is_duration,
+    render_seconds,
     summary,
 )
 from elenctic.result import Verdict
@@ -418,7 +419,7 @@ def _refusal(args: argparse.Namespace) -> str | None:
         if seconds is not None and not is_duration(seconds):
             return (
                 f"{flag} takes a positive finite number of seconds, and this run was given "
-                f"{seconds}. {remedy}"
+                f"{render_seconds(seconds)}. {remedy}"
             )
     return None
 
@@ -956,10 +957,14 @@ def _report_deadline(outcome: RunOutcome, invocation: Invocation) -> None:
     record in this register carries — a deadline costs cases, and the run still reports on the ones
     it reached, which is exactly what the tally below this line goes on to say."""
     unreached = [record for record in outcome.errors if record.kind is ErrorKind.DEADLINE]
-    if not unreached:
+    # A deadline record exists only where a deadline was set, so the second test is the type system
+    # asking for what the first already establishes. Answered rather than asserted, because the one
+    # state it rules out is this line printing the word "None" at a reader where a number belongs.
+    if not unreached or (deadline := invocation.deadline) is None:
         return
     print(
-        f"{_heading(ErrorKind.DEADLINE, Scope.CASE)} the run passed its {invocation.deadline}s "
+        f"{_heading(ErrorKind.DEADLINE, Scope.CASE)} the run passed its "
+        f"{render_seconds(deadline)}s "
         f"deadline; {len(unreached)} case(s) were not reached",
         file=sys.stderr,
     )

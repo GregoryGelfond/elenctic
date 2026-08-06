@@ -266,12 +266,12 @@ def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
 @pytest.mark.parametrize(
     ("flag", "value", "echoed"),
     [
-        ("--budget", "0", "0.0"),
-        ("--budget", "-1", "-1.0"),
+        ("--budget", "0", "0"),
+        ("--budget", "-1", "-1"),
         ("--budget", "inf", "inf"),
         ("--budget", "nan", "nan"),
-        ("--deadline", "0", "0.0"),
-        ("--deadline", "-1", "-1.0"),
+        ("--deadline", "0", "0"),
+        ("--deadline", "-1", "-1"),
         ("--deadline", "inf", "inf"),
         ("--deadline", "nan", "nan"),
     ],
@@ -558,7 +558,7 @@ def test_the_deadline_is_said_once_however_many_cases_it_cost(
             kind=ErrorKind.DEADLINE,
             scope=Scope.CASE,
             source=Path(f"case{n}.lp"),
-            message="the run passed its 5.0s deadline before reaching this case",
+            message="the run passed its 5s deadline before reaching this case",
         )
         for n in range(3)
     )
@@ -569,11 +569,11 @@ def test_the_deadline_is_said_once_however_many_cases_it_cost(
     )
 
     # The whole line. A substring assertion left the interpolated number free: swapping
-    # `invocation.deadline` for `invocation.budget` reported "the run passed its 30.0s deadline"
-    # while every record beside it said 5.0s, and the entire suite stayed green. Measured — the
+    # `invocation.deadline` for `invocation.budget` reported "the run passed its 30s deadline"
+    # while every record beside it said 5s, and the entire suite stayed green. Measured — the
     # mutation was a reviewer's and was run.
     assert capsys.readouterr().err == (
-        "DEADLINE ERROR — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
+        "DEADLINE ERROR — the run passed its 5s deadline; 3 case(s) were not reached\n"
     )
 
 
@@ -611,7 +611,7 @@ def test_a_reader_of_one_merged_stream_is_told_the_deadline_before_the_tally() -
             kind=ErrorKind.DEADLINE,
             scope=Scope.CASE,
             source=Path(f"case{n}.lp"),
-            message="the run passed its 5.0s deadline before reaching this case",
+            message="the run passed its 5s deadline before reaching this case",
         )
         for n in range(3)
     )
@@ -629,7 +629,7 @@ def test_a_reader_of_one_merged_stream_is_told_the_deadline_before_the_tally() -
         _hand_over_standard_output(prose=tally)
 
     assert merged.getvalue() == (
-        "DEADLINE ERROR — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
+        "DEADLINE ERROR — the run passed its 5s deadline; 3 case(s) were not reached\n"
         "\n"
         "0/3 passed, 3 could not be run\n"
     )

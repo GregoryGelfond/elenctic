@@ -49,6 +49,7 @@ from elenctic.outcome import (
     RunOutcome,
     Scope,
     error_kind,
+    render_seconds,
 )
 from elenctic.program import ProgramError
 from elenctic.registry import provides_theory
@@ -500,7 +501,9 @@ def _run(
             # That one passed deadline is a single event costing many cases their result is a fact
             # about these records that a caller rendering them can see; it is not a reason for the
             # run to have kept some of them back.
-            passed = f"the run passed its {deadline}s deadline before reaching this case"
+            passed = (
+                f"the run passed its {render_seconds(deadline)}s deadline before reaching this case"
+            )
             for unreached in valid[reached:]:
                 errors.append(
                     ErrorRecord(

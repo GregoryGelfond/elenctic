@@ -61,6 +61,7 @@ __all__ = [
     "error_kind",
     "exit_status",
     "is_duration",
+    "render_seconds",
     "summary",
 ]
 
@@ -291,6 +292,17 @@ class HygieneRecord:
     grade: Grade
     source: Path
     message: str
+
+
+def render_seconds(value: float) -> str:
+    """A duration as a reader typed it, not as a float prints.
+
+    Every number this program says out loud is one somebody typed or one it defaults to, and both
+    are whole seconds in practice — so the bare repr adds a decimal place the dial does not have and
+    echoes back something other than what was written. `:g` is the same rendering the `--budget`
+    gloss uses, and it leaves `inf` and `nan` alone, which are the two values a refusal is most
+    likely to be about."""
+    return f"{value:g}"
 
 
 def is_duration(seconds: float | None) -> bool:
