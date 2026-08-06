@@ -138,6 +138,21 @@ _NO_MACHINE_READABLE_DRY_RUN = (
     "and get the report."
 )
 
+# Why asking for an artefact with nowhere to put it is refused rather than attempted. Closing
+# standard output is something a caller did on purpose, so it is answered the way the missing
+# packaged description is: told plainly, not sent to the issue tracker. The human format is not
+# refused for the same condition, and that is the distinction this program already draws rather
+# than an inconsistency — a published artefact is the deliverable, and prose is a courtesy. Asking
+# for a document with nowhere to write it is a contradiction; running a corpus with nobody to
+# narrate to is an ordinary thing to want, and it still earns its exit status.
+_NOWHERE_TO_PUBLISH = (
+    "this run was asked to write to standard output, and this process has none: it was started "
+    "with standard output closed. --format json writes one document there, and --print-schema "
+    "writes the description of that document there. Leave standard output open, or ask for the "
+    "human format, which writes prose when there is somewhere to write it and is silent when "
+    "there is not."
+)
+
 
 # The width the ladder is wrapped to. The epilog is printed as it is written — argparse reflows a
 # description and this formatter does not — so the wrapping happens here, over the glosses, rather
@@ -310,12 +325,13 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
                 if args.explain
                 else run_corpus(invocation, observer=_TerminalRun())
             )
-            _render_tail(produced, invocation)
             # This format writes prose to standard output for the length of the run, so this is
             # where it is handed over; the other writes one document, and hands it over itself.
-            # After the tail rather than around it: the tail writes to both streams, and a frame
-            # that answered for either of them would answer the wrong one.
-            _hand_over_standard_output()
+            # After the tail rather than around it: the tail writes to standard error, and a frame
+            # that answered for that stream would answer the wrong one. The tally comes back here
+            # to be written rather than being written there, so that every standard-output write a
+            # broken reader can meet is one the hand-over made.
+            _hand_over_standard_output(prose=_render_tail(produced, invocation))
             return exit_status(produced)
         # Discovery is inside the region with the rest of the run, because discovery grounds, and
         # the grounder writes where rebinding a Python stream cannot follow it. So is the tail: the
@@ -323,7 +339,9 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         # document alone.
         with _stdout_to_stderr():
             outcome = run_corpus(invocation, observer=_TerminalRun())
-            _render_tail(outcome, invocation)
+            # Written inside the region, where standard output is standard error: under this format
+            # the tally is a diagnostic like the two above it, and the document owns the stream.
+            print(_render_tail(outcome, invocation), end="")
     except MemoryError:
         # The backstop, for an allocation that fails where no case owns it. A case that runs out of
         # memory is caught in the run loop and costs only its own result; reaching this frame means
@@ -371,6 +389,13 @@ def _refusal(args: argparse.Namespace) -> str | None:
     """
     if args.explain and args.format == "json":
         return _NO_MACHINE_READABLE_DRY_RUN
+    # Whether this process has a standard output at all is exactly what the parser cannot ask for
+    # itself, and it is asked here for the reason every other refusal is: a command line elenctic
+    # cannot carry out is refused before anything is discovered, so a report is whole or absent and
+    # never half written. Met mid-run instead, both of these reached the backstop that tells a
+    # reader they have found a bug in this program — over a stream they closed themselves.
+    if sys.stdout is None and (args.format == "json" or args.print_schema):
+        return _NOWHERE_TO_PUBLISH
     for flag, seconds, remedy in (
         ("--budget", args.budget, _UNBOUNDED_BUDGET),
         ("--deadline", args.deadline, _UNBOUNDED_DEADLINE),
@@ -448,9 +473,18 @@ def _publish(document: str) -> None:
     _hand_over_standard_output(document.encode("utf-8"))
 
 
-def _hand_over_standard_output(published: bytes = b"") -> None:
+def _hand_over_standard_output(published: bytes = b"", *, prose: str = "") -> None:
     """Write anything still owed to standard output, empty it, and answer once if no reader is
     left.
+
+    Two payloads, because there are two kinds of thing to write and they belong to different
+    layers. ``published`` is an artefact that carries its own encoding — the machine-readable
+    document, UTF-8 by its own specification — and goes to the byte layer for the reason given
+    below. ``prose`` is the run's own last sentence, which belongs to whatever encoding the
+    environment picked for everything else the run printed, and goes through the text layer. Both
+    arrive here rather than being written by their callers so that every standard-output write on
+    either path is one this frame makes, which is what lets a failure be read as a fact about
+    standard output.
 
     A reader that stops — a pager quit, a ``head`` that had enough, a consumer that found what it
     came for — leaves every further write with nowhere to land. It is neither a fault in the corpus
@@ -470,13 +504,12 @@ def _hand_over_standard_output(published: bytes = b"") -> None:
     a broken standard error came back as a sentence about standard output and took a healthy
     standard output down with it, discarding the report a reader was going to keep.
 
-    That is a property of this frame and not of every write the program makes. A write to standard
-    output made anywhere else is answered by whatever catches it there, and the tail's own tally is
-    one: on a stream that writes through rather than holding what it is given, that write fails
-    before this is ever reached. Bringing it in means the tail handing its tally back to be written
-    here instead of writing it, which moves the tally after the diagnostics that currently follow
-    it — a change to what a reader of the two streams together sees, and so not one to make in
-    passing.
+    That was a property of this frame before it was one of the program. The tail's own tally used to
+    be the exception — a standard-output write made elsewhere, which on a stream that writes through
+    rather than holding what it is given failed before this was ever reached, and was answered by
+    the backstop as a bug in elenctic. It hands the tally back to be written here now, so the two
+    are the same property: every standard-output write this program makes on the human path is one
+    this frame makes.
 
     That event and no other. Standard output can refuse the bytes for reasons that are nothing to do
     with a reader — no space left, a device that failed — and those have a different remedy, a
@@ -498,9 +531,12 @@ def _hand_over_standard_output(published: bytes = b"") -> None:
         # then the bytes; then the whole of it, so the hand-over either happens or is reported.
         #
         # Nothing to publish is the ordinary case — a run that wrote its report as it went is here
-        # only to have it handed over — and asking for the byte layer at all is what a caller who
-        # replaced standard output with a text stream of their own cannot answer. Writing no bytes
-        # must not be the thing that narrows what this accepts.
+        # to have that handed over and to write its last sentence — and asking for the byte layer
+        # at all is what a caller who replaced standard output with a text stream of their own
+        # cannot answer. Writing no bytes must not be the thing that narrows what this accepts,
+        # which is why the prose above is not encoded into the same argument.
+        if prose:
+            sys.stdout.write(prose)
         sys.stdout.flush()
         if published:
             sys.stdout.buffer.write(published)
@@ -844,31 +880,53 @@ def _against(record: ErrorRecord) -> str:
     return f"{_text(record.source)}: {_text(record.message)}"
 
 
-def _render_tail(outcome: Outcome, invocation: Invocation) -> None:
-    """What the report says once, when the run is over.
+def _render_tail(outcome: Outcome, invocation: Invocation) -> str:
+    """What the report says once, when the run is over: the two diagnostics it writes, and the
+    tally it **hands back** for its caller to write.
 
     Three things that are about the whole run rather than about any one case, and so cannot be said
     while it is going: that a deadline stopped it, how many cases passed, and what was observed
     about the corpus's health. Each is rendered from the registers the run handed back, so what a
     reader is told and what the exit status is read off cannot come to disagree.
 
-    A dry run has no tally, because it decided nothing to tally. Neither has a run that never got
-    past discovery: a corpus-scoped fault is the whole of what such an invocation produced, and
-    ``0/0 passed`` under it would answer a question nobody could have asked — it reads as a corpus
-    that was looked at and found to hold nothing, which is a different thing from one that could not
-    be read. An empty corpus *does* tally, and says exactly that.
+    The tally is returned rather than printed, and that is the difference between a property of one
+    frame and a property of the program. Written here it was a standard-output write made outside
+    the frame that answers for standard output, so on a stream that writes through rather than
+    holding what it is given — which is what ``PYTHONUNBUFFERED`` in an ordinary CI image makes it —
+    a reader that had stopped reading was met by this write first, and reported as a bug in
+    elenctic. Handing it back lifts *this function makes no standard-output write* into the
+    signature, where it is checked rather than remembered.
+
+    What it costs is that the tally now follows the two diagnostics instead of standing between
+    them. There was no order to preserve: measured, the merged view already flipped on buffering, so
+    a developer at a terminal and the same command in CI saw different orders. Both formats now
+    order deadline → hygiene → tally, which is the shape the category has — a summary last, as
+    pytest, cargo and go all put theirs.
+
+    The empty string means there is nothing to tally. A dry run decided nothing to tally, and
+    neither did a run that never got past discovery: a corpus-scoped fault is the whole of what such
+    an invocation produced, and ``0/0 passed`` under it would answer a question nobody could have
+    asked — it reads as a corpus that was looked at and found to hold nothing, which is a different
+    thing from one that could not be read. An empty corpus *does* tally, and says exactly that.
     """
     if any(record.scope is Scope.CORPUS for record in outcome.errors):
-        return
-    match outcome:
-        case RunOutcome():
-            _report_deadline(outcome, invocation)
-            print(f"\n{_summary_line(outcome)}")
-        case PlanOutcome():
-            pass
-        case unreachable:
-            assert_never(unreachable)
-    _report_hygiene(outcome.hygiene)
+        return ""
+    # A diagnostic that cannot be delivered does not stop the report from being delivered. These
+    # two write to standard error, and now that they stand *ahead* of the tally a stream that
+    # refuses them would otherwise cost a healthy standard output the report it was keeping —
+    # which is the same trade the run already makes for a console observer, and the same one the
+    # hand-over makes for the reader that stopped reading. There is nowhere to report this: the
+    # stream that would carry the complaint is the one that would not take the message.
+    with suppress(OSError):
+        match outcome:
+            case RunOutcome():
+                _report_deadline(outcome, invocation)
+                _report_hygiene(outcome.hygiene)
+            case PlanOutcome():
+                _report_hygiene(outcome.hygiene)
+            case unreachable:
+                assert_never(unreachable)
+    return f"\n{_summary_line(outcome)}\n" if isinstance(outcome, RunOutcome) else ""
 
 
 def _report_deadline(outcome: RunOutcome, invocation: Invocation) -> None:

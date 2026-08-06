@@ -349,3 +349,40 @@ def test_an_observer_fault_is_reported_where_a_developer_can_see_it(
     assert caplog.records, "an observer fault nothing reports is one nobody can fix"
     assert "observer" in caplog.text
     assert "RuntimeError" in caplog.text, "the caller's own traceback, not a summary of it"
+
+
+def test_an_observer_that_keeps_failing_is_reported_once(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # What actually fails here is an observer whose destination went away — a reader that stopped,
+    # an editor's socket that closed — and that is one event rather than one per case. Reported per
+    # announcement it produced a full traceback for every case in a corpus of a hundred and
+    # thirty-five, which buries the first and only one of which was news.
+    #
+    # The observer is asked how many times it was told, so the corpus is known to have gone on
+    # announcing: a single record would otherwise be satisfied by a run that gave up after the
+    # first fault, which is the opposite of the guarantee.
+    target = _corpus(tmp_path, good=_PASSES, bad=_FAILS, broken=_MALFORMED)
+    rude = _Rude()
+
+    with caplog.at_level(logging.ERROR, logger="elenctic.corpus"):
+        run_corpus(_asked(target), observer=rude)
+
+    assert rude.heard > 1, "it kept being told"
+    assert len(caplog.records) == 1, f"one dead observer, one report — got {len(caplog.records)}"
+
+
+def test_a_second_run_reports_the_same_observer_again(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Once per *run*, which is the scope of the fact: a caller who runs two corpora and whose
+    # observer is broken for both is told about both. Remembered anywhere wider than the run — a
+    # module-level set, say — the second run would go unreported, and it is a separate event.
+    target = _corpus(tmp_path, good=_PASSES)
+    rude = _Rude()
+
+    with caplog.at_level(logging.ERROR, logger="elenctic.corpus"):
+        run_corpus(_asked(target), observer=rude)
+        run_corpus(_asked(target), observer=rude)
+
+    assert len(caplog.records) == 2

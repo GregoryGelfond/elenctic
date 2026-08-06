@@ -57,6 +57,20 @@ sys.stdout = io.TextIOWrapper(
 )
 """
 
+# And a third condition, which neither of the two below reaches: standard output writing through on
+# every write rather than holding anything, which is what `PYTHONUNBUFFERED=1` makes it and what an
+# ordinary CI image sets. The buffers above are sized against the *artefacts* — a document of about
+# fourteen hundred bytes, a description of twenty thousand — and the run's own tally is a dozen, so
+# under either of them the tally is still held when the stream is emptied and the write that fails
+# is the hand-over's. Only here does the tally's own write reach the descriptor.
+_WRITES_THROUGH = """
+import io
+
+sys.stdout = io.TextIOWrapper(
+    io.FileIO(1, "wb", closefd=False), encoding="utf-8", write_through=True
+)
+"""
+
 # And the other moment, arranged the same way: a buffer far larger than anything written through it,
 # so nothing reaches the descriptor until the region empties the stream on the way out. Both halves
 # have to be stated. Left to the default, "still held" would rest on each artefact happening to be
@@ -103,6 +117,11 @@ def _corpus(root: Path, **cases: str) -> Path:
         ),
         ("the document, still held", _PASSES, ("--format", "json"), _A_LARGE_BUFFER, ExitStatus.OK),
         ("prose, written as the run goes", _FAILS, (), _A_LARGE_BUFFER, ExitStatus.NOT_PASSED),
+        # The row this table was missing, and the one the human format actually meets in CI:
+        # every prose row held "the stream keeps what it is given" fixed, so the tally — the
+        # one standard-output write made outside the frame that answers for standard output —
+        # was never reached. `PYTHONUNBUFFERED=1` in an ordinary CI image is what makes it.
+        ("prose, written through", _FAILS, (), _WRITES_THROUGH, ExitStatus.NOT_PASSED),
         (
             "a plan, written without solving",
             _PASSES,
@@ -129,6 +148,7 @@ def _corpus(root: Path, **cases: str) -> Path:
         "document-written",
         "document-held",
         "prose",
+        "prose-written-through",
         "explain",
         "description-written",
         "description-held",
@@ -308,6 +328,26 @@ def test_a_run_given_no_standard_output_at_all_is_not_a_fault(tmp_path: Path) ->
 
     assert status == ExitStatus.OK, "a corpus that passes still passes with nowhere to say so"
     assert said == "", f"and it says nothing: {said!r}"
+
+
+@pytest.mark.parametrize(
+    ("described", "flags"),
+    [("the document", ("--format", "json")), ("the description", ("--print-schema",))],
+    ids=["document", "description"],
+)
+def test_asking_for_an_artefact_with_nowhere_to_put_it_is_refused(
+    tmp_path: Path, described: str, flags: tuple[str, ...]
+) -> None:
+    # The companion to the row above, and the distinction is the point: prose is a courtesy, so a
+    # run with nobody to narrate to still runs and still earns its status. An artefact is the
+    # deliverable, so asking for one with no stream to write it to is a contradiction — and met
+    # mid-run rather than refused, both of these told a reader they had found a bug in elenctic,
+    # over a stream that reader had closed on purpose.
+    said, status = run_cli_without_standard_output(_corpus(tmp_path, drinks=_PASSES), *flags)
+
+    assert status == ExitStatus.USER_FAULT, f"{described}: their own doing, and theirs to undo"
+    assert "usage error: " in said, f"{described}: refused before anything is looked at"
+    assert "elenctic bug" not in said, f"{described}: and never filed against elenctic"
 
 
 def test_the_run_still_reaches_its_verdict_with_nobody_reading(tmp_path: Path) -> None:

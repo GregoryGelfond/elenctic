@@ -20,6 +20,7 @@ these directly gets the same values the shipped runner does.
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
 from typing import Protocol, assert_never
@@ -171,7 +172,22 @@ _SILENT = _Silent()
 _log = logging.getLogger(__name__)
 
 
-def _tell[O, T](told: O, announce: Callable[[O], Callable[[T], None]], value: T) -> None:
+@dataclass(slots=True)
+class _Announcing[O]:
+    """The observer a run announces to, and whether it has already been reported as faulty.
+
+    The state is *per run* because that is the scope of the fact it records: one observer, one
+    stream, one report. Kept beside the observer rather than passed alongside it so that every
+    announcement site goes on naming one thing, and so that a run cannot be given an observer
+    without also being given somewhere to record that it stopped working."""
+
+    observer: O
+    faulted: bool = False
+
+
+def _tell[O, T](
+    told: _Announcing[O], announce: Callable[[O], Callable[[T], None]], value: T
+) -> None:
     """Make one announcement, and let nothing it does stop the run.
 
     **The announcement is selected in here, not at the call site**, which is what makes the
@@ -198,20 +214,36 @@ def _tell[O, T](told: O, announce: Callable[[O], Callable[[T], None]], value: T)
 
     Reported through a logger, which is this package's channel for something only a developer can
     act on, and silent unless that developer asks for it — a library that wrote to a stream here
-    would be back where it started. The fault is the caller's own code, so there is no diagnostic to
-    write and no record to file: it is not a fact about the corpus, and putting it in the registers
-    would report it to the wrong reader under the wrong locus.
+    would be back where it started. There is no diagnostic to write and no record to file: it is not
+    a fact about the corpus, and putting it in the registers would report it to the wrong reader
+    under the wrong locus.
+
+    **Once per run, not once per announcement.** The thing that actually fails here is an observer
+    whose destination went away — a reader that stopped reading, an editor's socket that closed —
+    and that is one event, not one per case. Reported per announcement it produced a full traceback
+    for every case in a corpus of a hundred and thirty-five, which buries the first and only one of
+    which was news.
+
+    The isolation is a service to *callers*, and this frame does not claim more than that.
+    Elenctic's own console is announced to through this same seam, so a fault arriving here is not
+    necessarily somebody else's: for the command line it is usually a reader who has gone, which is
+    answered where the report is handed over rather than here.
     """
     try:
-        announce(told)(value)
+        announce(told.observer)(value)
     except Exception:
         # Deliberately every exception, including the ones a caller would normally want to
         # see. What is inside is a callback whose failure modes are unknown here by
         # construction, and the whole point is that none of them reaches the run.
         # `logger.exception` keeps the traceback, so nothing is lost to whoever asks for it.
+        if told.faulted:
+            return
+        told.faulted = True
         _log.exception(
             "an observer raised while being told about a run; the run continues and its records "
-            "are unaffected. This is a fault in the observer, not in elenctic or in the corpus"
+            "are unaffected. Whoever supplied the observer owns the fault, and for the command "
+            "line that is elenctic's own console. Reported once: anything further this observer "
+            "raises during this run is passed over in the same way and not logged again"
         )
 
 
@@ -251,7 +283,7 @@ def run_corpus(invocation: Invocation, *, observer: RunObserver | None = None) -
     Named apart from the module ``elenctic.run``, which a package attribute of the same name would
     resolve to instead.
     """
-    told: RunObserver = _SILENT if observer is None else observer
+    told = _Announcing[RunObserver](_SILENT if observer is None else observer)
     match _discover(invocation.target, told):
         case ErrorRecord() as fault:
             return RunOutcome(cases=(), errors=(fault,), hygiene=())
@@ -285,7 +317,7 @@ def explain_corpus(invocation: Invocation, *, observer: PlanObserver | None = No
     Silent, and told through an ``observer``, exactly as :func:`run_corpus` is. Its observer is the
     other one: this mode announces a plan where that one announces a verdict.
     """
-    told: PlanObserver = _SILENT if observer is None else observer
+    told = _Announcing[PlanObserver](_SILENT if observer is None else observer)
     match _discover(invocation.target, told):
         case ErrorRecord() as fault:
             return PlanOutcome(plans=(), errors=(fault,), hygiene=())
@@ -297,7 +329,7 @@ def explain_corpus(invocation: Invocation, *, observer: PlanObserver | None = No
             assert_never(unreachable)
 
 
-def _discover(target: Path, told: Observer) -> Corpus | ErrorRecord:
+def _discover[O: Observer](target: Path, told: _Announcing[O]) -> Corpus | ErrorRecord:
     """The corpus a target holds, or — when discovery could not read one — the fault that is the
     whole of what the invocation produced.
 
@@ -314,8 +346,8 @@ def _discover(target: Path, told: Observer) -> Corpus | ErrorRecord:
         return fault
 
 
-def _record_discovered(
-    corpus: Corpus, *, strict: bool, told: Observer
+def _record_discovered[O: Observer](
+    corpus: Corpus, *, strict: bool, told: _Announcing[O]
 ) -> tuple[tuple[ErrorRecord, ...], tuple[HygieneRecord, ...]]:
     """The contract-bearing files discovery could not use, announced and recorded, together with
     what it observed about the corpus around them — the two things every mode starts from."""
@@ -380,7 +412,7 @@ def _unrunnable_records(unrunnable: tuple[tuple[Path, Exception], ...]) -> tuple
 
 
 def _explain(
-    cases: tuple[Case, ...], *, told: PlanObserver
+    cases: tuple[Case, ...], *, told: _Announcing[PlanObserver]
 ) -> tuple[tuple[CasePlan, ...], tuple[ErrorRecord, ...]]:
     """Derive the run plan per case without solving (the dry-run): each run's mode and the
     projection decision (which the contract's reads induce), and each check with the fields it
@@ -436,7 +468,7 @@ def _run(
     unrunnable: tuple[ErrorRecord, ...],
     hygiene: tuple[HygieneRecord, ...],
     deadline: float | None = None,
-    told: RunObserver,
+    told: _Announcing[RunObserver],
 ) -> RunOutcome:
     """Validate every plan up front, then solve + check each case, announcing each as it lands.
 
@@ -541,7 +573,7 @@ def _case_error(kind: ErrorKind, case: Case, message: str) -> ErrorRecord:
 
 
 def _validate_plans(
-    cases: tuple[Case, ...], *, told: RunObserver
+    cases: tuple[Case, ...], *, told: _Announcing[RunObserver]
 ) -> tuple[list[CasePlan], list[ErrorRecord]]:
     """Build every case's run plan up front (pure ``runs_for``), so all wiring errors surface before
     any solving. Returns the plans that built and a record per misrouted case (a harness error —

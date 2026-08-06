@@ -10,6 +10,7 @@ import pytest
 
 from elenctic import corpus
 from elenctic.cli import (
+    _hand_over_standard_output,
     _heading,
     _render_tail,
     _summary_line,
@@ -611,11 +612,16 @@ def test_a_reader_of_one_merged_stream_is_told_the_deadline_before_the_tally() -
     )
     merged = io.StringIO()
 
+    # The composition, not one function: the tail no longer writes the tally, it hands it back, so
+    # what a reader sees is what the tail wrote followed by what its caller then wrote with the
+    # value returned. Asking only the tail would now read the deadline notice and nothing after it,
+    # and would go on passing however the two came to be ordered.
     with redirect_stdout(merged), redirect_stderr(merged):
-        _render_tail(
+        tally = _render_tail(
             RunOutcome(cases=(), errors=unreached, hygiene=()),
             Invocation(target=Path("tests"), strict=False, budget=30.0, deadline=5.0),
         )
+        _hand_over_standard_output(prose=tally)
 
     assert merged.getvalue() == (
         "DEADLINE ERROR — the run passed its 5.0s deadline; 3 case(s) were not reached\n"
