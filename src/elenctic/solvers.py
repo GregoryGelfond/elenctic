@@ -47,7 +47,7 @@ from clingo.solving import Model, ModelType, SolveResult
 
 from elenctic.discovery import SolverUnavailableError
 from elenctic.program import ProgramError
-from elenctic.registry import SOLVERS, Solver
+from elenctic.registry import SOLVERS, THEORY_EXTRA_ADVICE, Solver
 from elenctic.result import (
     Conclusion,
     Consistent,
@@ -653,7 +653,7 @@ def run_clingcon(
         # with the same type and the same remedy — catchable either as an ImportError, which is
         # what a missing optional dependency is, or by name.
         raise SolverUnavailableError(
-            'clingcon is not installed — install the theory extra: pip install "elenctic[theory]"'
+            f"clingcon is not installed — {THEORY_EXTRA_ADVICE}"
         ) from exc
 
     # clingcon is untyped; isolate the dynamic boundary to this one Any (the theory handle), so the

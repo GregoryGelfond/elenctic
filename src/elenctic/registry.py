@@ -12,7 +12,31 @@ declared (selected from this registry).
 
 from typing import Final, Literal
 
-__all__ = ["BACKING_MODULES", "SOLVERS", "THEORY_SOLVERS", "Solver", "provides_theory"]
+__all__ = [
+    "BACKING_MODULES",
+    "SOLVERS",
+    "THEORY_EXTRA_ADVICE",
+    "THEORY_SOLVERS",
+    "Solver",
+    "provides_theory",
+]
+
+# How to get the theory backend, said once. Two frames tell a reader this — the per-case
+# availability check before a run, and the facade that meets the missing import — and a remedy
+# stated twice is one that is right twice only until somebody edits one of them.
+#
+# It names *where from*, and that is not padding: this package is not published to PyPI, so the
+# extra on its own resolves nothing, and the reader most likely to be handed this sentence is one
+# who has just met the likeliest exit-2 there is. The conda-forge route comes first because it is
+# the one the documentation recommends and the one the pinned environment uses, and because the
+# extra is not needed there at all — the backend satisfies the import by being installed.
+THEORY_EXTRA_ADVICE: Final[str] = (
+    "install clingcon. It is on conda-forge, which is where a pixi project takes it "
+    "(add clingcon to [dependencies]); with pip, elenctic installs from git, so the extra "
+    'needs the repository too: pip install "elenctic[theory] @ '
+    'git+https://github.com/GregoryGelfond/elenctic.git"'
+)
+
 
 type Solver = Literal["clingo", "clingcon"]
 

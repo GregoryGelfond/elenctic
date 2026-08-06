@@ -3,9 +3,10 @@
 The README is what everyone arriving reads and the changelog is what everyone upgrading reads, and
 both are enforced by nothing that runs — so a sentence in either stays true only for as long as
 somebody remembers to move it. What is held here is the part that is mechanically checkable: a claim
-naming a value or a name the package also holds. The boundary is worth stating plainly: a green run
-here does not mean either document is right, only that it does not contradict the package about the
-few things it names in the package's own terms.
+naming a value or a name the package also holds — and, in one direction the other way, a claim the
+*package* makes that one of these documents settles. The boundary is worth stating plainly: a green
+run here does not mean either document is right, only that it does not contradict the package about
+the few things it names in the package's own terms.
 
 Both are read from the source tree rather than from the installed package, which is where they are
 and where an edit to them lands. Neither is shipped inside the wheel, and these tests are not
@@ -18,6 +19,7 @@ import re
 from pathlib import Path
 
 import elenctic
+from elenctic.registry import THEORY_EXTRA_ADVICE
 from elenctic.solvers import TIME_BUDGET
 from support import cli_help_text
 
@@ -199,4 +201,20 @@ def test_the_changelog_has_a_dated_section_for_the_version_being_shipped() -> No
     )
     assert f"\n[{elenctic.__version__}]: " in _CHANGELOG, (
         "and the link definition at the foot has to resolve, or the heading is a dead link"
+    )
+
+
+def test_the_install_a_diagnostic_advises_is_the_one_the_readme_shows() -> None:
+    # The one claim here that runs from the package to the document rather than the other way. The
+    # README states, and it is true, that elenctic is not published to PyPI — which makes a bare
+    # `pip install "elenctic[theory]"` a command that resolves nothing, and it is the likeliest
+    # exit-2 a real user meets, so it is the worst place in the package for advice that cannot work.
+    #
+    # What is held is the *agreement*, and the working form is read out of the README rather than
+    # written a second time here: spelled out, this test would be satisfied by any command that
+    # merely looked plausible, including the next one somebody invents.
+    assert "not published to PyPI" in _README, "the premise, stated where a reader meets it"
+    (shown,) = re.findall(r'pip install "elenctic\[theory\][^"]*"', _README)
+    assert shown in THEORY_EXTRA_ADVICE, (
+        f"a diagnostic advises {THEORY_EXTRA_ADVICE!r}, and the README installs it with {shown!r}"
     )

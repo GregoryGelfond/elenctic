@@ -15,6 +15,7 @@ from elenctic.cli import main
 from elenctic.discovery import Case
 from elenctic.harness import run_plan
 from elenctic.outcome import ExitStatus
+from elenctic.registry import THEORY_EXTRA_ADVICE
 from elenctic.result import SeamError
 from elenctic.run import Run
 from elenctic.solvers import TIME_BUDGET
@@ -96,7 +97,11 @@ def test_a_missing_declared_solver_exits_as_an_error_with_a_remedy(
     status = main([_corpus(tmp_path, theory=_THEORY)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT
-    assert 'pip install "elenctic[theory]"' in captured.err
+    # The remedy reaches the reader, asked of the one home rather than copied: a verbatim copy here
+    # is what let the advice go on naming an install that cannot work, since a test quoting it
+    # agrees with it however wrong it is. Whether the advice is *right* is settled where the README
+    # settles it.
+    assert THEORY_EXTRA_ADVICE in captured.err
 
 
 def test_a_missing_declared_solver_costs_only_the_cases_that_declare_it(

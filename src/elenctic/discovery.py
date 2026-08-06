@@ -52,7 +52,7 @@ from elenctic.program import (
     inspect,
 )
 from elenctic.query import signatures_read
-from elenctic.registry import BACKING_MODULES, Solver, provides_theory
+from elenctic.registry import BACKING_MODULES, THEORY_EXTRA_ADVICE, Solver, provides_theory
 from elenctic.terms import Signature
 
 __all__ = [
@@ -369,7 +369,7 @@ def check_solver_available(solver: Solver, where: Path) -> None:
     # at load, so a process that got here has it. The branch stays because the registry is meant to
     # grow, and a second optional backend makes it live the day it is added.
     remedy = (
-        'install the theory extra: pip install "elenctic[theory]"'
+        THEORY_EXTRA_ADVICE
         if provides_theory(solver)
         else f"add {module} to your environment"
     )
