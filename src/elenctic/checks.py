@@ -422,7 +422,9 @@ def _containment(
 
 
 def _count(expected: int, actual: int, noun: str) -> tuple[Verdict, str]:
-    """``len(base) == n`` — total at both ends (``@count 0`` over ∅ is ``PASS``)."""
+    """``len(base) == n`` on a ``Consistent`` result — total at both ends. ``expected`` is at least
+    1 here: counting to zero is a claim about *satisfiability*, decided without a census by the arm
+    dispatch, and the ``@count`` checks route it there rather than through this."""
     if actual == expected:
         return Verdict.PASS, f"|{noun}| = {expected}"
     return Verdict.FAIL, f"expected {expected} {noun}, got {actual}"
@@ -484,17 +486,32 @@ def has_model(claim: WitnessClaim, *, line: int) -> Check:
 
 
 def count_is(n: int, *, line: int) -> Check:
-    """``@count n``: exactly ``n`` distinct observables (total at both ends). ``@count 0`` is the
-    unsat case, so it PASSes on ``Inconsistent``. Reads the full census — its theory-distinct count
-    is what projection would collapse, so a ``@count`` rider suppresses projection."""
-    inconsistent = (
-        (Verdict.PASS, "|models| = 0") if n == 0 else _unsat_fail(f"expected {n} models, got 0")
-    )
+    """``@count n``: exactly ``n`` distinct observables (total at both ends). Reads the full
+    census — its theory-distinct count is what projection would collapse, so a ``@count`` rider
+    suppresses projection.
+
+    ``@count 0`` is ``@expect unsat`` said with another tag, and it is decided the same way rather
+    than by counting: it PASSes on the ``Inconsistent`` arm, and a single model refutes it whatever
+    the rest of the search would have found. So it reads **nothing** — which is what lets the claim
+    ride the cheap witness solve an unsat contract already runs, instead of demanding an enumeration
+    to count to zero. The refutation names no witness because the ``@expect unsat`` beside it
+    reports one: the contract language admits ``@count 0`` only under that tag."""
+    if n == 0:
+        return _check(
+            "@count",
+            frozenset(),
+            line=line,
+            inconsistent=(Verdict.PASS, "|models| = 0"),
+            decide=lambda _shape: (
+                Verdict.FAIL,
+                "expected 0 models, but AS(P) ≠ ∅ — a model exists",
+            ),
+        )
     return _check(
         "@count",
         frozenset({Field.FULL_CENSUS}),
         line=line,
-        inconsistent=inconsistent,
+        inconsistent=_unsat_fail(f"expected {n} models, got 0"),
         decide=lambda shape: _count(n, len(observables_of(shape)), "models"),
     )
 
@@ -630,17 +647,30 @@ def brave_optimal_contains(litset: frozenset[Symbol], *, line: int) -> Check:
 
 def count_optimal_is(n: int, *, line: int) -> Check:
     """``@count optimal n``: exactly ``n`` distinct optimal observables. Reads the full optimal
-    census (the theory-distinct count projection would collapse, so it suppresses projection)."""
-    inconsistent = (
-        (Verdict.PASS, "|optimal models| = 0")
-        if n == 0
-        else _unsat_fail(f"expected {n} optimal models, got 0")
-    )
+    census (the theory-distinct count projection would collapse, so it suppresses projection).
+
+    ``@count optimal 0`` is the ``Opt(P)`` reading of ``@expect unsat``, and reads nothing for the
+    same reason :func:`count_is` gives. Its refutation is one step longer and does not need an
+    optimal solve to take it: an objective is minimised over a finite grounding, so the optimum is
+    attained wherever there is anything to attain it — ``Opt(P)`` is empty exactly when ``AS(P)``
+    is, and a single model settles both."""
+    if n == 0:
+        return _check(
+            "@count optimal",
+            frozenset(),
+            line=line,
+            inconsistent=(Verdict.PASS, "|optimal models| = 0"),
+            decide=lambda _shape: (
+                Verdict.FAIL,
+                "expected 0 optimal models, but AS(P) ≠ ∅ — a model exists, and Opt(P) is empty "
+                "only where AS(P) is",
+            ),
+        )
     return _check(
         "@count optimal",
         frozenset({Field.FULL_OPTIMAL_CENSUS}),
         line=line,
-        inconsistent=inconsistent,
+        inconsistent=_unsat_fail(f"expected {n} optimal models, got 0"),
         decide=lambda shape: _count(n, len(optimal_observables_of(shape)), "optimal models"),
     )
 

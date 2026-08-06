@@ -66,6 +66,35 @@ def test_run_case_passes_expected_unsat(tmp_path: Path) -> None:
     assert case_verdict(reports) is Verdict.PASS
 
 
+def test_the_claims_an_unsat_contract_restates_are_each_answered(tmp_path: Path) -> None:
+    # `@count 0` and `@count optimal 0` are the two tags an unsat contract may write beside
+    # `@expect`, and each is a claim on a line of its own. They reached no report at all before:
+    # the freeze dropped them, so a consumer placing a diagnostic by line found nothing at either.
+    case = self_contained(tmp_path, ":- a. a.\n% @expect unsat\n% @count 0\n% @count optimal 0\n")
+    reports = run_case(case)
+    assert [(report.label, report.line, report.verdict) for report in reports] == [
+        ("@expect unsat", 2, Verdict.PASS),
+        ("@count", 3, Verdict.PASS),
+        ("@count optimal", 4, Verdict.PASS),
+    ]
+
+
+def test_the_claims_an_unsat_contract_restates_fail_with_it(tmp_path: Path) -> None:
+    # The direction that proves they are *checked* rather than merely carried: on a satisfiable
+    # program all three are false, and each says so against its own line. A claim carried into the
+    # report and never decided would sit at PASS here, and the test above could not tell.
+    case = self_contained(
+        tmp_path, "p(x). #show p/1.\n% @expect unsat\n% @count 0\n% @count optimal 0\n"
+    )
+    reports = run_case(case)
+    assert case_verdict(reports) is Verdict.FAIL
+    assert [(report.label, report.line, report.verdict) for report in reports] == [
+        ("@expect unsat", 2, Verdict.FAIL),
+        ("@count", 3, Verdict.FAIL),
+        ("@count optimal", 4, Verdict.FAIL),
+    ]
+
+
 def test_run_case_is_undecided_on_a_hit_budget(tmp_path: Path) -> None:
     # a huge enumeration with a zero budget times out → UNDECIDED, never FAIL/UNSAT.
     case = self_contained(tmp_path, "{ p(1..30) }. #show p/1.\n% @expect sat\n% @count 5\n")

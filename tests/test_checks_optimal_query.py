@@ -27,6 +27,7 @@ from elenctic.result import (
     ConsistentCautious,
     ConsistentEnumeration,
     ConsistentOptimalEnumeration,
+    ConsistentWitness,
     Inconclusive,
     Inconsistent,
     Observable,
@@ -106,6 +107,21 @@ def test_optimal_base_is_total_on_unsat() -> None:
     assert (
         count_optimal_is(0, line=1)(decided(Inconsistent())).verdict is Verdict.PASS
     )  # @count optimal 0 over ∅
+
+
+def test_counting_the_optimal_class_to_zero_is_settled_without_an_optimal_solve() -> None:
+    # `@count optimal 0` says Opt(P) = ∅, and an objective minimised over a finite grounding attains
+    # its optimum wherever there is anything to attain it — so Opt(P) is empty exactly when AS(P)
+    # is, and one model refutes the claim without any optimal search. That is why it declares no
+    # reads and rides the witness solve an unsat contract already runs; driven through the witness
+    # shape, which carries no optimal census for a check to reach for.
+    assert count_optimal_is(0, line=1).reads == frozenset()
+    refuted = count_optimal_is(0, line=1)(decided(ConsistentWitness(obs("p(x)"))))
+    assert refuted.verdict is Verdict.FAIL
+    assert refuted.message == (
+        "expected 0 optimal models, but AS(P) ≠ ∅ — a model exists, and Opt(P) is empty only "
+        "where AS(P) is"
+    )
 
 
 def test_optimal_base_singleton_class() -> None:

@@ -140,6 +140,18 @@ def test_count_is_total_at_both_ends() -> None:
     assert "3" in wrong.message, "and the count the enumeration actually found"
 
 
+def test_counting_to_zero_is_settled_without_a_census() -> None:
+    # `@count 0` claims AS(P) = ∅, which one model refutes and no counting decides — so it declares
+    # no reads, and that is what lets an unsat contract answer it on the witness solve it already
+    # runs. Driven through the witness shape, which carries no census at all: a check still
+    # reaching for one raises here rather than quietly asking for an enumeration to count to zero.
+    assert count_is(0, line=1).reads == frozenset()
+    refuted = count_is(0, line=1)(decided(ConsistentWitness(obs("p(x)"))))
+    assert refuted.verdict is Verdict.FAIL
+    assert refuted.message == "expected 0 models, but AS(P) ≠ ∅ — a model exists"
+    assert count_is(0, line=1)(decided(Inconsistent())).message == "|models| = 0"
+
+
 def test_cautious_reads_intersection_and_is_total_on_unsat() -> None:
     present = ConsistentCautious(lits("a", "b"))
     assert cautious_contains(lits("a"), line=1)(decided(present)).verdict is Verdict.PASS

@@ -9,7 +9,7 @@ line-wrapped or what prose surrounds it. A failing property is a real defect, no
 from clingo import parse_term
 from hypothesis import assume, given, strategies as st
 
-from elenctic.expectation import Sat, _has_unclosed_brace, parse
+from elenctic.expectation import Sat, _scan_braces, parse
 from elenctic.query import QueryLiteral, Var, unify
 from elenctic.terms import parse_litset
 
@@ -50,19 +50,31 @@ def test_parse_litset_agrees_with_clingo_atom_parse(atom_texts: list[str]) -> No
     assert parse_litset(body) == tuple(parse_term(text) for text in atom_texts)
 
 
+# The brace tracker is asked for the pair it carries — depth AND quote state — because the pair is
+# what the tokenizer threads from one continuation line to the next. Asserting only "is a brace
+# open" would leave the quote half free, and that half is the whole reason a caller cannot ask this
+# question one line at a time.
 @given(st.lists(atoms(), min_size=1, max_size=5))
-def test_has_unclosed_brace_tracks_structural_balance(atom_texts: list[str]) -> None:
+def test_the_brace_tracker_agrees_with_structural_balance(atom_texts: list[str]) -> None:
     body = ", ".join(atom_texts)
-    assert _has_unclosed_brace(f"{{ {body} }}") is False  # balanced
-    assert _has_unclosed_brace(f"{{ {body}") is True  # the closer removed
+    assert _scan_braces(f"{{ {body} }}", 0, False) == (0, False)  # balanced
+    assert _scan_braces(f"{{ {body}", 0, False) == (1, False)  # the closer removed
 
 
-def test_has_unclosed_brace_ignores_braces_inside_quoted_strings() -> None:
+def test_the_brace_tracker_ignores_braces_inside_quoted_strings() -> None:
     # The one place brace-counting must defer to quoting: a '{' inside a string term is not a real
     # open brace (this is what lets a litset hold a string atom containing a brace).
-    assert _has_unclosed_brace('{ p("{") }') is False
-    assert _has_unclosed_brace('p("}")') is False
-    assert _has_unclosed_brace('{ p("}")') is True
+    assert _scan_braces('{ p("{") }', 0, False) == (0, False)
+    assert _scan_braces('p("}")', 0, False) == (0, False)
+    assert _scan_braces('{ p("}")', 0, False) == (1, False)
+
+
+def test_the_brace_tracker_carries_an_unclosed_quote_across_the_call() -> None:
+    # A string term split across continuation lines leaves the quote open, and the next fragment
+    # must be scanned inside it — otherwise a '}' in the tail of that string closes a real brace.
+    opened = _scan_braces('{ p("a}b', 0, False)
+    assert opened == (1, True)
+    assert _scan_braces('c") }', *opened) == (0, False)
 
 
 @given(st.lists(atoms(), min_size=1, max_size=5))

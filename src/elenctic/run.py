@@ -342,17 +342,27 @@ def runs_for(
     ``False`` (pure clingo) so the solver-less dry-run and existing callers are unaffected."""
     match exp:
         case Unsat():
-            return (
-                Run(
-                    Mode.DEFAULT,
-                    (checks.expect_unsat(line=exp.expect_line),),
-                    theory_in_force=theory_in_force,
-                ),
-            )
+            return (Run(Mode.DEFAULT, _unsat_checks(exp), theory_in_force=theory_in_force),)
         case Sat():
             return _sat_runs(exp, theory_in_force, has_projection)
         case _:
             assert_never(exp)
+
+
+def _unsat_checks(exp: Unsat) -> tuple[Check, ...]:
+    """The checks an ``@expect unsat`` contract derives: its own claim, plus the ``@count 0`` /
+    ``@count optimal 0`` restatements the contract language admits beside it.
+
+    They all ride the one cheap witness solve. That is not a coincidence to be maintained but a
+    consequence of what they claim: each is settled by whether an answer set exists, so none of
+    them reads a collection, and a claim reading nothing routes anywhere. One run, one solve, and a
+    report against every line the author wrote."""
+    derived = [checks.expect_unsat(line=exp.expect_line)]
+    if exp.count is not None:
+        derived.append(checks.count_is(exp.count.value, line=exp.count.line))
+    if (optimal := exp.count_optimal) is not None:
+        derived.append(checks.count_optimal_is(optimal.value, line=optimal.line))
+    return tuple(derived)
 
 
 def _sat_runs(exp: Sat, theory_in_force: bool, has_projection: bool = False) -> tuple[Run, ...]:

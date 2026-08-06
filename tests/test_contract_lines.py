@@ -78,6 +78,21 @@ def test_an_unsat_contract_reports_the_line_too() -> None:
     assert check.line == 2
 
 
+def test_an_unsat_contract_carries_every_claim_written_beside_expect() -> None:
+    # `@count 0` and `@count optimal 0` are the only tags an unsat contract may write beside
+    # `@expect`, and each is a claim on a line of its own. Dropping them at the freeze left those
+    # lines with no check, so no report and no entry in the published document — a claim the
+    # contract makes and nothing answers, against a parse that "never silently discards".
+    expectation = parse("% a note\n% @expect unsat\n% @count 0\n% @count optimal 0\n")
+    assert isinstance(expectation, Unsat)
+    (derived,) = (run.checks for run in runs_for(expectation))  # one run, three claims on it
+    assert [(check.label, check.line) for check in derived] == [
+        ("@expect unsat", 2),
+        ("@count", 3),
+        ("@count optimal", 4),
+    ]
+
+
 def test_two_consequence_lines_are_two_claims_with_two_lines() -> None:
     expectation = parse("% @expect sat\n% @cautious { a }\n% @cautious { b }\n")
     assert isinstance(expectation, Sat)
@@ -282,3 +297,32 @@ def test_a_query_report_carries_its_subject() -> None:
     ]
     assert report.subject, "the repeatable tag is discernible only by its subject"
     assert report.line == 2
+
+
+# The unsat shape carries cells too, and they are the ones a freeze can quietly leave behind: it
+# builds a new record rather than copying the builder, so a cell it forgets to name simply is not
+# there. The same totality argument therefore has to range over this shape as well.
+_UNSAT_CELLS: list[tuple[str, str]] = [
+    ("@count 0", "count"),
+    ("@count optimal 0", "count_optimal"),
+]
+
+
+def test_the_unsat_cell_table_covers_every_cell_that_shape_can_carry() -> None:
+    carrying = {
+        name
+        for name in Unsat.__dataclass_fields__
+        if name not in {"expect_line", "notes"}  # not cells: the shape's own line, and prose
+    }
+    assert {cell for _tag, cell in _UNSAT_CELLS} == carrying
+
+
+@pytest.mark.parametrize(("tag", "cell"), _UNSAT_CELLS, ids=[tag for tag, _ in _UNSAT_CELLS])
+def test_every_unsat_cell_carries_its_line_and_derives_a_check_there(tag: str, cell: str) -> None:
+    expectation = parse(f"% a comment\n% @expect unsat\n% {tag}\n")
+    assert isinstance(expectation, Unsat)
+    claim = getattr(expectation, cell)
+    assert claim is not None, "the cell survives the freeze"
+    assert claim.line == 3
+    answered = {check.line for run in runs_for(expectation) for check in run.checks}
+    assert 3 in answered, "and a check answers the line it was written on"

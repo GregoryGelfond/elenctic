@@ -435,6 +435,22 @@ def test_unsat_is_one_default_run_with_only_expect_unsat() -> None:
     assert labels(derived[0]) == {"@expect unsat"}
 
 
+def test_an_unsat_contracts_count_claims_ride_that_same_one_run() -> None:
+    # `@count 0` is `@expect unsat` said with another tag: it is settled by whether an answer set
+    # exists, so it reads no collection and can ride the cheap witness solve the contract already
+    # runs. Were it still declaring the census — which counting to any other number does need —
+    # this contract would have to buy an enumeration it has no use for, or fail the
+    # reads ⊆ populates wiring rule outright. The reads are asserted, not implied by "it built".
+    derived = runs("% @expect unsat\n% @count 0\n% @count optimal 0\n")
+    assert len(derived) == 1, "three claims, one solve"
+    assert derived[0].mode == Mode.DEFAULT
+    assert {check.label: check.reads for check in derived[0].checks} == {
+        "@expect unsat": frozenset({Field.WITNESS}),
+        "@count": frozenset(),
+        "@count optimal": frozenset(),
+    }
+
+
 # --- @query routing (bridge theorem, conjunctive-census escalation, unknown-binding escalation) ---
 
 

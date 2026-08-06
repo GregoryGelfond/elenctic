@@ -4,6 +4,7 @@ The precondition rules (optimization/clingcon/contrary-shown) need the
 encoding and are checked at discovery, not here."""
 
 import pytest
+from clingo import parse_term
 
 from elenctic.expectation import ContractError, Sat, Unsat, parse
 
@@ -209,11 +210,52 @@ def test_assign_and_assign_optimal_coexist() -> None:
     assert isinstance(exp, Sat | Unsat)
 
 
-def test_dangling_where_after_a_closed_litset_is_rejected() -> None:
-    # a where clause on its own % line, after the litset brace closed, would be silently dropped
-    # by the old tokenizer; it is now a loud ContractError with source:line provenance.
+# --- the stranded `where` clause ---
+# A `where { … }` clause qualifies a witness and must ride the litset's closing line. Written on a
+# `%` line of its own it is absorbed by nothing, and the binding it carries would go with it —
+# silently *weakening* the contract, since `requires_theory` goes too and the solver precondition
+# that would have caught the case then does not fire either. Which line is a clause is decided by
+# the line's own shape, so every placement below is refused alike.
+
+_STRANDED = [
+    pytest.param("% @expect sat\n% @model { a }\n%   where { v=1 }\n", id="after-the-witness"),
+    pytest.param(
+        "% @expect sat\n% @model { a }\n% @note aside\n% where { v=1 }\n",
+        id="after-an-intervening-note",
+    ),
+    pytest.param(
+        "% @expect sat\n% @model { a }\n% @cautious { b }\n% where { v=1 }\n",
+        id="after-another-tag",
+    ),
+    pytest.param("% @expect sat\n% where { v=1 }\n% @model { a }\n", id="before-the-witness"),
+    pytest.param("% where { v=1 }\n% @expect sat\n% @model { a }\n", id="before-any-tag"),
+    pytest.param(
+        "% @expect sat\n% @model { a }\n% @note aside\n% where { v=1,\n%   w=2 }\n",
+        id="brace-continued-onto-the-next-line",
+    ),
+]
+
+
+@pytest.mark.parametrize("text", _STRANDED)
+def test_a_stranded_where_clause_is_refused_wherever_it_stands(text: str) -> None:
     with pytest.raises(ContractError, match=r"dangling `where`"):
-        parse("% @expect sat\n% @model { a }\n%   where { v=1 }\n")
+        parse(text)
+
+
+def test_the_same_clauses_written_on_the_witness_line_parse_and_bind() -> None:
+    # The companion to the table above, and it is what makes the table mean anything: each clause
+    # refused there is well-formed, so what the refusal objects to is where it was written. Without
+    # this the table would pass just as well over a parser that refused every `where` it ever met.
+    single = parse("% @expect sat\n% @model { a } where { v=1 }\n% @note aside\n")
+    assert isinstance(single, Sat)
+    assert single.model is not None
+    assert single.model.value.assign == frozenset({(parse_term("v"), 1)})
+    assert single.requires_theory
+
+    continued = parse("% @expect sat\n% @model { a } where { v=1,\n%   w=2 }\n")
+    assert isinstance(continued, Sat)
+    assert continued.model is not None
+    assert continued.model.value.assign == frozenset({(parse_term("v"), 1), (parse_term("w"), 2)})
 
 
 def test_empty_where_is_rejected() -> None:
@@ -222,15 +264,32 @@ def test_empty_where_is_rejected() -> None:
 
 
 def test_prose_where_without_a_brace_stays_a_comment() -> None:
-    # 'where' as ordinary prose (no following brace) is a comment, not a dangling witness.
+    # 'where' as ordinary prose (no following brace) is a comment, not a stranded clause.
     exp = parse("% @expect sat\n% @model { a }\n% where the cost is low\n% @count 1\n")
     assert isinstance(exp, Sat)
     assert exp.count is not None
     assert exp.count.value == 1
 
 
-def test_prose_where_with_a_brace_outside_a_witness_stays_a_comment() -> None:
-    # set-builder notation in a comment (% where {x : ...}) with no preceding witness is prose,
-    # not a dangling witness — the dangling rule fires only directly after a @model/@optimal tag.
-    exp = parse("% @expect sat\n% where {x : p(x)} ranges over the grid\n% @model { a }\n")
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param(
+            "% @expect sat\n% where {x : p(x)} ranges over the grid\n% @model { a }\n",
+            id="before-the-witness",
+        ),
+        pytest.param(
+            "% @expect sat\n% @model { a }\n% where {x : p(x)} ranges over the grid\n",
+            id="after-the-witness",
+        ),
+    ],
+)
+def test_prose_that_merely_contains_a_brace_group_stays_a_comment(text: str) -> None:
+    # Set-builder notation in a comment is prose, and the discriminator is the *shape* of the line
+    # rather than the tag above it: a clause owns the rest of its line, so text after the closing
+    # brace says this was never one. Both positions are pinned because the rule no longer reads the
+    # neighbourhood — the second used to be refused for the accident of standing after a witness.
+    exp = parse(text)
     assert isinstance(exp, Sat)
+    assert exp.model is not None
+    assert not exp.model.value.assign, "prose must not arrive as a binding either"
