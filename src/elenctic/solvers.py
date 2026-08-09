@@ -735,6 +735,7 @@ def solve(
     program: str = "",
     files: tuple[Path, ...] = (),
     budget: float = TIME_BUDGET,
+    *,
     project: bool = False,
     within: Boundary | None = None,
 ) -> SolveOutcome:
@@ -742,7 +743,13 @@ def solve(
     derived solver name (``"clingo"`` | ``"clingcon"``); an unknown name is a programming error.
     ``project`` defaults False — a direct caller with no declared consumer does not project, and
     ``within`` defaults ``None`` on the same reading: a caller that assembled its own files stated
-    no corpus for them to stay inside."""
+    no corpus for them to stay inside.
+
+    The two are keyword-only, and this is the curated entry point, so the rule is stated where a
+    consumer meets it. They are adjacent, differently typed, and both optional: passed positionally
+    with ``budget`` omitted, a boundary lands in ``project``, where it is truthy — so the run
+    silently projects and states no containment rule at all. A type checker rejects that; nothing at
+    run time did."""
     try:
         facade = _FACADES[solver]
     except KeyError:

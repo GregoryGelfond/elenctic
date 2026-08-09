@@ -44,10 +44,25 @@ class Boundary:
     to parse. Everything they say about the boundary therefore has to come from one place, or the
     same mistake gets a better explanation on the luckier path.
 
-    ``from_named_file`` says the run was pointed at one case rather than at a directory."""
+    ``from_named_file`` says the run was pointed at one case rather than at a directory.
+
+    ``root`` must already be **resolved**, and that is refused rather than assumed. Containment
+    compares a resolved candidate against this path, so a root still carrying a symlink or a ``..``
+    fails that comparison for every file in the corpus — including the case's own — and the corpus
+    is told it is reading from outside itself. The refusal is here because it is the only place that
+    knows; by the time the comparison fails, the mistake looks like an escape."""
 
     root: Path
     from_named_file: bool = False
+
+    def __post_init__(self) -> None:
+        """Refuse a root that is not already resolved (see the class docstring)."""
+        if self.root != (resolved := self.root.resolve()):
+            raise ValueError(
+                f"a containment boundary is stated as a resolved path; {self.root} resolves to "
+                f"{resolved}, and comparing against the unresolved spelling reports every file "
+                "in the corpus as outside it"
+            )
 
     def refusal(self, escaped: list[str]) -> str:
         """What a case that loads ``escaped`` is told — the rule, and where the boundary came from
@@ -245,17 +260,29 @@ _DIAGNOSTIC_SEPARATOR = re.compile(r":\d+:\d+")
 
 
 def _origins(line: str) -> list[Path]:
-    """Every file a diagnostic line could be about: each prefix that a ``:line:col`` follows, kept
-    when it names something that exists.
+    """Every file this diagnostic line could be about: each prefix **of the line** that a
+    ``:line:col`` follows, kept when it names something that exists.
 
     Existence is the disambiguator, and it is the right one because a diagnostic is always *about* a
     file the solver opened. A prefix naming nothing was never the origin — it is where a colon in
     somebody's directory name happened to look like a coordinate — so it neither licenses
-    publication nor forbids it."""
+    publication nor forbids it.
+
+    Anchored at the start of the line, deliberately and with a stated limit: a *second* coordinate
+    further along the same line yields the whole leading run as its candidate, which names nothing
+    and is dropped, so a file named only there would not be judged. Every diagnostic measured puts
+    at most one coordinate on a line and begins the line with it, which is what makes the anchor
+    sound; a line carrying two would need this to search from each coordinate backwards instead, and
+    that has no non-arbitrary place to stop.
+
+    The empty prefix is not a candidate. A line beginning with its coordinate leaves nothing before
+    it, and ``Path("")`` is ``Path(".")`` — which exists, resolves to the working directory, and
+    would be judged as an origin the solver never opened, refusing an innocent corpus in the name of
+    a file nobody named."""
     return [
         candidate
         for match in _DIAGNOSTIC_SEPARATOR.finditer(line)
-        if (candidate := Path(line[: match.start()])).exists()
+        if (prefix := line[: match.start()]) and (candidate := Path(prefix)).exists()
     ]
 
 

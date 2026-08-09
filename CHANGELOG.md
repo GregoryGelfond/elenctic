@@ -87,6 +87,19 @@ means for them — a reader deciding whether to upgrade should not have to read 
   already has. A `Case` from `discover` carries the corpus it was found in, so a runner built on
   `run_case`/`run_plan` gets this without doing anything.
 
+  **`Boundary` is now exported from `elenctic`.** It had to be: `Case` is on the curated surface and
+  the boundary is one of its fields, so a consumer able to build a case but not the corpus it
+  belongs to could not state the rule at all.
+
+  **`Boundary` refuses a root that is not already resolved.** Containment compares a resolved
+  candidate against it, so a root still carrying a symlink or a `..` reports *every* file in the
+  corpus as outside it — including the case's own. Pass `path.resolve()`.
+
+  **Breaking for a positional caller: `solve`'s `project` and `within` are keyword-only.** They are
+  adjacent, both optional and differently typed, so passing them positionally with `budget` omitted
+  put a boundary in `project`, where it is truthy — the run silently projected and stated no
+  containment rule. Call `solve(solver, mode, files=…, project=…, within=…)`.
+
 ### Removed
 
 - **`discovery.check_solver_available` no longer takes `where`.** It spelled that path into the

@@ -21,6 +21,9 @@ _CURATED = {
     "case_verdict", "render", "CheckReport", "Query", "Answer",
     # what a program makes observable, which is what decides whether a @query can be answered
     "ShownVocabulary", "Unrestricted", "Restricted", "Signature",
+    # the corpus a case may not read past. Curated because `Case` is: a consumer that can build a
+    # case but not the boundary it belongs to cannot state the rule at all.
+    "Boundary",
     # the outcomes a solve produced, and how far the search behind them got
     "Determination", "Verdict", "Observable", "Optimum", "SolveOutcome", "Consistent",
     "Inconclusive", "Inconsistent", "Conclusion", "Collection",

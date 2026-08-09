@@ -128,6 +128,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
         summary as summary,
     )
     from elenctic.program import (
+        Boundary as Boundary,
         ProgramError as ProgramError,
         Restricted as Restricted,
         ShownVocabulary as ShownVocabulary,
@@ -207,7 +208,13 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
         "is_duration",
         "summary",
     ),
-    "elenctic.program": ("ProgramError", "Restricted", "ShownVocabulary", "Unrestricted"),
+    "elenctic.program": (
+        "Boundary",
+        "ProgramError",
+        "Restricted",
+        "ShownVocabulary",
+        "Unrestricted",
+    ),
     "elenctic.query": ("Answer", "Query"),
     "elenctic.registry": ("SOLVERS", "Solver"),
     "elenctic.terms": ("Signature",),

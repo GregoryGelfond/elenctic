@@ -19,9 +19,9 @@ from elenctic.discovery import Case, discover, inspect_corpus
 from elenctic.expectation import Sat
 from elenctic.harness import run_case
 from elenctic.outcome import ErrorKind, error_kind
-from elenctic.program import Boundary, ContainmentError, ProgramError, Unrestricted
+from elenctic.program import Boundary, ContainmentError, ProgramError, Unrestricted, _origins
 from elenctic.run import Mode
-from elenctic.solvers import run_clingo
+from elenctic.solvers import run_clingo, solve
 
 _LIBRARY = "fact(1).\n"
 _CASE = "% @expect sat\n% @count  1\n\n#include {include}.\nfact(2).\n#show fact/1.\n"
@@ -331,6 +331,42 @@ def test_the_boundary_a_case_was_discovered_under_reaches_its_solve(tmp_path: Pa
         run_case(unbounded)
     assert not isinstance(unheld.value, ContainmentError), "no boundary, no containment rule"
     assert "confidential_marker" in str(unheld.value), "and so nothing is withheld"
+
+
+def test_a_boundary_refuses_a_root_that_is_not_already_resolved(tmp_path: Path) -> None:
+    # Containment compares a RESOLVED candidate against this path, so an unresolved root fails that
+    # comparison for every file in the corpus — including the case's own. Measured before the
+    # refusal existed: a corpus reached through a symlink was told its own case file was outside it,
+    # which reads as an escape and is elenctic's fault entirely.
+    (tmp_path / "real").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    with pytest.raises(ValueError, match=r"resolved path"):
+        Boundary(tmp_path / "link")
+
+    # The other direction, or the guard cannot tell a refusal from a function that refuses
+    # everything: the same directory named as it resolves is accepted, and so is a path that does
+    # not exist, since resolving one normalises it without requiring it to be there.
+    assert Boundary((tmp_path / "link").resolve()).root == (tmp_path / "real").resolve()
+    assert Boundary(tmp_path / "nothing/here").root == tmp_path / "nothing/here"
+
+
+def test_a_diagnostic_beginning_with_its_coordinate_names_no_origin() -> None:
+    # `Path("")` is `Path(".")`, which exists and resolves to the working directory — so a line
+    # leaving nothing before its coordinate would offer the directory elenctic happens to be run
+    # from as a file the solver opened, and a corpus that never named it would be refused for
+    # reaching outside itself.
+    assert _origins(":1:1: error: a line that begins with its coordinate") == []
+    # And the ordinary shape still resolves, so the guard above is not passing on a broken reader.
+    assert _origins(f"{__file__}:1:1: error: something") == [Path(__file__)]
+
+
+def test_the_flags_a_solve_takes_cannot_be_passed_positionally() -> None:
+    # `project` and `within` are adjacent, both optional, and differently typed. Passed positionally
+    # with `budget` omitted, a boundary lands in `project` — where it is truthy, so the run projects
+    # and states no containment rule at all. A type checker rejects it; nothing at run time did, and
+    # this is the curated entry point, where a consumer without one meets it.
+    with pytest.raises(TypeError):
+        solve("clingo", Mode.ENUM_ALL, "a.", (), 30.0, True)  # type: ignore[misc]
 
 
 def test_the_theory_backend_withholds_a_parse_diagnostic_too(tmp_path: Path) -> None:
