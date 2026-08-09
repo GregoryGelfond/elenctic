@@ -100,6 +100,35 @@ means for them — a reader deciding whether to upgrade should not have to read 
   put a boundary in `project`, where it is truthy — the run silently projected and stated no
   containment rule. Call `solve(solver, mode, files=…, project=…, within=…)`.
 
+- **A character the solver's lexer rejects no longer kills the run.** A single non-ASCII character
+  where clingo will not take one — an accented identifier, a smart quote pasted from a document —
+  used to end the process: empty standard output, a Python traceback and `PANIC: exception in
+  nothrow scope` on standard error, exit 1, and **no report for any case in the corpus**. It is now
+  an ordinary program fault: that case is reported, every other case still runs, and the run reaches
+  its tally.
+
+  clingo reports a lexer error by quoting the offending *byte*, and a lone UTF-8 lead byte does not
+  decode. Handed to a Python logger the message is decoded by clingo, inside a frame declared not to
+  throw, so the failure could not be caught — not even by `except BaseException`. elenctic now reads
+  clingo's diagnostics from the descriptor clingo writes them to and decodes them itself, where a
+  byte that will not decode becomes one replacement character in a diagnostic instead of the end of
+  the run.
+
+  **Valid UTF-8 was never affected and still is not:** a string literal such as `p("café")`, a
+  UTF-8 comment, and a `@note` carrying an em dash all pass, as they did before. Refusing non-ASCII
+  input was considered and rejected for exactly that reason — clingo accepts those.
+
+  **A contract term** carrying such a character never killed the run; it reported the underlying
+  `'utf-8' codec can't decode byte …` instead. It now names the term and the remedy.
+
+  **What moves in the output:** where clingo reports *more than one* diagnostic for a program, they
+  are no longer run together with `; ` between them — they appear in clingo's own framing, one blank
+  line apart. A single-diagnostic fault is unchanged, byte for byte.
+
+  **For library callers embedding elenctic in threads:** the capture redirects a process-wide file
+  descriptor, so concurrent solves inside one process are serialised by a lock. Parallelising across
+  processes — which is what a `pytest` plugin does — is unaffected.
+
 ### Removed
 
 - **`discovery.check_solver_available` no longer takes `where`.** It spelled that path into the

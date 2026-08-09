@@ -9,12 +9,16 @@ defeat) is retired. Theory **presence** only — never identity (the gate is the
 Principle: *contract-level facts read the case file; program-level facts read the resolved program.*
 """
 
+import os
 import re
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from tempfile import TemporaryFile
+from threading import Lock
+from typing import IO, Final
 
 from clingo import SymbolType
 from clingo.ast import AST, ASTType, UnaryOperator, parse_files as _parse_files
@@ -24,11 +28,13 @@ from elenctic.terms import Signature
 __all__ = [
     "Boundary",
     "ContainmentError",
+    "Diagnostics",
     "ProgramError",
     "ProgramFacts",
     "Restricted",
     "ShownVocabulary",
     "Unrestricted",
+    "captured_diagnostics",
     "inspect",
     "refuse_strangers",
 ]
@@ -45,6 +51,15 @@ class Boundary:
     same mistake gets a better explanation on the luckier path.
 
     ``from_named_file`` says the run was pointed at one case rather than at a directory.
+
+    **What the rule is against, so that its limit is legible.** A corpus is untrusted *content* — it
+    is cloned, or it arrives in a pull request — and the rule keeps that content from reading files
+    the run was never pointed at. It is not a defence against a tree being changed *while the run is
+    in progress*: a case's sources are judged when it is discovered, and a case whose files are
+    swapped after that reaches the solver carrying facts this rule never saw. The boundary travels
+    as far as the solve because a diagnostic is written there, and because a caller that grounds
+    without discovering first would otherwise have no rule at all — not because the resolved sources
+    are judged a second time.
 
     ``root`` must already be **resolved**, and that is refused rather than assumed. Containment
     compares a resolved candidate against this path, so a root still carrying a symlink or a ``..``
@@ -215,13 +230,12 @@ def inspect(files: tuple[Path, ...], *, within: Boundary | None = None) -> Progr
     node strings *lazily*, so a non-UTF-8 source byte surfaces here rather than at parse. Resolving
     the source names needs no clingo state at all and comes last, outside both regions."""
     statements: list[AST] = []
-    messages: list[str] = []  # clingo's own diagnostics (with file:line:col), captured not printed
-    with _parse_faults(messages, within):
-        _parse_files(
-            [str(path) for path in files],
-            statements.append,
-            logger=lambda _code, message: messages.append(message),
-        )
+    # clingo's own diagnostics (with file:line:col), captured off the descriptor it writes them to
+    # rather than through a logger callback — see `captured_diagnostics` for why the callback is
+    # not survivable. The capture is entered first, so the region that translates a fault can still
+    # read it while translating.
+    with captured_diagnostics() as diagnostics, _parse_faults(diagnostics, within):
+        _parse_files([str(path) for path in files], statements.append, logger=None)
     with _walk_faults():
         nodes = [node for statement in statements for node in _descendants(statement)]
         has_theory_atom = any(node.ast_type is ASTType.TheoryAtom for node in nodes)
@@ -318,6 +332,87 @@ def _strangers(detail: list[str], within: Path) -> list[str]:
     )
 
 
+class Diagnostics:
+    """What clingo has written about this program so far, read back from the descriptor it wrote to.
+
+    A value rather than the list of messages this replaces, because the two frames that translate a
+    fault need the text *while* the region that captures it is still open, and because what clingo
+    writes to a descriptor has no message boundaries in it that a corpus cannot forge — see
+    :func:`captured_diagnostics`."""
+
+    def __init__(self, stream: IO[bytes]) -> None:
+        self._stream = stream
+
+    def text(self) -> str:
+        """Everything clingo has written so far, decoded, ending in exactly one newline.
+
+        Decoded **here**, by elenctic, in an ordinary frame that may fail safely — which is the
+        whole difference from the decode this replaces. ``errors="replace"`` because a byte clingo
+        quotes out of a program need not be valid UTF-8 on its own, and a diagnostic carrying one
+        U+FFFD is a report where a raised ``UnicodeDecodeError`` is the absence of one.
+
+        clingo ends each message with a newline and separates messages with a blank line, so the
+        text arrives with a blank line at the end that terminates nothing. Only that padding is
+        dropped: the last message keeps its own newline, because whatever a caller appends is a
+        separate sentence and reads as one. Trimming it instead runs the two together — and the
+        first message this was measured on ends in a semicolon, so a caller joining with one
+        produced ``;;``.
+
+        Read without disturbing the write position, so the region may be read again as it goes."""
+        position = self._stream.tell()
+        self._stream.seek(0)
+        try:
+            written = self._stream.read().decode("utf-8", errors="replace")
+        finally:
+            self._stream.seek(position)
+        return f"{trimmed}\n" if (trimmed := written.rstrip("\n")) else ""
+
+
+# Descriptor 2 belongs to the process, not to a call, so two captures at once would take each
+# other's diagnostics or lose them. elenctic solves one case at a time and the documented way to
+# parallelise it is across processes, which have a descriptor 2 each; a consumer using threads would
+# otherwise get silent corruption, and serialising is the cheapest honest answer to that.
+_CAPTURE_LOCK: Final = Lock()
+
+
+@contextmanager
+def captured_diagnostics() -> Iterator[Diagnostics]:
+    """Send what clingo writes about a program to a file elenctic can read, for the length of the
+    region, and hand back the value that reads it.
+
+    **Why elenctic does not simply ask clingo for its messages.** A Python logger is handed the
+    message already decoded, by clingo, inside a C++ frame declared not to throw. A lexer error
+    quotes the *byte* it objected to, a lone UTF-8 lead byte does not decode, and the exception that
+    raises cannot leave that frame: the process aborts, with no report of any kind and nothing
+    elenctic can catch. Reading the descriptor instead puts the decode in :meth:`Diagnostics.text`,
+    where a bad byte is a character in a diagnostic rather than the end of the run.
+
+    **The text is kept whole and never split back into messages.** clingo ends each with a blank
+    line, and splitting on it recovered the list byte-for-byte over every diagnostic measured —
+    until a directory named with a newline in it put a blank line *inside* one, and one message
+    became three. Message boundaries are not in the text; they are in a separator the corpus author
+    can write. A rule whose input the constrained party chooses is not a rule, so no such rule is
+    stated: what clingo wrote is reported in clingo's own framing.
+
+    At the descriptor rather than at ``sys.stderr``, because clingo writes from C++ and rebinding a
+    Python object leaves that untouched. A temporary file rather than a pipe, because a pipe's
+    buffer is finite and a run emitting more than it would block for good — a hang, not an error.
+    """
+    with _CAPTURE_LOCK, TemporaryFile() as stream:
+        sys.stderr.flush()  # or anything Python has buffered for stderr lands in the capture
+        saved = os.dup(2)
+        try:
+            os.dup2(stream.fileno(), 2)
+            yield Diagnostics(stream)
+        finally:
+            # The release is owed even where putting it back failed: a copy that could not be
+            # restored is still a descriptor this process holds.
+            try:
+                os.dup2(saved, 2)
+            finally:
+                os.close(saved)
+
+
 def refuse_strangers(detail: list[str], within: Boundary | None, cause: Exception) -> None:
     """Refuse to publish ``detail`` when any part of it is a diagnostic about a file outside
     ``within``; return, having decided nothing else, when every part may be published.
@@ -346,7 +441,7 @@ def refuse_strangers(detail: list[str], within: Boundary | None, cause: Exceptio
 
 
 @contextmanager
-def _parse_faults(messages: list[str], within: Boundary | None = None) -> Iterator[None]:
+def _parse_faults(diagnostics: Diagnostics, within: Boundary | None = None) -> Iterator[None]:
     """Translate a failure raised by the parse into a ``ProgramError`` carrying clingo's own
     captured diagnostic — unless that diagnostic is about a file outside ``within``, in which case
     the escaping path is named and nothing else is.
@@ -377,10 +472,12 @@ def _parse_faults(messages: list[str], within: Boundary | None = None) -> Iterat
         # RuntimeError: a parse / missing-or-cyclic-#include failure (clingo logged the detail to
         # `messages`); UnicodeDecodeError: a source byte reaching Python through a diagnostic;
         # OSError: unreadable.
-        # Both, never one or the other: the logger holds the provenance but accumulates routine
+        # Both, never one or the other: the capture holds the provenance but accumulates routine
         # notices too, so a fault raised after a clean parse would otherwise be reported as
-        # whichever harmless notice was logged first, with the real cause dropped.
-        parts = [*messages, str(exc)]
+        # whichever harmless notice was written first, with the real cause dropped. An empty part
+        # is dropped rather than joined, or a run that said nothing opens its detail with a
+        # separator.
+        parts = [part for part in (diagnostics.text(), str(exc)) if part]
         refuse_strangers(parts, within, exc)
         detail = "; ".join(parts)
         # The include advice is specific enough to act on, so it is offered only when it is the

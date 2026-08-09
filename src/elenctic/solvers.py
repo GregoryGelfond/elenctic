@@ -46,7 +46,13 @@ from clingo import Control, Symbol
 from clingo.solving import Model, ModelType, SolveResult
 
 from elenctic.discovery import SolverUnavailableError
-from elenctic.program import Boundary, ProgramError, refuse_strangers
+from elenctic.program import (
+    Boundary,
+    Diagnostics,
+    ProgramError,
+    captured_diagnostics,
+    refuse_strangers,
+)
 from elenctic.registry import SOLVERS, THEORY_EXTRA_ADVICE, Solver
 from elenctic.result import (
     Conclusion,
@@ -554,24 +560,8 @@ def _optimal_enum_two_phase(
     return SolveOutcome(shape, conclusion)
 
 
-def _capture(messages: list[str]) -> Callable[[object, str], None]:
-    """A clingo logger that records diagnostics into ``messages`` rather than letting them reach
-    stderr — elenctic owns its own output, and the routine ones ("atom does not occur in any rule
-    head", the projection caveat) are noise here.
-
-    Capturing rather than discarding them is load-bearing. When grounding fails, clingo reports the
-    offending file, line and cause through this channel, while the exception it raises carries only
-    a generic summary; without the captured text a program fault cannot be reported with the
-    provenance its author needs. Mirrors the captured logger ``program.inspect`` already uses."""
-
-    def logger(_code: object, message: str) -> None:
-        messages.append(message)
-
-    return logger
-
-
 @contextmanager
-def _program_faults(messages: list[str], within: Boundary | None = None) -> Iterator[None]:
+def _program_faults(diagnostics: Diagnostics, within: Boundary | None = None) -> Iterator[None]:
     """Translate a solver-origin ground or solve failure into a ``ProgramError`` carrying clingo's
     own captured diagnostic — unless that diagnostic is about a file outside ``within``, in which
     case the escaping path is named and nothing else is.
@@ -604,11 +594,12 @@ def _program_faults(messages: list[str], within: Boundary | None = None) -> Iter
     except RecursionError:
         raise
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
-        # Both, never one or the other: the logger holds the provenance (file, line, cause) but
+        # Both, never one or the other: the capture holds the provenance (file, line, cause) but
         # accumulates routine notices too, so a fault raised after a clean ground would otherwise
-        # be reported as whichever harmless notice happened to be logged first, with the real
-        # cause dropped.
-        parts = [*messages, str(exc)]
+        # be reported as whichever harmless notice happened to be written first, with the real
+        # cause dropped. An empty part is dropped rather than joined, or a run that reported nothing
+        # opens its detail with a separator.
+        parts = [part for part in (diagnostics.text(), str(exc)) if part]
         refuse_strangers(parts, within, exc)
         raise ProgramError(f"cannot run the program: {'; '.join(parts)}") from exc
 
@@ -636,20 +627,29 @@ def run_clingo(
     ``#project`` directive redefines it to something narrower, and a second statement of a decision
     made elsewhere is a decision the caller cannot revise. A projecting clingo run still yields the
     full shape (``projects_to_shown`` is always ``False`` for a non-theory solver)."""
-    messages: list[str] = []
-    control = Control(_solver_args(mode, project), logger=_capture(messages))
-    faults = partial(_program_faults, messages, within)
-    with faults():
-        _add_program(control, program, files)
-        control.ground([("base", [])])
-    if mode is Mode.OPTIMAL_ENUM:
-        return _optimal_enum_two_phase(
-            control, lambda c: c.on_model, budget, projects_to_shown=False, faults=faults
+    # The capture spans the solve as well as the ground: clingo reports through the same channel
+    # either way, and a region closed at the ground would leave the solve's diagnostics loose on the
+    # process's own standard error.
+    with captured_diagnostics() as diagnostics:
+        control = Control(_solver_args(mode, project), logger=None)
+        faults = partial(_program_faults, diagnostics, within)
+        with faults():
+            _add_program(control, program, files)
+            control.ground([("base", [])])
+        if mode is Mode.OPTIMAL_ENUM:
+            return _optimal_enum_two_phase(
+                control, lambda c: c.on_model, budget, projects_to_shown=False, faults=faults
+            )
+        collector = _Collector()
+        return _drive(
+            control,
+            mode,
+            collector,
+            collector.on_model,
+            budget,
+            projects_to_shown=False,
+            faults=faults,
         )
-    collector = _Collector()
-    return _drive(
-        control, mode, collector, collector.on_model, budget, projects_to_shown=False, faults=faults
-    )
 
 
 def run_clingcon(
@@ -682,16 +682,6 @@ def run_clingcon(
     # clingcon is untyped; isolate the dynamic boundary to this one Any (the theory handle), so the
     # downstream register/rewrite/prepare/on_model/assignment calls need no scattered ignores.
     theory: Any = clingcon.ClingconTheory()  # type: ignore[no-untyped-call]
-    messages: list[str] = []
-    control = Control(_solver_args(mode, project), logger=_capture(messages))
-    # Registering the propagator concerns the solver, not the program, so a failure there is not
-    # the corpus author's and is left outside the region that would say it was.
-    theory.register(control)
-    faults = partial(_program_faults, messages, within)
-    with faults():
-        _rewrite_program(control, theory, program, files, messages)
-        control.ground([("base", [])])
-        theory.prepare(control)
 
     def make_on_model(collector: _Collector) -> Callable[[Model], bool]:
         def on_model(model: Model) -> bool:
@@ -706,20 +696,30 @@ def run_clingcon(
 
         return on_model
 
-    if mode is Mode.OPTIMAL_ENUM:
-        return _optimal_enum_two_phase(
-            control, make_on_model, budget, projects_to_shown=project, faults=faults
+    with captured_diagnostics() as diagnostics:
+        control = Control(_solver_args(mode, project), logger=None)
+        # Registering the propagator concerns the solver, not the program, so a failure there is not
+        # the corpus author's and is left outside the region that would say it was.
+        theory.register(control)
+        faults = partial(_program_faults, diagnostics, within)
+        with faults():
+            _rewrite_program(control, theory, program, files)
+            control.ground([("base", [])])
+            theory.prepare(control)
+        if mode is Mode.OPTIMAL_ENUM:
+            return _optimal_enum_two_phase(
+                control, make_on_model, budget, projects_to_shown=project, faults=faults
+            )
+        collector = _Collector()
+        return _drive(
+            control,
+            mode,
+            collector,
+            make_on_model(collector),
+            budget,
+            projects_to_shown=project,
+            faults=faults,
         )
-    collector = _Collector()
-    return _drive(
-        control,
-        mode,
-        collector,
-        make_on_model(collector),
-        budget,
-        projects_to_shown=project,
-        faults=faults,
-    )
 
 
 type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool, Boundary | None], SolveOutcome]
@@ -782,9 +782,7 @@ def _add_program(control: Control, program: str, files: tuple[Path, ...]) -> Non
         control.load(str(path))
 
 
-def _rewrite_program(
-    control: Control, theory: Any, program: str, files: tuple[Path, ...], messages: list[str]
-) -> None:
+def _rewrite_program(control: Control, theory: Any, program: str, files: tuple[Path, ...]) -> None:
     """Rewrite inline ``program`` and ``files`` through clingcon's theory rewriter into ``control``.
     ``parse_files`` resolves ``#include`` relative to the including file AND fires the
     theory rewrite on the *expanded* AST (a theory atom inside an ``#include``d
@@ -798,14 +796,13 @@ def _rewrite_program(
         def add(ast: object) -> None:
             theory.rewrite_ast(ast, builder.add)
 
-        # The capturing logger belongs here as much as on the control: these calls do the parsing
-        # on this path, so without it a theory program's parse diagnostics go to stderr unowned —
-        # outside elenctic's framing, unsanitised, and missing from the fault this raises.
-        capture = _capture(messages)
+        # No logger here either, and it matters as much as on the control: these calls do the
+        # parsing on this path, so their diagnostics are the ones the fault must carry. They reach
+        # the same capture, because the caller opened it around this whole region.
         if program:
-            parse_string(program, add, logger=capture)
+            parse_string(program, add, logger=None)
         if files:
-            parse_files([str(path) for path in files], add, logger=capture)
+            parse_files([str(path) for path in files], add, logger=None)
 
 
 def _main() -> None:

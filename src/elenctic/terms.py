@@ -40,10 +40,24 @@ def parse_term(text: str) -> Symbol:
     Capturing it and folding it into the raised error keeps every diagnostic on one channel, with
     the provenance the caller adds; the failure type is unchanged, so the callers that already
     translate it keep working.
+
+    A term carrying a character clingo's lexer will not take gets **elenctic's own sentence**, not
+    clingo's. clingo quotes the offending byte, a lone UTF-8 lead byte does not decode, and the
+    ``UnicodeDecodeError`` that raises is what a caller would otherwise be shown: a codec, a byte
+    and an offset into a message the author cannot see, saying nothing about the term or the remedy.
+    This frame knows the term, and its caller adds the line — so the diagnostic is written here.
+    Unlike the parse and solve paths, no descriptor capture helps: with ``logger=None`` this entry
+    point still raises and writes nothing at all.
     """
     messages: list[str] = []
     try:
         return _clingo_parse_term(text, logger=lambda _code, message: messages.append(message))
+    except UnicodeDecodeError as exc:
+        raise RuntimeError(
+            f"cannot read {text!r} as a term: it carries a character the solver's lexer does not "
+            "accept outside a quoted string — write it inside double quotes, or use a plain "
+            "identifier"
+        ) from exc
     except RuntimeError as exc:
         raise RuntimeError("; ".join(messages) or str(exc)) from exc
 
