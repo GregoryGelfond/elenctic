@@ -571,9 +571,13 @@ def _capture(messages: list[str]) -> Callable[[object, str], None]:
 
 
 @contextmanager
-def _program_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[None]:
-    """Translate a solver-origin ground or solve failure into a ``ProgramError`` naming the program
-    and carrying clingo's own captured diagnostic.
+def _program_faults(messages: list[str]) -> Iterator[None]:
+    """Translate a solver-origin ground or solve failure into a ``ProgramError`` carrying clingo's
+    own captured diagnostic.
+
+    Which file it belongs to is not said here, exactly as it is not said in the parse-side region
+    this mirrors: the caller passed the files in, and clingo's coordinate inside the diagnostic is
+    what names the offending one.
 
     A program that will not ground has no answer sets *defined*, which is not the same as having
     none, so this must never produce ``Inconsistent`` — that would silently pass an ``@expect
@@ -584,20 +588,19 @@ def _program_faults(files: tuple[Path, ...], messages: list[str]) -> Iterator[No
 
     It is entered around the calls that hand work to the solver and left as soon as they return, so
     what it covers has one owner. Its postcondition is what makes each translation statable on its
-    own: the solver ran, and either it produced a result or a ``ProgramError`` names the file and
-    carries clingo's diagnostic. Reducing that result is elenctic's, and happens outside."""
+    own: the solver ran, and either it produced a result or a ``ProgramError`` carries clingo's
+    diagnostic. Reducing that result is elenctic's, and happens outside."""
     try:
         yield
     except RecursionError:
         raise
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
-        names = ", ".join(str(path) for path in files) or "<inline program>"
         # Both, never one or the other: the logger holds the provenance (file, line, cause) but
         # accumulates routine notices too, so a fault raised after a clean ground would otherwise
         # be reported as whichever harmless notice happened to be logged first, with the real
         # cause dropped.
         detail = "; ".join([*messages, str(exc)])
-        raise ProgramError(f"cannot run the program ({names}): {detail}") from exc
+        raise ProgramError(f"cannot run the program: {detail}") from exc
 
 
 def run_clingo(
@@ -618,7 +621,7 @@ def run_clingo(
     full shape (``projects_to_shown`` is always ``False`` for a non-theory solver)."""
     messages: list[str] = []
     control = Control(_solver_args(mode, project), logger=_capture(messages))
-    faults = partial(_program_faults, files, messages)
+    faults = partial(_program_faults, messages)
     with faults():
         _add_program(control, program, files)
         control.ground([("base", [])])
@@ -662,7 +665,7 @@ def run_clingcon(
     # Registering the propagator concerns the solver, not the program, so a failure there is not
     # the corpus author's and is left outside the region that would say it was.
     theory.register(control)
-    faults = partial(_program_faults, files, messages)
+    faults = partial(_program_faults, messages)
     with faults():
         _rewrite_program(control, theory, program, files, messages)
         control.ground([("base", [])])

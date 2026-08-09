@@ -166,9 +166,14 @@ def test_missing_include_is_a_friendly_program_error(tmp_path: Path) -> None:
 def test_non_utf8_file_is_a_friendly_program_error(tmp_path: Path) -> None:
     # A non-UTF-8 .lp (plausible in the literate kr-domains corpus: an accented byte in a comment)
     # must surface as a friendly ProgramError, never a raw UnicodeDecodeError traceback.
+    #
+    # It does not name the file, and the test below is the one that shows why that is not a loss:
+    # where clingo has a coordinate to give, the coordinate is carried through. Here the fault is a
+    # byte, the offending file is the one argument this call was given, and the remedy is what the
+    # reader could not have worked out.
     case = tmp_path / "bad.lp"
     case.write_bytes("ok. % résumé café\n".encode("latin-1"))
-    with pytest.raises(ProgramError, match=r"bad\.lp"):
+    with pytest.raises(ProgramError, match=r"re-encode the file as UTF-8"):
         inspect((case,))
 
 

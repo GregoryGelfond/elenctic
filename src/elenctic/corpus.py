@@ -48,6 +48,7 @@ from elenctic.outcome import (
     PlanOutcome,
     RunOutcome,
     Scope,
+    error_detail,
     error_kind,
     render_seconds,
 )
@@ -340,9 +341,7 @@ def _discover[O: Observer](target: Path, told: _Announcing[O]) -> Corpus | Error
     try:
         return inspect_corpus(target)
     except (DiscoveryError, ContractError, ProgramError) as exc:
-        fault = _corpus_fault(
-            error_kind(exc), str(exc), source=target if target.is_file() else None
-        )
+        fault = _corpus_fault(error_kind(exc), target, exc)
         _tell(told, lambda o: o.corpus_unreadable, fault)
         return fault
 
@@ -361,14 +360,27 @@ def _record_discovered[O: Observer](
     return unrunnable, _hygiene_records(corpus.hygiene, strict=strict)
 
 
-def _corpus_fault(kind: ErrorKind, message: str, *, source: Path | None = None) -> ErrorRecord:
-    """One fault belonging to no single case, and therefore to the corpus: nothing was discovered,
-    or the frame that met the fault had no case to name.
+def _corpus_fault(kind: ErrorKind, target: Path, fault: Exception) -> ErrorRecord:
+    """One fault belonging to no single case, and therefore to the corpus: nothing was discovered
+    under the target at all.
 
-    ``source`` is the file when exactly one was involved — a target named on the command line is
-    the only file the fault can belong to, while a directory names no one file and the diagnostic's
-    own provenance is where the reader looks."""
-    return ErrorRecord(kind=kind, scope=Scope.CORPUS, source=source, message=message)
+    The target is what it belongs to, with no test on the path. This frame is reached only when
+    nothing could be discovered *under* the target, and the faults the walk raises rather than
+    collects are about the target itself — a name that resolves to nothing, or a named file carrying
+    no contract. A path naming nothing is exactly the case a reader most needs named, since the
+    whole fault is which name was typed; asking the filesystem whether the target is a *file*
+    answers no for it, which read right only while the reason also spelled the path into itself.
+    Dropping that duplicate left the fault with nowhere to point, and the condition with nothing
+    left to decide.
+
+    A corpus-scoped record with no source at all is still a shape — the command line files one for a
+    fault that reached no target, which is why the published field is nullable — but it is not one
+    this frame can produce.
+
+    The reason and the line come off the fault rather than out of ``str``, on the same terms as
+    :func:`_fault_record` — this frame builds records too, so it gets the question again."""
+    reason, line = error_detail(fault)
+    return ErrorRecord(kind=kind, scope=Scope.CORPUS, source=target, message=reason, line=line)
 
 
 def _hygiene_records(hygiene: HygieneReport, *, strict: bool) -> tuple[HygieneRecord, ...]:
@@ -406,10 +418,19 @@ def _unrunnable_records(unrunnable: tuple[tuple[Path, Exception], ...]) -> tuple
     """The contract-bearing files discovery could not turn into cases, in the same register as a
     case the runner could not run: both are a file that will produce no verdict, and the reader
     does not care which side of discovery it failed on."""
-    return tuple(
-        ErrorRecord(kind=error_kind(fault), scope=Scope.CASE, source=path, message=str(fault))
-        for path, fault in unrunnable
-    )
+    return tuple(_fault_record(error_kind(fault), path, fault) for path, fault in unrunnable)
+
+
+def _fault_record(kind: ErrorKind, source: Path, fault: Exception) -> ErrorRecord:
+    """One case-scoped record built from a fault: the file from the frame that has it, the reason
+    and the line from the fault itself.
+
+    The three facts come from where each is known, rather than from a string that had already
+    composed two of them. A record whose message was ``str(fault)`` restated the file this record
+    carries, so the file was printed twice wherever a renderer placed it — and the line was spelled
+    into prose that a consumer would have had to parse back out."""
+    reason, line = error_detail(fault)
+    return ErrorRecord(kind=kind, scope=Scope.CASE, source=source, message=reason, line=line)
 
 
 def _explain(
@@ -458,7 +479,7 @@ def _plan_for(case: Case) -> CasePlan | ErrorRecord:
             case.expectation, provides_theory(case.solver), has_projection=case.has_projection
         )
     except HarnessError as exc:
-        return _case_error(ErrorKind.HARNESS, case, str(exc))
+        return _fault_record(ErrorKind.HARNESS, case.contract_source, exc)
     return CasePlan(case=case, runs=tuple(derived))
 
 
@@ -520,7 +541,7 @@ def _run(
         try:
             # The declared solver is checked here, per case, so an absent optional backend costs
             # only the cases that declare it rather than the whole run.
-            check_solver_available(case.solver, case.contract_source)
+            check_solver_available(case.solver)
             # The plan built and proved above, carried out — not derived a second time.
             reports = run_plan(case, plan.runs, budget=budget)
         except DiscoveryError as exc:
@@ -528,22 +549,28 @@ def _run(
             # `run_case` states reach a caller. The common one by far is its subclass
             # `SolverUnavailableError` — the declared solver is not installed — and that one is
             # filed under the *environment* rather than under discovery, because discovery never
-            # met it: the check above runs per case, here, after the corpus walk is over. The
-            # message carries its own provenance, as every diagnostic raised from `discovery` does.
+            # met it: the check above runs per case, here, after the corpus walk is over.
             #
             # The family, not that subclass alone, and the locus is asked of `error_kind` rather
             # than named here: catching the subclass left the family able to escape this register
             # and cost the whole corpus what it owes one case, and naming the locus here made a
             # second statement of a mapping that already has one home — where a locus is read off
             # a class, and where the ordering that keeps these two apart is written down.
-            errors.append(_case_error(error_kind(exc), case, str(exc)))
+            errors.append(_fault_record(error_kind(exc), case.contract_source, exc))
             _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         except ProgramError as exc:
             # the program under test cannot be run (it will not ground, an #include is unresolvable)
             # — its author fixes the .lp. Not a verdict, and not elenctic's fault either, so it is
             # filed apart from both and the remaining cases still run.
-            errors.append(_case_error(ErrorKind.PROGRAM, case, str(exc)))
+            #
+            # The locus is asked of `error_kind`, exactly as the arm above asks it and for the
+            # same reason. `ContainmentError` is a `ProgramError`, so this arm catches one — and
+            # naming the locus here announced a containment breach as `PROGRAM` when the runner met
+            # it while the walk called the same breach `CONTAINMENT`. That is the one-rule-two-
+            # problems shape `ContainmentError` exists to prevent, written into the register that
+            # reports it.
+            errors.append(_fault_record(error_kind(exc), case.contract_source, exc))
             _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         except MemoryError:
@@ -552,13 +579,20 @@ def _run(
             # this — the grounder offers no size limit and so neither can elenctic — but what it
             # costs is one case's result rather than the whole run's. A resource the caller is the
             # one able to bound, so not elenctic's own fault to report.
-            errors.append(_case_error(ErrorKind.RESOURCE, case, _OUT_OF_MEMORY))
+            errors.append(
+                ErrorRecord(
+                    kind=ErrorKind.RESOURCE,
+                    scope=Scope.CASE,
+                    source=case.contract_source,
+                    message=_OUT_OF_MEMORY,
+                )
+            )
             _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         except HarnessError as exc:
             # a solve-time invariant breach (a seam, a missing cost) is a harness bug too, never a
             # verdict — filed like a misroute, and the other cases still run.
-            errors.append(_case_error(ErrorKind.HARNESS, case, str(exc)))
+            errors.append(_fault_record(ErrorKind.HARNESS, case.contract_source, exc))
             _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
         outcome = CaseOutcome(case=case, reports=reports)
@@ -568,11 +602,6 @@ def _run(
         # interesting would be deciding that for every caller at once.
         _tell(told, lambda o: o.case_judged, outcome)
     return RunOutcome(cases=tuple(outcomes), errors=tuple(errors), hygiene=hygiene)
-
-
-def _case_error(kind: ErrorKind, case: Case, message: str) -> ErrorRecord:
-    """One case's reason for producing no verdict, against the file it belongs to."""
-    return ErrorRecord(kind=kind, scope=Scope.CASE, source=case.contract_source, message=message)
 
 
 def _validate_plans(

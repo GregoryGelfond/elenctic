@@ -8,6 +8,7 @@ a machine-readable report is mostly made of, so it is asserted here directly, ag
 run produces rather than against the sentence it happened to print.
 """
 
+import re
 from collections.abc import Iterable
 from dataclasses import fields
 from pathlib import Path
@@ -22,6 +23,7 @@ from elenctic.discovery import Case, DiscoveryError
 from elenctic.harness import run_plan as real_run_plan
 from elenctic.outcome import (
     ErrorKind,
+    ErrorRecord,
     ExitStatus,
     Grade,
     HygieneKind,
@@ -30,6 +32,7 @@ from elenctic.outcome import (
     Scope,
     exit_status,
 )
+from elenctic.program import ContainmentError
 from elenctic.result import Verdict
 from elenctic.run import RoutingError, Run, runs_for as real_runs_for
 from elenctic.solvers import TIME_BUDGET
@@ -81,6 +84,147 @@ def test_a_case_that_produces_no_verdict_is_filed_under_its_own_locus(
     assert record.message, "an error whose reason was dropped is not a report"
 
 
+_QUERY_OVER_AN_UNDECLARED_SIGNATURE = (
+    "% @expect sat\n% @query yes { p(1) }\n\np(1).\n#show q/0.\nq.\n"
+)
+
+
+def _states_its_own_file(record: ErrorRecord) -> bool:
+    """Whether the reason restates the provenance the record already holds.
+
+    **Every** occurrence of the path is judged, not the shapes that were wrong when this was
+    written. It was written the other way first — a leading path and a parenthesised ``(path)``,
+    which were elenctic's own two spellings — and a third slipped past it in the same session, a
+    path quoted inside an ``OSError``'s own text in the middle of a sentence. A guard enumerating
+    the spellings it knows about answers for the ones it was told.
+
+    One thing survives: a **solver's** coordinate quoted inside the reason, which is evidence a
+    reader acts on rather than a second claim about which case this is. Editing clingo's diagnostic
+    to remove it would cost the reader the only part of the sentence saying *where in the file*.
+
+    The exemption is written as the two tools' spellings and not as "a path with a number after it",
+    because that shape belongs to both: clingo writes ``file:LINE:COL`` and ``file:LINE:COL-COL``,
+    two numbers, while elenctic's own coordinate is ``file:LINE``, one. Read loosely it exempted the
+    thing it exists to catch — a corpus-scoped reason restating ``file:1`` beside a record already
+    naming that file — and asking the *record* for its own line instead does not close it either,
+    since a record that dropped the line to prose has none to compare against.
+
+    A record with no source restates nothing, because there is nothing to restate. Said as its own
+    arm rather than left to fall through: `str(None)` is the word ``None``, so the fall-through
+    searched every such reason for that word — flagging a reason that happens to mention
+    ``'NoneType' object has no attribute`` and, worse, unable to detect a real restatement in the
+    one register where it could not compare against a path at all.
+    """
+    if record.source is None:
+        return False
+    name = re.escape(str(record.source))
+    return re.search(rf"{name}(?!:\d+:\d)", record.message) is not None
+
+
+def test_the_restatement_guard_can_answer_yes() -> None:
+    # The guard is asserted only negatively everywhere else, and a rule asserted in one direction
+    # cannot detect its own weakening: widening the exemption can only turn True into False, so a
+    # helper that always answered False would satisfy every other call site in this module. These
+    # are the two answers it has to be able to give.
+    restated = ErrorRecord(
+        kind=ErrorKind.CONTRACT,
+        scope=Scope.CASE,
+        source=Path("menu.lp"),
+        message="menu.lp:3: @expect must be sat|unsat",
+        line=3,
+    )
+    assert _states_its_own_file(restated), "elenctic's own coordinate, said twice"
+
+    quoted = ErrorRecord(
+        kind=ErrorKind.PROGRAM,
+        scope=Scope.CASE,
+        source=Path("menu.lp"),
+        message="cannot run the program: menu.lp:3:1-14: error: unsafe variables in: p(X)",
+        line=None,
+    )
+    assert not _states_its_own_file(quoted), "the solver's own coordinate is evidence, not a claim"
+
+
+@pytest.mark.parametrize(
+    "contract",
+    [
+        _WILL_NOT_GROUND,
+        _UNRESOLVABLE_INCLUDE,
+        _MALFORMED_CONTRACT,
+        _NAMES_A_SOLVER_THAT_DOES_NOT_EXIST,
+        _QUERY_OVER_AN_UNDECLARED_SIGNATURE,
+    ],
+    ids=[
+        "will-not-ground",
+        "unresolvable-include",
+        "malformed-contract",
+        "no-such-solver",
+        "query",
+    ],
+)
+def test_a_reason_never_restates_the_file_the_record_already_names(
+    tmp_path: Path, contract: str
+) -> None:
+    # One fact, one producer. The record carries the file; the reason says what went wrong. Stated
+    # in both places it was printed twice on one line and three times on another, in two different
+    # spellings, and which of the three a reader met was decided by which frame happened to catch
+    # the fault.
+    #
+    # Over every fault a corpus can actually produce rather than over the two that were worst,
+    # because the defect was never in one message: it was that nothing said where the fact lived, so
+    # each new raise site answered the question again for itself.
+    (record,) = run_corpus(_asked(_corpus(tmp_path, broken=contract))).errors
+    assert not _states_its_own_file(record), record.message
+
+
+def test_a_reason_never_restates_the_file_of_an_entry_that_cannot_be_read(tmp_path: Path) -> None:
+    # A directory named `*.lp` — which `rglob` matches and `read_text` refuses. Its own test because
+    # the fixture is not a file, and worth one because this is the spelling that escaped the first
+    # version of the guard above: the path arrived quoted inside the operating system's own text,
+    # in the middle of the sentence rather than opening it.
+    (tmp_path / "not-a-file.lp").mkdir()
+    (record,) = run_corpus(_asked(tmp_path)).errors
+    assert record.kind is ErrorKind.DISCOVERY
+    assert not _states_its_own_file(record), record.message
+    assert "Is a directory" in record.message, "the reason, which is what the reader acts on"
+
+
+def test_a_reason_never_restates_the_file_when_the_case_escapes_its_corpus(
+    tmp_path: Path,
+) -> None:
+    # Containment reaches the same register by a different frame — the one that judges a diagnostic
+    # rather than a resolved source list — so it is asked separately. What it names is the
+    # *escaping* file, which is a different file and the whole point of the sentence; what it must
+    # not name twice is the case.
+    (tmp_path / "outside.lp").write_text("secret(1).\n", encoding="utf-8")
+    (root := tmp_path / "corpus").mkdir()
+    target = _corpus(root, escapes='% @expect sat\n#include "../outside.lp".\nq(1).\n')
+    (record,) = run_corpus(_asked(target)).errors
+    assert record.kind is ErrorKind.CONTAINMENT
+    assert not _states_its_own_file(record), record.message
+    assert "outside.lp" in record.message, "the escaping file is what the sentence is about"
+
+
+def test_a_fault_at_a_contract_line_carries_that_line_as_a_field(tmp_path: Path) -> None:
+    # The coordinate the record could not hold until this release, and the reason the renderer used
+    # to have to keep away from these two loci. A line the reader can act on, read by a machine
+    # without parsing prose out of the message it used to be spelled into.
+    (record,) = run_corpus(
+        _asked(_corpus(tmp_path, broken=_QUERY_OVER_AN_UNDECLARED_SIGNATURE))
+    ).errors
+    assert record.kind is ErrorKind.DISCOVERY
+    assert record.line == 2, "the @query tag's own line in the case file"
+
+
+def test_a_fault_with_no_line_to_name_carries_none(tmp_path: Path) -> None:
+    # The other footing, and it is not the same claim: a program that will not ground has no
+    # *contract* line to name — clingo's coordinates are about the program text, and reading them
+    # out of a diagnostic would be elenctic parsing text a corpus author chooses.
+    (record,) = run_corpus(_asked(_corpus(tmp_path, broken=_WILL_NOT_GROUND))).errors
+    assert record.kind is ErrorKind.PROGRAM
+    assert record.line is None
+
+
 def test_a_declared_solver_this_environment_lacks_is_filed_against_the_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -129,6 +273,26 @@ def test_a_discovery_fault_that_is_not_the_missing_solver_still_costs_only_its_o
     assert "a precondition this case fails" in record.message
 
 
+def test_a_containment_breach_the_runner_meets_is_still_a_containment_breach(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `ContainmentError` is a `ProgramError`, so the runner's program arm catches it — and that arm
+    # named its locus itself rather than asking `error_kind`. One breach was then announced as
+    # CONTAINMENT when the walk met it and PROGRAM when the runner did: the exact shape
+    # `ContainmentError`'s own docstring exists to prevent, and which the sibling arm four lines
+    # above records as already fixed once.
+    #
+    # Forced rather than waited for. Nothing raises one from a solve *today*, because the solver
+    # facade has no containment boundary yet — which is what makes this a latent hole rather than a
+    # live defect, and what makes the guard the thing that will notice when the boundary lands.
+    def escapes(case: Case, runs: Iterable[Run], budget: float) -> tuple[CheckReport, ...]:
+        raise ContainmentError("this case loads a file from outside the corpus")
+
+    monkeypatch.setattr(corpus, "run_plan", escapes)
+    (record,) = run_corpus(_asked(_corpus(tmp_path, escaping=_PASSES))).errors
+    assert record.kind is ErrorKind.CONTAINMENT, "the locus is read off the class, never named here"
+
+
 def test_a_case_that_runs_out_of_a_resource_is_filed_apart_from_a_broken_program(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -153,7 +317,7 @@ def test_a_corpus_that_cannot_be_discovered_produces_no_cases_and_one_error(
     assert outcome.cases == ()
     assert record.kind is ErrorKind.DISCOVERY
     assert record.scope is Scope.CORPUS, "nothing was discovered, so this belongs to no case"
-    assert record.source is None, "and a target that is not one file names no one file"
+    assert record.source == tmp_path / "nowhere.lp", "and the name typed is what it is about"
 
 
 def test_a_corpus_fault_on_a_named_file_names_that_file(tmp_path: Path) -> None:
@@ -168,6 +332,34 @@ def test_a_corpus_fault_on_a_named_file_names_that_file(tmp_path: Path) -> None:
 
     (from_the_directory,) = run_corpus(_asked(tmp_path)).errors
     assert from_the_directory.scope is Scope.CASE, "inside a corpus it is one file among others"
+
+
+def test_a_named_target_that_does_not_exist_is_still_the_file_the_fault_names(
+    tmp_path: Path,
+) -> None:
+    # The axis every fixture above holds fixed: the named file *exists*. A target that does not is
+    # the one a reader most needs named — it is a typo or a moved file, and the whole fault is which
+    # path was typed. Deciding this by asking the filesystem whether the target is a file answers no
+    # for exactly the case that needs a yes.
+    missing = tmp_path / "nowhere.lp"
+    (record,) = run_corpus(_asked(missing)).errors
+    assert record.scope is Scope.CORPUS
+    assert record.source == missing, (
+        "a name that resolves to nothing is still the name it was given"
+    )
+
+
+def test_a_corpus_scoped_reason_never_restates_the_file_either(tmp_path: Path) -> None:
+    # The same rule as for a case-scoped record, asked of the other frame — which builds its records
+    # somewhere else and so gets the question again. It reached this frame in both directions at
+    # once: a named file that exists had its path printed twice, and a named file that does not
+    # exist had it printed not at all.
+    named = tmp_path / "malformed.lp"
+    named.write_text(_MALFORMED_CONTRACT, encoding="utf-8")
+    for target in (named, tmp_path / "nowhere.lp"):
+        (record,) = run_corpus(_asked(target)).errors
+        assert record.scope is Scope.CORPUS
+        assert not _states_its_own_file(record), record.message
 
 
 def test_a_case_the_deadline_did_not_reach_is_filed_against_that_case(

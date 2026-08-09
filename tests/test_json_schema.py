@@ -38,7 +38,15 @@ import elenctic
 from elenctic.cli import main
 from elenctic.corpus import run_corpus
 from elenctic.json_report import SCHEMA_VERSION, as_json, dumps, schema_text
-from elenctic.outcome import ErrorKind, ExitStatus, HygieneKind, Invocation
+from elenctic.outcome import (
+    ErrorKind,
+    ErrorRecord,
+    ExitStatus,
+    HygieneKind,
+    Invocation,
+    RunOutcome,
+    Scope,
+)
 from elenctic.registry import SOLVERS
 from elenctic.result import Conclusion, Verdict
 from elenctic.solvers import TIME_BUDGET
@@ -132,7 +140,17 @@ _NEAR_MISSES: list[tuple[str, tuple[str | int, ...], Any]] = [
     ("a file name that is a number", ("errors", 0, "source"), 42),
     ("an observation about no file", ("hygiene", 0, "source"), None),
     ("an actionability answered with a word", ("errors", 0, "is_elenctic_bug"), "false"),
-    ("a document claiming another version", ("schema_version",), 2),
+    # The error register's own line, on both footings its sibling in `check` is pinned on. Written
+    # out rather than derived from that pair: the two constraints are stated in two places in the
+    # schema, and a table that generated both from one row would be satisfied by a schema that
+    # stated only one of them.
+    ("a fault on line zero", ("errors", 0, "line"), 0),
+    ("a fault line written as text", ("errors", 0, "line"), "2"),
+    # Half a coordinate. The package refuses to build such a record, and a description that let one
+    # validate would promise a consumer less than the producer actually guarantees — so a
+    # hand-written document elenctic would never emit was the one thing the schema still accepted.
+    ("a fault line belonging to no file", ("errors", 0, "source"), None),
+    ("a document claiming another version", ("schema_version",), 3),
 ]
 
 
@@ -300,16 +318,34 @@ def test_a_run_that_found_nothing_to_run_is_still_a_document_the_schema_accepts(
     tmp_path: Path,
 ) -> None:
     # The corpus-scoped register, which no other document here reaches: no case produced a verdict,
-    # so `cases` is empty and an error stands where they would have been. It is also the only shape
-    # in which `source` is null rather than a file name, which is the whole of what defends that
-    # field being published as nullable.
+    # so `cases` is empty and an error stands where they would have been.
     document = _run(tmp_path / "nowhere")
 
     _validator().validate(document)
     assert document["cases"] == []
     (error,) = document["errors"]
     assert error["scope"] == "corpus", "the fault stopped the run, not one case"
-    assert error["source"] is None, "a corpus-level fault belongs to no single file"
+    assert error["source"] == str(tmp_path / "nowhere"), "the name typed is what it is about"
+
+
+def test_a_fault_that_belongs_to_no_file_is_a_document_the_schema_accepts() -> None:
+    # What defends `source` being published as nullable, and it is built rather than run: the shape
+    # comes from the command line's own backstops — a run that could not be bounded, a fault no
+    # register anticipated — which reach no target and so have no file to name. It used to be read
+    # off a missing named target, which does name one, so the nullable field was defended by a
+    # document that never exercised it.
+    invocation = Invocation(target=Path("corpus"), strict=False, budget=TIME_BUDGET, deadline=None)
+    record = ErrorRecord(
+        kind=ErrorKind.HARNESS, scope=Scope.CORPUS, source=None, message="no register saw this"
+    )
+    document: dict[str, Any] = as_json(
+        RunOutcome(cases=(), errors=(record,), hygiene=()), invocation
+    )
+
+    _validator().validate(document)
+    (error,) = document["errors"]
+    assert error["source"] is None
+    assert error["line"] is None, "no file to be a line within"
 
 
 def test_the_document_is_json_that_a_strict_reader_accepts(document: dict[str, Any]) -> None:

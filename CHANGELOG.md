@@ -10,6 +10,76 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+### Added
+
+- **`elenctic.error_detail`** — the reason a caught fault gives, and the contract line it gives it
+  about, as a pair. The sibling of `error_kind`: that one reads *where the fault lies* off the
+  class, this reads *what it says* and *where it says it* off the value. It is what a caller
+  building its own `ErrorRecord` wants, and it is how elenctic builds its own — so a runner of your
+  own files a fault exactly as the shipped one does, without parsing a sentence to get there.
+
+### Changed
+
+- **Every diagnostic now names its file exactly once, wherever the fault was met.** This is the
+  remaining half of 0.3.0's heading work, and it is settled the way that entry said it would have
+  to be: provenance lives in the record, not in the message. A fault that would not ground used to
+  read
+
+  ```
+  PROGRAM ERROR — tri/unsafe.lp: cannot run the program (tri/unsafe.lp): tri/unsafe.lp:3:1-14: error: …
+  ```
+
+  — the path three times — and now reads
+
+  ```
+  PROGRAM ERROR — tri/unsafe.lp: cannot run the program: tri/unsafe.lp:3:1-14: error: …
+  ```
+
+  where the first is elenctic saying which case produced no verdict and the second is clingo's own
+  coordinate, quoted as it wrote it. A parse fault and a ground fault now read alike; they did not
+  before, because the renderer decided whether to name the file from the *locus* while the thing it
+  was reaching for was a property of the *message*.
+
+  **A contract fault and an unanswerable `@query` now name the line as well** — `<file>:<line>:` —
+  in the spelling clingo, rustc and pytest all use.
+
+- **The machine-readable document is `schema_version` 2.** *If you consume `--format json`, this
+  is the entry to read.*
+
+  - `error.line` is **new and required**: the 1-based contract line the fault is about, or `null`
+    where it is about no single line. It is the same field `check.line` has been.
+  - `error.message` **no longer carries the file elenctic put there.** A solver's own coordinates
+    remain inside it, because those say *where in the program* and nothing else does.
+  - `error.source` is now populated in one case where it was `null` before: a named target that
+    does not exist. The name typed is what such a fault is about.
+
+  **What can break:** code recovering a path by splitting `error.message` gets a wrong string
+  rather than an error. Read `error.source`, and `error.line` beside it.
+
+  `elenctic --print-schema` prints the v2 description; the packaged file is
+  `elenctic/schema/output-v2.schema.json`.
+
+- **Library callers: what an exception's `str()` says has changed.** A fault now states the
+  reason and only the provenance its caller could not already know — which is the *line*, never the
+  file, since the file is what the caller passed in. `ProgramError` no longer opens with the files
+  it was handed (a join of all of them, which never identified the offending one; clingo's
+  coordinate does). Most `DiscoveryError`s no longer name the case. `ContractError` is unchanged:
+  it still reads `<source>:<line>: <reason>`.
+
+  Both `ContractError` and `DiscoveryError` now also carry `.reason` and `.line` as attributes, so
+  a caller building its own report reads the parts rather than parsing the sentence. `error_detail`
+  above reads them off any fault, including the ones that carry neither.
+
+- **`ErrorRecord` gained `line`, and two refusals.** A record with a line and no file is refused
+  (half a coordinate points at line 3 of nothing), as is a line below 1. Built by keyword as
+  before, so existing construction sites are unaffected unless they pass the new field.
+
+### Removed
+
+- **`discovery.check_solver_available` no longer takes `where`.** It spelled that path into the
+  refusal, which said nothing a caller asking about a case it holds did not already know. Call it
+  as `check_solver_available(case.solver)`.
+
 ## [0.3.0] - 2026-08-04
 
 The minor bump is deliberate, and this is the release with the most to re-check in it so far.

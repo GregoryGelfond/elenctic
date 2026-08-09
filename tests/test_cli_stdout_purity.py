@@ -317,7 +317,7 @@ def test_the_document_is_alone_on_standard_output_when_there_is_no_standard_erro
         _corpus(tmp_path, drinks=case), "--format", "json"
     )
 
-    assert _document(published, described)["schema_version"] == 1
+    assert _document(published, described)["schema_version"] == 2
     assert status == left_with
 
 

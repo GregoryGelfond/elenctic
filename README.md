@@ -471,7 +471,7 @@ does not, because exactly one of `tea` and `coffee` is chosen:
 ```console
 $ elenctic menu.lp --format json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "invocation": {
     "target": "menu.lp",
     "strict": false,
@@ -529,6 +529,14 @@ for an error.
 **Each check carries the line its claim was written on**, 1-based, so a result can be placed where
 the claim is rather than against the file. `conclusion` says how the search behind the verdict ended,
 which is what tells "the budget was too small" apart from "the program is wrong".
+
+**An error carries where it is in the same two fields, and says it in no other way.** `source` is the
+file, `line` is the 1-based contract line within it — or `null` where the fault is about no single
+line, which is most of them: a program that will not ground, a corpus that could not be read, a
+deadline the run passed. Read those two; **do not recover a path by parsing `message`**, which no
+longer states one. What a `message` may still contain is the *solver's* own `file:line:column`,
+quoted as the solver wrote it, because that says where in the *program* the fault is and nothing else
+does.
 
 **Three tiers of change, so you know what you may rely on.** `schema_version` changes when a field is
 added or removed, or when one of the closed enumerations (`verdict`, `status`, `conclusion`, `scope`,

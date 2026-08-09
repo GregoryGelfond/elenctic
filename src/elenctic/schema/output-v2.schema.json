@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/main/src/elenctic/schema/output-v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/main/src/elenctic/schema/output-v2.schema.json",
   "title": "elenctic run report",
   "description": "The result of running a corpus of @-contracts over Answer Set Programs, as one JSON object on standard output. Results are kept in three registers that must not be confused: a case in `cases` received a judgment about the program under test; an entry in `errors` says no judgment could be made and why; an entry in `hygiene` is an observation about the corpus's health and is neither. A consumer drawing a failure indicator should draw it for a non-passing case, never for an error — an error is usually not a fault in the contract at all. This describes a run that solved: the dry run, which derives each case's plan without solving, produces a different thing and has no machine-readable form in this version. A document reports a run, so check the exit status before parsing: a command line the runner refuses — an unknown format, a duration that is not a positive finite number of seconds, or a dry run asked for in this format — produces no document at all, and `--print-schema` puts this description on that stream rather than a report, which parses as JSON and has none of these fields.",
   "type": "object",
@@ -8,7 +8,7 @@
   "required": ["schema_version", "invocation", "summary", "cases", "errors", "hygiene"],
   "properties": {
     "schema_version": {
-      "const": 1,
+      "const": 2,
       "description": "The version of this contract. It changes when a field is added or removed, or when one of the closed enumerations gains a member — never when a new value appears in one of the open-valued string fields."
     },
     "invocation": { "$ref": "#/$defs/invocation" },
@@ -163,7 +163,9 @@
       "type": "object",
       "additionalProperties": false,
       "description": "One reason a verdict could not be produced. Never a judgment about a program — a case that could not be run has been tested by nothing, which is why this is a register of its own rather than a fourth verdict.",
-      "required": ["kind", "is_elenctic_bug", "scope", "source", "message"],
+      "required": ["kind", "is_elenctic_bug", "scope", "source", "line", "message"],
+      "if": { "properties": { "line": { "type": "integer" } } },
+      "then": { "properties": { "source": { "type": "string" } } },
       "properties": {
         "kind": {
           "type": "string",
@@ -180,7 +182,12 @@
         },
         "source": {
           "type": ["string", "null"],
-          "description": "The file the error belongs to, named as the invocation named it and so resolved the same way `case.source` is, or null for a corpus-level fault that belongs to no single file."
+          "description": "The file the error belongs to, named as the invocation named it and so resolved the same way `case.source` is, or null for a corpus-level fault that belongs to no single file. Do not parse a line number out of it; `line` beside it carries one where there is one."
+        },
+        "line": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "The 1-based line of `source` this fault is about, so a diagnostic can be placed where it is — or null where the fault names no single line. A contract ill-formed at one tag, and a `@query` the program cannot answer, are about the line that wrote them; a program that will not ground, a corpus that could not be read, and a deadline the run passed are not. It counts *contract* lines and is elenctic's own reading of its own tags: a solver's coordinates for a fault in the program text stay inside `message`, where the solver put them, and parsing them back out of it is not something to do. Editors counting lines from zero must subtract one. A line is always a line *within* `source`, so it is null wherever `source` is — half a coordinate points at line 3 of nothing, and the package refuses to build such a record at all."
         },
         "message": {
           "type": "string",

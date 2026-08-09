@@ -129,7 +129,7 @@ def test_an_error_and_an_observation_carry_exactly_the_promised_fields() -> None
     document = _document(_run(errors=(_error(),), hygiene=(_observation(),)))
     (error,) = document["errors"]
     (observation,) = document["hygiene"]
-    assert set(error) == {"kind", "is_elenctic_bug", "scope", "source", "message"}
+    assert set(error) == {"kind", "is_elenctic_bug", "scope", "source", "line", "message"}
     assert set(observation) == {"kind", "grade", "source", "message"}
     assert error["source"] == "a.lp"
     assert error["message"] == "the program will not ground"

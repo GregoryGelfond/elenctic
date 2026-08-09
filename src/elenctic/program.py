@@ -68,8 +68,13 @@ class Boundary:
 
 class ProgramError(Exception):
     """A program under test that elenctic cannot run — a missing or cyclic ``#include``, a parse
-    error, or a program that will not ground. Surfaced as a friendly diagnostic naming the offending
-    file, never a raw clingo stack trace.
+    error, or a program that will not ground. Surfaced as a friendly diagnostic carrying clingo's
+    own account of what is wrong, never a raw stack trace.
+
+    It does not name the file, and that is not a gap: whoever called :func:`inspect` or a solver
+    facade passed the files in, and clingo's diagnostic carries the ``file:line:col`` of the
+    offending one — which a join of the inputs never did. Where the fault is recorded rather than
+    raised, :class:`~elenctic.outcome.ErrorRecord` holds the file as a field.
 
     A fault in the program, so its author fixes the ``.lp``; deliberately **not** a
     ``HarnessError``, which claims elenctic violated one of its own invariants and should be
@@ -177,8 +182,9 @@ class ProgramFacts:
 
 def inspect(files: tuple[Path, ...], *, within: Boundary | None = None) -> ProgramFacts:
     """Inspect the resolved program (``files`` + their ``#include``s) into ``ProgramFacts``. Raises
-    ``ProgramError`` with provenance on an unreadable/missing/cyclic include, a parse error, or a
-    source byte that is not UTF-8.
+    ``ProgramError`` on an unreadable/missing/cyclic include, a parse error, or a source byte that
+    is not UTF-8 — carrying clingo's own diagnostic, which is where the coordinates are, rather
+    than repeating the ``files`` this was handed.
 
     ``within`` is the directory the program may not reach past — the caller's containment boundary,
     ``None`` for an inspection with none. It is here rather than only at the caller because a parse
@@ -194,13 +200,13 @@ def inspect(files: tuple[Path, ...], *, within: Boundary | None = None) -> Progr
     the source names needs no clingo state at all and comes last, outside both regions."""
     statements: list[AST] = []
     messages: list[str] = []  # clingo's own diagnostics (with file:line:col), captured not printed
-    with _parse_faults(files, messages, within):
+    with _parse_faults(messages, within):
         _parse_files(
             [str(path) for path in files],
             statements.append,
             logger=lambda _code, message: messages.append(message),
         )
-    with _walk_faults(files):
+    with _walk_faults():
         nodes = [node for statement in statements for node in _descendants(statement)]
         has_theory_atom = any(node.ast_type is ASTType.TheoryAtom for node in nodes)
         shown = _vocabulary(nodes)
@@ -285,12 +291,14 @@ def _strangers(detail: list[str], within: Path) -> list[str]:
 
 
 @contextmanager
-def _parse_faults(
-    files: tuple[Path, ...], messages: list[str], within: Boundary | None = None
-) -> Iterator[None]:
-    """Translate a failure raised by the parse into a ``ProgramError`` naming the program and
-    carrying clingo's own captured diagnostic — unless that diagnostic is about a file outside
-    ``within``, in which case the escaping path is named and nothing else is.
+def _parse_faults(messages: list[str], within: Boundary | None = None) -> Iterator[None]:
+    """Translate a failure raised by the parse into a ``ProgramError`` carrying clingo's own
+    captured diagnostic — unless that diagnostic is about a file outside ``within``, in which case
+    the escaping path is named and nothing else is.
+
+    Which file the fault belongs to is **not** said here. Whoever called :func:`inspect` passed the
+    files in, and a join of all of them would not say which one failed in any case — clingo's own
+    coordinate does that, and it is in the diagnostic this carries.
 
     Everything under this region is clingo reading the corpus author's text, so every failure it
     reports is that author's to fix. A harness-logic bug (``AttributeError``/``KeyError``/...) is
@@ -306,25 +314,23 @@ def _parse_faults(
         # The file *name*, not its contents: clingo encodes the path strictly, so a name carrying a
         # byte that is not UTF-8 fails before the file is opened. A sibling of UnicodeDecodeError
         # rather than a subclass, so the tuple below does not cover it.
-        names = ", ".join(str(path) for path in files)
         raise ProgramError(
-            f"cannot open the program ({names}): the file name is not valid UTF-8, which the "
-            "solver requires — rename the file"
+            "cannot open the program: the file name is not valid UTF-8, which the solver "
+            "requires — rename the file"
         ) from exc
     except (RuntimeError, UnicodeDecodeError, OSError) as exc:
         # RuntimeError: a parse / missing-or-cyclic-#include failure (clingo logged the detail to
         # `messages`); UnicodeDecodeError: a source byte reaching Python through a diagnostic;
         # OSError: unreadable.
-        names = ", ".join(str(path) for path in files)
         # Both, never one or the other: the logger holds the provenance but accumulates routine
         # notices too, so a fault raised after a clean parse would otherwise be reported as
         # whichever harmless notice was logged first, with the real cause dropped.
         parts = [*messages, str(exc)]
         if within is not None and (escaped := _strangers(parts, within.root)):
             raise ContainmentError(
-                f"{names}: {within.refusal(escaped)} The solver's own diagnostic is withheld "
-                "rather than repeated here — part of it describes a file the run was never "
-                "pointed at, and the parts cannot be separated safely."
+                f"{within.refusal(escaped)} The solver's own diagnostic is withheld rather than "
+                "repeated here — part of it describes a file the run was never pointed at, and "
+                "the parts cannot be separated safely."
             ) from exc
         detail = "; ".join(parts)
         # The include advice is specific enough to act on, so it is offered only when it is the
@@ -334,11 +340,11 @@ def _parse_faults(
             if "could not be opened" in detail
             else ""
         )
-        raise ProgramError(f"cannot resolve the program ({names}): {detail}{hint}") from exc
+        raise ProgramError(f"cannot resolve the program: {detail}{hint}") from exc
 
 
 @contextmanager
-def _walk_faults(files: tuple[Path, ...]) -> Iterator[None]:
+def _walk_faults() -> Iterator[None]:
     """Translate the one failure of elenctic's own walk that belongs to the program: a source byte
     that is not valid UTF-8, which clingo decodes lazily and so raises here rather than at parse.
 
@@ -353,10 +359,9 @@ def _walk_faults(files: tuple[Path, ...]) -> Iterator[None]:
     try:
         yield
     except UnicodeDecodeError as exc:
-        names = ", ".join(str(path) for path in files)
         raise ProgramError(
-            f"cannot read the program ({names}): a byte in the source is not valid UTF-8, which "
-            f"the solver requires — re-encode the file as UTF-8 ({exc})"
+            "cannot read the program: a byte in the source is not valid UTF-8, which the solver "
+            f"requires — re-encode the file as UTF-8 ({exc})"
         ) from exc
 
 

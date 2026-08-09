@@ -382,12 +382,17 @@ def test_every_locus_a_case_can_fail_under_is_accounted_for_to_a_reader(
 # same way — including a wrong one. The deadline says nothing here because it is said once at the
 # end, from the whole register: one passed deadline is one event costing many cases their result,
 # and a line apiece would bury the reason under its own consequences.
+#
+# Every locus names the file, and that is the point of the table now as much as the heading is. It
+# used to name it for three loci and withhold it for four, keyed on the locus — while what the split
+# was reaching for was whether that locus's *message* happened to carry provenance of its own, which
+# is not a property of the locus at all.
 _SAID_ABOUT: dict[ErrorKind, str] = {
     ErrorKind.DEADLINE: "",
-    ErrorKind.CONTRACT: "CONTRACT ERROR — the reason it produced none\n",
-    ErrorKind.DISCOVERY: "DISCOVERY ERROR — the reason it produced none\n",
-    ErrorKind.ENVIRONMENT: "ENVIRONMENT ERROR — the reason it produced none\n",
-    ErrorKind.CONTAINMENT: "CONTAINMENT ERROR — the reason it produced none\n",
+    ErrorKind.CONTRACT: "CONTRACT ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.DISCOVERY: "DISCOVERY ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.ENVIRONMENT: "ENVIRONMENT ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.CONTAINMENT: "CONTAINMENT ERROR — case.lp: the reason it produced none\n",
     ErrorKind.PROGRAM: "PROGRAM ERROR — case.lp: the reason it produced none\n",
     ErrorKind.RESOURCE: "RESOURCE ERROR — case.lp: the reason it produced none\n",
     ErrorKind.HARNESS: "HARNESS ERROR — case.lp: the reason it produced none\n",
@@ -404,15 +409,54 @@ _SAID_ABOUT: dict[ErrorKind, str] = {
 # frame has no tail to defer to. Neither is reachable — discovery files no deadline — so what the
 # two rows record is the rule each frame would follow, not a difference a run can produce.
 _SAID_ABOUT_AN_UNUSABLE_FILE: dict[ErrorKind, str] = {
-    ErrorKind.DEADLINE: "DEADLINE ERROR — the reason it produced none\n",
-    ErrorKind.CONTRACT: "CONTRACT ERROR — the reason it produced none\n",
-    ErrorKind.DISCOVERY: "DISCOVERY ERROR — the reason it produced none\n",
-    ErrorKind.ENVIRONMENT: "ENVIRONMENT ERROR — the reason it produced none\n",
-    ErrorKind.CONTAINMENT: "CONTAINMENT ERROR — the reason it produced none\n",
-    ErrorKind.PROGRAM: "PROGRAM ERROR — the reason it produced none\n",
-    ErrorKind.RESOURCE: "RESOURCE ERROR — the reason it produced none\n",
-    ErrorKind.HARNESS: "HARNESS ERROR — the reason it produced none\n",
+    ErrorKind.DEADLINE: "DEADLINE ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.CONTRACT: "CONTRACT ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.DISCOVERY: "DISCOVERY ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.ENVIRONMENT: "ENVIRONMENT ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.CONTAINMENT: "CONTAINMENT ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.PROGRAM: "PROGRAM ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.RESOURCE: "RESOURCE ERROR — case.lp: the reason it produced none\n",
+    ErrorKind.HARNESS: "HARNESS ERROR — case.lp: the reason it produced none\n",
 }
+
+
+# And with a line, which is the coordinate the record could not hold until this release and the
+# reason the split above existed at all. One spelling, `file:line:`, which is what clingo, rustc and
+# pytest all write and what an ASP author's editor already knows how to open.
+#
+# Over every locus rather than the two that produce one today. A locus that begins carrying a line
+# later must render it the same way, and the alternative — a table over what a run currently files —
+# is the shape that let a renderer answer for four loci and be checked on three.
+_SAID_ABOUT_A_COORDINATE: dict[ErrorKind, str] = {
+    ErrorKind.DEADLINE: "",
+    ErrorKind.CONTRACT: "CONTRACT ERROR — case.lp:7: the reason it produced none\n",
+    ErrorKind.DISCOVERY: "DISCOVERY ERROR — case.lp:7: the reason it produced none\n",
+    ErrorKind.ENVIRONMENT: "ENVIRONMENT ERROR — case.lp:7: the reason it produced none\n",
+    ErrorKind.CONTAINMENT: "CONTAINMENT ERROR — case.lp:7: the reason it produced none\n",
+    ErrorKind.PROGRAM: "PROGRAM ERROR — case.lp:7: the reason it produced none\n",
+    ErrorKind.RESOURCE: "RESOURCE ERROR — case.lp:7: the reason it produced none\n",
+    ErrorKind.HARNESS: "HARNESS ERROR — case.lp:7: the reason it produced none\n",
+}
+
+
+@pytest.mark.parametrize("kind", list(ErrorKind))
+def test_a_fault_that_names_a_line_is_announced_at_that_coordinate(
+    kind: ErrorKind, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The whole line again, so that the separator between the file and the line, and the one between
+    # the coordinate and the message, are both pinned. A substring assertion here would be satisfied
+    # by a renderer that printed the number anywhere at all.
+    record = ErrorRecord(
+        kind=kind,
+        scope=Scope.CASE,
+        source=Path("case.lp"),
+        message="the reason it produced none",
+        line=7,
+    )
+
+    _TerminalRun().case_unjudged(record)
+
+    assert capsys.readouterr().err == _SAID_ABOUT_A_COORDINATE[kind]
 
 
 # And the same loci when the fault cost the whole run. Lower case and a colon rather than capitals

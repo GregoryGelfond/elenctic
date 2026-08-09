@@ -32,7 +32,9 @@ _CURATED = {
     # running a whole corpus, watching it, and reading what it produced
     "Invocation", "run_corpus", "explain_corpus", "Observer", "RunObserver", "PlanObserver",
     "RunOutcome", "PlanOutcome", "Outcome", "CaseOutcome", "CasePlan", "ErrorRecord", "ErrorKind",
-    "HygieneRecord", "HygieneKind", "HygieneReport", "Grade", "Scope", "summary", "error_kind",
+    "HygieneRecord", "HygieneKind", "HygieneReport", "Grade", "Scope", "summary",
+    # the two readers of a caught fault: where it lies, and what it says plus the line it says it at
+    "error_kind", "error_detail",
     "is_duration", "exit_status", "ExitStatus",
     # the published document, and making corpus-controlled text safe to show
     "as_json", "dumps", "schema_text", "SCHEMA_VERSION", "legible",

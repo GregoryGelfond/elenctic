@@ -725,17 +725,16 @@ class _Terminal(Observer):
     than display can forge a verdict in the report it appears in.
     """
 
-    # Neither line names its file, and that is not an omission: a discovery diagnostic carries its
-    # own provenance, so repeating the path would print it twice on one line. What differs is what
-    # the fault cost — a corpus nothing could be read from, or one file among others that will
-    # produce no verdict while the rest of the corpus still runs — and the run says which by which
-    # of these it calls, so nothing here has to ask a record what it was.
+    # Both go through the one renderer, so a fault reads the same whichever frame met it. What
+    # differs is what the fault cost — a corpus nothing could be read from, or one file among others
+    # that will produce no verdict while the rest of the corpus still runs — and the run says which
+    # by which of these it calls, so nothing here has to ask a record what it was.
 
     def corpus_unreadable(self, record: ErrorRecord) -> None:
-        print(f"{_heading(record.kind, record.scope)} {_text(record.message)}", file=sys.stderr)
+        print(_announced(record), file=sys.stderr)
 
     def case_unusable(self, record: ErrorRecord) -> None:
-        print(f"{_heading(record.kind, record.scope)} {_text(record.message)}", file=sys.stderr)
+        print(_announced(record), file=sys.stderr)
 
 
 class _TerminalRun(_Terminal):
@@ -793,43 +792,22 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
     """What a reader is told about one case that produced no verdict — or ``None`` where the report
     says it once at the end instead.
 
-    Total over the vocabulary rather than over what a run happens to produce, so a locus added later
-    has to be given a sentence here instead of silently printing nothing: a case that produced no
-    verdict and no line has disappeared from the reader's view of the corpus, while still being
-    counted in the tally that says how many did not run.
+    One arm decides, and it is about *when* a fault is said rather than about what it says. A
+    passed deadline costs every case it did not reach, and a line apiece would bury the reason under
+    its own consequences, so its records are still filed per case — where they can say which case —
+    and the sentence is rendered from the whole register once the run is over. Every other locus is
+    announced where it is met.
 
-    The split between the arms that name the file and the arms that do not is **keyed on the locus,
-    and the property it is reaching for belongs to the message**: some of these messages already say
-    where they happened and some do not, and a line that names the file twice reads as two faults.
-    For two of the three loci below the two coincide; for a program fault they do not, and the
-    ordinary run-time diagnostic prints its path more than once as a result. Anyone adding a locus
-    should read this as "does this locus's message carry its own provenance?" and know that the
-    answer is not always a property of the locus. Settling it properly means deciding where
-    provenance lives — in the message, or in the record's ``source`` with the renderer placing it —
-    and that is a change to what a caller catching one of these sees, not a change to a heading.
+    Nothing here is keyed on the locus otherwise, and that is the whole of what changed. This used
+    to name the file for three loci and withhold it for four, reaching for whether a locus's
+    *message* happened to carry provenance of its own — which is not a property of the locus, so the
+    answer was right for some of the messages each arm covered and wrong for the rest. The fact now
+    has one home (:class:`~elenctic.outcome.ErrorRecord`'s ``source`` and ``line``) and one
+    renderer, so there is no question left for an arm to answer.
     """
-    match record.kind:
-        case ErrorKind.DEADLINE:
-            # Said once, at the end. One passed deadline costs every case it did not reach, and a
-            # line apiece would bury the reason under its own consequences — so the record is still
-            # filed per case, where it can say which case, and the sentence is rendered from the
-            # whole register once the run is over.
-            return None
-        case ErrorKind.CONTRACT:
-            # A malformed contract is met while a case is being read, so it reaches a reader
-            # through `unusable` and not here. The arm is what keeps this total: were a run ever
-            # to file one, it would be shown the way every other contract fault is shown.
-            return f"{_heading(record.kind, record.scope)} {_text(record.message)}"
-        case ErrorKind.DISCOVERY | ErrorKind.ENVIRONMENT | ErrorKind.CONTAINMENT:
-            # An environment fault reaches a reader here and not through `unusable`, because the
-            # declared solver is checked per case at run time rather than during the corpus walk.
-            # Its message names the case, as every diagnostic raised from discovery does — and so
-            # does a containment refusal, whichever of the two frames raised it.
-            return f"{_heading(record.kind, record.scope)} {_text(record.message)}"
-        case ErrorKind.PROGRAM | ErrorKind.RESOURCE | ErrorKind.HARNESS:
-            return f"{_heading(record.kind, record.scope)} {_against(record)}"
-        case unreachable:
-            assert_never(unreachable)
+    if record.kind is ErrorKind.DEADLINE:
+        return None
+    return _announced(record)
 
 
 def _text(value: str | Path) -> str:
@@ -880,23 +858,30 @@ def _heading(kind: ErrorKind, scope: Scope) -> str:
             assert_never(unreachable)
 
 
-def _against(record: ErrorRecord) -> str:
-    """A fault named against the file it belongs to, for the loci whose messages may say what went
-    wrong without saying where.
+def _announced(record: ErrorRecord) -> str:
+    """One record as one line: where it is, and what is wrong there.
 
-    Both halves are sanitized, and neither is elenctic's own text: the message is the solver's or an
-    exception's, and the path is a filename the corpus chose. Text a reader's terminal would act on
+    The one renderer for a record, whichever frame met the fault and whatever it was about. Three
+    frames announce records — a corpus nothing could be read from, a file discovery could not use,
+    and a case a run could not judge — and they used to compose their own line, which is how one
+    fault came to be printed three ways depending on where it was caught.
+
+    ``source:line:`` is the one spelling, the one clingo, rustc and pytest all write and the one
+    an author's editor already knows how to open. A record with no line has no coordinate, so it
+    names the file alone; a corpus-level fault belongs to no file and gets the message by itself.
+    That last case is not a precondition waived: the only way to state one here would be to render
+    the word ``None`` at a reader, which says a file called None rather than no file at all.
+
+    Both halves are sanitized, and neither is elenctic's own text: the message quotes the solver or
+    an exception, and the path is a filename the corpus chose. Text a reader's terminal would act on
     rather than display can move a cursor over a line already printed, which is how a diagnostic
-    forges a verdict in the report it appears in.
-
-    Every record reaching here carries a source today, because every frame that files a case-scoped
-    fault of these loci has a case in hand to name. It is not written as a precondition, because the
-    only way to state one here is to render the word ``None`` at a reader — which says a file called
-    None rather than no file at all, and is worse than saying nothing. A record without a source
-    gets the message, which is what the loci that never name a file get."""
+    forges a verdict in the report it appears in. The line number is elenctic's own count and is
+    rendered as the integer it is."""
+    heading = _heading(record.kind, record.scope)
     if record.source is None:
-        return _text(record.message)
-    return f"{_text(record.source)}: {_text(record.message)}"
+        return f"{heading} {_text(record.message)}"
+    at = _text(record.source) if record.line is None else f"{_text(record.source)}:{record.line}"
+    return f"{heading} {at}: {_text(record.message)}"
 
 
 def _render_tail(outcome: Outcome, invocation: Invocation) -> str:

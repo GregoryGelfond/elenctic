@@ -182,10 +182,23 @@ def test_notes_survive_discovery(tmp_path: Path) -> None:
     assert discovered.expectation.notes == ("the budget forces a detour",)
 
 
-def test_malformed_contract_propagates_a_sourced_error(tmp_path: Path) -> None:
-    case = write(tmp_path / "bad.lp", "% @model { a }\n")  # no @expect
-    with pytest.raises(ContractError, match=r"bad\.lp"):
+def test_malformed_contract_propagates_the_line_it_is_wrong_on(tmp_path: Path) -> None:
+    # The coordinate is what a caller could not have worked out for itself — it passed the file in.
+    # Line 2 rather than line 1, so that a renderer answering with a constant fails here.
+    case = write(tmp_path / "bad.lp", "% @note a first tag\n% @expect banana\n")
+    with pytest.raises(ContractError, match=r"bad\.lp:2: ") as caught:
         discover(case)
+    assert caught.value.line == 2, "carried as a number too, for whoever is not reading prose"
+
+
+def test_a_whole_contract_fault_has_no_line_to_name(tmp_path: Path) -> None:
+    # The other footing: some contract faults are about the contract rather than about one of its
+    # lines, and inventing a line for them would point a reader at a tag that is not the problem.
+    case = write(tmp_path / "bad.lp", "% @model { a }\n")  # no @expect
+    with pytest.raises(ContractError) as caught:
+        discover(case)
+    assert caught.value.line is None
+    assert str(caught.value) == caught.value.reason, "nothing to site it at, so nothing prefixed"
 
 
 def test_shown_vocabulary_is_sign_and_arity_aware(tmp_path: Path) -> None:

@@ -34,7 +34,7 @@ from elenctic.outcome import (
 
 __all__ = ["SCHEMA_VERSION", "as_json", "dumps", "schema_text"]
 
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 2
 """The version of the document's shape.
 
 It changes when a field is added or removed, or when one of the closed enumerations gains a member
@@ -135,6 +135,11 @@ def _error(record: ErrorRecord) -> dict[str, object]:
         "is_elenctic_bug": record.kind.is_elenctic_bug,
         "scope": record.scope.value,
         "source": None if record.source is None else _text(record.source),
+        # Beside the file rather than spelled into the message, on the same terms a check's line is:
+        # a consumer placing a diagnostic reads a number, and a message it would have to parse one
+        # out of is a message it is not allowed to depend on. Null where the fault names no single
+        # line, which is most of them.
+        "line": record.line,
         "message": _text(record.message),
     }
 

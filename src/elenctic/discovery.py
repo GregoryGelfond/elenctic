@@ -11,14 +11,17 @@ Discovery enforces the preconditions and the theory-presence gate over the
 **resolved program** (:func:`check_program` over :func:`elenctic.program.inspect`), not the
 case-file text — so an encoding moved into an ``#include``d library is still gated correctly. It is
 loud, never silent: a precondition violation is a :class:`DiscoveryError`, a malformed contract the
-sourced :class:`~elenctic.expectation.ContractError`, a bad ``#include`` / non-UTF-8 program the
-:class:`~elenctic.program.ProgramError` — each with provenance, never a raw clingo trace. Pure over
-the tree (filesystem reads its only effect); only ``solvers.py`` touches a solver.
+:class:`~elenctic.expectation.ContractError`, a bad ``#include`` / non-UTF-8 program the
+:class:`~elenctic.program.ProgramError` — each a friendly sentence, never a raw clingo trace. Each
+says what is wrong and, where it has one the caller could not know, the contract line it is wrong
+on; which *file* is the caller's — it passed the path in, and a record filing the fault carries it
+as a field. Pure over the tree (filesystem reads its only effect); only ``solvers.py`` touches a
+solver.
 
 The collection scan reads tolerantly (``errors="replace"``): the contract tags are ASCII, so a
 non-UTF-8 *library* is simply skipped, while a non-UTF-8 *case* is collected and then rejected with
-a friendly, ``source:line``-carrying diagnostic — a ``ContractError`` if the bad byte falls in a
-parsed ``@``-payload, otherwise a ``ProgramError`` at the resolved-program inspection.
+a friendly diagnostic — a ``ContractError`` at the offending ``source:line`` if the bad byte falls
+in a parsed ``@``-payload, otherwise a ``ProgramError`` at the resolved-program inspection.
 
 A ``@query`` is answered off the *shown projection* of each answer set, so a program that does not
 make a queried literal observable cannot answer the query at all — elenctic's answer would then
@@ -40,7 +43,14 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import assert_never
 
-from elenctic.expectation import ContractError, Expectation, Sat, has_contract, parse_contract
+from elenctic.expectation import (
+    ContractError,
+    Expectation,
+    Sat,
+    has_contract,
+    parse_contract,
+    sited,
+)
 from elenctic.program import (
     Boundary,
     ContainmentError,
@@ -71,7 +81,19 @@ __all__ = [
 class DiscoveryError(Exception):
     """A corpus that violates a discovery-time precondition or an
     explicitly-named contract-free file. Loud by design — discovery never silently drops a
-    case nor silently mis-classifies one."""
+    case nor silently mis-classifies one.
+
+    Carries the coordinate as data on the same terms
+    :class:`~elenctic.expectation.ContractError` does, and for the same reason: most of these faults
+    are about a whole file, but the two that refuse an unanswerable ``@query`` are about the
+    contract line that wrote it, and a record wants that line as a number rather than spelled into
+    prose it would have to parse back out. The **file** is not carried — whoever called
+    :func:`check_program` or :func:`walk` passed it in."""
+
+    def __init__(self, reason: str, *, source: Path | None = None, line: int | None = None) -> None:
+        super().__init__(sited(reason, None if source is None else str(source), line))
+        self.reason = reason
+        self.line = line
 
 
 class SolverUnavailableError(DiscoveryError, ImportError):
@@ -234,15 +256,15 @@ def _classify(target: Path) -> _Walk:
     """
     if not target.exists():
         raise DiscoveryError(
-            f"{target}: no such file or directory — a named target that does not exist tests "
-            "nothing; a silent pass would hide a typo or a moved file (loud over silent)"
+            "no such file or directory — a named target that does not exist tests nothing; a "
+            "silent pass would hide a typo or a moved file (loud over silent)"
         )
     if target.is_file():
         text = _read(target)
         if not has_contract(text):
             raise DiscoveryError(
-                f"{target}: not a case — it carries no elenctic contract tag. A "
-                "contract-free .lp is a library (an #include target), not a runnable case."
+                "not a case — it carries no elenctic contract tag. A contract-free .lp is a "
+                "library (an #include target), not a runnable case."
             )
         # A named file gives no directory to take as the corpus, so its own is the boundary: a
         # sibling library is reachable, the tree above it is not.
@@ -288,11 +310,20 @@ def _read(path: Path) -> str:
     (friendly, with ``source:line``) at whichever stage first decodes the bad byte — ``parse`` for a
     contract ``@``-payload, else the resolved-program inspection. An unreadable entry — a directory
     or a broken symlink named ``*.lp`` (both matched by ``rglob``), or a permission-denied file — is
-    a friendly ``DiscoveryError`` with provenance, never a raw trace."""
+    a friendly ``DiscoveryError``, never a raw trace; which file it was is the record's to carry.
+
+    The reason is taken from ``strerror`` and not from the exception's own text, which spells the
+    path into itself — so a record that already names the file printed it twice on one line, once as
+    its own claim and once inside a quoted ``[Errno 21] Is a directory: 'c/dir.lp'``. Unlike the
+    solver's, that copy carries no coordinate and so says nothing the record has not said. The errno
+    goes with it: a number a corpus author cannot act on, beside a sentence they can.
+
+    ``strerror`` is documented as sometimes absent, so the exception's text is the fallback — a
+    duplicated path being better than a reason that is the word ``None``."""
     try:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        raise DiscoveryError(f"{path}: cannot read this .lp entry — {exc}") from exc
+        raise DiscoveryError(f"cannot read this .lp entry — {exc.strerror or exc}") from exc
 
 
 def _within_root(sources: frozenset[Path], boundary: Boundary, path: Path) -> None:
@@ -320,7 +351,7 @@ def _within_root(sources: frozenset[Path], boundary: Boundary, path: Path) -> No
     # climbs out is judged where it lands.
     escaped = sorted(str(source) for source in sources if not source.is_relative_to(boundary.root))
     if escaped:
-        raise ContainmentError(f"{path}: {boundary.refusal(escaped)}")
+        raise ContainmentError(boundary.refusal(escaped))
 
 
 def _make_case(path: Path, text: str, boundary: Boundary) -> tuple[Case, bool, frozenset[Path]]:
@@ -351,11 +382,16 @@ def _installed(module: str) -> bool:
         return False
 
 
-def check_solver_available(solver: Solver, where: Path) -> None:
+def check_solver_available(solver: Solver) -> None:
     """Check the declared ``solver`` is installed, before a run reaches its facade. Loud
     (``DiscoveryError``), never a verdict: a case whose solver is absent cannot be run at all, so
     there is no answer to report about it, and an import failure raised from inside a solver facade
     names none of what the reader needs.
+
+    It takes no file to name. It used to, and the file was spelled into the refusal — where it said
+    nothing the caller did not already hold, since a caller asks this question about a case it has
+    in hand. What the reader needs it to say is which *solver*, and where the fault is recorded is
+    the record's to carry.
 
     Checked **per case, at run time** rather than during the corpus walk. An absent optional backend
     then costs only the cases that declare it — the rest of the corpus still runs and still reports,
@@ -370,8 +406,7 @@ def check_solver_available(solver: Solver, where: Path) -> None:
     # grow, and a second optional backend makes it live the day it is added.
     remedy = THEORY_EXTRA_ADVICE if provides_theory(solver) else f"add {module} to your environment"
     raise SolverUnavailableError(
-        f"{where}: this case declares @elenctic solver {solver}, but {module} is not installed "
-        f"— {remedy}"
+        f"this case declares @elenctic solver {solver}, but {module} is not installed — {remedy}"
     )
 
 
@@ -386,25 +421,25 @@ def check_program(
     contract-side theory gates are complementary duals; both are required."""
     if facts.has_theory_atom and not provides_theory(solver):
         raise DiscoveryError(
-            f"{where}: the resolved program has a theory atom (&…), but the solver is {solver}, "
-            "which does not interpret it — clingo grounds theory atoms and silently ignores the "
+            f"the resolved program has a theory atom (&…), but the solver is {solver}, which "
+            "does not interpret it — clingo grounds theory atoms and silently ignores the "
             "constraints (a wrong PASS). Declare @elenctic solver clingcon"
         )
     if not isinstance(expectation, Sat):
         return
     if expectation.requires_theory and not provides_theory(solver):
         raise DiscoveryError(
-            f"{where}: a theory binding (@assign, @assign optimal, or a where-witness) reads the "
-            f"theory half of the observable, so it needs a theory solver (clingcon), not {solver}"
+            "a theory binding (@assign, @assign optimal, or a where-witness) reads the theory "
+            f"half of the observable, so it needs a theory solver (clingcon), not {solver}"
         )
     if expectation.requires_optimization and not facts.has_optimization:
         raise DiscoveryError(
-            f"{where}: @cost/@optimal/an optimal-base tag needs an optimizing encoding "
+            "@cost/@optimal/an optimal-base tag needs an optimizing encoding "
             "(#minimize/#maximize/:~), but the resolved program has none"
         )
     if expectation.reads_all_answer_sets and facts.has_theory_optimization:
         raise DiscoveryError(
-            f"{where}: @model/@count/@assign/@cautious/@brave/@query read AS(P), the whole "
+            "@model/@count/@assign/@cautious/@brave/@query read AS(P), the whole "
             "answer-set collection, which elenctic cannot compute over a theory-native objective "
             "(&minimize/&maximize): the theory's propagator drives the search to the optimum, and "
             "no clingo setting switches that off, so the enumeration would silently cover only "
@@ -413,9 +448,9 @@ def check_program(
         )
     if expectation.cost is not None and facts.has_maximize:
         raise DiscoveryError(
-            f"{where}: @cost over a #maximize objective is not supported — clingo reports a "
-            "maximize cost in negated form, and natural-value normalisation is deferred. Use "
-            "#minimize, or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
+            "@cost over a #maximize objective is not supported — clingo reports a maximize "
+            "cost in negated form, and natural-value normalisation is deferred. Use #minimize, "
+            "or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
         )
     _check_queries_are_answerable(expectation, facts.shown, where)
 
@@ -445,11 +480,13 @@ def _check_queries_are_answerable(expectation: Sat, shown: ShownVocabulary, wher
         # Asked first, and of both states: an unrestricted program loses nothing, which says
         # nothing about what a display directive may add on top.
         if displayed := reads & shown.displayed:
-            raise DiscoveryError(_displayed_not_declared(where, query.line, displayed))
+            raise DiscoveryError(_displayed_not_declared(displayed), source=where, line=query.line)
         match shown:
             case Restricted(signatures=signatures):
                 if missing := reads - signatures:
-                    raise DiscoveryError(_undeclared(where, query.line, missing, signatures))
+                    raise DiscoveryError(
+                        _undeclared(missing, signatures), source=where, line=query.line
+                    )
             case Unrestricted():
                 # Every literal of every answer set reaches the output, and the clause above has
                 # already established that nothing this query reads arrives by any other route.
@@ -468,9 +505,7 @@ def _why_it_matters(remedy: str) -> str:
     )
 
 
-def _undeclared(
-    where: Path, line: int, missing: frozenset[Signature], signatures: frozenset[Signature]
-) -> str:
+def _undeclared(missing: frozenset[Signature], signatures: frozenset[Signature]) -> str:
     """The refusal for a query reading a signature the program does not declare observable.
 
     The sentence says what the program *declares*, which is what this vocabulary knows. It
@@ -484,12 +519,12 @@ def _undeclared(
     )
     remedy = "Declare " + " ".join(f"#show {name}/{arity}." for name, arity in sorted(missing))
     return (
-        f"{where}:{line}: this @query reads {_signature_list(missing)}, which the program does not "
-        f"declare observable — {declares}." + _why_it_matters(remedy)
+        f"this @query reads {_signature_list(missing)}, which the program does not declare "
+        f"observable — {declares}." + _why_it_matters(remedy)
     )
 
 
-def _displayed_not_declared(where: Path, line: int, displayed: frozenset[Signature]) -> str:
+def _displayed_not_declared(displayed: frozenset[Signature]) -> str:
     """The refusal for a query reading a signature a ``#show <term> : <body>.`` directive displays.
 
     Named as its own refusal rather than folded into the one above, because it is a different fault
@@ -514,8 +549,8 @@ def _displayed_not_declared(where: Path, line: int, displayed: frozenset[Signatu
         "body holds, declared with `#show <name>/<arity>.` — and then claim that"
     )
     return (
-        f"{where}:{line}: this @query reads {_signature_list(displayed)}, which the program "
-        f"displays with {directives}. Such a directive emits its term wherever its body holds, so "
+        f"this @query reads {_signature_list(displayed)}, which the program displays with "
+        f"{directives}. Such a directive emits its term wherever its body holds, so "
         "the predicate reaches the output for some ground instances and not others — and the term "
         "need not be an atom of the program at all, so the output can carry a symbol no answer set "
         "contains." + _why_it_matters(remedy)

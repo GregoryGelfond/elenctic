@@ -19,8 +19,11 @@ Four responsibilities:
   ``% Run: …`` header), not part of the litset. The run must also be unbroken — each
   continuation on the line after the last — so a litset never absorbs a comment written on the
   far side of a rule. ``_blocks`` tracks both.
-- **Provenance.** ``parse(text, source=None)`` carries ``source:line`` (or ``line N``)
-  into every diagnostic; discovery passes the file path as ``source``.
+- **Provenance.** A diagnostic about one offending tag is sited at ``source:line`` (or
+  ``line N``, for a caller who parsed text from nowhere); discovery passes the file path as
+  ``source``. One about the contract as a whole has no line to be sited at, and so is the reason
+  alone — the file being what the caller passed in. Both carry the coordinate as data as well
+  (``ContractError.line``), which is what a record reads rather than parsing the sentence back.
 - **Single source of truth via a typed builder.** Tags accumulate into a typed
   ``_Builder`` rather than an untyped state dict, so the construction of ``Sat`` needs no casts.
 
@@ -60,7 +63,46 @@ __all__ = [
 
 
 class ContractError(Exception):
-    """An ill-formed or inconsistent contract block. Carries source:line provenance."""
+    """An ill-formed or inconsistent contract block.
+
+    Carries the coordinate as **data** — ``reason`` is what is wrong, ``line`` is the contract line
+    it is wrong on — and composes ``source:line: reason`` for ``str()``. Both, because two consumers
+    want different things from one fault: a caller catching this wants a self-describing sentence,
+    while :class:`~elenctic.outcome.ErrorRecord` already holds the file and needs the reason
+    without it. Recovering the reason by stripping a prefix off ``str()`` would be string surgery
+    over a path the corpus author chose, which is the shape of rule this package has already
+    retired once.
+
+    The **file** is not carried, and that asymmetry is the rule rather than an oversight: a fault
+    states the provenance its raiser's caller could not already know. Whoever called
+    :func:`parse_contract` passed ``source``; nobody outside can know the line. And a line is
+    spelled with its file because half a coordinate points at line 3 of nothing."""
+
+    def __init__(self, reason: str, *, source: str | None = None, line: int | None = None) -> None:
+        super().__init__(sited(reason, source, line))
+        self.reason = reason
+        self.line = line
+
+
+def sited(reason: str, source: str | None, line: int | None) -> str:
+    """``reason`` announced at the coordinate it belongs to, in the one spelling this package uses.
+
+    ``source:line`` — what clingo, rustc and pytest all write, and what an author's editor already
+    knows how to open. A fault with no line has no coordinate, so it is the reason alone: the file
+    on its own is what its caller passed in, and repeating that is the duplication this spelling
+    exists to end.
+
+    A caller may parse text that came from nowhere — :func:`parse` takes ``source=None`` — and then
+    the line is real while the file is not, so it is spelled out in words. Rendering ``None`` where
+    a path goes would name a file called None rather than no file at all, which is the one thing
+    worse here than saying nothing.
+
+    Here rather than in each carrier because two disjoint exception roots compose one, and this
+    module owns the contract coordinate — the same argument :func:`require_line` makes for living
+    here while its other callers do not."""
+    if line is None:
+        return reason
+    return f"line {line}: {reason}" if source is None else f"{source}:{line}: {reason}"
 
 
 def require_line(line: int) -> None:
@@ -297,7 +339,7 @@ def parse_contract(text: str, source: str | None = None) -> Contract:
         try:
             _apply(block, builder)
         except (ValueError, RuntimeError) as exc:
-            raise ContractError(f"{_location(source, block.line)}: {exc}") from exc
+            raise ContractError(str(exc), source=source, line=block.line) from exc
     solver = _interpret_directives(solver_blocks, source)
     return Contract(expectation=_finish(builder, source), solver=solver)
 
@@ -629,9 +671,11 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
             # stop — is the shape that decided it, since dropping that one is a wrong answer
             # while refusing a comment is a refusal the author can answer.
             raise ContractError(
-                f"{_location(source, comment.line)}: dangling `where`: a `where {{ … }}` clause "
-                "qualifies a @model / @optimal witness — write it on that tag's litset-closing "
-                "line, or on a continuation line while the litset's brace is still open"
+                "dangling `where`: a `where { … }` clause qualifies a @model / @optimal witness — "
+                "write it on that tag's litset-closing line, or on a continuation line while the "
+                "litset's brace is still open",
+                source=source,
+                line=comment.line,
             )
     close()  # a brace still open at end of input keeps whatever was gathered under it
     return blocks
@@ -1026,18 +1070,17 @@ def _model_bearing_tags(builder: _Builder) -> list[str]:
     return present
 
 
-def _location(source: str | None, line: int) -> str:
-    return f"{source}:{line}" if source is not None else f"line {line}"
-
-
 def _fail_contract(source: str | None, message: str) -> NoReturn:
-    """Raise a contract-level ``ContractError`` (whole-contract inconsistency, no single line)."""
-    raise ContractError(f"{source}: {message}" if source is not None else message)
+    """Raise a contract-level ``ContractError`` (whole-contract inconsistency, no single line).
+
+    ``source`` is taken and not spelled into the sentence: it names no line, so there is no
+    coordinate to give, and the file alone is what this function's caller handed in."""
+    raise ContractError(message, source=source)
 
 
 def _fail_at(source: str | None, line: int, message: str) -> NoReturn:
-    """Raise a ``ContractError`` for a single offending directive line, with ``source:line``."""
-    raise ContractError(f"{_location(source, line)}: {message}")
+    """Raise a ``ContractError`` for a single offending directive line, at ``source:line``."""
+    raise ContractError(message, source=source, line=line)
 
 
 def _main() -> None:

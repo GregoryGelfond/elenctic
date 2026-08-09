@@ -292,6 +292,31 @@ def test_an_error_record_always_carries_a_message() -> None:
         ErrorRecord(kind=ErrorKind.PROGRAM, scope=Scope.CASE, source=Path("a.lp"), message="")
 
 
+def test_a_line_without_a_file_names_nothing_and_is_refused() -> None:
+    # The coordinate is a line *within* a file, so half of one is not a coordinate — it points at
+    # line 3 of nothing, and a renderer handed it can only print the number beside a fault that
+    # belongs nowhere. Refused at construction, which is where the two fields are first held
+    # together and the only place that can still say which caller built it.
+    with pytest.raises(ValueError, match="a line belongs to a file"):
+        ErrorRecord(
+            kind=ErrorKind.CONTRACT, scope=Scope.CASE, source=None, message="ill-formed", line=3
+        )
+
+
+def test_an_error_record_line_is_1_based() -> None:
+    # The same invariant every other carrier of a contract coordinate holds, from the one predicate
+    # that states it — so a record cannot come to disagree with the claim, the two contract shapes,
+    # or the check that reads them about what line 0 means.
+    with pytest.raises(ValueError, match="a contract line is 1-based"):
+        ErrorRecord(
+            kind=ErrorKind.CONTRACT,
+            scope=Scope.CASE,
+            source=Path("a.lp"),
+            message="ill-formed",
+            line=0,
+        )
+
+
 def test_a_case_outcome_carries_the_reports_its_verdict_was_folded_from() -> None:
     # A case that checked nothing has not passed; it has not been tested. The fold over an empty set
     # meets neither FAIL nor UNDECIDED and so answers PASS, which would let a run report a clean

@@ -37,7 +37,7 @@ from typing import assert_never
 
 from elenctic.checks import CheckReport
 from elenctic.discovery import Case, DiscoveryError, SolverUnavailableError
-from elenctic.expectation import ContractError
+from elenctic.expectation import ContractError, require_line
 from elenctic.harness import case_verdict
 from elenctic.program import ContainmentError, ProgramError
 from elenctic.result import HarnessError, Verdict
@@ -58,6 +58,7 @@ __all__ = [
     "PlanOutcome",
     "RunOutcome",
     "Scope",
+    "error_detail",
     "error_kind",
     "exit_status",
     "is_duration",
@@ -263,18 +264,43 @@ class CaseOutcome:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ErrorRecord:
-    """One reason a verdict could not be produced. ``source`` is the file it belongs to, or ``None``
-    for a corpus-level fault that belongs to no single file. The message is required: an error whose
-    reason was dropped is not a report."""
+    """One reason a verdict could not be produced, and where it is.
+
+    ``source`` is the file it belongs to, or ``None`` for a corpus-level fault that belongs to no
+    single file; ``line`` narrows that to a **contract line** within it, or ``None`` where the fault
+    names no single line. Together they are the whole of what this record says about *where*, and
+    ``message`` is the whole of what it says about *what* — a fault's reason never restates them,
+    because a fact with two producers is a fact two renderers can print twice and one edit can make
+    disagree. It printed the file twice on one line and three times on another before the two were
+    separated, in two different spellings, and which of the three a reader met was decided by which
+    frame caught the fault.
+
+    A reason may still quote **another tool's** coordinates — clingo reports a ground fault at
+    ``file:line:col``, and that is evidence a reader acts on rather than a second claim about which
+    case this is. What ``line`` holds is elenctic's own reading of its own tags, never a coordinate
+    parsed back out of a diagnostic: that text is the corpus author's to shape, and a rule reading
+    it is a rule the constrained party aims.
+
+    The message is required: an error whose reason was dropped is not a report. A line without a
+    file is refused for the same kind of reason — it points at line 3 of nothing, and a renderer
+    handed one can only print the number beside a fault that belongs nowhere."""
 
     kind: ErrorKind
     scope: Scope
     source: Path | None
     message: str
+    line: int | None = None
 
     def __post_init__(self) -> None:
         if not self.message:
             raise ValueError("an error record carries the reason it was raised")
+        if self.line is not None:
+            if self.source is None:
+                raise ValueError(f"a line belongs to a file, and this record names none: {self}")
+            # The one predicate every carrier of a contract coordinate shares, rather than a fifth
+            # copy of `>= 1` — which is how the claim, the two contract shapes and the check that
+            # reads them would come to disagree about what line 0 means.
+            require_line(self.line)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -495,6 +521,27 @@ def error_kind(exc: Exception) -> ErrorKind:
             return ErrorKind.HARNESS
         case _:
             raise exc
+
+
+def error_detail(exc: Exception) -> tuple[str, int | None]:
+    """What a fault says, and the contract line it says it about — the two facts a record keeps
+    apart.
+
+    Never ``str(exc)``, which composes them with the file: a record already holds the file, so a
+    message built from the composed string states it twice and lets one edit make the two disagree.
+    Recovering the reason by stripping a prefix would be string surgery over a path the corpus
+    author chose, and a rule whose input the constrained party picks is not a rule.
+
+    The sibling of :func:`error_kind`, and the same idiom: that one reads the locus off the class,
+    this reads the coordinate and the reason off the value. Two of the roots carry one, because two
+    of them have something to say the caller could not already know; everything else — a built-in,
+    a program fault, a harness breach — says what it says and names no line.
+    """
+    match exc:
+        case ContractError() | DiscoveryError():
+            return exc.reason, exc.line
+        case _:
+            return str(exc), None
 
 
 def summary(outcome: RunOutcome) -> dict[str, int]:
