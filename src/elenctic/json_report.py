@@ -100,6 +100,13 @@ def schema_text() -> str:
     would otherwise go on printing the description of a document the package no longer produces;
     this way it finds nothing, and a copy of the package missing the file at all is reported the
     same way — as elenctic's own fault, which is what a packaging fault is.
+
+    **A release carries exactly one of these**, and a bump deletes the file it supersedes rather
+    than shipping both. What a superseded description would be for is reading a document an older
+    build wrote — and the release that wrote it still carries its own, so keeping a copy here would
+    put a second answer in the package to a question this package is not where anyone should ask.
+    It is also what keeps the constant the only thing a bump has to touch: there is no set of
+    supported versions to hold in step, and no policy owed about which of them are still served.
     """
     resource = files("elenctic") / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
     return resource.read_text(encoding="utf-8")

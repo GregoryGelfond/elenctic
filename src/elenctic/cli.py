@@ -449,7 +449,11 @@ def _print_schema() -> ExitStatus:
     """
     try:
         description = schema_text()
-    except OSError, UnicodeDecodeError:
+    # Parenthesised deliberately, and pinned so the formatter leaves it: PEP 758 (new in
+    # 3.14) makes the bare form legal and `ruff format` canonicalises to it, but that form
+    # reads as a Python 2 syntax error to anyone whose Python predates 3.14. Same meaning,
+    # and one of the two spellings is misread on sight.
+    except (OSError, UnicodeDecodeError):  # fmt: skip
         unreadable = _unowned_fault(ErrorKind.ENVIRONMENT, _SCHEMA_UNREADABLE)
         print(
             f"{_heading(unreadable.kind, unreadable.scope)} {unreadable.message}", file=sys.stderr

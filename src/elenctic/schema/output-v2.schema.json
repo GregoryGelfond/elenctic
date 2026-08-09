@@ -9,7 +9,7 @@
   "properties": {
     "schema_version": {
       "const": 2,
-      "description": "The version of this contract. It changes when a field is added or removed, or when one of the closed enumerations gains a member — never when a new value appears in one of the open-valued string fields."
+      "description": "The version of this contract. It changes when a field is added or removed, or when one of the closed enumerations gains a member — never when a new value appears in one of the open-valued string fields. A release describes exactly one version — this one. The description of a superseded version is not carried forward, and `--print-schema` always answers for the documents this build actually writes; to read a document an older build wrote, use the release that wrote it."
     },
     "invocation": { "$ref": "#/$defs/invocation" },
     "summary": { "$ref": "#/$defs/summary" },

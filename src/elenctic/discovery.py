@@ -378,7 +378,11 @@ def _installed(module: str) -> bool:
     rather than returning ``None`` for some broken installations, which counts as absent here."""
     try:
         return find_spec(module) is not None
-    except ImportError, ValueError:
+    # Parenthesised deliberately, and pinned so the formatter leaves it: PEP 758 (new in
+    # 3.14) makes the bare form legal and `ruff format` canonicalises to it, but that form
+    # reads as a Python 2 syntax error to anyone whose Python predates 3.14. Same meaning,
+    # and one of the two spellings is misread on sight.
+    except (ImportError, ValueError):  # fmt: skip
         return False
 
 
