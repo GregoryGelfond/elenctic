@@ -76,10 +76,10 @@ anything.)
 rather than asking for new work. Two exceptions are worth knowing about before they surprise you:
 
 - **`T20` forbids `print`** everywhere except the modules that are meant to write to a terminal —
-  the command line, the streams layer it writes through, and the four whose documented
-  `python -m elenctic.<module> <file.lp>` entry prints an inspection of one stage. They are listed
-  in `pyproject.toml`. If you want to see something while debugging, use a module logger; the
-  library writes to no stream, and that is a guarantee its callers rely on.
+  the command line, the renderer that turns a run into prose, the streams layer the command line
+  hands standard output over through, and the four whose documented
+  `python -m elenctic.<module> <file.lp>` entry prints an inspection of one stage. They are listed in `pyproject.toml`. If you want to see something while debugging, use
+  a module logger; the library writes to no stream, and that is a guarantee its callers rely on.
 - **`RET501` is switched off in `corpus.py`**, and only there. The observer protocols spell their
   no-op default bodies `return None`, which the rule objects to — but mypy treats a body that is
   only a docstring as *implicitly abstract*, which would make every announcement mandatory for
@@ -133,7 +133,7 @@ gets you that check for free.
 
 ## Where things are
 
-`src/elenctic/` holds seventeen modules arranged as a pipeline a reader can walk in order, plus the
+`src/elenctic/` holds eighteen modules arranged as a pipeline a reader can walk in order, plus the
 package surface in `__init__.py`.
 Each of `expectation`, `run`, `discovery` and `solvers` is runnable on its own for inspection:
 

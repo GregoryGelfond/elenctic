@@ -9,13 +9,13 @@ from pathlib import Path
 import pytest
 
 from elenctic import corpus
-from elenctic.cli import (
-    _heading,
-    _render_tail,
+from elenctic.cli import main
+from elenctic.human_report import (
+    TerminalPlan,
+    TerminalRun,
     _summary_line,
-    _TerminalPlan,
-    _TerminalRun,
-    main,
+    heading,
+    render_tail,
 )
 from elenctic.outcome import ErrorKind, ErrorRecord, ExitStatus, Invocation, RunOutcome, Scope
 from elenctic.run import RoutingError, runs_for as real_runs_for
@@ -364,7 +364,7 @@ def test_every_locus_a_case_can_fail_under_is_accounted_for_to_a_reader(
         kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
     )
 
-    _TerminalRun().case_unjudged(record)
+    TerminalRun().case_unjudged(record)
 
     said = capsys.readouterr().err
 
@@ -454,7 +454,7 @@ def test_a_fault_that_names_a_line_is_announced_at_that_coordinate(
         line=7,
     )
 
-    _TerminalRun().case_unjudged(record)
+    TerminalRun().case_unjudged(record)
 
     assert capsys.readouterr().err == _SAID_ABOUT_A_COORDINATE[kind]
 
@@ -508,7 +508,7 @@ def test_a_heading_is_the_locus_and_what_it_cost_and_nothing_else(
     # test this replaces: it asserted `startswith(f"{kind.value.upper()} ERROR —")`, which is the
     # implementation's own expression copied into the assertion, so it could not fail while the
     # implementation was self-consistent.
-    assert _heading(kind, scope) == _HEADING[kind, scope]
+    assert heading(kind, scope) == _HEADING[kind, scope]
 
 
 @pytest.mark.parametrize("kind", list(ErrorKind))
@@ -522,7 +522,7 @@ def test_a_file_discovery_could_not_use_is_announced_by_the_locus_of_its_fault(
         kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
     )
 
-    _TerminalRun().case_unusable(record)
+    TerminalRun().case_unusable(record)
 
     assert capsys.readouterr().err == _SAID_ABOUT_AN_UNUSABLE_FILE[kind]
 
@@ -538,7 +538,7 @@ def test_a_fault_that_cost_the_whole_run_is_announced_by_the_locus_of_its_fault(
         kind=kind, scope=Scope.CORPUS, source=None, message="the reason nothing ran"
     )
 
-    _TerminalRun().corpus_unreadable(record)
+    TerminalRun().corpus_unreadable(record)
 
     assert capsys.readouterr().err == _SAID_ABOUT_A_WHOLE_RUN[kind]
 
@@ -563,9 +563,9 @@ def test_one_locus_is_announced_by_one_word_whichever_frame_met_the_fault(
         kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
     )
 
-    _TerminalRun().case_unusable(record)
+    TerminalRun().case_unusable(record)
     reading = capsys.readouterr().err
-    _TerminalRun().case_unjudged(record)
+    TerminalRun().case_unjudged(record)
     running = capsys.readouterr().err
 
     heading = _HEADING[kind, Scope.CASE]
@@ -586,7 +586,7 @@ def test_the_dry_run_says_the_same_thing_about_a_fault_indented_under_its_case(
         kind=kind, scope=Scope.CASE, source=Path("case.lp"), message="the reason it produced none"
     )
 
-    _TerminalPlan().case_unjudged(record)
+    TerminalPlan().case_unjudged(record)
 
     expected = _SAID_ABOUT[kind]
     assert capsys.readouterr().err == (f"    {expected}" if expected else "")
@@ -607,7 +607,7 @@ def test_the_deadline_is_said_once_however_many_cases_it_cost(
         for n in range(3)
     )
 
-    _render_tail(
+    render_tail(
         RunOutcome(cases=(), errors=unreached, hygiene=()),
         Invocation(target=Path("tests"), strict=False, budget=30.0, deadline=5.0),
     )
@@ -666,7 +666,7 @@ def test_a_reader_of_one_merged_stream_is_told_the_deadline_before_the_tally() -
     # value returned. Asking only the tail would now read the deadline notice and nothing after it,
     # and would go on passing however the two came to be ordered.
     with redirect_stdout(merged), redirect_stderr(merged):
-        tally = _render_tail(
+        tally = render_tail(
             RunOutcome(cases=(), errors=unreached, hygiene=()),
             Invocation(target=Path("tests"), strict=False, budget=30.0, deadline=5.0),
         )

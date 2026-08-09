@@ -99,14 +99,17 @@ combine-as-imports = true
 # The package __init__ re-exports the curated API for static visibility (a TYPE_CHECKING block
 # feeding the PEP 562 lazy resolver); those imports are intentional re-exports, not dead code.
 "__init__.py" = ["F401"]
-# The modules that are meant to write to a terminal: the command line, the streams layer it writes
-# through, and the four whose documented `python -m elenctic.<module> <file.lp>` entry point prints
-# an inspection of one stage. Every other module in the package prints nothing, and no test prints —
-# measured, which is what makes T20 a guarantee here rather than a style preference. Note the rule's
-# fix DELETES the print, so an --unsafe-fixes run without these would quietly remove elenctic's own
-# output. The list is the count: a number written above it would be a second place to keep in step,
-# for no gain over reading the four lines under it.
+# The modules that are meant to write to a terminal: the command line, the renderer that turns a run
+# into prose, the streams layer the command line hands standard output over through, and the four
+# whose documented
+# `python -m elenctic.<module> <file.lp>` entry point prints an inspection of one stage. Every other
+# module in the package prints nothing, and no test prints — measured, which is what makes T20 a
+# guarantee here rather than a style preference. Note the rule's fix DELETES the print, so an
+# --unsafe-fixes run without these would quietly remove elenctic's own output. The list is the
+# count: a number written above it would be a second place to keep in step, for no gain over
+# reading the lines under it.
 "src/elenctic/cli.py" = ["T201"]
+"src/elenctic/human_report.py" = ["T201"]
 "src/elenctic/streams.py" = ["T201"]
 "src/elenctic/discovery.py" = ["T201"]
 "src/elenctic/expectation.py" = ["T201"]
