@@ -66,7 +66,7 @@ from elenctic.solvers import TIME_BUDGET
 # validated against a corpus that only passes would say nothing about the shape of the other two
 # registers, which are the ones a consumer has to branch on.
 _PASSES = "% @elenctic solver clingo\n% @expect sat\n% @model { a }\na.\n#show a/0.\n"
-_FAILS = "% @expect sat\n% @cautious { tea }\nbiscuit.\n#show biscuit/0.\n"
+_FAILS = "% @expect sat\n% @cautious { tea }\nbiscuit. { tea }.\n#show biscuit/0.\n#show tea/0.\n"
 _MALFORMED = "% @expect banana\nb.\n"
 _ORPHAN = "% a contract-free file nothing includes.\nhelper(1).\n"
 

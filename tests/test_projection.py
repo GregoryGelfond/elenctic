@@ -62,12 +62,18 @@ def test_a_displayed_non_atom_does_not_enter_the_cautious_consequences(
     silent wrong PASS, measured before the restriction was applied. The query gate does not cover
     this: `@cautious` is not a query, which is the point of holding the property at the seam rather
     than at one tag.
+
+    The program declares nothing, so it is *unrestricted* and the consequence-readability gate
+    passes it through untouched — which is why this still measures the seam. That is the layering,
+    not a gap in it: the gate refuses claims a restricted vocabulary cannot carry, and the filter
+    holds the property the gate never sees, for every program and every backend. Declaring `p/1`
+    here would have the claim refused before a solve, and would test the gate twice over instead.
     """
     path = _case(
         tmp_path,
         "phantom-cautious",
         "% @cautious { hello }\n",
-        "p(a).\n#show p/1.\n#show hello : p(a).\n",
+        "p(a).\n#show hello : p(a).\n",
         solver,
     )
     verdict, messages = _verdict(path)

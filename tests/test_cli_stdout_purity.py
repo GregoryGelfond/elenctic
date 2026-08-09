@@ -253,7 +253,7 @@ print(f"standard error is {standard_error}, sys.stderr is {sys.stderr!r}")
 """
 
 _PASSES = "% @expect sat\n% @cautious { biscuit }\n\nbiscuit.\n#show biscuit/0.\n"
-_FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit.\n#show biscuit/0.\n"
+_FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit. { tea }.\n#show biscuit/0.\n#show tea/0.\n"
 _ORPHAN = "% a contract-free file nothing includes.\nhelper(1).\n"
 
 _NO_REGISTER_ANTICIPATED_THIS = """

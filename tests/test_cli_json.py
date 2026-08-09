@@ -33,7 +33,10 @@ _PASSES = (
     "% @elenctic solver clingo\n% @expect sat\n% @count 2\n\n"
     "1 { tea; coffee } 1.\n#show tea/0.\n#show coffee/0.\n"
 )
-_FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit.\n#show biscuit/0.\n"
+# `tea` is declared observable, so the claim is one elenctic can read and therefore decide; the
+# choice rule is what makes it FALSE, since `tea` then holds in one answer set and not the other.
+# Undeclared it would be refused rather than failed, and this corpus needs a failure.
+_FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit. { tea }.\n#show biscuit/0.\n#show tea/0.\n"
 _WILL_NOT_GROUND = "% @expect sat\n% @count 1\n\nq(1).\np(X) :- q(Y).\n"
 _ORPHAN = "% a contract-free file nothing includes.\nhelper(1).\n"
 _DECLARES_THE_THEORY_SOLVER = (

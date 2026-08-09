@@ -30,7 +30,7 @@ from elenctic.solvers import TIME_BUDGET
 from support import a_clock_the_deadline_has_already_passed_on
 
 _PASSES = "% @expect sat\n% @count 2\n\n1 { tea; coffee } 1.\n#show tea/0.\n#show coffee/0.\n"
-_FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit.\n#show biscuit/0.\n"
+_FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit. { tea }.\n#show biscuit/0.\n#show tea/0.\n"
 _MALFORMED = "% @expect banana\n\nb.\n"
 _WILL_NOT_GROUND = "% @expect sat\n% @count 1\n\nq(1).\np(X) :- q(Y).\n"
 

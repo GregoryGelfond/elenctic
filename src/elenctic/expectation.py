@@ -294,6 +294,30 @@ class Sat:
         )
 
     @property
+    def consequence_claims(self) -> tuple[tuple[str, Claimed[frozenset[Symbol]]], ...]:
+        """Every consequence claim, paired with the contract tag that wrote it.
+
+        The four consequence cells make one shape of claim — a set of literals is contained in a
+        collection of answer sets — over four collections: ⋂ AS(P), ⋃ AS(P), ⋂ Opt(P), ⋃ Opt(P).
+        A reader that treats them alike needs them in one place, and discovery's readability gate is
+        such a reader: what it requires of a claimed literal turns on the claim being *single-sided*
+        — asserting membership and never its absence, so the literal's own signature is consulted
+        and its contrary is not — which all four are, and not on which collection is read.
+
+        The single home for the consequence family, as :attr:`has_optimal_base` is for the optimal
+        base: a fifth cell is added here once, rather than found by whoever notices it missing."""
+        return tuple(
+            (tag, claim)
+            for tag, claims in (
+                ("@cautious", self.cautious),
+                ("@cautious optimal", self.cautious_optimal),
+                ("@brave", self.brave),
+                ("@brave optimal", self.brave_optimal),
+            )
+            for claim in claims
+        )
+
+    @property
     def requires_theory(self) -> bool:
         """Whether this contract presupposes a *theory* solver: ``@assign`` / ``@assign optimal``
         read the theory half of the observable, and a ``where``-qualified witness binds it jointly —

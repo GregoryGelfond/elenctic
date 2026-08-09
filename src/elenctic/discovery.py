@@ -63,7 +63,7 @@ from elenctic.program import (
 )
 from elenctic.query import signatures_read
 from elenctic.registry import BACKING_MODULES, THEORY_EXTRA_ADVICE, Solver, provides_theory
-from elenctic.terms import Signature
+from elenctic.terms import Signature, signature_of
 
 __all__ = [
     "Case",
@@ -465,6 +465,7 @@ def check_program(
             "or an optimal-base tag (@optimal/@cautious optimal/@count optimal)"
         )
     _check_queries_are_answerable(expectation, facts.shown, where)
+    _check_consequence_claims_are_readable(expectation, facts.shown, where)
 
 
 def _check_queries_are_answerable(expectation: Sat, shown: ShownVocabulary, where: Path) -> None:
@@ -492,12 +493,16 @@ def _check_queries_are_answerable(expectation: Sat, shown: ShownVocabulary, wher
         # Asked first, and of both states: an unrestricted program loses nothing, which says
         # nothing about what a display directive may add on top.
         if displayed := reads & shown.displayed:
-            raise DiscoveryError(_displayed_not_declared(displayed), source=where, line=query.line)
+            raise DiscoveryError(
+                _displayed_not_declared("this @query", displayed), source=where, line=query.line
+            )
         match shown:
             case Restricted(signatures=signatures):
                 if missing := reads - signatures:
                     raise DiscoveryError(
-                        _undeclared(missing, signatures), source=where, line=query.line
+                        _undeclared("this @query", missing, signatures),
+                        source=where,
+                        line=query.line,
                     )
             case Unrestricted():
                 # Every literal of every answer set reaches the output, and the clause above has
@@ -507,17 +512,76 @@ def _check_queries_are_answerable(expectation: Sat, shown: ShownVocabulary, wher
                 assert_never(shown)
 
 
-def _why_it_matters(remedy: str) -> str:
-    """The half of both refusals that is the same sentence: what elenctic reads, and what to do."""
+def _check_consequence_claims_are_readable(
+    expectation: Sat, shown: ShownVocabulary, where: Path
+) -> None:
+    """Refuse any consequence claim whose literals the program does not make readable.
+
+    ``@cautious { L }`` claims ``L ⊆ ⋂ AS(P)``; elenctic computes ``L ⊆ ⋂ shown(AS(P))``, and the
+    three siblings do the same over ⋃ and over Opt(P). Those agree exactly when the projection is
+    faithful over each claimed literal's signature. Where it is not, the literal reaches no
+    projection at all, so the claim is FAILed **whatever the program computes** — a verdict that
+    does not depend on the answer sets is not a reading of them, and it FAILs a true claim as
+    readily as a false one. So it is refused rather than reported, which is why the rule is about
+    the answer and not about the verdict.
+
+    **One condition, where the sibling ``_check_queries_are_answerable`` has two**, and the
+    difference is load-bearing rather than an economy. That gate asks separately whether a
+    ``#show <term> : <body>.`` directive displays the signature, because such a directive can put a
+    term in the output that no answer set contains. It no longer can:
+    :func:`~elenctic.solvers._projection_of` keeps only symbols the model contains, at the one seam
+    every reading comes through. What remains of the display form is that it *under*-represents —
+    it emits its term only where its body holds — and that is already refused here, since a
+    signature reaching the output by directive alone is by definition one the program does not
+    declare. Measured, on the model and on the cautious/brave consequences alike: a signature both
+    declared and displayed is exact, and an unrestricted program is exact whatever it displays.
+
+    So ``displayed`` does not decide anything here. It selects the *message*, and that distinction
+    is the one a reader must make, because the remedies differ and the wrong one is destructive:
+    declaring the predicate a directive selects from widens the output from what was selected to
+    the whole underlying relation, which silently breaks every contract stating a whole observable.
+    Where a claim is unreadable on both counts the displayed message is given, being the one whose
+    obvious remedy is the wrong one; the rest surface on the next run.
+    """
+    match shown:
+        case Unrestricted():
+            # No declaration form, so every literal of every answer set reaches the output, and
+            # the filter above has already established that nothing else does.
+            return
+        case Restricted(signatures=signatures, displayed=displayed):
+            for tag, claim in expectation.consequence_claims:
+                reads = frozenset(signature_of(literal) for literal in claim.value)
+                if not (unreadable := reads - signatures):
+                    continue
+                what = f"this {tag}"
+                reason = (
+                    _displayed_not_declared(what, by_directive)
+                    if (by_directive := unreadable & displayed)
+                    else _undeclared(what, unreadable, signatures)
+                )
+                raise DiscoveryError(reason, source=where, line=claim.line)
+        case _:
+            assert_never(shown)
+
+
+def _why_it_matters(what: str, remedy: str) -> str:
+    """The half of every readability refusal that is the same sentence: what elenctic reads, and
+    what to do.
+
+    ``what`` names the contract term being refused — ``this @query``, ``this @cautious optimal`` —
+    and appears twice, so the sentence and its remedy cannot come to disagree about what is being
+    refused. One sentence rather than one per gate, because the fact it states is one fact: every
+    reading elenctic performs comes off the output, and both gates exist because the output is not
+    always the projection the contract's term presupposes."""
     return (
-        " elenctic answers a query from what the solver puts in the output, so a literal that does "
+        f" elenctic decides {what} from what the solver puts in the output, so a literal that does "
         "not reach it exactly when the answer set contains it cannot be told apart from one no "
-        f"answer set contains, and the answer would describe the #show directives rather than the "
-        f"program. {remedy}, or drop the query"
+        "answer set contains, and what it reports would describe the #show directives rather than "
+        f"the program. {remedy}, or drop {what}"
     )
 
 
-def _undeclared(missing: frozenset[Signature], signatures: frozenset[Signature]) -> str:
+def _undeclared(what: str, missing: frozenset[Signature], signatures: frozenset[Signature]) -> str:
     """The refusal for a query reading a signature the program does not declare observable.
 
     The sentence says what the program *declares*, which is what this vocabulary knows. It
@@ -531,12 +595,12 @@ def _undeclared(missing: frozenset[Signature], signatures: frozenset[Signature])
     )
     remedy = "Declare " + " ".join(f"#show {name}/{arity}." for name, arity in sorted(missing))
     return (
-        f"this @query reads {_signature_list(missing)}, which the program does not declare "
-        f"observable — {declares}." + _why_it_matters(remedy)
+        f"{what} reads {_signature_list(missing)}, which the program does not declare "
+        f"observable — {declares}." + _why_it_matters(what, remedy)
     )
 
 
-def _displayed_not_declared(displayed: frozenset[Signature]) -> str:
+def _displayed_not_declared(what: str, displayed: frozenset[Signature]) -> str:
     """The refusal for a query reading a signature a ``#show <term> : <body>.`` directive displays.
 
     Named as its own refusal rather than folded into the one above, because it is a different fault
@@ -561,11 +625,11 @@ def _displayed_not_declared(displayed: frozenset[Signature]) -> str:
         "body holds, declared with `#show <name>/<arity>.` — and then claim that"
     )
     return (
-        f"this @query reads {_signature_list(displayed)}, which the program displays with "
+        f"{what} reads {_signature_list(displayed)}, which the program displays with "
         f"{directives}. Such a directive emits its term wherever its body holds, so "
         "the predicate reaches the output for some ground instances and not others — and the term "
         "need not be an atom of the program at all, so the output can carry a symbol no answer set "
-        "contains." + _why_it_matters(remedy)
+        "contains." + _why_it_matters(what, remedy)
     )
 
 

@@ -108,8 +108,10 @@ def test_expect_sat_alone_over_a_theory_objective_is_allowed() -> None:
 def test_a_bare_as_p_tag_without_a_theory_objective_is_allowed() -> None:
     # The gate is scoped to the theory objective. A bare AS(P) tag over a clingo #minimize is fine:
     # --opt-mode=ignore does switch that off, which is the whole point of stating it.
+    # `a/0` is declared, so the readability gate has nothing to say and this tests the gate it is
+    # about. Left to the default SHOWS_NOTHING vocabulary it would be refused for the other reason.
     exp = parse("% @expect sat\n% @cautious { a }\n")
-    check_program(exp, _facts(theory=True, opt=True), "clingcon", WHERE)
+    check_program(exp, _facts(theory=True, opt=True, shown=_shows(("a", 0))), "clingcon", WHERE)
 
 
 def test_r2_cost_over_maximize_is_loud_the_silent_miscompile_guard() -> None:
@@ -240,11 +242,12 @@ def test_the_undeclared_refusal_states_what_is_read_what_is_declared_and_what_to
         check_program(exp, _facts(shown=_shows(("reachable", 1))), "clingo", WHERE)
     assert str(caught.value) == (
         "case.lp:2: this @query reads -reachable/1, which the program does not declare "
-        "observable — it declares {reachable/1} observable. elenctic answers a query from what "
+        "observable — it declares {reachable/1} observable. elenctic decides this @query from what "
         "the solver puts in the output, so a literal that does not reach it exactly when the "
         "answer set contains it "
-        "cannot be told apart from one no answer set contains, and the answer would describe the "
-        "#show directives rather than the program. Declare #show -reachable/1., or drop the query"
+        "cannot be told apart from one no answer set contains, and what it reports would describe "
+        "the #show directives rather than the program. Declare #show -reachable/1., or drop this "
+        "@query"
     )
 
 
@@ -274,12 +277,13 @@ def test_the_displayed_refusal_states_the_fault_and_a_remedy_that_keeps_the_outp
         "`#show <term> : <body>.` directive. Such a directive emits its term wherever its body "
         "holds, so the predicate reaches the output for some ground instances and not others — and "
         "the term need not be an atom of the program at all, so the output can carry a symbol no "
-        "answer set contains. elenctic answers a query from what the solver puts in the output, so "
-        "a literal that does not reach it exactly when the answer set contains it cannot be told "
-        "apart from one no answer set contains, and the answer would describe the #show directives "
-        "rather than the program. Give what the directive selects a name of its own — a rule "
-        "deriving it where the body holds, declared with `#show <name>/<arity>.` — and then claim "
-        "that, or drop the query"
+        "answer set contains. elenctic decides this @query from what the solver puts in the "
+        "output, so a literal that does not reach it exactly when the answer set contains it "
+        "cannot be told apart from one no answer set contains, and what it reports would describe "
+        "the #show "
+        "directives rather than the program. Give what the directive selects a name of its own — a "
+        "rule deriving it where the body holds, declared with `#show <name>/<arity>.` — and then "
+        "claim that, or drop this @query"
     )
 
 

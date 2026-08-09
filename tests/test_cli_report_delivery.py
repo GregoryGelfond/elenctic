@@ -38,7 +38,7 @@ from support import (
 )
 
 _PASSES = "% @expect sat\n% @cautious { biscuit }\n\nbiscuit.\n#show biscuit/0.\n"
-_FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit.\n#show biscuit/0.\n"
+_FAILS = "% @expect sat\n% @cautious { tea }\n\nbiscuit. { tea }.\n#show biscuit/0.\n#show tea/0.\n"
 _ORPHAN = "% a contract-free file nothing includes.\nhelper(1).\n"
 
 # Standard output given a buffer too small to hold what the run writes, so the write that fails is

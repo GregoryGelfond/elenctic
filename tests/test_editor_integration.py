@@ -51,7 +51,7 @@ def test_a_single_file_run_yields_a_placeable_diagnostic_per_failing_check(
 ) -> None:
     case = tmp_path / "drinks.lp"
     case.write_text(
-        "% @expect sat\n% @cautious { tea }\nbiscuit.\n#show biscuit/0.\n",
+        "% @expect sat\n% @cautious { tea }\nbiscuit. { tea }.\n#show biscuit/0.\n#show tea/0.\n",
         encoding="utf-8",
     )
 
