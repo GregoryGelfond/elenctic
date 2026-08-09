@@ -14,13 +14,18 @@ are and where an edit to them lands. None is shipped inside the wheel, and these
 either.
 """
 
+import contextlib
 import importlib
+import io
+import itertools
 import json
 import re
+import shlex
 import tomllib
 from pathlib import Path
 
 import elenctic
+from elenctic.cli import _build_parser
 from elenctic.registry import THEORY_EXTRA_ADVICE
 from elenctic.solvers import TIME_BUDGET
 from support import cli_help_text
@@ -138,6 +143,88 @@ def _is_a_home(dotted: str) -> bool:
     if module == elenctic.__name__:
         return attribute in elenctic.__all__
     return getattr(getattr(parent, attribute), "__module__", module) == module
+
+
+def test_every_command_line_the_documents_show_is_one_elenctic_accepts() -> None:
+    # A reader copies these. Nothing renders them and nothing has checked them, so they stay true
+    # only while somebody remembers — and the record already holds the failure twice: five console
+    # transcripts that are not what the tool prints, and a module count that went stale because
+    # adding a module is not an edit to a document, so nobody was prompted. Changing the *grammar*
+    # is the same shape one size up, and it reaches every line at once.
+    #
+    # Asserted whole rather than one line at a time, so a reader of a failure sees every line that
+    # has come adrift rather than the first.
+    shown = _command_lines()
+    assert shown, "the pattern found no command line, which means it is no longer the pattern"
+    refused = [(where, line, why) for where, line in shown if (why := _refused(line)) is not None]
+    assert not refused, "shown to a reader, and refused by the parser:\n" + "\n".join(
+        f"  {where}: {line}\n      {why}" for where, line, why in refused
+    )
+
+
+# What separates a command line from the shell around it. Cutting here rather than parsing the shell
+# keeps the question this test asks — *would elenctic accept this?* — from becoming a second one
+# about pipelines and redirections, which is nobody's grammar to check.
+_SHELL_OPERATORS = frozenset({"|", ">", ">>", "<", "&&", ";"})
+
+
+def _command_lines() -> list[tuple[str, str]]:
+    """Every ``elenctic …`` command line the documents show a reader, with where it was found.
+
+    Two forms, because the documents use two: a transcript or usage line opening with a prompt, and
+    a command written inline in prose. Both are things a reader copies.
+
+    The changelog is read from its unreleased section alone. An entry under a shipped release says
+    what *that* release did, in the grammar it had — rewriting those to parse today would make the
+    history false, which is a worse defect than the one this test exists to catch. It is the one
+    document read from part of itself, so it carries the line it starts at: a failure naming a line
+    the reader then opens has to name the line in the file, not the line in the excerpt.
+    """
+    opening = _CHANGELOG.index("## [Unreleased]")
+    unreleased = _CHANGELOG[opening:].split("\n## [", 1)[0]
+    assert unreleased.strip(), "the changelog's unreleased section is not where this reads it from"
+    read = (
+        ("README.md", _README, 1),
+        ("CONTRIBUTING.md", _CONTRIBUTING, 1),
+        ("CHANGELOG.md", unreleased, _CHANGELOG.count("\n", 0, opening) + 1),
+    )
+    return [
+        (f"{name}:{number}", line)
+        for name, text, first in read
+        for number, raw in enumerate(text.splitlines(), start=first)
+        for line in _shown_in(raw)
+    ]
+
+
+def _shown_in(raw: str) -> list[str]:
+    """The command lines one line of a document shows — none, one, or several.
+
+    A prompt makes a command line whatever follows it, bare ``elenctic`` included. Backticks do not:
+    they are also how these documents write the program's *name*, and a name takes no arguments —
+    so an inline one counts as a command line only where it carries some.
+    """
+    prompted = [raw.removeprefix("$ ")] if raw.startswith("$ elenctic") else []
+    return prompted + re.findall(r"`(elenctic [^`]*)`", raw)
+
+
+def _refused(line: str) -> str | None:
+    """Why the parser will not take ``line``, or ``None`` when it takes it.
+
+    ``--help`` leaves by raising too, with the status that says nothing went wrong, so the status
+    is what separates a refusal from an answer rather than the leaving. Both streams are swallowed:
+    what argparse writes is the diagnostic, and it is wanted in the failure message rather than in
+    the middle of the run.
+    """
+    words = shlex.split(line, comments=True)
+    argv = list(itertools.takewhile(lambda word: word not in _SHELL_OPERATORS, words[1:]))
+    said, printed = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stderr(said), contextlib.redirect_stdout(printed):
+            _build_parser().parse_args(argv)
+    except SystemExit as leaving:
+        if leaving.code:
+            return said.getvalue().strip().splitlines()[-1]
+    return None
 
 
 def test_the_readmes_library_example_runs_and_does_what_it_says(tmp_path: Path) -> None:
