@@ -63,7 +63,7 @@ from elenctic.outcome import (
 )
 from elenctic.result import Verdict
 
-__all__ = ["TerminalPlan", "TerminalRun", "heading", "render_tail"]
+__all__ = ["TerminalPlan", "TerminalRun", "announced", "heading", "render_tail"]
 
 
 class _Terminal(Observer):
@@ -87,10 +87,10 @@ class _Terminal(Observer):
     # by which of these it calls, so nothing here has to ask a record what it was.
 
     def corpus_unreadable(self, record: ErrorRecord) -> None:
-        print(_announced(record), file=sys.stderr)
+        print(announced(record), file=sys.stderr)
 
     def case_unusable(self, record: ErrorRecord) -> None:
-        print(_announced(record), file=sys.stderr)
+        print(announced(record), file=sys.stderr)
 
 
 class TerminalRun(_Terminal):
@@ -170,7 +170,7 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
     """
     if record.kind is ErrorKind.DEADLINE:
         return None
-    return _announced(record)
+    return announced(record)
 
 
 def _text(value: str | Path) -> str:
@@ -222,13 +222,15 @@ def heading(kind: ErrorKind, scope: Scope) -> str:
             assert_never(unreachable)
 
 
-def _announced(record: ErrorRecord) -> str:
+def announced(record: ErrorRecord) -> str:
     """One record as one line: where it is, and what is wrong there.
 
-    The one renderer for a record, whichever frame met the fault and whatever it was about. Three
-    frames announce records — a corpus nothing could be read from, a file discovery could not use,
-    and a case a run could not judge — and they used to compose their own line, which is how one
-    fault came to be printed three ways depending on where it was caught.
+    The one renderer for a record, whichever frame met the fault and whatever it was about, and
+    the *only* one: three frames here announce records as a run goes — a corpus nothing could be
+    read from, a file discovery could not use, and a case a run could not judge — and the console
+    entry's own backstops announce three more, for a fault no register anticipated. They used to
+    compose their own line, which is how one fault came to be printed several ways depending on
+    where it was caught.
 
     ``source:line:`` is the one spelling, the one clingo, rustc and pytest all write and the one
     an author's editor already knows how to open. A record with no line has no coordinate, so it

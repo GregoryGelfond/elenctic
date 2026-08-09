@@ -47,8 +47,7 @@ from json import JSONDecodeError
 from pathlib import Path
 
 from elenctic.corpus import explain_corpus, run_corpus
-from elenctic.display import legible
-from elenctic.human_report import TerminalPlan, TerminalRun, heading, render_tail
+from elenctic.human_report import TerminalPlan, TerminalRun, announced, heading, render_tail
 from elenctic.json_report import as_json, dumps, schema_text
 from elenctic.outcome import (
     ErrorKind,
@@ -372,7 +371,7 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         # API offers neither a clock nor a size limit on grounding — is not a reason to be unable
         # to *report* it. What consumed the memory is not knowable from here, so it is not claimed.
         resource = _unowned_fault(ErrorKind.RESOURCE, _CORPUS_OUT_OF_MEMORY)
-        print(f"{heading(resource.kind, resource.scope)} {resource.message}", file=sys.stderr)
+        print(announced(resource), file=sys.stderr)
         outcome = _fault_outcome(resource)
     except Exception as exc:
         # Whatever this is, the user did not cause it and cannot fix it. Say so first, then show
@@ -476,15 +475,18 @@ def _print_schema() -> ExitStatus:
     # reads as a Python 2 syntax error to anyone whose Python predates 3.14. Same meaning,
     # and one of the two spellings is misread on sight.
     except (OSError, UnicodeDecodeError, JSONDecodeError) as fault:  # fmt: skip
-        # Sanitized like every other text this program shows. The reason carries a path chosen by
-        # whoever installed the package, and a terminal acts on some of what a path may contain.
-        reason = _SCHEMA_UNREADABLE.format(reason=legible(str(fault)))
+        # The reader's own reason, carried raw. It comes from outside this program — it quotes a
+        # path chosen by whoever installed the package, and a terminal acts on some of what a path
+        # may contain — so it is made safe by whoever shows it, which is the rule every other
+        # record follows. Sanitized here instead it was safe once and escaped twice: the renderer
+        # sanitizes what it is handed, and doubling a backslash is not an idempotent act.
+        reason = _SCHEMA_UNREADABLE.format(reason=str(fault))
         unreadable = _unowned_fault(ErrorKind.ENVIRONMENT, reason)
-        print(f"{heading(unreadable.kind, unreadable.scope)} {unreadable.message}", file=sys.stderr)
+        print(announced(unreadable), file=sys.stderr)
         return exit_status(_fault_outcome(unreadable))
     except MemoryError:
         exhausted = _unowned_fault(ErrorKind.RESOURCE, _DESCRIPTION_OUT_OF_MEMORY)
-        print(f"{heading(exhausted.kind, exhausted.scope)} {exhausted.message}", file=sys.stderr)
+        print(announced(exhausted), file=sys.stderr)
         return exit_status(_fault_outcome(exhausted))
     publish(description)
     return ExitStatus.OK
@@ -502,9 +504,16 @@ def _unowned_fault(kind: ErrorKind, message: str) -> ErrorRecord:
     their own tree.
 
     Built before the reader is told anything, rather than after, so that what is printed and what is
-    reported are the one record read twice. These three frames used to choose their own heading
-    beside the record and each chose a different word for it, which is how a fault filed under one
-    locus came to be announced as another."""
+    reported are the one record read twice — and now literally so, since what is printed is this
+    record put through the renderer every other record goes through. These three frames used to
+    choose their own heading beside the record and each chose a different word for it, which is how
+    a fault filed under one locus came to be announced as another.
+
+    ``message`` is carried **raw**, whatever it quotes, on the same terms as every other record's:
+    a record is a value and making text safe to show belongs to whoever shows it. A frame that
+    sanitizes on the way in hands a renderer something already escaped, and escaping is not an
+    idempotent act — one of these three did exactly that, and a document carrying the result would
+    have shown a reader two backslashes where their path had one."""
     return ErrorRecord(kind=kind, scope=Scope.CORPUS, source=None, message=message)
 
 
