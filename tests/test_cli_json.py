@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from elenctic.json_report import dumps, schema_text
+from elenctic.json_report import SCHEMA_VERSION, dumps, schema_text
 from elenctic.outcome import ExitStatus
 from support import Streams, child_environment, document_of, run_cli
 
@@ -95,9 +95,14 @@ def _noisy(invocation, *, observer=None):
 elenctic.cli.run_corpus = _noisy
 """
 
-# A packaged description that is present and unreadable as text, which is the one fault in printing
-# it that is not an OSError — so it passes the handler naming a mis-shaped environment and reaches
-# the backstop instead, before a corpus has been looked at.
+# A fault in printing the description that is none of the ones the handler names — not the file
+# being absent or in the way, not its bytes failing to decode, not its text failing to parse, and
+# not the allocation. So it passes the handler naming a mis-shaped environment and reaches the
+# backstop instead, before a corpus has been looked at, which is what a fault nobody anticipated
+# should do: a reader told to reinstall a package that is fine has been sent to fix the wrong thing.
+#
+# It is a stub rather than a contrived file because that is the point — the mechanisms a real
+# damaged file produces are all caught now, and this holds the arm for the ones that are not.
 _DESCRIPTION_IS_NOT_TEXT = """
 import elenctic.cli
 
@@ -507,6 +512,126 @@ def test_a_fault_while_printing_the_description_produces_no_document(tmp_path: P
     assert streams.status == ExitStatus.HARNESS_FAULT
     assert streams.out == ""
     assert "harness error: " in streams.err, "the locus the record was filed under, not the frame"
+
+
+def _installed_with_the_description(root: Path, text: str) -> str:
+    """A prelude that stands a package whose packaged description is ``text`` in front of the child.
+
+    The file is written for real, at the size asked for, and the child reads it by the same lookup
+    the shipped one is read by; what the prelude arranges is *which directory* the package was
+    installed into. That is the half of a packaging accident a test cannot reproduce by damaging the
+    copy the suite is running out of.
+    """
+    packaged = root / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
+    packaged.parent.mkdir(parents=True, exist_ok=True)
+    packaged.write_text(text, encoding="utf-8")
+    return (
+        "import elenctic.json_report\nfrom pathlib import Path\n"
+        f"elenctic.json_report.files = lambda _package: Path({str(root)!r})\n"
+    )
+
+
+@pytest.mark.parametrize(("damage", "kept"), [("dropped to nothing", 0), ("cut off part-way", 100)])
+def test_a_damaged_description_is_reported_rather_than_published(
+    damage: str, kept: int, tmp_path: Path
+) -> None:
+    # The zero-byte end of this is the one that reads as success: writing nothing to standard output
+    # succeeds, so a reader who redirected it into a file gets an empty file, status 0, and not a
+    # word anywhere saying their installation is broken. The truncated end publishes half a document
+    # under the same status, which a consumer meets as a parse error naming their own decoder.
+    #
+    # Both are the accident the absent-file diagnostic already exists for, so they are told in its
+    # sentence rather than in one of their own.
+    prelude = _installed_with_the_description(tmp_path, schema_text()[:kept])
+
+    streams = _reported(tmp_path / "no_such_directory", "--print-schema", prelude=prelude)
+
+    assert streams.status == ExitStatus.USER_FAULT
+    assert streams.out == "", "half a description, or none of one, is not a description to publish"
+    assert "environment error: " in streams.err, "the environment is mis-shaped, not elenctic wrong"
+
+
+def _installed_with_a_directory_where_the_description_goes(root: Path) -> str:
+    """A prelude whose packaged description is present, intact, and not readable.
+
+    A directory rather than a mode change, deliberately: ``chmod 000`` is not a condition a process
+    running as root can be put into, so a suite that used one would report a pass on the machines
+    least likely to have been thought about. This raises the same ``OSError`` the handler catches,
+    for every user.
+    """
+    packaged = root / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
+    packaged.mkdir(parents=True, exist_ok=True)
+    return (
+        "import elenctic.json_report\nfrom pathlib import Path\n"
+        f"elenctic.json_report.files = lambda _package: Path({str(root)!r})\n"
+    )
+
+
+def test_a_description_that_cannot_be_read_says_which_of_the_reasons_it_was(tmp_path: Path) -> None:
+    # Present and unreadable is not the same accident as absent, and their remedies differ: one is
+    # fixed by reinstalling and one is fixed by the file's own permissions or by whatever put a
+    # directory there. Nothing in the sentence could tell them apart, so it told everybody the
+    # packaging answer — and told the reader who can *see* the file sitting there that their copy
+    # has "the code and not the data".
+    prelude = _installed_with_a_directory_where_the_description_goes(tmp_path)
+
+    streams = _reported(tmp_path / "no_such_directory", "--print-schema", prelude=prelude)
+
+    assert streams.status == ExitStatus.USER_FAULT
+    assert streams.out == ""
+    assert str(tmp_path) in streams.err, "the reason the read gave, which is what separates them"
+    assert "rather than anything you configured" not in streams.err, (
+        "a mode or a directory in the way IS something the reader configured"
+    )
+
+
+def test_the_reason_a_description_could_not_be_read_is_shown_safely(tmp_path: Path) -> None:
+    # The reason is a string from outside this program, and it goes to a terminal — so it is
+    # sanitized like every other such string in the report.
+    #
+    # **The input has to be chosen carefully, and the obvious one does not test this.** The fault
+    # the *operating system* raises carries its filename through `repr`, which escapes it already —
+    # so a test installing the package under a directory whose name holds an escape passes whether
+    # or not this program sanitizes anything, and measures CPython's `repr`. A one-argument
+    # `OSError` is the shape that reaches `str` unescaped, and a resource loader that is not the
+    # filesystem — a zip importer, a vendored backend — raises exactly that.
+    erases_the_line = "\x1b[2K"
+    prelude = (
+        "import elenctic.cli\n"
+        "def _unreadable():\n"
+        f"    raise OSError('a loader that could not read it{erases_the_line}')\n"
+        "elenctic.cli.schema_text = _unreadable\n"
+    )
+
+    streams = _reported(tmp_path / "no_such_directory", "--print-schema", prelude=prelude)
+
+    assert streams.status == ExitStatus.USER_FAULT
+    assert erases_the_line not in streams.err, "the escape reached the reader's terminal intact"
+    assert "\\x1b[2K" in streams.err, "and nothing was silently dropped instead"
+
+
+def test_running_out_of_memory_printing_the_description_does_not_blame_a_corpus(
+    tmp_path: Path,
+) -> None:
+    # ``--print-schema`` is answered from the package alone: no target is walked, nothing is
+    # grounded, and no case runs. The allocation backstop it shared with a run told such a reader to
+    # "reduce what it grounds and enumerates" — the same overreach the cut-short report sentence was
+    # rewritten for, one arm over.
+    prelude = "import json\njson.loads = _hungry\n".replace(
+        "_hungry", "lambda *a, **k: (_ for _ in ()).throw(MemoryError())"
+    )
+
+    streams = _reported(tmp_path / "no_such_directory", "--print-schema", prelude=prelude)
+
+    assert streams.out == "", "nothing is published when the description could not be held"
+    assert "resource error: " in streams.err, "still the allocation failure it is, not a bug report"
+    assert "running this corpus" not in streams.err, "no corpus was run"
+    assert "reduce what it grounds and enumerates" not in streams.err, (
+        "the remedy offered was for a run that did not happen"
+    )
+    assert "no corpus was looked at and nothing was grounded" in streams.err, (
+        "and the reader is told which of the two kinds of allocation failure this was"
+    )
 
 
 def test_printing_the_description_is_not_a_document_and_asks_nothing_of_a_corpus(

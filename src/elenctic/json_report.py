@@ -88,12 +88,23 @@ def dumps(document: dict[str, object]) -> str:
 
 
 def schema_text() -> str:
-    """The packaged description of the document's shape, exactly as it ships.
+    """The packaged description of the document's shape, exactly as it ships — or the reason there
+    is no description to hand back.
 
     Text rather than a parsed object: the caller that is not a test writes it to standard output,
     and someone redirecting that into a file should get the file. Parsing and re-rendering it would
     hand them something that says the same thing in a different shape, and the whitespace of a
     published document is part of what people diff.
+
+    **Parsed to check, never to render.** What is returned is the file, byte for byte; the parse
+    establishes only that the file *is* a description before anyone is handed one. A packaging or
+    vendoring step can drop this file, re-encode it, or leave it half written, and the three are one
+    accident with one remedy — but only the first two announce themselves, by raising on the way out
+    of the read. A file cut short is read back perfectly happily as a string that describes nothing,
+    and its worst size is zero: a caller writing that to standard output writes nothing, succeeds,
+    and reports success, which is the one outcome that tells a reader there is nothing to look into.
+    So the third is made to announce itself like the other two, here, where the description is read
+    and where the fault belongs to elenctic's own packaging rather than to any caller.
 
     The version is in the resource's name rather than beside it, because the shape of a document and
     the description of that shape are one fact. A bump that renamed the constant and not the file
@@ -109,7 +120,19 @@ def schema_text() -> str:
     supported versions to hold in step, and no policy owed about which of them are still served.
     """
     resource = files("elenctic") / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
-    return resource.read_text(encoding="utf-8")
+    # The bytes, decoded here, rather than a text read. Reading a resource as text opens it in
+    # universal-newline mode, which turns a CRLF file back into LF on the way through — so "exactly
+    # as it ships" was false for any checkout or archive that gave the file those endings, by
+    # precisely the bytes someone diffing this output against the published file would see. Decoding
+    # what was read keeps the claim true and keeps the fault a mis-encoded file raises.
+    description = resource.read_bytes().decode("utf-8")
+    # It parses, and no more than that. Whether the description is a *well-formed schema* is a
+    # different question with a different owner — it is settled once, against the file that ships,
+    # rather than re-asked of every reader at run time — and elenctic is not a schema validator.
+    # What this separates is a description from a fragment of one, which is the whole of the damage
+    # a truncation does.
+    json.loads(description)
+    return description
 
 
 def _case(outcome: CaseOutcome) -> dict[str, object]:

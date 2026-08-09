@@ -34,6 +34,7 @@ import textwrap
 import traceback
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
+from json import JSONDecodeError
 from pathlib import Path
 from typing import assert_never
 
@@ -63,6 +64,7 @@ from elenctic.outcome import (
 )
 from elenctic.result import Verdict
 from elenctic.solvers import TIME_BUDGET
+from elenctic.streams import establish_standard_error
 
 __all__ = ["main"]
 
@@ -87,16 +89,41 @@ _ISSUES = "https://github.com/GregoryGelfond/elenctic/issues"
 
 # The one thing --print-schema can fail at, said in terms the reader can act on. It is worth its own
 # sentence rather than the internal-error backstop, because the backstop asks for a bug report and
-# this is not a bug in elenctic: the description ships beside the modules, so a copy that has the
-# modules and not the description was assembled by something downstream — a vendoring step, a
-# repackaging, an installer that keeps code and drops data. Sending that reader to elenctic's issue
-# tracker sends them somewhere that cannot help them.
+# this is not a bug in elenctic: the description ships beside the modules, so a copy whose
+# description is missing or damaged was assembled by something downstream — a vendoring step, a
+# repackaging, an installer that keeps code and drops data, an archive that unpacked short. Sending
+# that reader to elenctic's issue tracker sends them somewhere that cannot help them.
+#
+# Missing, damaged *or unreadable*, and all three words are load-bearing: a file that is present and
+# half written is the same accident, and a sentence saying this copy "has the code and not the data"
+# would be false of the reader most likely to be confused by it — the one who can see the file
+# sitting there.
+#
+# The reader's own reason is carried, because it is the only thing that separates the remedies. A
+# file that is absent is fixed by reinstalling; a file that is present and refused by its mode, or
+# has a directory sitting where it should be, is not — a reinstall into the same prefix reproduces
+# it. Nothing in this sentence could tell those apart, so it gave everybody the packaging answer and
+# told half of them that something they *did* configure was done to them by a vendoring step.
 _SCHEMA_UNREADABLE = (
-    "elenctic could not read its own output description. It ships inside the package, beside the "
-    "modules, at elenctic/schema/ — so this copy of elenctic has the code and not the data, which "
-    "is something a packaging or vendoring step did rather than anything you configured. "
-    "Reinstalling elenctic from a released wheel or from its source tree restores it. Nothing else "
-    "is affected: running a corpus never reads this file."
+    "elenctic could not read its own output description: {reason}. It ships inside the package, "
+    "beside the modules, at elenctic/schema/ — so this copy of it is missing, damaged, or not "
+    "readable, which is something about this installation rather than anything about your corpus. "
+    "If the reason above is a permission, or something in the way, that is what to fix; otherwise "
+    "reinstalling elenctic from a released wheel or from its source tree replaces the file. "
+    "Nothing else is affected: running a corpus never reads this file."
+)
+
+# The same allocation failure met where the package's own description is being read, and it is
+# worded separately from the corpus one for the reason that one is worded separately from the
+# per-case one: a frame that ran no corpus cannot offer the remedy that bounds one. This answers
+# from the package alone — nothing was walked, nothing was grounded, and no case ran — so the
+# sentence that asks the reader to reduce what their corpus grounds describes a run that did not
+# happen.
+_DESCRIPTION_OUT_OF_MEMORY = (
+    "elenctic ran out of memory reading its own output description. That is answered from the "
+    "package alone, so no corpus was looked at and nothing was grounded: what ran short is the "
+    "memory this process was given, or the packaged file is not the small one that ships. Nothing "
+    "else is affected: running a corpus never reads this file."
 )
 
 # What a reader is told when nothing was left to write to. It is not a fault — not in the corpus,
@@ -295,7 +322,7 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
     rather than something that has to refuse."""
     # First, and before the parser can write a word: everything past this line assumes there are
     # two streams to write to, and a process can be started with only one.
-    _establish_standard_error()
+    establish_standard_error()
     args = _build_parser().parse_args(argv)
     if (refusal := _refusal(args)) is not None:
         # A command line that cannot be run has produced no run, so there is nothing to report
@@ -438,10 +465,21 @@ def _print_schema() -> ExitStatus:
     exist must not turn the question into a fault. Written rather than printed, so what a reader
     redirects into a file is the file.
 
-    Both the absent file and the unreadable one, because the argument below covers both: a step
-    that drops a data file and a step that re-encodes it are the same kind of accident, and only
-    the first raises ``OSError``. Catching one and not the other sent half of those readers to
-    the backstop that asks for a bug report.
+    Several mechanisms and one sentence, because the argument below covers all of them: a step that
+    drops the data file, one that puts something else where it goes or leaves it unreadable, one
+    that re-encodes it, and one that leaves it half written. Only the first two raise ``OSError``,
+    and catching those and not the rest sent the other readers to the backstop that asks for a bug
+    report. What differs between them is the remedy, and that is why the reader's own reason is
+    carried into the sentence rather than dropped.
+
+    Named one at a time rather than caught as the ``ValueError`` two of them share, because a
+    fault here that is *none* of them is elenctic being wrong about something and belongs at that
+    backstop. Widening the catch to cover a mechanism nobody anticipated would tell a reader to
+    reinstall a package that is fine.
+
+    The allocation failure is answered here rather than left to the run's, for the same reason the
+    run's is worded separately from a case's: this path walks no target and grounds nothing, so the
+    remedy that asks for a corpus to be bounded is about a run that did not happen.
 
     An unreadable description is the environment being mis-shaped rather than elenctic being wrong
     about something, which is why it is graded as a fault the reader can fix and not as a bug to
@@ -453,12 +491,19 @@ def _print_schema() -> ExitStatus:
     # 3.14) makes the bare form legal and `ruff format` canonicalises to it, but that form
     # reads as a Python 2 syntax error to anyone whose Python predates 3.14. Same meaning,
     # and one of the two spellings is misread on sight.
-    except (OSError, UnicodeDecodeError):  # fmt: skip
-        unreadable = _unowned_fault(ErrorKind.ENVIRONMENT, _SCHEMA_UNREADABLE)
+    except (OSError, UnicodeDecodeError, JSONDecodeError) as fault:  # fmt: skip
+        # Sanitized like every other text this program shows. The reason carries a path chosen by
+        # whoever installed the package, and a terminal acts on some of what a path may contain.
+        reason = _SCHEMA_UNREADABLE.format(reason=legible(str(fault)))
+        unreadable = _unowned_fault(ErrorKind.ENVIRONMENT, reason)
         print(
             f"{_heading(unreadable.kind, unreadable.scope)} {unreadable.message}", file=sys.stderr
         )
         return exit_status(_fault_outcome(unreadable))
+    except MemoryError:
+        exhausted = _unowned_fault(ErrorKind.RESOURCE, _DESCRIPTION_OUT_OF_MEMORY)
+        print(f"{_heading(exhausted.kind, exhausted.scope)} {exhausted.message}", file=sys.stderr)
+        return exit_status(_fault_outcome(exhausted))
     _publish(description)
     return ExitStatus.OK
 
@@ -614,51 +659,6 @@ def _fault_outcome(record: ErrorRecord) -> RunOutcome:
     produced, and the status is then the ordinary reading of an outcome rather than a number chosen
     beside one."""
     return RunOutcome(cases=(), errors=(record,), hygiene=())
-
-
-def _establish_standard_error() -> None:
-    """Give this process a standard error where it has none, before anything is written.
-
-    A process can be started with the descriptor closed rather than redirected — ``2>&-`` in a
-    shell — and one absence then costs the run two different things, which is why it is established
-    here rather than guarded twice.
-
-    The first is that this language answers a missing standard error by leaving ``sys.stderr`` as
-    ``None``, and ``print`` writes to standard output when handed that. Under a machine-readable
-    format standard output is the document's alone, so every diagnostic written outside the
-    redirect region lands in the middle of the report and no consumer can parse it. Nothing about
-    the run went wrong, so a passing corpus reports success and hands back something unreadable —
-    the worst shape a defect can take, because the status says there is nothing to look into.
-
-    The second is that a closed descriptor is the lowest free number, so it is the first thing
-    handed out: the copy of standard output the redirect region takes on its way in *becomes*
-    descriptor 2, and the region then points standard output at standard output and moves nothing
-    anywhere.
-
-    The null device is what goes there, because closing the descriptor and pointing it at the null
-    device are two spellings of one wish and only one of them worked. Nothing is written that would
-    not have been written anyway, and what is written goes nowhere — which is what closing the
-    descriptor asked for.
-    """
-    try:
-        os.fstat(2)
-    except OSError:
-        # The same rule that causes the second problem answers this one: the lowest free descriptor
-        # is what gets handed out, and descriptor 2 is free — so opening the null device *is*
-        # opening descriptor 2, and there is nothing further to do. Only where a lower descriptor is
-        # missing as well does the copy have to be moved into place and the original released; doing
-        # it unconditionally closes descriptor 2 again, one statement after opening it.
-        null = os.open(os.devnull, os.O_WRONLY)
-        if null != 2:
-            try:
-                os.dup2(null, 2)
-            finally:
-                os.close(null)
-        # Rebuilt only where this language left it unbuilt, so a caller who supplied a stream of
-        # their own keeps it. Line buffered and lenient about a character it cannot encode, which is
-        # what an interpreter gives a standard error it builds for itself.
-        if sys.stderr is None:
-            sys.stderr = os.fdopen(2, "w", buffering=1, errors="backslashreplace", closefd=False)
 
 
 @contextmanager

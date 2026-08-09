@@ -1088,6 +1088,9 @@ def _main() -> None:
     import sys
     from pathlib import Path
 
+    from elenctic.streams import establish_standard_error
+
+    establish_standard_error()
     arguments = sys.argv[1:]
     if len(arguments) != 1:
         print("usage: python -m elenctic.expectation <file.lp>", file=sys.stderr)

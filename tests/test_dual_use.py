@@ -4,14 +4,23 @@ The contract-parsing, discovery, run-derivation, and solve stages are each runna
 debugging aid (``python -m elenctic.<stage> …``), in addition to being importable. The sub-component
 and pure-data modules (``query``/``terms``/``result``/``checks``) are *not* given a ``__main__`` — a
 standalone entry there would be artificial; their behaviour surfaces through the stage modules and
-the ``elenctic`` console script (``cli``).
+the ``elenctic`` console script (``cli``). Neither is ``streams``, for a different reason: it is not
+a stage at all but what the five entry points *ask* on their way in, so there is nothing there to
+inspect — what it does is visible only as the streams the caller is then left holding.
 """
 
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from elenctic.outcome import ExitStatus
+from support import without_standard_error
+
+# Every stage that runs standalone. Each refuses an empty command line with a usage line and status
+# 2, which is the one behaviour all four share and the one the pair of tests below is about.
+_STAGES = ("expectation", "run", "discovery", "solvers")
 
 
 def write(path: Path, text: str) -> Path:
@@ -20,15 +29,14 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
-def run_module(module: str, *args: str) -> subprocess.CompletedProcess[str]:
+def _command(module: str, *args: str) -> list[str]:
     # -W error::RuntimeWarning turns the runpy "found in sys.modules" re-import warning into a
     # failure, so the lazy-__init__ fix (no eager submodule load) is pinned: any regression aborts.
-    return subprocess.run(
-        [sys.executable, "-W", "error::RuntimeWarning", "-m", f"elenctic.{module}", *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    return [sys.executable, "-W", "error::RuntimeWarning", "-m", f"elenctic.{module}", *args]
+
+
+def run_module(module: str, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(_command(module, *args), capture_output=True, text=True, check=False)
 
 
 def test_expectation_module_prints_the_parsed_contract(tmp_path: Path) -> None:
@@ -80,7 +88,40 @@ def test_solvers_module_prints_the_solve_outcome(tmp_path: Path) -> None:
     assert result.stderr == ""
 
 
-def test_module_usage_error_exits_2() -> None:
-    result = run_module("expectation")  # missing the file argument
+@pytest.mark.parametrize("stage", _STAGES)
+def test_module_usage_error_exits_2(stage: str) -> None:
+    result = run_module(stage)  # missing the file argument
     assert result.returncode == ExitStatus.USER_FAULT
     assert "usage" in result.stderr
+    assert result.stdout == "", "the payload stream carries the inspection, never the refusal"
+
+
+@pytest.mark.parametrize("stage", _STAGES)
+def test_a_refusal_stays_off_the_payload_when_there_is_no_standard_error(stage: str) -> None:
+    # A closed descriptor 2 is not a redirected one: this language leaves ``sys.stderr`` as
+    # ``None``, and ``print`` writes to *standard output* when it is told to write to that. So the
+    # stream carrying the inspection — the thing a reader is piping into something else — receives
+    # ``usage: python -m elenctic....`` instead, on the one run that produced no inspection at all.
+    #
+    # The console entry answers this on its first line. These four are the same kind of program and
+    # owe the same guarantee, which is why the rule is asked rather than restated here.
+    finished = without_standard_error(_command(stage))
+
+    assert finished.returncode == ExitStatus.USER_FAULT
+    assert finished.stdout == "", (
+        "the usage line landed in the payload stream when standard error was gone"
+    )
+
+
+def test_a_stage_that_does_its_work_survives_having_no_standard_error(tmp_path: Path) -> None:
+    # The refusal above is the *short* path through a stage with no standard error. This is the long
+    # one, and it reaches further: a solve captures the solver's own diagnostics by taking a copy of
+    # descriptor 2 and flushing the stream, both of which fail outright where the descriptor is gone
+    # and the stream was never built. Before these entries asked for a standard error, this run was
+    # not a wrong answer — it was no answer at all.
+    program = write(tmp_path / "p.lp", "a. #show a/0.\n")
+
+    finished = without_standard_error(_command("solvers", "DEFAULT", str(program)))
+
+    assert finished.returncode == ExitStatus.OK
+    assert "ConsistentWitness" in finished.stdout, "the inspection this entry point exists for"

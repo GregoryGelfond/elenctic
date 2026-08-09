@@ -135,6 +135,38 @@ means for them — a reader deciding whether to upgrade should not have to read 
   refusal, which said nothing a caller asking about a case it holds did not already know. Call it
   as `check_solver_available(case.solver)`.
 
+### Fixed
+
+- **A refusal from a pipeline-stage module no longer lands in its payload.** The four inspection
+  entries — `python -m elenctic.expectation|run|discovery|solvers` — print a usage line and leave
+  with status 2 when the command line is wrong. Run with standard error *closed* rather than
+  redirected (`2>&-`), this language leaves `sys.stderr` unbuilt and `print` writes to standard
+  output instead, so the stream carrying the inspection received `usage: python -m elenctic.…` on
+  the one run that produced no inspection at all. All four now establish a standard error before
+  writing anything, as the `elenctic` console entry always has. A stage that *does* its work in that
+  state now completes as well, where the solve previously failed outright on the missing descriptor.
+
+- **A damaged output description is reported instead of published.** `elenctic --print-schema`
+  writes the packaged description of the machine-readable report. A packaging or vendoring step can
+  drop that file, put something else in its way, re-encode it, or leave it half written; only the
+  first two were reported. A file cut short was published as far as it went, and one cut to
+  **nothing** was published as nothing — **exit 0, both streams empty**, the one outcome that tells
+  a reader there is nothing to look into. All of them now leave with status 2.
+
+  **The diagnostic carries the reason the read gave**, because that is what separates the remedies:
+  a file that is absent is fixed by reinstalling, and one refused by its own permissions is not.
+  Running out of memory on that path no longer reports itself as a corpus that grounded too much —
+  no corpus is walked when the description is printed.
+
+- **`--print-schema` writes the packaged file byte for byte, including its line endings.** It was
+  read as text, so a checkout or archive that gave the file CRLF had them translated back to LF on
+  the way out, and what was published differed from what shipped by exactly the bytes someone
+  diffing the two would see.
+
+  **For library callers:** `elenctic.schema_text()` now raises rather than returning a string that
+  describes nothing — `json.JSONDecodeError` where the packaged file is empty or truncated. What it
+  returns when the package is intact is unchanged, and is now unchanged on every platform.
+
 ## [0.3.0] - 2026-08-04
 
 The minor bump is deliberate, and this is the release with the most to re-check in it so far.

@@ -578,6 +578,9 @@ def _main() -> None:
     """Inspect discovery: walk a target (a file or a directory) and list the discovered cases."""
     import sys
 
+    from elenctic.streams import establish_standard_error
+
+    establish_standard_error()
     arguments = sys.argv[1:]
     if len(arguments) != 1:
         print("usage: python -m elenctic.discovery <file.lp | directory>", file=sys.stderr)

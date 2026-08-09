@@ -810,6 +810,9 @@ def _main() -> None:
     ``SolveOutcome``."""
     import sys
 
+    from elenctic.streams import establish_standard_error
+
+    establish_standard_error()
     arguments = sys.argv[1:]
     if len(arguments) != 2:
         print("usage: python -m elenctic.solvers <MODE> <file.lp>", file=sys.stderr)

@@ -479,7 +479,9 @@ def _main() -> None:
 
     from elenctic.display import legible
     from elenctic.expectation import parse
+    from elenctic.streams import establish_standard_error
 
+    establish_standard_error()
     arguments = sys.argv[1:]
     if len(arguments) != 1:
         print("usage: python -m elenctic.run <file.lp>", file=sys.stderr)

@@ -21,6 +21,14 @@ Two guarantees here are about the document rather than about the schema, and the
 they are what a consumer's parser meets before any schema is consulted: that the report is JSON a
 strict reader accepts, and that the description the command line prints is the file that ships.
 
+That second one is byte for byte, and it is stated that way because it is the whole of its value —
+someone redirecting `--print-schema` into their own repository diffs the result against the
+published file, so a re-render, or a line ending quietly translated on the way through, is a
+difference they have to account for and cannot explain. The same guarantee has an under-side: what
+ships has to *be* a description. A packaging or vendoring step that leaves the file half written, or
+empty, produces a string that reads back perfectly well and describes nothing, and handing that over
+is the one failure a consumer cannot distinguish from success.
+
 The schema is read through the package's own resources — the same lookup the command line prints
 from — so the two cannot come to read different files.
 """
@@ -35,6 +43,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 import elenctic
+from elenctic import json_report
 from elenctic.cli import main
 from elenctic.corpus import run_corpus
 from elenctic.json_report import SCHEMA_VERSION, as_json, dumps, schema_text
@@ -235,6 +244,56 @@ def test_what_the_package_hands_back_is_the_file_that_ships() -> None:
     packaged = Path(elenctic.__file__).parent / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
 
     assert schema_text().encode("utf-8") == packaged.read_bytes()
+
+
+def _installed_with_the_description(root: Path, text: str) -> Path:
+    """A stand-in package directory whose packaged description is exactly ``text``.
+
+    The file is genuinely on disk and genuinely that size, so the read under test is a real read of
+    a real file. The only thing arranged is *which directory* the package was installed into — which
+    is precisely what a packaging or vendoring step gets wrong, and the one part of the accident a
+    test cannot reproduce by damaging the copy it is running out of.
+    """
+    packaged = root / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
+    packaged.parent.mkdir(parents=True, exist_ok=True)
+    packaged.write_text(text, encoding="utf-8")
+    return root
+
+
+def test_what_is_handed_back_is_the_file_even_where_the_line_endings_are_not_ours(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # "Exactly as it ships" was an absolute the read did not keep. Reading a resource as *text*
+    # opens it in universal-newline mode, so a checkout or an archive that gave the file CRLF had
+    # them silently turned back into LF — and what was published was then a document that is not
+    # the one on disk, by exactly the bytes a consumer diffing the two would see. It is a small
+    # difference and an absolute claim; the claim is the part that has to be true.
+    packaged = _installed_with_the_description(tmp_path, "")
+    resource = packaged / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
+    resource.write_bytes(schema_text().encode("utf-8").replace(b"\n", b"\r\n"))
+    monkeypatch.setattr(json_report, "files", lambda _package: packaged)
+
+    assert schema_text().encode("utf-8") == resource.read_bytes()
+
+
+@pytest.mark.parametrize(("damage", "kept"), [("dropped to nothing", 0), ("cut off part-way", 100)])
+def test_a_damaged_description_is_refused_rather_than_handed_back(
+    damage: str, kept: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Three things a packaging or vendoring step does to a shipped data file: drop it, re-encode it,
+    # truncate it. The first two already raise on the way out of the read; the third does not, and
+    # the two sizes here are its ends. Zero bytes is the worse of them precisely because it is the
+    # quieter: what a caller gets back is a perfectly good string that describes nothing.
+    #
+    # A real prefix of the real file, so what is being read is a document that genuinely stops in
+    # the middle rather than one contrived to fail.
+    damaged = schema_text()[:kept]
+    monkeypatch.setattr(
+        json_report, "files", lambda _package: _installed_with_the_description(tmp_path, damaged)
+    )
+
+    with pytest.raises(json.JSONDecodeError):
+        schema_text()
 
 
 def test_the_packaged_schema_is_a_schema_this_dialect_can_read() -> None:
