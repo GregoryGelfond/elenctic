@@ -133,7 +133,7 @@ gets you that check for free.
 
 ## Where things are
 
-`src/elenctic/` holds sixteen modules arranged as a pipeline a reader can walk in order, plus the
+`src/elenctic/` holds seventeen modules arranged as a pipeline a reader can walk in order, plus the
 package surface in `__init__.py`.
 Each of `expectation`, `run`, `discovery` and `solvers` is runnable on its own for inspection:
 

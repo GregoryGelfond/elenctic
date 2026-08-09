@@ -1,21 +1,23 @@
-"""What the two documents a consumer reads state about this package, checked against the package.
+"""What the documents state about this package, checked against the package.
 
-The README is what everyone arriving reads and the changelog is what everyone upgrading reads, and
-both are enforced by nothing that runs — so a sentence in either stays true only for as long as
-somebody remembers to move it. What is held here is the part that is mechanically checkable: a claim
-naming a value or a name the package also holds — and, in one direction the other way, a claim the
-*package* makes that one of these documents settles. The boundary is worth stating plainly: a green
-run here does not mean either document is right, only that it does not contradict the package about
-the few things it names in the package's own terms.
+The README is what everyone arriving reads, the changelog is what everyone upgrading reads, and the
+contributor guide is what everyone patching reads — and all three are enforced by nothing that runs,
+so a sentence in any of them stays true only for as long as somebody remembers to move it. What is
+held here is the part that is mechanically checkable: a claim naming a value, a name or a count the
+package also holds — and, in one direction the other way, a claim the *package* makes that one of
+these documents settles. The boundary is worth stating plainly: a green run here does not mean any
+of them is right, only that it does not contradict the package about the few things it names in the
+package's own terms.
 
-Both are read from the source tree rather than from the installed package, which is where they are
-and where an edit to them lands. Neither is shipped inside the wheel, and these tests are not
+All three are read from the source tree rather than from the installed package, which is where they
+are and where an edit to them lands. None is shipped inside the wheel, and these tests are not
 either.
 """
 
 import importlib
 import json
 import re
+import tomllib
 from pathlib import Path
 
 import elenctic
@@ -98,7 +100,7 @@ def test_every_name_the_documents_tell_a_reader_to_import_is_one_they_can() -> N
     assert mentioned, "the pattern found nothing at all, which means it is no longer the pattern"
     adrift = [name for name in mentioned if not _is_a_home(name)]
     assert not adrift, (
-        f"named in the README or the changelog, and not where the name says it lives: {adrift}. A "
+        f"named in one of the documents, and not where the name says it lives: {adrift}. A "
         f"document that names a home sends a reader there; these have moved, or never existed"
     )
 
@@ -217,4 +219,54 @@ def test_the_install_a_diagnostic_advises_is_the_one_the_readme_shows() -> None:
     (shown,) = re.findall(r'pip install "elenctic\[theory\][^"]*"', _README)
     assert shown in THEORY_EXTRA_ADVICE, (
         f"a diagnostic advises {THEORY_EXTRA_ADVICE!r}, and the README installs it with {shown!r}"
+    )
+
+
+# Numbers are written as words in these documents, so a check on one has to spell it the way the
+# sentence does. The table stops where the package plausibly stops; a count past its end fails with
+# the reason rather than reading as agreement, because an index error here would look like a bug in
+# the test rather than a package that has outgrown it. Pinned against the formatter, which would
+# otherwise give each word a line of its own and turn a table anyone can count into twenty-one.
+_IN_WORDS = (
+    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+    "nineteen", "twenty",
+)  # fmt: skip
+
+
+def test_the_number_of_modules_the_contributor_guide_states_is_the_number_there_are() -> None:
+    # Orientation, and the one sentence in that guide that goes stale by the project doing nothing
+    # wrong: adding a module is not an edit to a document, so nobody is prompted. It had already
+    # happened — the guide said sixteen from the release that shipped, and `streams.py` made it
+    # seventeen with nothing to say so. The count is worth keeping (a reader wants the scale before
+    # they open anything), so it is checked instead of dropped.
+    #
+    # `__init__.py` is excluded because the sentence excludes it in its own next clause.
+    modules = [path for path in (_ROOT / "src/elenctic").glob("*.py") if path.name != "__init__.py"]
+    assert len(modules) < len(_IN_WORDS), (
+        f"{len(modules)} modules is past the end of the table this test spells numbers with"
+    )
+    stated = _IN_WORDS[len(modules)]
+    assert f"holds {stated} modules" in _CONTRIBUTING, (
+        f"src/elenctic/ holds {len(modules)} modules, and the contributor guide does not say "
+        f"{stated}: {sorted(path.name for path in modules)}"
+    )
+
+
+def test_every_module_allowed_to_print_is_one_that_does() -> None:
+    # The other direction from the one ruff enforces. A module that prints without a waiver fails
+    # the gate loudly; a waiver that outlives the print it was written for fails nothing, and the
+    # next reader takes the list as a statement of which modules are meant to write to a terminal.
+    # It nearly happened here: `streams.py` was on the list for one edit before it printed anything.
+    ignores = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    waived = [
+        path
+        for path, rules in ignores["tool"]["ruff"]["lint"]["per-file-ignores"].items()
+        if "T201" in rules
+    ]
+    assert waived, "the waiver key moved, and this test is no longer reading the list it names"
+    silent = [path for path in waived if "print(" not in (_ROOT / path).read_text(encoding="utf-8")]
+    assert not silent, (
+        f"waived from T20 and printing nothing: {silent}. The list is read as the modules meant to "
+        f"write to a terminal, so an entry that no longer does is a sentence about the wrong set"
     )
