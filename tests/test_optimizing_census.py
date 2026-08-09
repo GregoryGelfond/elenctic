@@ -10,6 +10,11 @@ Each program below is stated with its AS(P) worked out by hand, and each case pi
 *semantics* demands — not the verdict a particular clingo search order happens to produce. An
 objective ranks answer sets; it never removes any, so ``@count``, ``@model``, ``@cautious``,
 ``@brave`` and ``@query`` must read exactly as they would with the objective deleted.
+
+The last section is the other side of the same coin, and it is here because it is the case where
+``Opt(P)`` could mean two things: what the *optimal*-base tags read when the encoding carries a
+**theory** objective as well as an ASP one. They read the optimum the solver proves, which accounts
+for both — pinned by cases whose two readings disagree, so a change of mind cannot pass quietly.
 """
 
 from pathlib import Path
@@ -129,3 +134,67 @@ def test_as_p_readings_are_invariant_under_deleting_the_objective(tmp_path: Path
     without = _LADDER_FLAG.replace("#minimize { V : chosen(V) }.\n", "")
     assert verdict_of(tmp_path / "with", contract, _LADDER_FLAG) is Verdict.PASS
     assert verdict_of(tmp_path / "without", contract, without) is Verdict.PASS
+
+
+# --- Opt(P) under a THEORY objective: the optimum the solver proves, and all four tags agree ---
+
+# Both answer sets cost 0 under the ASP objective, so an ASP-only reading of Opt(P) would hold two
+# members and neither `p(1)` nor `p(2)` would be a consequence of it. The theory objective breaks
+# the tie: `p(2)` forces x >= 5, so minimizing x proves the `p(1)` answer set optimal and the other
+# not. What elenctic reports is that optimum.
+#
+# This is pinned rather than left to be rediscovered, because it is the one place `Opt(P)` could
+# mean two things and the difference is invisible in the verdict. It reads the solver's proven
+# optimum, and for a program that declares `&minimize` that objective is part of the program — the
+# optimum of the program includes it, so an "ASP-optimal class" that ignores a declared objective is
+# the optimum of a different program. Every optimal-base tag agrees with every other on which set
+# that is, which is what makes the reading coherent rather than merely defensible; a change of mind
+# here has to break these three together, not one quietly.
+_THEORY_TIEBREAK = (
+    "1 { p(1); p(2) } 1.\n"
+    "&sum { x } >= 1.\n"
+    "&sum { x } <= 9.\n"
+    "&sum { x } >= 5 :- p(2).\n"
+    "&minimize { x }.\n"
+    "#minimize{ 0 : p(2) }.\n"
+    "#show p/1.\n"
+)
+_THEORY = "% @elenctic solver clingcon\n% @expect sat\n"
+
+
+def test_the_optimal_base_reads_the_optimum_the_solver_proves(tmp_path: Path) -> None:
+    # One optimal answer set, not the two an ASP-only reading of the objective would count.
+    assert verdict_of(tmp_path, f"{_THEORY}% @count optimal 1\n", _THEORY_TIEBREAK) is Verdict.PASS
+
+
+def test_an_optimal_consequence_reads_that_same_optimum(tmp_path: Path) -> None:
+    # `p(1)` holds in every member of that optimum, so it is an optimal cautious consequence. Under
+    # an ASP-only reading the optimum would hold both answer sets and this would be false.
+    assert (
+        verdict_of(tmp_path, f"{_THEORY}% @cautious optimal {{ p(1) }}\n", _THEORY_TIEBREAK)
+        is Verdict.PASS
+    )
+
+
+def test_the_cost_reported_beside_it_is_the_asp_cost_of_that_optimum(tmp_path: Path) -> None:
+    # The half that makes the reading coherent instead of two readings in one contract: `@cost`
+    # states the ASP cost vector OF the set the tags above range over, which is 0 here.
+    assert verdict_of(tmp_path, f"{_THEORY}% @cost {{ 0 }}\n", _THEORY_TIEBREAK) is Verdict.PASS
+
+
+def test_the_asp_only_reading_of_that_optimum_is_refuted_not_merely_unasserted(
+    tmp_path: Path,
+) -> None:
+    """The three above pass; this is what establishes they are measuring the distinction.
+
+    An ASP-only reading of `Opt(P)` — the objective's optimal class with the theory objective
+    ignored — holds BOTH answer sets, so it would count two and would not carry `p(1)`. Both claims
+    are stated here and both must FAIL. Without this, the three guards above pass just as well
+    against a build that had quietly adopted the other reading and happened to agree on the cases
+    they assert.
+    """
+    assert verdict_of(tmp_path, f"{_THEORY}% @count optimal 2\n", _THEORY_TIEBREAK) is Verdict.FAIL
+    assert (
+        verdict_of(tmp_path, f"{_THEORY}% @cautious optimal {{ p(2) }}\n", _THEORY_TIEBREAK)
+        is Verdict.FAIL
+    )
