@@ -74,6 +74,19 @@ means for them — a reader deciding whether to upgrade should not have to read 
   (half a coordinate points at line 3 of nothing), as is a line below 1. Built by keyword as
   before, so existing construction sites are unaffected unless they pass the new field.
 
+- **A case may not read past its corpus while the program is *solved*, not only while it is read.**
+  A case whose `#include` reaches outside the corpus is refused, and the solver's own account of
+  the offending file — which names it, says how far in the solver got, and quotes the text it
+  objected to — is withheld. That rule held when the escaping file failed to *parse*; a file that
+  parsed and then would not *ground* was diagnosed in full. Which of the two a corpus met was
+  decided by the offending file's syntax, so one rule was enforced in one frame and not the other.
+  Both frames now ask one seam and answer in one set of words.
+
+  `Case` gained **`boundary`** and `solve` gained **`within`** to carry it there, both optional and
+  both defaulting to `None`, which states no rule — the reading a caller assembling its own files
+  already has. A `Case` from `discover` carries the corpus it was found in, so a runner built on
+  `run_case`/`run_plan` gets this without doing anything.
+
 ### Removed
 
 - **`discovery.check_solver_available` no longer takes `where`.** It spelled that path into the

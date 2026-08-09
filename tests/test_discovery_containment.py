@@ -15,9 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from elenctic.discovery import discover, inspect_corpus
+from elenctic.discovery import Case, discover, inspect_corpus
+from elenctic.expectation import Sat
+from elenctic.harness import run_case
 from elenctic.outcome import ErrorKind, error_kind
-from elenctic.program import ContainmentError
+from elenctic.program import Boundary, ContainmentError, ProgramError, Unrestricted
+from elenctic.run import Mode
+from elenctic.solvers import run_clingo
 
 _LIBRARY = "fact(1).\n"
 _CASE = "% @expect sat\n% @count  1\n\n#include {include}.\nfact(2).\n#show fact/1.\n"
@@ -239,3 +243,109 @@ def test_one_containment_rule_is_one_locus(tmp_path: Path) -> None:
     faults = [fault for _path, fault in inspect_corpus(tmp_path / "corpus").unrunnable]
     assert len(faults) == 2, "one that parses, one that does not"
     assert {error_kind(fault) for fault in faults} == {ErrorKind.CONTAINMENT}
+
+
+# A library that resolves, parses, and then will not ground — so it is past both frames above by the
+# time clingo objects to it. The rule clingo echoes back carries the marker, which is what makes the
+# ground diagnostic a disclosure and not merely a coordinate.
+_UNGROUNDABLE = 'confidential_marker("wxyz").\np(X) :- confidential_marker(Y).\n'
+_LOADS = "#include {include}.\nfact(2).\n"
+
+
+def test_a_discovered_case_carries_the_boundary_it_was_found_under(tmp_path: Path) -> None:
+    # The link the two guards below cannot hold, because each builds the case it runs. Unless
+    # discovery puts the boundary ON the case, every case the product actually runs carries none,
+    # the solve frame is asked to enforce nothing, and both of those guards stay green over a corpus
+    # with no rule in force at all — measured, with the whole suite passing.
+    _write(tmp_path / "corpus/lib.lp", _LIBRARY)
+    _write(tmp_path / "corpus/a.lp", _CASE.format(include='"lib.lp"'))
+    (found,) = discover(tmp_path / "corpus")
+    assert found.boundary == Boundary((tmp_path / "corpus").resolve())
+
+    # A named file is rooted at its own directory instead, carrying the flag that has the refusal
+    # explain why the boundary is the narrower one. Both shapes, because the walk builds the value
+    # in two places and a case that reached the solver with the wrong one would be refused for a
+    # rule nobody stated.
+    _write(tmp_path / "solo/lib.lp", _LIBRARY)
+    named = _write(tmp_path / "solo/case.lp", _CASE.format(include='"lib.lp"'))
+    (only,) = discover(named)
+    assert only.boundary == Boundary((tmp_path / "solo").resolve(), from_named_file=True)
+
+
+def test_a_ground_fault_inside_an_escaping_library_discloses_nothing_from_it(
+    tmp_path: Path,
+) -> None:
+    # The third channel, and neither frame above reaches it: a program whose every include resolves
+    # — so the sources check is satisfied and the parse frame is long past — and which then fails to
+    # GROUND. clingo names the escaping file, the coordinates it objected to, and the rule it was
+    # reading when it did. So the boundary has to be known where the *solve* reads that diagnostic,
+    # for the same reason it had to be known where the parse read its own.
+    _write(tmp_path / "outside/secret.lp", _UNGROUNDABLE)
+    root = tmp_path / "corpus"
+    case = _write(root / "case.lp", _LOADS.format(include='"../outside/secret.lp"'))
+
+    with pytest.raises(ContainmentError) as caught:
+        run_clingo(Mode.ENUM_ALL, files=(case,), within=Boundary(root.resolve()))
+    said = str(caught.value)
+    assert "secret.lp" in said, "naming the escaping path is the diagnostic"
+    assert "confidential_marker" not in said, "what was read inside it is not"
+    assert "unsafe" not in said, "nor the solver's account of what is wrong with it"
+    assert "secret.lp:2" not in said, "nor how far into it the grounding got"
+
+    # The control, and the test says nothing without it: the same ungroundable library INSIDE the
+    # root is diagnosed in full, coordinates and all. Without this every assertion above would hold
+    # over a facade that had simply stopped reporting ground faults.
+    inside = tmp_path / "corpus2"
+    _write(inside / "lib/secret.lp", _UNGROUNDABLE)
+    contained = _write(inside / "case.lp", _LOADS.format(include='"lib/secret.lp"'))
+    with pytest.raises(ProgramError) as published:
+        run_clingo(Mode.ENUM_ALL, files=(contained,), within=Boundary(inside.resolve()))
+    assert not isinstance(published.value, ContainmentError), "this one reaches past nothing"
+    assert "secret.lp:2:" in str(published.value), "a file inside the corpus is diagnosed in full"
+    assert "unsafe" in str(published.value)
+
+
+def test_the_boundary_a_case_was_discovered_under_reaches_its_solve(tmp_path: Path) -> None:
+    # The rule above is only in force if the boundary gets there, and a corpus cannot demonstrate
+    # that it does: every case reaching the solver has already had its sources judged, so a breach
+    # arrives only through a tree that changed between the two moments. The case is therefore built
+    # rather than discovered — which is that changed tree, stated directly — and what is held here
+    # is the thread from the boundary a case belongs to down to the frame that reads the solver's
+    # diagnostic.
+    _write(tmp_path / "outside/secret.lp", _UNGROUNDABLE)
+    root = tmp_path / "corpus"
+    path = _write(root / "case.lp", _LOADS.format(include='"../outside/secret.lp"'))
+    bounded = Case(
+        path, "clingo", Sat(expect_line=1), Unrestricted(), boundary=Boundary(root.resolve())
+    )
+    with pytest.raises(ContainmentError, match="outside the corpus"):
+        run_case(bounded)
+
+    # And the other direction, because a rule asserted only one way cannot detect its own
+    # weakening: a case carrying NO boundary states no rule, and gets the solver's account in full.
+    # That is the reading a caller who assembled the files themselves already has from
+    # `inspect(files, within=None)`, and it is what makes the refusal above attributable to the
+    # boundary rather than to anything else about the fixture.
+    unbounded = Case(path, "clingo", Sat(expect_line=1), Unrestricted())
+    with pytest.raises(ProgramError) as unheld:
+        run_case(unbounded)
+    assert not isinstance(unheld.value, ContainmentError), "no boundary, no containment rule"
+    assert "confidential_marker" in str(unheld.value), "and so nothing is withheld"
+
+
+def test_the_theory_backend_withholds_a_parse_diagnostic_too(tmp_path: Path) -> None:
+    # The theory facade's region is the wider one — clingcon does its own parsing inside it — so on
+    # that backend an escaping file that will not PARSE is refused by the solve-side seam, where on
+    # the plain backend the same file never gets that far. Measured rather than inferred from the
+    # nesting, because which failures a region encloses is exactly what a reader guesses wrong.
+    pytest.importorskip("clingcon")
+    from elenctic.solvers import run_clingcon
+
+    _write(tmp_path / "outside/secret.lp", "ok(1).\nconfidential_marker this is not asp\n")
+    root = tmp_path / "corpus"
+    case = _write(root / "case.lp", _LOADS.format(include='"../outside/secret.lp"'))
+    with pytest.raises(ContainmentError) as caught:
+        run_clingcon(Mode.ENUM_ALL, files=(case,), within=Boundary(root.resolve()))
+    assert "secret.lp" in str(caught.value), "the escaping path is named"
+    assert "confidential_marker" not in str(caught.value), "and its contents are not"
+    assert "syntax error" not in str(caught.value), "nor the solver's account of them"

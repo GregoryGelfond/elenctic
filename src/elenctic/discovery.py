@@ -120,6 +120,13 @@ class Case:
     its ``notes``, and ``contract_source`` names the case file, so a renderer or docs tool reads it
     without re-parsing. ``has_projection`` records a ``#project`` directive, which narrows the
     solver's own enumeration and so decides whether a run may add its own projection flag.
+
+    ``boundary`` is the corpus this case belongs to, and it is a field of the case because that is
+    what a case *is*: a file, together with the corpus it was found in. Carrying it is what lets
+    containment be decided where a solver's diagnostic is read, and not only where the walk judged
+    the sources a parse resolved — the two moments are far apart, and a program that parses and
+    then will not ground reaches only the second. ``None`` states no rule, the reading for a case a
+    consumer built from files it assembled itself.
     """
 
     path: Path
@@ -127,6 +134,7 @@ class Case:
     expectation: Expectation
     shown: ShownVocabulary
     has_projection: bool = False
+    boundary: Boundary | None = None
 
     @property
     def contract_source(self) -> Path:
@@ -369,7 +377,7 @@ def _make_case(path: Path, text: str, boundary: Boundary) -> tuple[Case, bool, f
     facts = inspect((path,), within=boundary)
     _within_root(facts.sources, boundary, path)
     check_program(contract.expectation, facts, solver, path)
-    case = Case(path, solver, contract.expectation, facts.shown, facts.has_projection)
+    case = Case(path, solver, contract.expectation, facts.shown, facts.has_projection, boundary)
     return case, declared, facts.sources
 
 

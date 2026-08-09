@@ -102,7 +102,14 @@ def run_plan(
     has already been built, so ``RoutingError`` belongs to whoever built it."""
     reports: list[CheckReport] = []
     for run in runs:
-        outcome = solve(case.solver, run.mode, files=case.files, budget=budget, project=run.project)
+        outcome = solve(
+            case.solver,
+            run.mode,
+            files=case.files,
+            budget=budget,
+            project=run.project,
+            within=case.boundary,
+        )
         reports.extend(check(outcome) for check in run.checks)
     return tuple(reports)
 

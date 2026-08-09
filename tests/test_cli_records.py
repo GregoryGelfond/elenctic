@@ -282,9 +282,10 @@ def test_a_containment_breach_the_runner_meets_is_still_a_containment_breach(
     # `ContainmentError`'s own docstring exists to prevent, and which the sibling arm four lines
     # above records as already fixed once.
     #
-    # Forced rather than waited for. Nothing raises one from a solve *today*, because the solver
-    # facade has no containment boundary yet — which is what makes this a latent hole rather than a
-    # live defect, and what makes the guard the thing that will notice when the boundary lands.
+    # Forced rather than waited for, and it stays forced now that the solver facade does carry a
+    # boundary: a case only reaches a solve with its sources already judged, so a real breach here
+    # needs a tree that changed between the two moments. What is held is the arm, not the route —
+    # that this register reads the locus off the class however the breach arrives.
     def escapes(case: Case, runs: Iterable[Run], budget: float) -> tuple[CheckReport, ...]:
         raise ContainmentError("this case loads a file from outside the corpus")
 

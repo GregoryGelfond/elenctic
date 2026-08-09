@@ -30,6 +30,7 @@ __all__ = [
     "ShownVocabulary",
     "Unrestricted",
     "inspect",
+    "refuse_strangers",
 ]
 
 
@@ -290,6 +291,33 @@ def _strangers(detail: list[str], within: Path) -> list[str]:
     )
 
 
+def refuse_strangers(detail: list[str], within: Boundary | None, cause: Exception) -> None:
+    """Refuse to publish ``detail`` when any part of it is a diagnostic about a file outside
+    ``within``; return, having decided nothing else, when every part may be published.
+
+    The one statement of the rule, called from wherever a solver's own account of a failure is about
+    to be republished — the parse below, and the ground and solve in the facades. Containment is a
+    rule about *disclosure* rather than about one function, and a reader meets whichever frame the
+    program happened to get as far as: refused while it is read if an escaping ``#include`` will not
+    parse, while it is grounded if that file parses and then will not ground. Stated once per frame,
+    the same escape would be refused in different words, or in one frame and not another, decided by
+    a property of the offending file that its author has no use for.
+
+    ``within`` is ``None`` for a caller who stated no rule — one that assembled the files itself
+    rather than discovering them — and then there is nothing to be outside of.
+
+    ``cause`` is the failure being translated, so the refusal is chained to it rather than to
+    whatever this frame was doing: a reader following ``__cause__`` reaches the fault the solver
+    reported, which is what the refusal is standing in for."""
+    if within is None or not (escaped := _strangers(detail, within.root)):
+        return
+    raise ContainmentError(
+        f"{within.refusal(escaped)} The solver's own diagnostic is withheld rather than "
+        "repeated here — part of it describes a file the run was never pointed at, and "
+        "the parts cannot be separated safely."
+    ) from cause
+
+
 @contextmanager
 def _parse_faults(messages: list[str], within: Boundary | None = None) -> Iterator[None]:
     """Translate a failure raised by the parse into a ``ProgramError`` carrying clingo's own
@@ -326,12 +354,7 @@ def _parse_faults(messages: list[str], within: Boundary | None = None) -> Iterat
         # notices too, so a fault raised after a clean parse would otherwise be reported as
         # whichever harmless notice was logged first, with the real cause dropped.
         parts = [*messages, str(exc)]
-        if within is not None and (escaped := _strangers(parts, within.root)):
-            raise ContainmentError(
-                f"{within.refusal(escaped)} The solver's own diagnostic is withheld rather than "
-                "repeated here — part of it describes a file the run was never pointed at, and "
-                "the parts cannot be separated safely."
-            ) from exc
+        refuse_strangers(parts, within, exc)
         detail = "; ".join(parts)
         # The include advice is specific enough to act on, so it is offered only when it is the
         # remedy. Attached to a syntax error it sends the author to check paths that are fine.

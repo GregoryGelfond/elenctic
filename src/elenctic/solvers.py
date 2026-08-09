@@ -46,7 +46,7 @@ from clingo import Control, Symbol
 from clingo.solving import Model, ModelType, SolveResult
 
 from elenctic.discovery import SolverUnavailableError
-from elenctic.program import ProgramError
+from elenctic.program import Boundary, ProgramError, refuse_strangers
 from elenctic.registry import SOLVERS, THEORY_EXTRA_ADVICE, Solver
 from elenctic.result import (
     Conclusion,
@@ -571,13 +571,22 @@ def _capture(messages: list[str]) -> Callable[[object, str], None]:
 
 
 @contextmanager
-def _program_faults(messages: list[str]) -> Iterator[None]:
+def _program_faults(messages: list[str], within: Boundary | None = None) -> Iterator[None]:
     """Translate a solver-origin ground or solve failure into a ``ProgramError`` carrying clingo's
-    own captured diagnostic.
+    own captured diagnostic — unless that diagnostic is about a file outside ``within``, in which
+    case the escaping path is named and nothing else is.
 
     Which file it belongs to is not said here, exactly as it is not said in the parse-side region
     this mirrors: the caller passed the files in, and clingo's coordinate inside the diagnostic is
     what names the offending one.
+
+    The containment rule is that region's too, and for the same reason it is applied here rather
+    than by the caller: what a ground failure discloses is the *diagnostic*, and by the time this
+    frame has returned there is nothing left to judge. Which of the two frames refuses a given
+    escape is decided only by how far the program got before clingo objected — a file that will not
+    parse never reaches this one — so the rule is asked of one shared seam and answered in one set
+    of words. ``within`` is ``None`` for a caller that stated no boundary, which is every direct
+    caller of a facade that assembled its own files.
 
     A program that will not ground has no answer sets *defined*, which is not the same as having
     none, so this must never produce ``Inconsistent`` — that would silently pass an ``@expect
@@ -599,8 +608,9 @@ def _program_faults(messages: list[str]) -> Iterator[None]:
         # accumulates routine notices too, so a fault raised after a clean ground would otherwise
         # be reported as whichever harmless notice happened to be logged first, with the real
         # cause dropped.
-        detail = "; ".join([*messages, str(exc)])
-        raise ProgramError(f"cannot run the program: {detail}") from exc
+        parts = [*messages, str(exc)]
+        refuse_strangers(parts, within, exc)
+        raise ProgramError(f"cannot run the program: {'; '.join(parts)}") from exc
 
 
 def run_clingo(
@@ -609,8 +619,15 @@ def run_clingo(
     files: tuple[Path, ...] = (),
     budget: float = TIME_BUDGET,
     project: bool = False,
+    within: Boundary | None = None,
 ) -> SolveOutcome:
     """Run pure clingo for ``mode`` over ``program`` + ``files``; collect a ``SolveOutcome``.
+
+    ``within`` is the directory the program may not reach past, ``None`` for a run with no such
+    rule — which is the reading a caller assembling its own files already has from
+    ``inspect(files, within=None)``. It is carried this far down because the disclosure it prevents
+    is in the solver's own diagnostic, so the frame that reads that diagnostic is the only one that
+    can withhold it.
 
     Whether to project is the caller's, exactly as it is for the theory backend: this frame states
     no rule of its own. It used to, and the rule it stated — that clingo's enumeration modes always
@@ -621,7 +638,7 @@ def run_clingo(
     full shape (``projects_to_shown`` is always ``False`` for a non-theory solver)."""
     messages: list[str] = []
     control = Control(_solver_args(mode, project), logger=_capture(messages))
-    faults = partial(_program_faults, messages)
+    faults = partial(_program_faults, messages, within)
     with faults():
         _add_program(control, program, files)
         control.ground([("base", [])])
@@ -641,8 +658,13 @@ def run_clingcon(
     files: tuple[Path, ...] = (),
     budget: float = TIME_BUDGET,
     project: bool = False,
+    within: Boundary | None = None,
 ) -> SolveOutcome:
     """Run clingcon (theory-aware) for ``mode``; the observable carries the CSP assignment.
+
+    ``within`` means here what it means on the plain facade, and the region it is handed to is the
+    wider one: the theory rewrite does its own parsing, so on this backend the region withholds a
+    *parse* diagnostic as well as a ground one. Measured, not inferred from the nesting.
 
     Projection here erases theory multiplicity — the distinctness that lets ``@count``/``@assign``
     denote uniqueness over CSP output — so it is applied only when ``project`` is set (no rider
@@ -665,7 +687,7 @@ def run_clingcon(
     # Registering the propagator concerns the solver, not the program, so a failure there is not
     # the corpus author's and is left outside the region that would say it was.
     theory.register(control)
-    faults = partial(_program_faults, messages)
+    faults = partial(_program_faults, messages, within)
     with faults():
         _rewrite_program(control, theory, program, files, messages)
         control.ground([("base", [])])
@@ -700,7 +722,7 @@ def run_clingcon(
     )
 
 
-type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool], SolveOutcome]
+type _Facade = Callable[[Mode, str, tuple[Path, ...], float, bool, Boundary | None], SolveOutcome]
 
 _FACADES: Final[dict[str, _Facade]] = {"clingo": run_clingo, "clingcon": run_clingcon}
 if frozenset(_FACADES) != SOLVERS:  # raised, not asserted, so it survives `python -O`
@@ -714,10 +736,13 @@ def solve(
     files: tuple[Path, ...] = (),
     budget: float = TIME_BUDGET,
     project: bool = False,
+    within: Boundary | None = None,
 ) -> SolveOutcome:
     """Dispatch to the named solver facade (the run_case entry point). ``solver`` is the case's
     derived solver name (``"clingo"`` | ``"clingcon"``); an unknown name is a programming error.
-    ``project`` defaults False — a direct caller with no declared consumer does not project."""
+    ``project`` defaults False — a direct caller with no declared consumer does not project, and
+    ``within`` defaults ``None`` on the same reading: a caller that assembled its own files stated
+    no corpus for them to stay inside."""
     try:
         facade = _FACADES[solver]
     except KeyError:
@@ -727,7 +752,7 @@ def solve(
         # per-case. The parameter is narrowed rather than left `str` because this is the one curated
         # function that takes a solver name, and a consumer's call site narrows nothing by itself.
         raise ValueError(f"unknown solver {solver!r} (known: {sorted(_FACADES)})") from None
-    return facade(mode, program, files, budget, project)
+    return facade(mode, program, files, budget, project, within)
 
 
 def _solver_args(mode: Mode, project: bool) -> list[str]:
