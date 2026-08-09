@@ -28,8 +28,8 @@ from typing import Any
 
 import pytest
 
-from elenctic.cli import _stdout_to_stderr
 from elenctic.outcome import ExitStatus
+from elenctic.streams import stdout_to_stderr
 from support import run_cli_without_standard_error, without_standard_error
 
 
@@ -57,7 +57,7 @@ class _FlushFailsOnLeaving:
 
 
 def test_a_write_past_sys_stdout_does_not_reach_stdout(capfd: pytest.CaptureFixture[str]) -> None:
-    with _stdout_to_stderr():
+    with stdout_to_stderr():
         os.write(1, b"a byte written past sys.stdout\n")
     captured = capfd.readouterr()
     assert captured.out == "", "a descriptor-level write must not reach stdout"
@@ -65,7 +65,7 @@ def test_a_write_past_sys_stdout_does_not_reach_stdout(capfd: pytest.CaptureFixt
 
 
 def test_the_descriptor_is_restored_after_the_region(capfd: pytest.CaptureFixture[str]) -> None:
-    with _stdout_to_stderr():
+    with stdout_to_stderr():
         pass
     os.write(1, b"the report\n")
     captured = capfd.readouterr()
@@ -77,7 +77,7 @@ def test_the_descriptor_is_restored_when_the_region_raises(
     capfd: pytest.CaptureFixture[str],
 ) -> None:
     # A run that ends in a fault still has a report to write, and it is written after the region.
-    with pytest.raises(ZeroDivisionError), _stdout_to_stderr():
+    with pytest.raises(ZeroDivisionError), stdout_to_stderr():
         raise ZeroDivisionError
     os.write(1, b"the report\n")
     assert capfd.readouterr().out == "the report\n"
@@ -92,7 +92,7 @@ def test_the_descriptor_is_restored_when_the_leaving_flush_fails(
     # the region exists to keep it out of.
     before = _lowest_free_descriptor()
     monkeypatch.setattr(sys, "stdout", _FlushFailsOnLeaving())
-    with pytest.raises(OSError, match="no space left"), _stdout_to_stderr():
+    with pytest.raises(OSError, match="no space left"), stdout_to_stderr():
         pass
     monkeypatch.undo()
     os.write(1, b"the report\n")
@@ -103,7 +103,7 @@ def test_the_descriptor_is_restored_when_the_leaving_flush_fails(
 def test_the_saved_descriptor_is_released() -> None:
     before = _lowest_free_descriptor()
     for _ in range(8):
-        with _stdout_to_stderr():
+        with stdout_to_stderr():
             pass
     assert _lowest_free_descriptor() == before, "the copy of stdout is closed, not accumulated"
 
@@ -111,7 +111,7 @@ def test_the_saved_descriptor_is_released() -> None:
 def test_the_saved_descriptor_is_released_when_the_region_raises() -> None:
     before = _lowest_free_descriptor()
     for _ in range(8):
-        with contextlib.suppress(ZeroDivisionError), _stdout_to_stderr():
+        with contextlib.suppress(ZeroDivisionError), stdout_to_stderr():
             raise ZeroDivisionError
     assert _lowest_free_descriptor() == before, "a fault in the region costs no descriptor"
 
@@ -121,7 +121,7 @@ def test_the_saved_descriptor_is_released_when_the_region_raises() -> None:
 # rather than relying on that.
 _PROLOGUE = """
 import sys
-from elenctic.cli import _stdout_to_stderr
+from elenctic.streams import stdout_to_stderr
 
 sys.stdout.reconfigure(line_buffering=False, write_through=False)
 sys.stdout.write("pending when the region opens")
@@ -130,7 +130,7 @@ sys.stdout.write("pending when the region opens")
 _QUIET_REGION = (
     _PROLOGUE
     + """
-with _stdout_to_stderr():
+with stdout_to_stderr():
     sys.stdout.write("written while the region is open")
 """
 )
@@ -139,7 +139,7 @@ _RAISING_REGION = (
     _PROLOGUE
     + """
 try:
-    with _stdout_to_stderr():
+    with stdout_to_stderr():
         sys.stdout.write("written while the region is open")
         raise ZeroDivisionError
 except ZeroDivisionError:
@@ -150,9 +150,9 @@ except ZeroDivisionError:
 
 _REPORT_AFTER_REGION = """
 import sys
-from elenctic.cli import _stdout_to_stderr
+from elenctic.streams import stdout_to_stderr
 
-with _stdout_to_stderr():
+with stdout_to_stderr():
     pass
 sys.stdout.write("pending when the region opens")
 """
@@ -225,7 +225,7 @@ def test_the_copy_of_standard_output_is_released_when_the_restore_fails(
         restore = _RestoreFails()
         monkeypatch.setattr(os, "dup2", restore)
 
-        with pytest.raises(OSError, match="the restore could not be made"), _stdout_to_stderr():
+        with pytest.raises(OSError, match="the restore could not be made"), stdout_to_stderr():
             pass
 
         monkeypatch.undo()

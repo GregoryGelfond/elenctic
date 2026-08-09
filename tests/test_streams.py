@@ -1,7 +1,8 @@
-"""The standard error a program is owed, and the two separate things being owed it means.
+"""The streams a program is owed: the standard error it asks for on the way in, and the standard
+output it hands over on the way out.
 
-Every entry point asks this rule before it writes anything, so what it guarantees on return is what
-five programs depend on. It is two guarantees, not one, and they fail independently:
+Every entry point asks the first rule before it writes anything, so what it guarantees on return is
+what five programs depend on. It is two guarantees, not one, and they fail independently:
 
 - **``sys.stderr`` is a stream.** Where it is ``None`` — which is what this language leaves when the
   descriptor was closed at start-up — ``print(..., file=sys.stderr)`` writes to standard *output*,
@@ -10,14 +11,19 @@ five programs depend on. It is two guarantees, not one, and they fail independen
   handed out; the copy of standard output that the machine-readable path takes on its way in would
   *become* descriptor 2, and the redirect would then point standard output at itself.
 
-The tests here are a process each, because both conditions are properties of a process's descriptor
-table and neither can be arranged inside a test runner that has replaced the streams with objects of
-its own.
+Those two are a process each, because both conditions are properties of a process's descriptor table
+and neither can be arranged inside a test runner that has replaced the streams with objects of its
+own. The hand-over below is not: what it is about is the two *layers* of one stream, which a real
+file has and a capture fixture's single object does not.
 """
 
 import subprocess
 import sys
+from pathlib import Path
 
+import pytest
+
+from elenctic.streams import hand_over_standard_output
 from support import without_standard_error
 
 # Something already holding descriptor 2 by the time the rule runs. Any import that leaves a file
@@ -72,3 +78,34 @@ def test_the_instrument_really_closes_the_descriptor() -> None:
     )
 
     assert finished.returncode != 0, "descriptor 2 was open — every reading here is of another run"
+
+
+def test_text_already_written_stays_ahead_of_a_published_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # One stream, two layers, and each holds a buffer of its own: prose goes through the text layer,
+    # and a published artefact goes to the byte layer beneath it because a document carries its own
+    # encoding. Bytes written while text is still pending above them land FIRST, and the text is
+    # pushed out after — measured, and it is the whole difference the emptying makes. So a run that
+    # wrote anything to standard output before the document would put it *inside* what a parser has
+    # to read, and a reader keeping the human report in a file would find its last sentence below
+    # the document rather than above it. Nothing else can hold the order: the two buffers are not
+    # ordered against each other.
+    #
+    # A real file rather than a capture fixture, whose stream is one object where this is about two
+    # layers of one — and the whole bytes rather than a member test, since an order is exactly what
+    # a membership assertion cannot see.
+    destination = tmp_path / "report.json"
+    stream = destination.open("w", encoding="utf-8")
+    try:
+        monkeypatch.setattr(sys, "stdout", stream)
+        sys.stdout.write("the run's last sentence\n")
+
+        hand_over_standard_output(b'{"schema_version": 2}\n')
+    finally:
+        monkeypatch.undo()
+        stream.close()
+
+    assert destination.read_bytes() == b'the run\'s last sentence\n{"schema_version": 2}\n', (
+        "the document overtook text that was written before it"
+    )

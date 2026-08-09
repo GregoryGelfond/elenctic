@@ -10,7 +10,6 @@ import pytest
 
 from elenctic import corpus
 from elenctic.cli import (
-    _hand_over_standard_output,
     _heading,
     _render_tail,
     _summary_line,
@@ -20,6 +19,7 @@ from elenctic.cli import (
 )
 from elenctic.outcome import ErrorKind, ErrorRecord, ExitStatus, Invocation, RunOutcome, Scope
 from elenctic.run import RoutingError, runs_for as real_runs_for
+from elenctic.streams import hand_over_standard_output
 
 
 def write(path: Path, text: str) -> Path:
@@ -670,7 +670,7 @@ def test_a_reader_of_one_merged_stream_is_told_the_deadline_before_the_tally() -
             RunOutcome(cases=(), errors=unreached, hygiene=()),
             Invocation(target=Path("tests"), strict=False, budget=30.0, deadline=5.0),
         )
-        _hand_over_standard_output(prose=tally)
+        hand_over_standard_output(prose=tally)
 
     assert merged.getvalue() == (
         "DEADLINE ERROR — the run passed its 5s deadline; 3 case(s) were not reached\n"

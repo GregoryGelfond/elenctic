@@ -75,10 +75,11 @@ anything.)
 `pyproject.toml` were already clean when they were adopted, so they hold a property the code has
 rather than asking for new work. Two exceptions are worth knowing about before they surprise you:
 
-- **`T20` forbids `print`** everywhere except five modules — the command line, and the four whose
-  documented `python -m elenctic.<module> <file.lp>` entry prints an inspection of one stage. If you
-  want to see something while debugging, use a module logger; the library writes to no stream, and
-  that is a guarantee its callers rely on.
+- **`T20` forbids `print`** everywhere except the modules that are meant to write to a terminal —
+  the command line, the streams layer it writes through, and the four whose documented
+  `python -m elenctic.<module> <file.lp>` entry prints an inspection of one stage. They are listed
+  in `pyproject.toml`. If you want to see something while debugging, use a module logger; the
+  library writes to no stream, and that is a guarantee its callers rely on.
 - **`RET501` is switched off in `corpus.py`**, and only there. The observer protocols spell their
   no-op default bodies `return None`, which the rule objects to — but mypy treats a body that is
   only a docstring as *implicitly abstract*, which would make every announcement mandatory for

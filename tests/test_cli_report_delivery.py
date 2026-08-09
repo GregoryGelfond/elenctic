@@ -27,8 +27,9 @@ from pathlib import Path
 
 import pytest
 
-from elenctic.cli import _NOWHERE_TO_PUBLISH, _hand_over_standard_output, main
+from elenctic.cli import _NOWHERE_TO_PUBLISH, main
 from elenctic.outcome import ExitStatus
+from elenctic.streams import hand_over_standard_output
 from support import (
     run_cli,
     run_cli_with_neither_stream_reachable,
@@ -252,7 +253,7 @@ def test_saying_the_report_was_cut_short_can_meet_the_same_fault(
         monkeypatch.setattr(sys, "stderr", unread)
         unread.write("a report nobody is reading")
 
-        _hand_over_standard_output()
+        hand_over_standard_output()
 
         # Not "nothing raised". That much also holds if the pipe was never broken, or if the frame
         # returned before it reached the arm at all, and a test that cannot tell its subject from
