@@ -257,7 +257,7 @@ def test_a_signature_only_ever_displayed_is_refused_as_its_own_fault() -> None:
     # undeclared signature and it gets its own sentence: the predicate is not missing from the
     # output, it arrives there on the directive's terms rather than the answer set's.
     exp = parse("% @expect sat\n% @query yes { reachable(a) }\n")
-    shown = _shows(("reachable", 1), ("-reachable", 1), displayed=frozenset({("reachable", 1)}))
+    shown = _shows(("-reachable", 1), displayed=frozenset({("reachable", 1)}))
     displays = r"displays with a `#show <term> : <body>\.` directive"
     with pytest.raises(DiscoveryError, match=displays):
         check_program(exp, _facts(shown=shown), "clingo", WHERE)
@@ -269,7 +269,7 @@ def test_the_displayed_refusal_states_the_fault_and_a_remedy_that_keeps_the_outp
     # selects a subset, and declaring the raw predicate widens the output to all of it. Measured on
     # a real corpus, that advice broke eight cases whose contracts compare a whole observable.
     exp = parse("% @expect sat\n% @query yes { reachable(a) }\n")
-    shown = _shows(("reachable", 1), ("-reachable", 1), displayed=frozenset({("reachable", 1)}))
+    shown = _shows(("-reachable", 1), displayed=frozenset({("reachable", 1)}))
     with pytest.raises(DiscoveryError) as caught:
         check_program(exp, _facts(shown=shown), "clingo", WHERE)
     assert str(caught.value) == (
@@ -292,7 +292,7 @@ def test_the_displayed_refusal_agrees_in_number_when_several_are_named() -> None
     # list to a fixed verb reads "what the directive select", which is the shape this catches.
     exp = parse("% @expect sat\n% @query yes { reachable(a), blocked(b) }\n")
     displayed = frozenset({("reachable", 1), ("blocked", 1)})
-    shown = _shows(_R, _NR, _B, _NB, displayed=displayed)
+    shown = _shows(_NR, _NB, displayed=displayed)
     with pytest.raises(DiscoveryError) as caught:
         check_program(exp, _facts(shown=shown), "clingo", WHERE)
     message = str(caught.value)
@@ -301,14 +301,20 @@ def test_the_displayed_refusal_agrees_in_number_when_several_are_named() -> None
     assert "each declared with" in message, message
 
 
-def test_the_displayed_refusal_fires_even_where_nothing_is_restricted() -> None:
-    # The half that a `Restricted`-only check would miss, and the one that was measured reporting
-    # `1/1 passed` on a false claim: an unrestricted program loses nothing, which says nothing at
-    # all about what a display directive may ADD on top of it.
+def test_an_unrestricted_program_with_a_display_directive_is_not_refused() -> None:
+    # This asserted the opposite, on the ground that an unrestricted program loses nothing but a
+    # display directive may ADD on top of it — measured then, reporting `1/1 passed` on a false
+    # claim. It cannot add any more: the observable keeps only symbols the model contains, so a
+    # phantom is dropped before any reading sees it, and the claim is now FAILed on its merits.
+    #
+    # What is left of the display form is that it UNDER-represents, emitting its term only where
+    # its body holds — and that costs nothing here, because an unrestricted program shows every
+    # atom anyway. Refusing this shape was refusing an answer elenctic can compute. The end-to-end
+    # half, which is where "computed rather than refused" is actually visible, lives beside the
+    # other query fixtures.
     exp = parse("% @expect sat\n% @query yes { reachable(a) }\n")
     shown = Unrestricted(displayed=frozenset({("reachable", 1)}))
-    with pytest.raises(DiscoveryError, match=r"the output can carry a symbol no answer set"):
-        check_program(exp, _facts(shown=shown), "clingo", WHERE)
+    check_program(exp, _facts(shown=shown), "clingo", WHERE)
 
 
 def test_a_displayed_signature_the_query_does_not_read_is_no_obstacle() -> None:

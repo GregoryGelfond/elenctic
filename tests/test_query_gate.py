@@ -75,21 +75,51 @@ _WRONG_PASS_ROUTES = [
         "% @expect sat\n% @query no { q(X) } = { }\nq(a). -q(b).\n#show.\n",
     ),
     # A signature the program DISPLAYS with a `#show <term> : <body>.` directive rather than
-    # declaring. The term reaches the output whenever the body holds, so it can arrive for a
-    # symbol no answer set contains at all — `winner(alice)` here is in none.
+    # declaring. The directive emits its term only where its body holds, so the predicate reaches
+    # the output for some ground instances and not others — `winner/1` is undeclared here, and a
+    # program that restricts its output cannot be read over it.
     (
         "displayed-not-declared",
         "% @expect sat\n% @query yes { winner(alice) }\nscored(alice,3).\n"
-        "#show winner(N) : scored(N,S), S > 2.\n",
+        "#show scored/2.\n#show winner(N) : scored(N,S), S > 2.\n",
     ),
-    # The same, where the signature is ALSO declared — so a check that only asked whether the
-    # vocabulary covers the query would admit it.
+]
+
+
+# --- and the shapes that are NOT refused, because the output is faithful over them ---
+
+# Both were refused once, on the ground that a display directive could put in the output a term
+# no answer set contains. It cannot: the observable keeps only symbols the model contains, so a
+# phantom is dropped before any reading sees it. What is left of the display form is that it
+# UNDER-represents, and that is a fault only where the signature is undeclared — which is the
+# case above. Here the answer is computable, so it is computed, and each claim is false, so the
+# verdict is FAIL. Refusing these would be an over-refusal wearing a wrong-answer guard's clothes.
+_ANSWERED_NOT_REFUSED = [
+    # Declared AND displayed. The declaration projects the signature exactly; the directive can
+    # only re-emit atoms already there. `q(b)` is no atom of this program, so the true answer is
+    # `unknown` and the claimed `yes` fails.
     (
         "displayed-and-declared",
         "% @expect sat\n% @query yes { q(b) }\nr(a). q(a).\n"
         "#show q/1.\n#show -q/1.\n#show q(b) : r(a).\n",
     ),
+    # No declaration form at all, so every atom of every answer set reaches the output and the
+    # directive adds nothing that survives the filter. `winner(alice)` is in no answer set, so
+    # the true answer is `unknown` and the claimed `yes` fails.
+    (
+        "unrestricted-with-a-display",
+        "% @expect sat\n% @query yes { winner(alice) }\nscored(alice,3).\n"
+        "#show winner(N) : scored(N,S), S > 2.\n",
+    ),
 ]
+
+
+@pytest.mark.parametrize(
+    ("name", "body"), _ANSWERED_NOT_REFUSED, ids=[r[0] for r in _ANSWERED_NOT_REFUSED]
+)
+def test_a_query_the_program_can_answer_is_answered(tmp_path: Path, name: str, body: str) -> None:
+    verdict, messages = _answer(tmp_path, f"{name}.lp", body)
+    assert verdict is Verdict.FAIL, messages
 
 
 @pytest.mark.parametrize(

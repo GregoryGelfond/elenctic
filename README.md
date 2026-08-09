@@ -93,7 +93,7 @@ judged, and exits non-zero:
 ```console
 $ elenctic encodings/
 encodings/drinks/drinks.lp [clingo] — FAIL
-  [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
+  [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) (observed { biscuit }; missing { tea })
 
 0/1 passed
 ```
@@ -496,7 +496,7 @@ $ elenctic menu.lp --format json
           "tag": "@cautious",
           "subject": "{ tea }",
           "status": "fail",
-          "message": "{ tea } ⊄ ⋂ AS(P) = { } (missing: { tea })",
+          "message": "{ tea } ⊄ ⋂ AS(P) (observed { }; missing { tea })",
           "line": 3,
           "conclusion": "exhausted"
         },

@@ -10,6 +10,53 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+### Changed
+
+- **A `@cautious`/`@brave` claim over a literal the program does not declare observable is now
+  refused, where it used to be FAILed.** These tags claim membership of ⋂ AS(P) and ⋃ AS(P), and
+  elenctic decides them over the answer sets restricted to what the program shows. Where a claimed
+  literal's signature is not declared, the literal reaches no projection at all, so the claim failed
+  *whatever the program computed* — and a verdict that does not depend on the answer sets is not a
+  reading of them. It failed a true claim as readily as a false one:
+
+  ```asp
+  % @cautious { p(x) }
+  p(x). q(x).
+  #show q/1.
+  ```
+
+  `p(x)` is a cautious consequence and the report said otherwise. Such a case now reports a
+  discovery error naming the claim's line and what to declare. This covers all four tags —
+  `@cautious`, `@brave`, `@cautious optimal`, `@brave optimal`. **If a case of yours goes from FAIL
+  to a refusal, the FAIL was not a reading of your program**; declare the signature, or, where the
+  predicate reaches the output through a `#show <term> : <body>.` directive, give what that
+  directive selects a name of its own and claim that instead. The message says which.
+
+- **A `@query` over a signature that is displayed *and* declared, or displayed by an otherwise
+  unrestricted program, is now answered rather than refused.** Both were refused on the ground that
+  a display directive could put in the output a term no answer set contains. It cannot: since 0.3.0
+  an observable holds only symbols the model contains, so such a term is dropped before any reading
+  sees it. What is left of the display form is that it emits its term only where its body holds,
+  which costs nothing when the signature is declared as well or when the program restricts nothing.
+  The refusal for a signature that is displayed and *not* declared is unchanged.
+
+- **A containment diagnostic no longer claims the set it shows is ⋂ AS(P).** It reports what was
+  observed, because the set elenctic can show is the shown projection and on any program that
+  restricts its output that is a proper subset of the real one — every input fact is in every answer
+  set and in none of these. The verdict was never affected. A `@cautious` failure read
+
+  ```
+  [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) = { biscuit } (missing: { tea })
+  ```
+
+  and now reads
+
+  ```
+  [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) (observed { biscuit }; missing { tea })
+  ```
+
+  The same text is the `message` field of a check in the machine-readable report.
+
 ### Added
 
 - **`elenctic.error_detail`** — the reason a caught fault gives, and the contract line it gives it

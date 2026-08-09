@@ -487,29 +487,14 @@ def _check_queries_are_answerable(expectation: Sat, shown: ShownVocabulary, wher
     rather than about its answer sets, so it is refused rather than reported — in either direction,
     which covers a wrong PASS on a false claim and a FAIL on a true one. That is why the rule is
     about the answer and not about the verdict.
+
+    What a query reads is *two-sided*: a ground query's three-valued answer tells ``no`` from
+    ``unknown`` only by seeing the contrary, so :func:`~elenctic.query.signatures_read` returns both
+    signs. That is this gate's whole difference from the consequence one below — the rule applied to
+    what is read is the same rule.
     """
     for query in expectation.queries:
-        reads = signatures_read(query.value)
-        # Asked first, and of both states: an unrestricted program loses nothing, which says
-        # nothing about what a display directive may add on top.
-        if displayed := reads & shown.displayed:
-            raise DiscoveryError(
-                _displayed_not_declared("this @query", displayed), source=where, line=query.line
-            )
-        match shown:
-            case Restricted(signatures=signatures):
-                if missing := reads - signatures:
-                    raise DiscoveryError(
-                        _undeclared("this @query", missing, signatures),
-                        source=where,
-                        line=query.line,
-                    )
-            case Unrestricted():
-                # Every literal of every answer set reaches the output, and the clause above has
-                # already established that nothing this query reads arrives by any other route.
-                continue
-            case _:
-                assert_never(shown)
+        _refuse_unreadable("this @query", signatures_read(query.value), shown, where, query.line)
 
 
 def _check_consequence_claims_are_readable(
@@ -517,49 +502,61 @@ def _check_consequence_claims_are_readable(
 ) -> None:
     """Refuse any consequence claim whose literals the program does not make readable.
 
-    ``@cautious { L }`` claims ``L ⊆ ⋂ AS(P)``; elenctic computes ``L ⊆ ⋂ shown(AS(P))``, and the
-    three siblings do the same over ⋃ and over Opt(P). Those agree exactly when the projection is
-    faithful over each claimed literal's signature. Where it is not, the literal reaches no
-    projection at all, so the claim is FAILed **whatever the program computes** — a verdict that
-    does not depend on the answer sets is not a reading of them, and it FAILs a true claim as
-    readily as a false one. So it is refused rather than reported, which is why the rule is about
-    the answer and not about the verdict.
+    ``@cautious { L }`` claims ``L ⊆ ⋂ AS(P)``; elenctic computes the containment over the shown
+    projections, and the three siblings do the same over ⋃ and over Opt(P). Those agree exactly
+    when the projection is faithful over each claimed literal's signature. Where it is not, the
+    literal reaches no projection at all, so the claim is FAILed **whatever the program computes**
+    — a verdict that does not depend on the answer sets is not a reading of them, and it FAILs a
+    true claim as readily as a false one.
 
-    **One condition, where the sibling ``_check_queries_are_answerable`` has two**, and the
-    difference is load-bearing rather than an economy. That gate asks separately whether a
-    ``#show <term> : <body>.`` directive displays the signature, because such a directive can put a
-    term in the output that no answer set contains. It no longer can:
-    :func:`~elenctic.solvers._projection_of` keeps only symbols the model contains, at the one seam
-    every reading comes through. What remains of the display form is that it *under*-represents —
-    it emits its term only where its body holds — and that is already refused here, since a
-    signature reaching the output by directive alone is by definition one the program does not
-    declare. Measured, on the model and on the cautious/brave consequences alike: a signature both
-    declared and displayed is exact, and an unrestricted program is exact whatever it displays.
+    What a consequence claim reads is *single-sided*: it asserts membership and never absence, so
+    each literal's own signature is consulted and its contrary is not. That is this gate's whole
+    difference from the query one above — the rule applied to what is read is the same rule.
+    """
+    for tag, claim in expectation.consequence_claims:
+        reads = frozenset(signature_of(literal) for literal in claim.value)
+        _refuse_unreadable(f"this {tag}", reads, shown, where, claim.line)
 
-    So ``displayed`` does not decide anything here. It selects the *message*, and that distinction
-    is the one a reader must make, because the remedies differ and the wrong one is destructive:
-    declaring the predicate a directive selects from widens the output from what was selected to
-    the whole underlying relation, which silently breaks every contract stating a whole observable.
-    Where a claim is unreadable on both counts the displayed message is given, being the one whose
-    obvious remedy is the wrong one; the rest surface on the next run.
+
+def _refuse_unreadable(
+    what: str, reads: frozenset[Signature], shown: ShownVocabulary, where: Path, line: int
+) -> None:
+    """The rule both gates apply: refuse ``what`` unless the program makes every signature it
+    ``reads`` readable — the output agreeing with the answer set on that signature, losing none of
+    it and adding nothing to it.
+
+    **One condition, and it used to be two.** The second asked whether a ``#show <term> : <body>.``
+    directive displays the signature, because such a directive could put in the output a term no
+    answer set contains. It no longer can: :func:`~elenctic.solvers._projection_of` keeps only
+    symbols the model contains, at the one seam every reading comes through, so a phantom is dropped
+    before any reading sees it. What is left of the display form is that it *under*-represents — it
+    emits its term only where its body holds — and that is a fault exactly where the signature is
+    undeclared, which the remaining condition already refuses. Measured, on the model and on the
+    cautious/brave consequences alike: a signature both declared and displayed is exact, and an
+    unrestricted program is exact whatever it displays. Asking the old second question as well
+    refused two shapes whose answers are computable.
+
+    So ``displayed`` decides nothing and selects the *message* instead — and that distinction is the
+    one a reader must make, because the remedies differ and the wrong one is destructive: declaring
+    the predicate a directive selects from widens the output from what was selected to the whole
+    underlying relation, which silently breaks every contract stating a whole observable. Where a
+    claim is unreadable on both counts the displayed message is given, being the one whose obvious
+    remedy is the wrong one; the rest surface on the next run.
     """
     match shown:
         case Unrestricted():
-            # No declaration form, so every literal of every answer set reaches the output, and
-            # the filter above has already established that nothing else does.
+            # No declaration form, so every literal of every answer set reaches the output, and the
+            # filter at the seam has already established that nothing else does.
             return
         case Restricted(signatures=signatures, displayed=displayed):
-            for tag, claim in expectation.consequence_claims:
-                reads = frozenset(signature_of(literal) for literal in claim.value)
-                if not (unreadable := reads - signatures):
-                    continue
-                what = f"this {tag}"
-                reason = (
-                    _displayed_not_declared(what, by_directive)
-                    if (by_directive := unreadable & displayed)
-                    else _undeclared(what, unreadable, signatures)
-                )
-                raise DiscoveryError(reason, source=where, line=claim.line)
+            if not (unreadable := reads - signatures):
+                return
+            reason = (
+                _displayed_not_declared(what, by_directive)
+                if (by_directive := unreadable & displayed)
+                else _undeclared(what, unreadable, signatures)
+            )
+            raise DiscoveryError(reason, source=where, line=line)
         case _:
             assert_never(shown)
 

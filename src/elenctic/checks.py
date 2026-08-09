@@ -411,13 +411,21 @@ def _containment(
     litset: frozenset[Symbol], aggregate: frozenset[Symbol], glyph: str
 ) -> tuple[Verdict, str]:
     """``L ⊆ aggregate`` where ``aggregate`` is ⋂ or ⋃ (``glyph``), surfacing the missing atoms on a
-    failure."""
+    failure.
+
+    The aggregate is reported as what was *observed*, never as an equality with the set ``glyph``
+    names. It is the shown projection, so on any program that restricts its output it is a proper
+    subset of ⋂ AS(P) — every input fact is in every answer set and in none of these sets — and
+    ``⋂ AS(P) = { … }`` would be a false sentence beside a correct verdict. The verdict is safe
+    because discovery refuses any claim whose literals the projection does not carry faithfully, so
+    the containment decided here is the containment claimed; it is only the rendering that had to
+    stop overstating what it had seen."""
     if litset <= aggregate:
-        return Verdict.PASS, f"{_show_set(litset)} ⊆ {glyph} = {_show_set(aggregate)}"
+        return Verdict.PASS, f"{_show_set(litset)} ⊆ {glyph} (observed {_show_set(aggregate)})"
     return (
         Verdict.FAIL,
-        f"{_show_set(litset)} ⊄ {glyph} = {_show_set(aggregate)} "
-        f"(missing: {_show_set(litset - aggregate)})",
+        f"{_show_set(litset)} ⊄ {glyph} (observed {_show_set(aggregate)}; "
+        f"missing {_show_set(litset - aggregate)})",
     )
 
 
