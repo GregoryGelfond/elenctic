@@ -63,5 +63,20 @@ all, the raw detection state before any invocation grades it — and whose `unru
 files that could not be made into cases, paired with why. That last field is what lets a runner
 report a broken file and still run the rest of the corpus, which is what the command line does.
 
+## What a fault says, and what you may rely on
+
+**An exception's text is opaque — display it, do not parse it, and expect its wording to change.**
+That is the same footing the machine-readable report puts its `message` field on, said here because
+a library caller never reads that document and had no way to know the rule applied to them too.
+
+What is *not* opaque is the parts. `elenctic.ContractError` and `elenctic.DiscoveryError` carry
+`.reason` — what is wrong, without the coordinate — and `.line`, the contract line it is wrong on,
+or `None`. `elenctic.error_detail` reads both off any fault, including the ones that carry neither,
+and `elenctic.error_kind` reads the locus off its class. Between them a runner of your own builds
+the same `elenctic.ErrorRecord` the shipped one does, without recovering anything from a sentence.
+
+The file is deliberately not among them: a fault states the provenance its caller could not already
+know, and the caller is the one who passed the file in.
+
 elenctic ships `py.typed`, so all of this is typed for whatever checker you run.
 

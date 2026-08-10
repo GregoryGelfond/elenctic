@@ -21,12 +21,15 @@ Every one of them is marked **What can break:** where it is described.
 - Escaped text is now spelled the way Python spells it, and is reversible
 - A `where { … }` clause is refused wherever it is mis-placed, not only under a witness tag
 - `@count 0` and `@count optimal 0` under `@expect unsat` are checked and reported
+- A file's contract is read by a real tokenizer, so five things that were nearly-contracts now are not — or now are
 - The curated surface stops accepting what it cannot honour
 - A case that reaches outside its corpus is filed under a locus of its own, `containment`
 - The machine-readable document is `schema_version` 2
+- Library callers: what an exception's `str()` says has changed
 - A case may not read past its corpus while the program is *solved*, not only while it is read
 - `discovery.check_solver_available` no longer takes `where`
 - A reader that stops reading no longer looks like a failed corpus
+
 
 ### Added
 
@@ -177,6 +180,8 @@ Every one of them is marked **What can break:** where it is described.
   are not — or now are.** Contract tags were found by scanning lines; the scan did not know what
   clingo's comment grammar is, and five states came out wrong. Each is a migration line:
 
+  **What can break:** a corpus that passed on 0.3.0 can fail here, and the first bullet is why.
+
   - **A run of tag lines *after* the program is a contract**, so a file that was a library because
     its tags trailed the rules is now a case. This is the one most likely to turn a green corpus
     red, and it is the one to look at first.
@@ -289,6 +294,9 @@ Every one of them is marked **What can break:** where it is described.
   it was handed (a join of all of them, which never identified the offending one; clingo's
   coordinate does). Most `DiscoveryError`s no longer name the case. `ContractError` is unchanged:
   it still reads `<source>:<line>: <reason>`.
+
+  **What can break:** anything logging or matching on `str(exc)`. Nothing published had said that
+  text was yours to rely on, and nothing now says it is — so the parts are given names instead.
 
   Both `ContractError` and `DiscoveryError` now also carry `.reason` and `.line` as attributes, so
   a caller building its own report reads the parts rather than parsing the sentence. `error_detail`
