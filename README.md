@@ -336,6 +336,7 @@ report carries:
 | `discovery` | the corpus is mis-shaped: a target that does not exist, a precondition above | yours |
 | `environment` | the machine cannot do what the corpus asks: a declared solver that is not installed, or an installation of elenctic missing its own data files | yours |
 | `program` | the program will not load, ground or solve — an unresolvable `#include`, an unsafe variable | yours |
+| `containment` | the case `#include`s a file from outside the corpus it belongs to | yours |
 | `deadline` | the run's `--deadline` passed before this case was tried | yours |
 | `resource` | the case ran out of memory | yours |
 | `harness` | elenctic violated one of its own invariants | **ours** |
@@ -343,10 +344,14 @@ report carries:
 Loci name *places*, not exception classes, and deliberately: a deadline raises no exception at all
 and a resource running out arrives as a built-in — and the mapping is not one-to-one in the other
 direction either, since `elenctic.SolverUnavailableError` is a `DiscoveryError` by inheritance while
-the fault it reports belongs to the environment. Five of the seven do have an exception a library
-consumer can catch: `elenctic.ContractError`, `elenctic.DiscoveryError`, `elenctic.ProgramError`,
-`elenctic.HarnessError`, and `elenctic.SolverUnavailableError` — which is also an `ImportError`, so
-either idiom catches a missing backend. The one closed question about a locus is `is_elenctic_bug`
+the fault it reports belongs to the environment. `containment` is that shape mirrored: the class
+raised for it is a `ProgramError` by inheritance, so the family already catches it, and it is filed
+under a locus of its own because one rule met at two moments — while the escaping file is read, or
+while it is grounded — must not reach a reader as two different problems. Five of the eight do have
+an exception a library consumer can catch: `elenctic.ContractError`, `elenctic.DiscoveryError`,
+`elenctic.ProgramError`, `elenctic.HarnessError`, and `elenctic.SolverUnavailableError` — which is
+also an `ImportError`, so either idiom catches a missing backend. The one closed question about a
+locus is `is_elenctic_bug`
 on `elenctic.ErrorKind` — whether to report it or fix it — and that is what the exit status reads,
 so a locus added later never changes what a status means. A case that cannot be run does not stop the others: it is reported on its own and the rest
 of the corpus still runs.

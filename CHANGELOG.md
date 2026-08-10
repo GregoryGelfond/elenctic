@@ -183,6 +183,27 @@ means for them — a reader deciding whether to upgrade should not have to read 
   `strict`, `budget` and `deadline` now **default**, to exactly the command line's defaults, where
   all four fields were required and a consumer's reasonable prediction was false.
 
+- **A case that reaches outside its corpus is filed under a locus of its own, `containment`.** It
+  was filed under `discovery`, which said where elenctic happened to notice rather than what was
+  wrong — and *which* phase notices is decided by whether the escaping file parses, so one rule
+  could arrive as two different problems. Two things a script may match on move with it:
+
+  ```
+  0.3.0    "kind": "discovery"        DISCOVERY ERROR — <file>: this case loads …
+  0.4.0    "kind": "containment"      CONTAINMENT ERROR — <file>: this case loads …
+  ```
+
+  `kind` is an open-valued field, so this needs no `schema_version` bump — but it is the eighth
+  value of a field that carried seven in 0.3.0, and a consumer keeping a table of loci wants the
+  row.
+
+  **Breaking for a library consumer who catches it by class.** 0.3.0 raised a `DiscoveryError`;
+  this raises a `ContainmentError`, which is a **`ProgramError`** by inheritance and no longer a
+  `DiscoveryError` at all. `except elenctic.DiscoveryError` stops catching an escaping `#include`;
+  `except elenctic.ProgramError` catches it. The family moved because what is wrong is the program
+  under test reaching somewhere it may not, which is its author's to fix — not the shape of the
+  corpus around it.
+
 - **A containment diagnostic no longer claims the set it shows is ⋂ AS(P).** It reports what was
   observed, because the set elenctic can show is the shown projection and on any program that
   restricts its output that is a proper subset of the real one — every input fact is in every answer

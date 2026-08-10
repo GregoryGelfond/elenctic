@@ -14,6 +14,7 @@ are and where an edit to them lands. None is shipped inside the wheel, and these
 either.
 """
 
+import ast
 import contextlib
 import importlib
 import io
@@ -25,6 +26,8 @@ from pathlib import Path
 
 import elenctic
 from elenctic.cli import _build_parser
+from elenctic.expectation import KNOWN_TAGS, ContractError, has_contract, parse_contract
+from elenctic.outcome import ErrorKind
 from elenctic.registry import THEORY_EXTRA_ADVICE
 from elenctic.solvers import TIME_BUDGET
 from support import cli_help_text
@@ -341,6 +344,80 @@ def _refused(line: str) -> str | None:
     return None
 
 
+def _asp_blocks() -> list[tuple[str, str]]:
+    """Every fenced ``asp`` block the two documents of *instructions* show a reader.
+
+    The same two documents :func:`_command_lines` reads, bounded for the same reason and not by
+    analogy with it. A changelog has to be able to show the contract that *stopped* parsing, and it
+    does: its single ``asp`` block carries a ``@cautious`` line and no ``@expect``, shown precisely
+    because that shape is refused. A rule requiring every block to parse would forbid the changelog
+    from recording what changed, which is rule 17 — three exemptions to keep a document inside a
+    rule is the rule not fitting the document.
+    """
+    return [
+        (name, block)
+        for name, text in (("README.md", _README), ("CONTRIBUTING.md", _CONTRIBUTING))
+        # The info string is read past rather than required to be bare: `asp` may one day carry a
+        # title or a highlight range, and a fence retitled that way would silently leave this set
+        # while the other blocks kept the assertion green.
+        for block in re.findall(r"```asp[^\n]*\n(.*?)```", text, re.S)
+    ]
+
+
+def _tags_written_in(block: str) -> list[str]:
+    """Every ``@word`` **elenctic's own comment reader** takes as a tag in this block, known or not.
+
+    Read through the lexer rather than through a pattern of this test's own, because the question is
+    what elenctic would treat as a tag position, and a second answer to that is a second thing to
+    keep true. It is not the same answer: a tag trailing a rule — ``a.  % @expect sat`` — is one
+    elenctic honours, and it is measurably not what a line-anchored pattern finds. So a *mistyped*
+    trailing tag would have been invisible to the check that exists to catch mistyped tags.
+    """
+    from elenctic.expectation import _lex, _tag_comments
+
+    return [tagged.tag for tagged in _tag_comments(_lex(block).comments)]
+
+
+def test_every_contract_the_documents_show_is_one_elenctic_parses() -> None:
+    # The sibling of the command-line check, over the other notation these documents quote. A reader
+    # copies both, nothing renders either, and the contract grammar is the one this release changed
+    # most — so an example written against a spelling that has moved reads as current and is not.
+    #
+    # Two directions, because one of them cannot see the failure that matters most. A block that
+    # carries a contract must parse; and a block that *means* to carry one must be recognised as
+    # carrying one, since a mistyped tag is not a known tag, so the file is silently a library — it
+    # runs nothing, reports nothing, and the corpus still comes back green.
+    blocks = _asp_blocks()
+    assert blocks, "the pattern found no asp block, which means it is no longer the pattern"
+    unknown = [
+        (name, sorted(strange))
+        for name, block in blocks
+        if (strange := set(_tags_written_in(block)) - KNOWN_TAGS)
+    ]
+    assert not unknown, (
+        "shown with an @-tag elenctic does not know, so the file it is copied into is silently a "
+        "library — it runs nothing, reports nothing, and the corpus still comes back green:\n"
+        + "\n".join(f"  {name}: {tags}" for name, tags in unknown)
+    )
+    refused = [
+        (name, block, str(why))
+        for name, block in blocks
+        if has_contract(block) and (why := _unparsed(block)) is not None
+    ]
+    assert not refused, "shown to a reader, and refused by the parser:\n" + "\n".join(
+        f"  {name}: {block.splitlines()[0]}\n      {why}" for name, block, why in refused
+    )
+
+
+def _unparsed(block: str) -> Exception | None:
+    """Why elenctic will not read this block's contract, or ``None`` when it reads it."""
+    try:
+        parse_contract(block)
+    except (ContractError, ValueError) as refusal:
+        return refusal
+    return None
+
+
 def test_the_readmes_library_example_runs_and_does_what_it_says(tmp_path: Path) -> None:
     """The worked example a consumer copies, run as written rather than read.
 
@@ -474,6 +551,322 @@ def test_the_number_of_textbook_programs_the_contributor_guide_states_is_the_num
     assert not adrift, (
         f"tests/krbook/encodings holds {len(programs)} programs, and the contributor guide does "
         f"not say so in {adrift}: {sorted(path.name for path in programs)}"
+    )
+
+
+def test_every_locus_the_package_can_file_is_one_the_readme_names() -> None:
+    # The same vocabulary is documented twice, and only one copy was held. The packaged schema
+    # glosses every `kind` a run can publish, and `test_json_schema.py` holds it against `ErrorKind`
+    # itself; the README's locus table is the copy a reader meets first, and nothing asked it. So it
+    # was the one that went stale — `containment` was added to the package during this release and
+    # the table kept its seven rows, while a corpus whose case reaches outside itself publishes
+    # `"kind": "containment"` and prints `CONTAINMENT ERROR —`.
+    #
+    # Derived from `ErrorKind` rather than from a list here, which is the whole point: a locus added
+    # later is a row this test asks for, and there is nowhere to add one without being asked.
+    rows = set(re.findall(r"^\| `([a-z_]+)` \| ", _README, re.M))
+    members = {kind.value for kind in ErrorKind}
+    assert not members - rows, (
+        f"a run can file these loci and the README's table has no row for them: "
+        f"{sorted(members - rows)}. A reader met by the diagnostic, and a consumer decoding "
+        f"`kind`, both look the word up in that table"
+    )
+    assert not rows - members, (
+        f"the README's table has rows for loci nothing can file: {sorted(rows - members)}"
+    )
+    # And the count the prose states beside it, which is the half a new row leaves behind: the
+    # sentence about which loci a consumer can catch counts them, and it counted seven.
+    assert f"of the {_IN_WORDS[len(members)]}" in _README, (
+        f"there are {len(members)} loci, and the prose beside the table does not say "
+        f"{_IN_WORDS[len(members)]}"
+    )
+
+
+def test_the_fields_the_readme_calls_closed_are_the_ones_the_schema_closes() -> None:
+    # The second instance of the class the locus table is the first of: a vocabulary written down
+    # twice, once where a machine can be asked and once where only a reader goes. Here the README is
+    # the copy that is right and unheld — it names five closed enumerations and three open-valued
+    # fields, and this is the sentence `schema_version` is *defined* by, so a field that quietly
+    # gained or lost an `enum` would leave a consumer's upgrade policy resting on a wrong list.
+    #
+    # `test_json_schema.py` already holds the schema against the package, in both directions. The
+    # edge nothing held is this one: the schema against the sentence that tells a consumer how to
+    # read it.
+    schema = json.loads(
+        (_ROOT / "src/elenctic/schema/output-v2.schema.json").read_text(encoding="utf-8")
+    )
+    closed, open_valued = _vocabulary_fields(schema)
+    stated = set(re.findall(r"`(\w+)`", _readme_span("closed enumerations (", ")")))
+    assert closed == stated, (
+        f"the schema closes {sorted(closed)} with an enum, and the README's three-tier paragraph "
+        f"names {sorted(stated)} as the closed enumerations — a consumer reads that list to decide "
+        f"what a version bump means"
+    )
+    # The open half, in the one direction that matters. A closed field named as open is advice to
+    # accept a value the schema will reject; the reverse costs a consumer nothing but caution.
+    #
+    # The first assertion catches most of that already, and this is not the comfort it looks like:
+    # the one cause it cannot see is the README naming a field in *both* paragraphs, where the
+    # closed list still matches the schema and the sentence beside it contradicts itself. Measured
+    # by provoking exactly that, which is the only way it fires.
+    promised_open = set(re.findall(r"`(\w+)`", _readme_span("open-valued string fields — ", "—")))
+    assert promised_open, "the README no longer names any open-valued field in the shape this reads"
+    assert not promised_open & closed, (
+        f"the README tells a consumer to treat {sorted(promised_open)} as open and to expect "
+        f"unfamiliar values, and the schema closes {sorted(promised_open & closed)}"
+    )
+    assert promised_open <= open_valued, (
+        f"the README names {sorted(promised_open - open_valued)} as an open-valued string field of "
+        f"the document, and the schema has no such string field"
+    )
+
+
+def _readme_span(opening: str, closing: str) -> str:
+    """The README text between the first ``opening`` and the next ``closing`` after it.
+
+    By the words of the sentence rather than by a line or a heading, because this paragraph is
+    prose that wraps: a slice taken by line would move the first time somebody reflowed it, and one
+    taken by heading would reach half the section.
+
+    **Both delimiters are required to be there**, and the closing one is the half that matters. A
+    ``split`` that does not find its closing text returns everything after the opening instead —
+    so a reworded sentence would quietly widen the span to the rest of the document rather than
+    narrow it, and a caller counting names in it would be reading the whole README. Absent, this
+    says which sentence moved; present and wrong, the caller's own assertion says the rest.
+    """
+    after = _README.split(opening, 1)
+    assert len(after) == 2, f"the README no longer says {opening!r}"
+    assert closing in after[1], f"the README no longer says {closing!r} after {opening!r}"
+    return after[1].split(closing, 1)[0]
+
+
+def _vocabulary_fields(schema: dict[str, object]) -> tuple[set[str], set[str]]:
+    """The document's string-valued field names, split into those the schema closes with an ``enum``
+    and those it leaves open.
+
+    ``$ref`` is followed, and that is the whole reason this is a function rather than a search for
+    the word ``enum``: a check's ``status`` and a case's ``verdict`` are both written as a reference
+    to one shared definition, so a reading that stopped at the property would report the closed set
+    as four where it is five — and would have called a correct README wrong.
+    """
+    defs = schema.get("$defs", {})
+    assert isinstance(defs, dict)
+    closed: set[str] = set()
+    open_valued: set[str] = set()
+
+    def resolve(node: dict[str, object]) -> dict[str, object]:
+        ref = node.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/$defs/"):
+            target = defs[ref.removeprefix("#/$defs/")]
+            assert isinstance(target, dict)
+            return target
+        return node
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                for name, raw in properties.items():
+                    assert isinstance(raw, dict)
+                    field = resolve(raw)
+                    if field.get("type") != "string":
+                        continue
+                    (closed if "enum" in field else open_valued).add(name)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(schema)
+    return closed, open_valued
+
+
+def _package_modules() -> dict[str, ast.Module]:
+    """Every module under ``src/elenctic/`` but the package surface, parsed.
+
+    ``__init__.py`` is excluded because the sentences below exclude it: the guide counts eighteen
+    modules "plus the package surface", and that surface names every one of them lazily, so counting
+    it would make the graph look like a star with nothing at the bottom.
+    """
+    return {
+        path.stem: ast.parse(path.read_text(encoding="utf-8"))
+        # `rglob`, because the rules these hold are written about "under `src/elenctic/`" and a
+        # module in a subpackage is under it. There is one subdirectory today and it holds the
+        # packaged schema rather than code, so this finds the same eighteen — which is the point:
+        # it goes on finding them after somebody adds the first subpackage.
+        for path in (_ROOT / "src/elenctic").rglob("*.py")
+        if path.name != "__init__.py"
+    }
+
+
+def _in_package_imports(tree: ast.Module, known: frozenset[str]) -> set[str]:
+    """The modules of this package that ``tree`` imports, by any spelling.
+
+    Three spellings reach the same dependency and all three are in the tree — ``from
+    elenctic.result import …``, ``from elenctic import checks``, and a plain ``import``. A reader of
+    one form would not predict the others, which is the whole reason this is read from the AST
+    rather than matched. Imports written *inside* a function count: the stage entry points import
+    lazily, and a dependency deferred to call time is still a dependency, still a cycle if it closes
+    one, and still the thing a layer diagram is about.
+    """
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level == 1:
+            # The relative spellings, which are the ones this missed. `from . import checks` names
+            # its modules in the aliases and carries no module at all; `from .result import …`
+            # carries one that is a bare name rather than a dotted path, so a reader keyed on the
+            # package name skips it. Neither is hypothetical hygiene: the lint that would forbid
+            # them is not configured here, so both pass the gate, and a *deferred* relative import
+            # is exactly the shape that closes a cycle without breaking a single import. A deeper
+            # level leaves the package and is nothing to do with this graph.
+            if node.module:
+                found |= {node.module.split(".")[0]} & known
+            else:
+                found |= {alias.name for alias in node.names if alias.name in known}
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            parts = node.module.split(".")
+            if parts[0] != "elenctic":
+                continue
+            if len(parts) > 1:
+                found.add(parts[1])
+            else:  # `from elenctic import checks` — the module is a name, not part of the path
+                found |= {alias.name for alias in node.names if alias.name in known}
+        elif isinstance(node, ast.Import):
+            found |= {
+                parts[1]
+                for alias in node.names
+                if (parts := alias.name.split("."))[0] == "elenctic" and len(parts) > 1
+            }
+    return found
+
+
+def test_the_layering_the_contributor_guide_describes_is_the_layering_there_is() -> None:
+    # The guide calls this "the property worth knowing before you decide where something belongs"
+    # and attaches a review rule to it — "a patch that introduces a cycle is a patch that will be
+    # asked to move something" — and nothing enforced either. It is the same decay as the module
+    # count two tests below, which *is* checked: adding an import is not an edit to a document, so
+    # nobody is prompted. The count was held and the structure the count is about was not.
+    #
+    # Read from the AST, so what is checked is the graph rather than a description of it.
+    trees = _package_modules()
+    known = frozenset(trees)
+    deps = {name: _in_package_imports(tree, known) - {name} for name, tree in trees.items()}
+
+    bottom = sorted(name for name, imported in deps.items() if not imported)
+    stated = re.search(
+        r"`(\w+)`, `(\w+)`, `(\w+)` and `(\w+)` are the shared vocabulary", _CONTRIBUTING
+    )
+    assert stated is not None, "the guide no longer names the bottom layer in the shape this reads"
+    assert sorted(stated.groups()) == bottom, (
+        f"the guide names {sorted(stated.groups())} as the modules that depend on nothing else "
+        f"here, and the ones that actually do are {bottom}"
+    )
+
+    imported_by_someone = {name for imported in deps.values() for name in imported}
+    top = sorted(set(deps) - imported_by_someone)
+    assert top == ["cli"], f"the guide says `cli` is alone at the top, and the top is {top}"
+    assert "`cli` is alone at the top" in _CONTRIBUTING, "and the guide has to still say so"
+
+    # Acyclic: a module that can reach itself is on a cycle. Stated as the whole set, so a reader of
+    # a failure sees every module the cycle runs through rather than the first one found.
+    def reaches(start: str) -> set[str]:
+        seen: set[str] = set()
+        pending = [start]
+        while pending:
+            for nxt in deps[pending.pop()]:
+                if nxt not in seen:
+                    seen.add(nxt)
+                    pending.append(nxt)
+        return seen
+
+    cyclic = sorted(name for name in deps if name in reaches(name))
+    assert not cyclic, (
+        f"the guide calls this an acyclic layered graph, and these modules are on a cycle: {cyclic}"
+    )
+    assert "acyclic layered graph" in _CONTRIBUTING, "and the guide has to still claim it"
+
+
+def test_the_clingo_boundary_the_contributor_guide_draws_is_where_it_says_it_is() -> None:
+    # Two claims, one sentence apart, and the guide attaches a review rule to the second: "a patch
+    # that puts a solve somewhere else under `src/elenctic/` is a patch that will be asked to move
+    # it". The count is the softer half and the one that decays silently; the boundary is the half
+    # worth a gate.
+    #
+    # Both by AST. A grep for an import counts a *comment* about one — which is how an earlier
+    # reading of this very count said eight when it was seven, matching a sentence in `discovery.py`
+    # that reads "this module imports from clingo".
+    trees = _package_modules()
+    importers = sorted(
+        name
+        for name, tree in trees.items()
+        if any(
+            (
+                isinstance(node, ast.ImportFrom)
+                and node.module
+                and node.module.split(".")[0] == "clingo"
+            )
+            or (
+                isinstance(node, ast.Import)
+                and any(alias.name.split(".")[0] == "clingo" for alias in node.names)
+            )
+            for node in ast.walk(tree)
+        )
+    )
+    # The guide states this over TWO forms — a count, and the seven modules by name — so both are
+    # held. One module gaining a clingo import while another loses one leaves the count true and
+    # the list wrong, and the list is the half a reader navigates by.
+    paragraph = _CONTRIBUTING.split(f"{_IN_WORDS[len(importers)]} modules do", 1)
+    assert len(paragraph) == 2, (
+        f"{len(importers)} modules import from clingo ({importers}), and the guide does not say "
+        f"{_IN_WORDS[len(importers)]}"
+    )
+    named = set(re.findall(r"`(\w+)\.py`", paragraph[1].split("\n\n", 1)[0]))
+    assert named == set(importers), (
+        f"the guide's clingo paragraph names {sorted(named)} and the modules that import from "
+        f"clingo are {sorted(importers)}"
+    )
+
+    building = sorted(name for name, tree in trees.items() if _builds_a_control(tree))
+    assert building == ["solvers"], (
+        f"the guide says only `solvers.py` constructs a `Control`, and these do: {building}"
+    )
+    assert "Only `solvers.py` constructs a `Control`" in _CONTRIBUTING, "and it has to still say so"
+
+
+def _builds_a_control(tree: ast.Module) -> bool:
+    """Whether this module constructs a clingo ``Control``, read from what its imports *bind*
+    rather than from the identifier a call happens to spell.
+
+    Three spellings reach one constructor: ``from clingo import Control`` and then ``Control(…)``;
+    the same import under an alias; and ``import clingo`` with ``clingo.Control(…)``. Matching the
+    word ``Control`` catches the first and the third and misses the middle one — which is the
+    spelling a reader is least likely to predict, and the one nothing else in the gate has an
+    opinion about. Reading the binding covers all three without listing them.
+    """
+    bound: set[str] = set()
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "clingo":
+            bound |= {alias.asname or alias.name for alias in node.names if alias.name == "Control"}
+        elif isinstance(node, ast.Import):
+            modules |= {
+                alias.asname or alias.name
+                for alias in node.names
+                if alias.name.split(".")[0] == "clingo"
+            }
+    return any(
+        isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id in bound)
+            or (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "Control"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in modules
+            )
+        )
+        for node in ast.walk(tree)
     )
 
 
