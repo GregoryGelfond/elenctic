@@ -1,37 +1,20 @@
 """Run a discovered case end-to-end and render its outcome — the per-case layer.
 
-Three responsibilities, layered by purity:
-
-- :func:`run_case` — the **impure orchestrator**: derive the case's runs (``run.runs_for``), solve
-  each (``solvers.solve``), apply its checks, collect the :class:`~elenctic.checks.CheckReport`s. It
-  touches no solver directly (the purity boundary stays in ``solvers.py``); it only sequences the
-  pure plan against the impure facade.
-- :func:`case_verdict` — **pure**: fold the per-check reports to one case verdict. A definite
-  failure sinks the case, so **FAIL dominates UNDECIDED dominates PASS** (a case passes iff every
-  check does; an UNDECIDED check is "could not decide", a FAIL is "decided wrong" —
-  both red, but a decisive FAIL is the more informative label).
-- :func:`render` — **pure**: the human diagnostic. FAIL and UNDECIDED stay **distinct** (never
-  collapsed into one red); each non-PASS line names the contract line it judged, and the claim's
-  own surface where the tag is a repeatable one. The case's ``@note`` prose and its
-  ``contract_source`` are read from the *case* — the renderer's concern, not the check's, so the
-  reports carry no note. ``@note`` surfaces on **any** non-PASS (FAIL or UNDECIDED — a
-  "known-slow" note explains a timeout).
+Three responsibilities, layered by purity. :func:`run_case` is the impure orchestrator — it derives
+the case's runs, solves each and applies its checks, and touches no solver directly, the purity
+boundary staying in ``solvers.py``. :func:`case_verdict` folds the per-check reports to one case
+verdict, and :func:`render` writes the human diagnostic. Each states its own contract below.
 
 A **misrouted run-plan** is a :class:`~elenctic.result.HarnessError` (``RoutingError``) raised by
-``runs_for`` at plan construction — a harness bug, never a verdict. ``run_case`` lets it
-**propagate** to whatever is running the corpus, which reports it under a distinct "harness error"
-status — pytest's collection error is the same idea: something went wrong *before* a test could
-have an outcome, so it is reported as its own kind of thing rather than as a failing test — keeps
-testing the other cases, and fails the run with a non-zero exit. The plan is pure and buildable up
-front, so a caller wanting every wiring error at once can call ``runs_for`` for all cases *before*
-any solving; ``run_case`` bundles build-then-solve for the per-case path.
+``runs_for`` at plan construction — a harness bug, never a verdict — and ``run_case`` lets it
+propagate to whatever runs the corpus, which reports it under a distinct "harness error" status. The
+plan is pure and buildable up front, so a caller wanting every wiring error at once can call
+``runs_for`` for all cases *before* any solving.
 
-These three functions are the per-*case* layer, and everything above a case belongs to whoever runs
-the corpus: which cases exist, what to do with a case that could not be run at all, and the counts
-at the end. ``elenctic.cli`` is one such runner and the one that ships; a consumer embedding these
-three in a runner of their own — driving :func:`run_case` from ``pytest.mark.parametrize``, say — is
-the other, and gets the same three values to build a report out of. Either way elenctic **ships the
-diagnostic value** rather than pushing it to consumers.
+Everything above a case belongs to whoever runs the corpus: which cases exist, what to do with a
+case that could not be run at all, and the counts at the end. ``elenctic.cli`` is one such runner
+and the one that ships; a consumer embedding these three in a runner of their own gets the same
+three values to build a report out of.
 """
 
 from collections.abc import Iterable
@@ -62,11 +45,11 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
     - :class:`~elenctic.program.ProgramError` — the program under test will not ground, or an
       ``#include`` will not resolve. The corpus author fixes the ``.lp``.
     - :class:`~elenctic.discovery.DiscoveryError` — a discovery-time precondition this case fails.
-      Its subclass ``SolverUnavailableError`` is the common one, and it is a fault in the
-      *environment* rather than in the corpus — :func:`~elenctic.outcome.error_kind` files it
-      under that locus. It is worth heading off: call
-      ``discovery.check_solver_available`` per case before running, which is what turns "this
-      machine has no clingcon" into a report about that case rather than an exception midway.
+      Its subclass ``SolverUnavailableError`` is the common one, and is a fault in the *environment*
+      rather than the corpus, which is the locus :func:`~elenctic.outcome.error_kind` files it
+      under. Head it off with ``discovery.check_solver_available`` per case before running, which
+      turns "this machine has no clingcon" into a report about that case rather than an exception
+      midway.
     - ``MemoryError`` — the machine ran out. Nothing about the encoding is wrong, and the frame that
       can bound what a case consumes is the one that started it.
     - :class:`~elenctic.result.HarnessError` — including ``RoutingError`` from ``runs_for``, raised
@@ -91,12 +74,10 @@ def run_plan(
     """Carry out an already-derived plan for ``case``: solve each run under ``budget`` and apply its
     checks. Output order follows the plan (deterministic).
 
-    Apart from :func:`run_case` because deriving the plan and carrying it out are separable and a
-    corpus separates them: it builds every plan first, so a wiring fault surfaces before any
-    solving, and then runs the ones that built. Written as one function that does both, that costs a
-    second derivation per case and — worse — leaves the validated plan discarded, so what is carried
-    out is a plan nothing proved rather than the one that was proved. Here the proof travels with
-    the value.
+    Apart from :func:`run_case` because a corpus builds every plan first, so a wiring fault surfaces
+    before any solving, and then runs the ones that built. One function doing both would derive a
+    second time and discard the validated plan, so what got carried out would be a plan nothing had
+    proved. Here the proof travels with the value.
 
     It raises what :func:`run_case` raises, minus the one that comes from deriving: a plan handed in
     has already been built, so ``RoutingError`` belongs to whoever built it."""
@@ -126,19 +107,16 @@ def case_verdict(reports: tuple[CheckReport, ...]) -> Verdict:
 
 
 # The continuation line is indented past the "  [" that opens a row, so it reads as part of the row
-# above rather than as a row of its own. One fixed width rather than one measured off each verdict:
-# a continuation that started in a different column per verdict would make the column carry meaning
-# it does not have, and every continuation would move if a verdict were ever renamed. It clears the
-# widest thing it must clear — the "  [FAIL] " that opens the commoner row — and sits inside the
-# opening of a longer "  [UNDECIDED] ", which still reads as continuation because no row begins
-# there.
+# above rather than as a row of its own. One fixed width rather than one measured off each verdict,
+# which would make the column carry meaning it does not have. It clears the "  [FAIL] " that opens
+# the commoner row and sits inside a longer "  [UNDECIDED] ", still reading as continuation because
+# no row begins there.
 _CONTINUATION: Final = " " * len("  [FAIL] ")
 
-# The continuation is deliberately NOT truncated the way a rendered *set* is (`checks._braces`).
-# The two bound different things: a set comes from the program and is as large as the program makes
-# it, while this list is one entry per contract line an author wrote, so its length is bounded by
-# what someone typed. A generated corpus could still make it long; that is worth revisiting with a
-# real case rather than pre-empting, and a cap here would have to say how much it left out.
+# Deliberately NOT truncated the way a rendered *set* is (`checks._braces`). The two bound different
+# things: a set is as large as the program makes it, while this list is one entry per contract line
+# an author wrote, so its length is bounded by what someone typed. A generated corpus could still
+# make it long, and a cap here would have to say how much it left out.
 
 
 def _claim(report: CheckReport) -> str:
@@ -187,15 +165,14 @@ def render(case: Case, reports: tuple[CheckReport, ...]) -> str:
 
     Claims that failed for the *same* reason share a row. A repeated tag whose diagnostic does not
     turn on the claim — every ``@cautious`` line on a program with no answer set, say — would
-    otherwise state one fact once per claim, and the reader who has to scan that is the one already
-    being told something went wrong. Where the diagnostic *does* turn on the claim, which is the
-    informative case, nothing is shared and each claim keeps its own row.
+    otherwise state one fact once per claim, at the reader already being told something went wrong.
+    Where the diagnostic *does* turn on the claim, nothing is shared and each keeps its own row.
 
-    Collapsing is display only. The verdict folds a set, so it cannot move; a consumer reading the
-    reports still gets one per claim.
+    Collapsing is display only: the verdict folds a set, so it cannot move, and a consumer reading
+    the reports still gets one per claim.
 
     The path, the note prose, each claim's subject and each diagnostic's message all come from the
-    corpus, so each is made :func:`~elenctic.display.legible` first: this string is the verdict a
+    corpus, so each is made :func:`~elenctic.display.legible` first — this string is the verdict a
     reader acts on, and text that could rewrite it would undo the point of producing it."""
     verdict = case_verdict(reports)
     lines = [f"{legible(str(case.contract_source))} [{case.solver}] — {verdict.name}"]

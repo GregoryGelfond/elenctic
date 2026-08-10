@@ -8,13 +8,10 @@ the plan: it narrates the derived runs (mode + checks) per case without solving,
 ``reads``/``populates`` surface was made introspectable for. ``elenctic schema`` writes the
 description of the machine-readable report, answered from the installed package alone.
 
-**Commands rather than flags, and what that changes is what can be typed.** Each of the three
-replaces the others, so at most one of them is what an invocation is — and while that was two
-booleans, four states could be written down, three of them meant something, and which flag won when
-both were given was settled by the order two statements happened to be in. A command word makes the
-fourth state unspellable instead of refused, and it carries the dials with it: ``--budget`` and
-``--deadline`` bound solving, so only ``run`` has them; ``schema`` takes no target because it looks
-at none.
+**Commands rather than flags.** Each of the three replaces the others, so at most one of them is
+what an invocation is, and a command word makes the combinations unspellable rather than refused. It
+carries the dials with it: ``--budget`` and ``--deadline`` bound solving, so only ``run`` has them,
+and ``schema`` takes no target because it looks at none.
 
 ``run --format`` chooses who the report is written for. The default writes prose for a reader.
 ``--format json`` writes the whole run as one machine-readable document on standard output and
@@ -29,18 +26,17 @@ program's concerns are not, and neither is a question about a command line:
 - **the prose a reader sees**, which is about an :class:`~elenctic.outcome.Outcome`, and is in
   :mod:`elenctic.human_report` beside the document renderer it is the counterpart of;
 - **the two streams**, which are about this process's descriptors, and are in
-  :mod:`elenctic.streams` — one module down, because the first thing asked of them, giving this
-  process a standard error before it writes anything, has to be asked by every stage entry point
-  as well, and that module has no elenctic dependencies so all five reach it.
+  :mod:`elenctic.streams` — one module down, because the first thing asked of them has to be asked
+  by every stage entry point as well, and that module has no elenctic dependencies so all of them
+  reach it.
 
-Everything below them is the library's:
-``corpus.run_corpus`` and ``corpus.explain_corpus`` carry out an
-invocation, ``outcome.exit_status`` reads a status off what they produced, and both are reachable
-without any of this. So ``main`` is a derivation of the library rather than the place its work is
-done — it parses a command line into an :class:`~elenctic.outcome.Invocation`, calls in, renders
+Everything below them is the library's: ``corpus.run_corpus`` and ``corpus.explain_corpus`` carry
+out an invocation, ``outcome.exit_status`` reads a status off what they produced, and both are
+reachable without any of this. So ``main`` is a derivation of the library rather than where its work
+is done — it parses a command line into an :class:`~elenctic.outcome.Invocation`, calls in, renders
 what comes back, and returns the status — and a consumer wanting elenctic's results inside a runner
-of their own has the same pieces this is built from, whether they want a whole corpus or
-``harness.run_case`` one case at a time.
+of their own has the same pieces, whether they want a whole corpus or ``harness.run_case`` one case
+at a time.
 
 The exit ladder is written once, in :class:`~elenctic.outcome.ExitStatus`, and ``--help`` is
 rendered from there rather than restating it in words that could come to differ.

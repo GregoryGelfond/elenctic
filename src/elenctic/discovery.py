@@ -7,16 +7,14 @@ contains a known elenctic tag (:func:`~elenctic.expectation.has_contract`), else
 ``clingo``), never read from a filename. The program under test is the case file plus its resolved
 ``#include``s; the loader/inspector resolve them, so a :class:`Case` carries just its own path.
 
-Discovery enforces the preconditions and the theory-presence gate over the
-**resolved program** (:func:`check_program` over :func:`elenctic.program.inspect`), not the
-case-file text — so an encoding moved into an ``#include``d library is still gated correctly. It is
-loud, never silent: a precondition violation is a :class:`DiscoveryError`, a malformed contract the
-:class:`~elenctic.expectation.ContractError`, a bad ``#include`` / non-UTF-8 program the
-:class:`~elenctic.program.ProgramError` — each a friendly sentence, never a raw clingo trace. Each
-says what is wrong and, where it has one the caller could not know, the contract line it is wrong
-on; which *file* is the caller's — it passed the path in, and a record filing the fault carries it
-as a field. Pure over the tree (filesystem reads its only effect); only ``solvers.py`` touches a
-solver.
+Discovery enforces the preconditions and the theory-presence gate over the **resolved program**
+(:func:`check_program` over :func:`elenctic.program.inspect`) rather than the case-file text, so an
+encoding moved into an ``#include``d library is still gated correctly. It is loud, never silent: a
+precondition violation is a :class:`DiscoveryError`, a malformed contract the
+:class:`~elenctic.expectation.ContractError`, a bad ``#include`` or non-UTF-8 program the
+:class:`~elenctic.program.ProgramError` — each a friendly sentence naming what is wrong and, where
+the caller could not know it, the contract line it is wrong on. Which *file* is the caller's, since
+it passed the path in. Pure over the tree, filesystem reads its only effect.
 
 The collection scan reads tolerantly (``errors="replace"``): the contract tags are ASCII, so a
 non-UTF-8 *library* is simply skipped, while a non-UTF-8 *case* is collected and then rejected with

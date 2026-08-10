@@ -1,16 +1,8 @@
 """Solver facades over the clingo/clingcon Python API — the **only module that runs a solve**.
 
-That is the boundary, and it is narrower than "the only module that touches clingo" — seven modules
-here import from clingo, in three quite different ways:
-
-- **A** :class:`~clingo.Control` **— only this module.** Building one, grounding on it, and asking
-  it a question about answer sets. Nothing else under ``src/elenctic/`` constructs one.
-- **clingo's parser** — ``program.py`` (``parse_files``, to read a program's own text, because
-  matching clingo's ``#include`` resolution means asking clingo) and ``terms.py``
-  (``parse_term``, to read one term out of a contract). Both read; neither solves.
-- **clingo's symbol vocabulary** — ``checks.py``, ``expectation.py``, ``query.py``, ``result.py``,
-  and ``terms.py`` again. ``Symbol`` and its kin are values: building one with ``Function`` or
-  inspecting one is as pure as building a tuple.
+That boundary is narrower than "the only module that touches clingo": others read with clingo's
+parser or build and inspect its symbols, which is as pure as building a tuple. Only this module
+constructs a :class:`~clingo.Control`, grounds on it, and asks it about answer sets.
 
 A facade runs one configured solve and returns a :class:`~elenctic.result.SolveOutcome`: the arm the
 solve settled, paired with how its search ended. The arm is :class:`~elenctic.result.Inconclusive`
@@ -20,27 +12,26 @@ if the solve settled nothing — the budget was hit before it decided, or the so
 :class:`~elenctic.result.Consistent` shape the mode produces.
 
 A search cut short still reports the satisfiability it settled, and every arm reports the search
-behind it — the undecided one included, where how the search ended is the only thing there is to
-say. Whether that search covered what a *reading* needs is a question about what is read, and a run
-carries several checks that do not all range over the same thing — so that question is answered
-where the reading is (``checks.py``), and this module reports only the
+behind it. Whether that search covered what a *reading* needs is a question about what is read, and
+a run carries several checks that do not all range over the same thing — so it is answered where the
+reading is (``checks.py``), and this module reports only the
 :class:`~elenctic.result.Conclusion` it observed.
 
 **The lowering contract (the accessor seam's second premise).** Whenever ``solve(mode)`` yields a
 ``Consistent``, it is *exactly* ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)``.
 A satisfiable solve does not always yield one: a search may settle satisfiability and still produce
 nothing the mode's shape can honestly be made of, which is reported as a solve that settled nothing.
-The match in :func:`_consistent_shape` is that Mode→shape arrow; the gating lowering-postcondition
-test ties it to ``shape_for``/``populates`` so the construction here and the type oracle in ``run``
-do not drift.
-A single ``_Collector`` dispatches on ``model.type``:
-``StableModel`` rows become observables (with cost); a final ``CautiousConsequences`` /
-``BraveConsequences`` model carries ⋂/⋃. Whether a run projects is decided once, by
-``run.should_project``, and both facades do as they are told: on clingo projection onto shown atoms
-is information-preserving (``assign ≡ ∅``) and so is taken wherever it is offered, on clingcon it
-collapses the CSP multiplicity that ``@count``/``@assign`` observe and so is taken only when no
-rider reads the full census, and on either it is declined when the program's own ``#project``
-directive would make it project onto something narrower than the shown atoms.
+The match in :func:`_consistent_shape` is that Mode→shape arrow, and the gating
+lowering-postcondition test ties it to ``shape_for``/``populates`` so the construction here and the
+type oracle in ``run`` do not drift.
+
+A single ``_Collector`` dispatches on ``model.type``: ``StableModel`` rows become observables (with
+cost); a final ``CautiousConsequences`` / ``BraveConsequences`` model carries ⋂/⋃. Whether a run
+projects is decided once, by ``run.should_project``, and both facades do as they are told — on
+clingo projection onto shown atoms is information-preserving (``assign ≡ ∅``) and is taken wherever
+offered; on clingcon it collapses the CSP multiplicity ``@count``/``@assign`` observe and is taken
+only when no rider reads the full census; on either it is declined when the program's own
+``#project`` directive would narrow past the shown atoms.
 
 Known v1 limitation: a ``#maximize`` objective is reported by clingo in negated
 minimize-internal form, so :func:`optimum_of`'s cost is natural for ``#minimize`` (the

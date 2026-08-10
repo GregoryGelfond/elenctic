@@ -14,14 +14,12 @@ moved to standard error, so a reader still sees it where a parser is not looking
 document is what lands on standard output instead. The document's module is the conditional
 one; this is not.
 
-**Where the two stop being alike, because a symmetry that is not there would mislead.** A document
-is one value written once, at the end, when everything about the run is known. Prose is not: a
-reader watching a hundred and thirty-five cases wants each one as it lands, so this renders in two
-moments and the document renders in one. The two observers below are the as-it-goes half — a run
-announces each verdict and each fault as it establishes it, and they turn a record into a line —
-and :func:`render_tail` is the other half, the three things that are about the whole run and so
-cannot be said while it is going. That is why there are observers here and none in the document's
-module, and it is a fact about prose rather than an omission there.
+**Where the two stop being alike.** A document is one value written once, at the end. Prose is not:
+a reader watching a long run wants each case as it lands, so this renders in two moments where the
+document renders in one. The observers below are the as-it-goes half, turning each verdict and fault
+into a line as the run establishes it; :func:`render_tail` is the other half, the things about the
+whole run that cannot be said while it is going. Hence observers here and none in the document's
+module.
 
 **Every string a corpus had a hand in passes through the sanitizer.** A path, a ``@note``, an atom,
 a solver's own diagnostic: text a reader's terminal would act on rather than display can move the
