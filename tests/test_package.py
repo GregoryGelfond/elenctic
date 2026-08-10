@@ -12,8 +12,8 @@ import elenctic
 # down: a name joins or leaves elenctic's public API by being added to or removed from this list and
 # in no other way. It is compared for equality below and not for containment, which is the whole
 # point — under a subset assertion a name outside the list could be dropped from the surface with
-# every check in the project still green, and `ErrorRecord` (the type every observer method is
-# annotated with in the README) was one of them.
+# every check in the project still green, and `ErrorRecord` — the type every observer announcement
+# hands a caller, so the one name an embedder cannot avoid — was one of them.
 _CURATED = {
     # the pipeline
     "Case", "Corpus", "discover", "inspect_corpus", "parse", "Expectation", "Sat", "Unsat",

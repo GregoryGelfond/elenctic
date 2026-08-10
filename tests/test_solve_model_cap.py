@@ -69,8 +69,10 @@ def test_an_ordinary_run_never_meets_the_cap() -> None:
 
 
 def test_the_cap_is_the_number_the_documentation_states() -> None:
-    # The bound has no flag, so the only way a reader learns it is that the README states it. Every
-    # other test here supplies its own cap or asserts a relation that holds for any positive value,
-    # so the shipped number itself is otherwise pinned by nothing and can drift away from the
-    # sentence describing it without a single test noticing.
-    assert MODEL_CAP == 1_000_000, "the README says a solve holds at most a million answer sets"
+    # Every other test here supplies its own cap or asserts a relation that holds for any positive
+    # value, so the shipped number itself is otherwise pinned by nothing. It is a published
+    # guarantee rather than an implementation detail — the bound has no flag, so a user meets it
+    # only as a reading that came back UNDECIDED — which makes moving it a change to what elenctic
+    # promises. That it is *stated* truthfully wherever it is stated is a separate question, and
+    # `tests/test_documentation.py` is where that one is settled.
+    assert MODEL_CAP == 1_000_000, "the published enumeration bound is one million answer sets"

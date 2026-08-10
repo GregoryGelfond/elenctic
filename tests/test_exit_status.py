@@ -145,9 +145,8 @@ def test_the_ladder_is_the_numbers_it_publishes() -> None:
     # Naming the rungs is what lets every other test here say what it means rather than make a
     # reader recall that 2 is a corpus to attend to. But a name is only ever equal to itself, so a
     # suite that named them everywhere and nowhere pinned the integers would pass with the ladder
-    # renumbered — and these integers are a published contract. A shell script gating on 2, a CI
-    # job testing for exactly 3, and the README's own account of them are all outside this suite
-    # and cannot be renumbered by it.
+    # renumbered — and these integers are a published contract. A shell script gating on 2 and a CI
+    # job testing for exactly 3 are outside this suite and cannot be renumbered by it.
     #
     # Ordered rather than a set, because the order is the precedence: a rung that outranks another
     # is the lower number, and swapping two members would keep the set and lose the ladder.

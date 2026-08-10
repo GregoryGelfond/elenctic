@@ -29,13 +29,41 @@ from elenctic.cli import _build_parser
 from elenctic.expectation import KNOWN_TAGS, ContractError, has_contract, parse_contract
 from elenctic.outcome import ErrorKind
 from elenctic.registry import THEORY_EXTRA_ADVICE
-from elenctic.solvers import TIME_BUDGET
+from elenctic.solvers import MODEL_CAP, TIME_BUDGET
 from support import cli_help_text
 
 _ROOT = Path(__file__).resolve().parent.parent
 _README = (_ROOT / "README.md").read_text(encoding="utf-8")
 _CHANGELOG = (_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
 _CONTRIBUTING = (_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+
+
+def _documents_of_instruction() -> dict[str, str]:
+    """Every document that tells a reader how to use elenctic, keyed by the path a failure names.
+
+    **Derived, not listed.** The landing page, the contributor guide, and everything under ``docs/``
+    — so a page added there is swept because of what it *is*, rather than because somebody
+    remembered to add it to a tuple here. The sweeps below were keyed to two file names until the
+    reference material moved out of the README, and a name is exactly the wrong key for a thing that
+    moves.
+
+    ``CHANGELOG.md`` is deliberately outside this set, on the boundary these checks already draw: a
+    changelog records what changed, and when a command line or a contract is what changed, saying so
+    means naming the spelling that *stopped* working. A rule requiring every such line to still work
+    forbids the document from doing its job.
+    """
+    named = {"README.md": _README, "CONTRIBUTING.md": _CONTRIBUTING}
+    return named | {
+        str(path.relative_to(_ROOT)): path.read_text(encoding="utf-8")
+        for path in sorted((_ROOT / "docs").rglob("*.md"))
+    }
+
+
+_INSTRUCTIONS = _documents_of_instruction()
+
+# The documents of instruction as one text, for a claim that may live in any of them and must live
+# in one. Joined with a blank line so nothing reads across a boundary that is not a paragraph break.
+_INSTRUCTED = "\n\n".join(_INSTRUCTIONS.values())
 
 # A dotted name under this package, written as code — `elenctic.outcome.ExitStatus` and the like.
 # Anchored at `elenctic.` so that a backticked flag, path or scrap of ASP is not mistaken for one.
@@ -76,6 +104,28 @@ def test_the_help_states_the_default_budget_the_way_the_readme_does() -> None:
     )
 
 
+def test_the_model_cap_the_documents_state_is_the_one_the_package_enforces() -> None:
+    # The bound has no flag, so a document is the only way anyone learns it — which makes the
+    # sentence the whole of what a user is promised, and made it the one published number nothing
+    # compared against the package. Its sibling `TIME_BUDGET` has been checked since it was written.
+    #
+    # Read as the words the sentence uses rather than as digits: a bound of this size is written
+    # "a million" by anyone describing it, and a check keyed on `1000000` would pass a document that
+    # had stopped saying anything a reader could act on.
+    stated = re.search(r"holds at most (a million|[\d,]+) answer sets", _INSTRUCTED)
+    assert stated is not None, (
+        "no document states the enumeration bound any more, and it has no flag — so nothing tells "
+        "a reader why an honest @count comes back UNDECIDED"
+    )
+    spelled = {"a million": 1_000_000}.get(stated.group(1), 0) or int(
+        stated.group(1).replace(",", "")
+    )
+    assert spelled == MODEL_CAP, (
+        f"the documents say a solve holds at most {stated.group(1)} answer sets, and the package "
+        f"stops at {MODEL_CAP:,}"
+    )
+
+
 def test_the_readme_does_not_keep_a_second_copy_of_the_exit_status_ladder() -> None:
     # The ladder has one home, `ExitStatus`, and `--help` is rendered from it. A copy here would be
     # a second thing to keep true, and it is exactly the copy that went stale: it is prose, so
@@ -100,7 +150,7 @@ def test_every_name_the_documents_tell_a_reader_to_import_is_one_they_can() -> N
     mentioned = sorted(
         {
             name
-            for text in (_README, _CHANGELOG, _CONTRIBUTING)
+            for text in (*_INSTRUCTIONS.values(), _CHANGELOG)
             for name in _DOTTED_NAME.findall(text)
         }
     )
@@ -213,7 +263,7 @@ def _command_lines() -> list[tuple[str, str]]:
     """
     return [
         (f"{name}:{number}", line)
-        for name, text in (("README.md", _README), ("CONTRIBUTING.md", _CONTRIBUTING))
+        for name, text in _INSTRUCTIONS.items()
         for number, raw in enumerate(text.splitlines(), start=1)
         for line in _shown_in(raw)
     ]
@@ -356,7 +406,7 @@ def _asp_blocks() -> list[tuple[str, str]]:
     """
     return [
         (name, block)
-        for name, text in (("README.md", _README), ("CONTRIBUTING.md", _CONTRIBUTING))
+        for name, text in _INSTRUCTIONS.items()
         # The info string is read past rather than required to be bare: `asp` may one day carry a
         # title or a highlight range, and a fence retitled that way would silently leave this set
         # while the other blocks kept the assertion green.

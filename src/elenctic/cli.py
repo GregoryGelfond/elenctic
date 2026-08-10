@@ -294,7 +294,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="per-solve time budget, a positive finite number of seconds. A budget hit before the "
         "solve decides is UNDECIDED and never FAIL; one hit after it decides keeps what was "
         # `:g` because the default is a float and its bare repr is `30.0`, which reads as a
-        # precision the dial does not have; the README states the same number and states it as 30.
+        # precision the dial does not have: a reader comparing this gloss against the number they
+        # typed should meet the same one they would write themselves.
         f"decided, and only the checks that needed more of the search are UNDECIDED (default "
         f"{TIME_BUDGET:g}s)",
     )
