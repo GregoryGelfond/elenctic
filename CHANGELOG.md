@@ -10,6 +10,24 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+**Upgrading from 0.3.0?** These are the changes that ask something of you. Each is written in
+full under its own heading below; this is a place to look first, not a second account of them.
+Every one of them is marked **What can break:** where it is described.
+
+- A vocabulary for what a program declares observable: `ShownVocabulary`, `Unrestricted`, `Restricted` and `Signature`
+- The command line takes a command: `elenctic run|explain|schema`
+- A `@cautious`/`@brave` claim over a literal the program does not declare observable is now refused, where it used to be FAILed
+- A `@query` whose answer the program does not determine is now refused rather than answered
+- Escaped text is now spelled the way Python spells it, and is reversible
+- A `where { … }` clause is refused wherever it is mis-placed, not only under a witness tag
+- `@count 0` and `@count optimal 0` under `@expect unsat` are checked and reported
+- The curated surface stops accepting what it cannot honour
+- A case that reaches outside its corpus is filed under a locus of its own, `containment`
+- The machine-readable document is `schema_version` 2
+- A case may not read past its corpus while the program is *solved*, not only while it is read
+- `discovery.check_solver_available` no longer takes `where`
+- A reader that stops reading no longer looks like a failed corpus
+
 ### Added
 
 - **A refused command line names the word you probably meant.** `elenctic rnu tests/` now answers
@@ -29,7 +47,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
   used to arrive as an empty set of signatures, so nothing downstream could tell them apart. They
   are now two shapes rather than one value, which is what lets the checks below be right about
   either. `ProgramFacts.shown` and `Case.shown` carry a `ShownVocabulary` where they carried a
-  `frozenset` of signature pairs: **breaking for anyone reading those fields.**
+  `frozenset` of signature pairs. **What can break:** anything reading those two fields.
 
 - **`elenctic.run_plan`** joins `run_case` on the curated surface, so a runner of your own can hold
   a plan and run it rather than only run a case end to end.
@@ -85,8 +103,8 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
   `p(x)` is a cautious consequence and the report said otherwise. Such a case now reports a
   discovery error naming the claim's line and what to declare. This covers all four tags —
-  `@cautious`, `@brave`, `@cautious optimal`, `@brave optimal`. **If a case of yours goes from FAIL
-  to a refusal, the FAIL was not a reading of your program**; declare the signature, or, where the
+  `@cautious`, `@brave`, `@cautious optimal`, `@brave optimal`. **What can break:** a case of yours
+  goes from FAIL to a refusal — and the FAIL was not a reading of your program; declare the signature, or, where the
   predicate reaches the output through a `#show <term> : <body>.` directive, give what that
   directive selects a name of its own and claim that instead. The message says which.
 
@@ -172,8 +190,8 @@ means for them — a reader deciding whether to upgrade should not have to read 
     of the file, so every contract below it was out of force and the file was silently treated as
     something to include rather than something to run.
 
-- **The curated surface stops accepting what it cannot honour.** Five changes, all breaking for
-  someone: `solve`'s `solver` parameter is typed `Solver` rather than `str`, so an unknown name is
+- **The curated surface stops accepting what it cannot honour.** **What can break:** five things,
+  each for someone: `solve`'s `solver` parameter is typed `Solver` rather than `str`, so an unknown name is
   a type error at the call site instead of a `ValueError` mid-run; `HygieneReport` is keyword-only
   (its two neighbouring fields are both `tuple[Path, ...]`, so a transposed pair type-checked clean
   and rendered a plausible row); `CheckReport` enforces the `@`-tag invariant its internal sibling
@@ -197,7 +215,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
   value of a field that carried seven in 0.3.0, and a consumer keeping a table of loci wants the
   row.
 
-  **Breaking for a library consumer who catches it by class.** 0.3.0 raised a `DiscoveryError`;
+  **What can break:** a library consumer who catches it by class. 0.3.0 raised a `DiscoveryError`;
   this raises **`elenctic.ContainmentError`**, which is a `ProgramError` by inheritance and no
   longer a `DiscoveryError` at all. `except elenctic.DiscoveryError` stops catching an escaping
   `#include`; `except elenctic.ProgramError` catches it, and `except elenctic.ContainmentError`
@@ -301,7 +319,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
   candidate against it, so a root still carrying a symlink or a `..` reports *every* file in the
   corpus as outside it — including the case's own. Pass `path.resolve()`.
 
-  **Breaking for a positional caller: `solve`'s `project` and `within` are keyword-only.** They are
+  **What can break:** a positional caller — `solve`'s `project` and `within` are keyword-only. They are
   adjacent, both optional and differently typed, so passing them positionally with `budget` omitted
   put a boundary in `project`, where it is truthy — the run silently projected and stated no
   containment rule. Call `solve(solver, mode, files=…, project=…, within=…)`.
@@ -337,7 +355,8 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ### Removed
 
-- **`discovery.check_solver_available` no longer takes `where`.** It spelled that path into the
+- **`discovery.check_solver_available` no longer takes `where`.** **What can break:** any caller
+  passing it. It spelled that path into the
   refusal, which said nothing a caller asking about a case it holds did not already know. Call it
   as `check_solver_available(case.solver)`.
 
@@ -935,7 +954,7 @@ remains the ordinary shape of a corpus and is unaffected.
   fix, `HarnessError` is elenctic's. **This is a breaking change** for any consumer that caught
   program faults via `HarnessError`; catch `elenctic.ProgramError` instead.
 
-- The exit status `2` now covers a program that cannot be run, alongside a bad contract, a
+- **The exit status `2` now covers a program that cannot be run**, alongside a bad contract, a
   mis-shaped corpus and an internal error. No status changed meaning; the register gained a
   member.
 ### Fixed
@@ -979,8 +998,8 @@ remains the ordinary shape of a corpus and is unaffected.
 
 ### Added
 
-- `Collection` (`elenctic.Collection`), what a reading ranges over (AS(P), Opt(P), or one
-  answer set), readable as `Mode.asks`. It is *derived* from the fields a mode populates,
+- **`Collection` (`elenctic.Collection`) — what a reading ranges over**: AS(P), Opt(P), or one
+  answer set, readable as `Mode.asks`. It is *derived* from the fields a mode populates,
   not declared beside them, so a mode cannot claim one collection while reading another's.
   Each mode now states the optimization its collection requires instead of inheriting the
   solver's default, and a gating test holds every mode to it.

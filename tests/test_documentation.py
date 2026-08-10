@@ -698,6 +698,145 @@ def test_the_library_example_runs_and_does_what_it_says(tmp_path: Path) -> None:
     assert document["summary"]["passed"] == 1, "and the document it wrote reports the run"
 
 
+def _changelog_entries() -> list[tuple[str, int, str, str]]:
+    """Every changelog entry as ``(release, line, headline, body)``.
+
+    An entry runs from a bullet to the next bullet or heading, which is the shape every one of them
+    has had since the first release. The headline is the bolded lead — the unit a reader actually
+    scans, since nobody reads a changelog end to end; they look down the bold text for the thing
+    that concerns them and read only that entry's body.
+
+    **An entry is a bullet under a category**, and that is the definition rather than a detail: the
+    breaking-changes index at the head of a release is a list of bullets too, and it is a set of
+    pointers rather than a set of entries. Read as entries they would be counted twice and held to
+    a rule about headlines they have no business having. The categories are what the format names,
+    so a bullet above the first of them is preamble.
+    """
+    found: list[tuple[str, int, str, str]] = []
+    release, gathered, opened, under_category = "", "", 0, False
+
+    def close() -> None:
+        if not gathered:
+            return
+        head = re.match(r"- \*\*(.+?)\*\*", gathered)
+        found.append(
+            (release, opened, head.group(1), gathered[head.end() :].strip())
+            if head is not None
+            else (release, opened, "", gathered)
+        )
+
+    # The sentinel closes the final entry without the loop needing a second exit.
+    for number, line in enumerate([*_CHANGELOG.splitlines(), "## [end of file]"], start=1):
+        if line.startswith(("- ", "### ", "## [")):
+            close()
+            gathered, opened = (
+                (line, number) if line.startswith("- ") and under_category else ("", 0)
+            )
+            if line.startswith("### "):
+                under_category = True
+            elif line.startswith("## ["):
+                release, under_category = line.split("]")[0].removeprefix("## ["), False
+        elif gathered:
+            gathered = f"{gathered} {line.strip()}"
+    return found
+
+
+def test_every_changelog_entry_opens_with_a_headline_a_reader_can_scan() -> None:
+    # Nobody reads a changelog end to end. They run their eye down the bold text looking for the
+    # thing that concerns them, and read one entry. That makes the bolded lead the load-bearing
+    # part: an entry without one is invisible to the only way the document is used, however good
+    # its prose is.
+    entries = _changelog_entries()
+    assert len(entries) > 20, (
+        f"only {len(entries)} entries found, so this is no longer reading them"
+    )
+    bare = [f"{release} line {at}" for release, at, head, _ in entries if not head]
+    assert not bare, (
+        f"these entries open with no bolded headline, so a reader scanning for what concerns them "
+        f"passes straight over: {bare}"
+    )
+
+
+def test_no_changelog_headline_has_grown_out_of_being_one() -> None:
+    # The verbosity check, and it is a **ratchet rather than a derivation** — worth saying plainly,
+    # because this project does not otherwise accept a number nobody can justify.
+    #
+    # Measured across every entry in every release before it was written: 83 entries, headline
+    # length median 13 words, 90th percentile 17, longest 23. The cap is the observed longest plus
+    # slack, so it holds a property the document already has and costs nothing to keep. What it
+    # forbids is a headline that has stopped being one — a paragraph in bold that a reader cannot
+    # scan — not the difference between thirteen words and seventeen.
+    #
+    # **The body is deliberately not capped**, and two candidate rules were measured and rejected
+    # rather than merely not written. A word cap on bodies fails immediately: they run from 9 words
+    # to 609, and the longest is a migration table that earns every line. "A long entry must carry
+    # a fence or a table" fails too — eleven entries of 180 words or more carry neither, across
+    # shipped releases, so it would need its exemptions on the day it was written. A rule needing
+    # exemptions to fit the document is the rule not fitting the document.
+    longest = 25
+    entries = _changelog_entries()
+    assert entries, "no entries found, so this is no longer reading them"
+    overgrown = [
+        (release, at, len(head.split()), head[:60])
+        for release, at, head, _ in entries
+        if len(head.split()) > longest
+    ]
+    assert not overgrown, (
+        f"a headline is what a reader scans, and these have stopped being one (cap {longest} "
+        f"words): {overgrown}"
+    )
+
+
+_BREAKS = "**What can break:**"
+
+
+def test_the_breaking_changes_index_and_the_entries_it_indexes_agree() -> None:
+    # An index is a second account of something, which is the shape this project spends its time
+    # removing — so it is derived from the entries rather than kept beside them. What makes that
+    # possible is that the document already had a convention for saying an entry asks something of
+    # a reader; it was simply spelled five ways, and the minority spellings were the ones a reader
+    # scanning for them would miss.
+    #
+    # The release being cut is the one an upgrader reads, so the index is the unreleased section's
+    # alone. A shipped release's index is history and is not regenerated.
+    entries = _changelog_entries()
+    assert entries, "no entries found, so this is no longer reading them"
+    breaking = [
+        head.rstrip(".")
+        for release, _at, head, body in entries
+        if release == "Unreleased" and _BREAKS in f"{head} {body}"
+    ]
+    assert breaking, (
+        f"no unreleased entry is marked {_BREAKS}, so either nothing breaks — in which case the "
+        f"index should go — or the marker has been spelled some other way again"
+    )
+    # One index line per entry, unwrapped — which is a constraint on the index rather than an
+    # assumption about it, and it is stated because a reader reflowing that list would otherwise
+    # be surprised. Wrapped, a line stops matching and this fails naming it, which is the right
+    # way round: the index is generated from the entries, so hand-editing it is the thing to be
+    # told about.
+    listed = re.findall(r"^- (.+)$", _unreleased_index(), re.M)
+    assert sorted(listed) == sorted(breaking), (
+        "the breaking-changes index and the entries marked "
+        f"{_BREAKS} do not agree.\n  indexed but not marked: {sorted(set(listed) - set(breaking))}"
+        f"\n  marked but not indexed: {sorted(set(breaking) - set(listed))}"
+    )
+
+
+def _unreleased_index() -> str:
+    """The breaking-changes index at the head of the unreleased section — everything between that
+    heading and the first category under it.
+
+    Bounded by the first ``###`` rather than by a heading of its own, deliberately: Keep a Changelog
+    names six categories and this is not one of them, so it is a lead paragraph rather than a
+    seventh. A reader meets it before any category, which is where an upgrader looks.
+    """
+    after = _CHANGELOG.split("## [Unreleased]", 1)
+    assert len(after) == 2, "the changelog no longer has an unreleased section"
+    assert "\n### " in after[1], "the unreleased section has no categories under it"
+    return after[1].split("\n### ", 1)[0]
+
+
 def test_the_changelog_has_a_dated_section_for_the_version_being_shipped() -> None:
     """The link a release cut is most likely to break, and the one nothing was watching.
 
