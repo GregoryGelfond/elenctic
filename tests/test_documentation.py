@@ -28,6 +28,7 @@ import pkgutil
 import re
 import shlex
 import subprocess
+import tokenize
 import tomllib
 from pathlib import Path
 from urllib.parse import unquote
@@ -1081,6 +1082,18 @@ def _vocabulary_fields(schema: dict[str, object]) -> tuple[set[str], set[str]]:
     return closed, open_valued
 
 
+def _package_sources() -> list[Path]:
+    """Every Python file the package is written in, in a stable order.
+
+    ``rglob``, because the rules below are written about "under ``src/elenctic/``" and a module in a
+    subpackage is under it. There is one subdirectory today and it holds the packaged schema rather
+    than code — which is the point: this goes on finding them after somebody adds the first
+    subpackage. Stated once because two checks read it under different filters, and a second
+    spelling of where the source lives is a second thing to keep true.
+    """
+    return sorted((_ROOT / "src/elenctic").rglob("*.py"))
+
+
 def _package_modules() -> dict[str, ast.Module]:
     """Every module under ``src/elenctic/`` but the package surface, parsed.
 
@@ -1090,11 +1103,7 @@ def _package_modules() -> dict[str, ast.Module]:
     """
     return {
         path.stem: ast.parse(path.read_text(encoding="utf-8"))
-        # `rglob`, because the rules these hold are written about "under `src/elenctic/`" and a
-        # module in a subpackage is under it. There is one subdirectory today and it holds the
-        # packaged schema rather than code, so this finds the same eighteen — which is the point:
-        # it goes on finding them after somebody adds the first subpackage.
-        for path in (_ROOT / "src/elenctic").rglob("*.py")
+        for path in _package_sources()
         if path.name != "__init__.py"
     }
 
@@ -1285,6 +1294,148 @@ def test_every_module_allowed_to_print_is_one_that_does() -> None:
     assert not silent, (
         f"waived from T20 and printing nothing: {silent}. The list is read as the modules meant to "
         f"write to a terminal, so an entry that no longer does is a sentence about the wrong set"
+    )
+
+
+# A name written as code inside prose — one or two backticks around it, RST's spelling and the
+# comments'. What is read out of the span is the dotted path it opens with, so ``_lex``,
+# ``_finish()`` and ``Check._judge`` all answer with the names a reader would search for.
+_AS_CODE = re.compile(r"``?([^`]+)``?")
+_DOTTED_PATH = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
+
+
+def _prose_in(path: Path) -> list[tuple[str, int, str]]:
+    """Every docstring and comment in one module, labelled, each with the line a failure names.
+
+    Parsed rather than matched, because both halves have a lookalike the characters cannot tell
+    apart: a ``#`` inside a string literal is not a comment, and a string that is not the first
+    statement of a scope is not a docstring. ``tokenize`` and ``ast`` each decide their half the way
+    Python does.
+
+    Labelled because the check below holds each half against its own emptiness. A reader that lost
+    one of them goes on returning the other's hits, so an assertion over the union stays green while
+    half the prose is unread — and the defect that motivated all this lived in the docstring half.
+
+    What this does *not* read is stated so it is not mistaken for covered: the package's Python.
+    ``schema/output-v2.schema.json`` ships prose of its own, in a hundred-odd backticked spans that
+    other checks here hold; so do argparse's help strings and the diagnostics, which are string
+    literals rather than docstrings. None writes a private name today.
+    """
+    text = path.read_text(encoding="utf-8")
+    documented = [
+        ("docstring", node.body[0].lineno, doc)
+        for node in ast.walk(ast.parse(text))
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        and (doc := ast.get_docstring(node, clean=False)) is not None
+    ]
+    return documented + [
+        ("comment", token.start[0], token.string)
+        for token in tokenize.generate_tokens(io.StringIO(text).readline)
+        if token.type == tokenize.COMMENT
+    ]
+
+
+def _private_names_written_in(prose: str) -> list[tuple[int, str]]:
+    """The package-private names one piece of prose writes as code, each with the line it is on
+    counted from the start of that prose.
+
+    **Every segment of a dotted path, not the one it opens with.** The shape this package writes is
+    a private member of a *public* owner — ``Check._judge``, ``solvers._FACADES``,
+    ``run._query_mode``, ``checks._braces`` — and a reader keyed on the opening identifier throws
+    the whole span away because ``Check`` is public, leaving the private half unheld. Five such
+    names were invisible until this was widened: the motivating defect's own shape, sitting in the
+    population a first measurement had reported as empty.
+
+    The offset rather than the block, because a docstring here runs to sixty lines and a failure
+    reporting the line the *docstring* opens on points a reader at a paragraph rather than at a
+    name — which is the kind of not-quite-true coordinate the rest of this module exists to catch.
+
+    A ``__dunder__`` is not one of these names. Python's own reference calls those system-defined
+    and tells nobody to invent one, so ``__repr__`` and ``__cause__`` in a sentence about protocol
+    behaviour are the interpreter's and nothing for a check about this package to hold. The limit
+    that leaves is worth naming: an invented ``__contract__`` is skipped too, on the strength of a
+    prohibition rather than a check. The single leading underscore and the class-private ``__name``
+    are the package's own, and both are held.
+    """
+    written = []
+    for span in _AS_CODE.finditer(prose):
+        dotted = _DOTTED_PATH.match(span.group(1).strip())
+        if dotted is None:
+            continue
+        at = prose.count("\n", 0, span.start())
+        written += [
+            (at, segment)
+            for segment in dotted.group().split(".")
+            if segment.startswith("_") and not (segment.startswith("__") and segment.endswith("__"))
+        ]
+    return written
+
+
+def _names_the_package_binds() -> set[str]:
+    """Every name the package's own source binds, by any spelling it can be bound under.
+
+    A binding rather than a mention, and the distinction is the whole reason this is read from the
+    AST: reading ``model.type`` off one of clingo's objects does not make ``type`` a name this
+    package defines, so an attribute counts where it is assigned and not where it is read. Every
+    other form that binds is here — ``def``, ``class``, assignment at any scope, parameter, import
+    alias, ``global``/``nonlocal``, and the module basenames — because a private name in prose can
+    point at any of them, and this needs no list precisely because it asks for all of them.
+    """
+    bound = {path.stem for path in _package_sources()}
+    for path in _package_sources():
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            match node:
+                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                    bound.add(node.name)
+                case ast.Name(ctx=ast.Store()):
+                    bound.add(node.id)
+                case ast.Attribute(ctx=ast.Store()):
+                    bound.add(node.attr)
+                case ast.arg():
+                    bound.add(node.arg)
+                case ast.alias():
+                    bound.add(node.asname or node.name.split(".")[0])
+                case ast.Global() | ast.Nonlocal():
+                    bound.update(node.names)
+    return bound
+
+
+def test_every_private_name_the_source_prose_writes_is_one_the_package_defines() -> None:
+    # A name written as code is a promise a reader can search for it. `expectation.py` opened its
+    # "Four responsibilities" by naming `_comments` as the module's one comment reader, and no
+    # commit ever defined it. Born false rather than left behind by a rename — so the standing care
+    # about moving code with its prose could not have caught this, and nothing else could either.
+    #
+    # Private names only, and that narrowness is the whole of why this holds rather than nags. The
+    # general form — every backticked name resolves — reports Python's builtins and keywords,
+    # clingo's API, stdlib parameter names, ASP predicates and the single letters standing for
+    # terms: none of them defined here, every one of them correctly written. It would ship with an
+    # exemption list. A leading underscore has nowhere to resolve but here, which is what makes the
+    # narrow rule answerable at all.
+    bound = _names_the_package_binds()
+    written = [
+        (kind, path.name, opens + offset, name)
+        for path in _package_sources()
+        for kind, opens, prose in _prose_in(path)
+        for offset, name in _private_names_written_in(prose)
+    ]
+    # Each half of the reader against its own emptiness, not their union. This package writes
+    # private names as code in both its docstrings and its comments, so finding none in either is a
+    # reader that has stopped reading rather than prose that has stopped naming — and the union
+    # cannot say which, because the surviving half answers for the lost one.
+    found_in = {kind for kind, *_ in written}
+    assert found_in == {"comment", "docstring"}, (
+        f"private names as code were found in {sorted(found_in) or 'neither form'}, and this "
+        f"package writes them in both — so a half of the reader above is reading nothing, and a "
+        f"green run here holds only the other half"
+    )
+
+    phantom = sorted(
+        f"{path}:{line} `{name}`" for _, path, line, name in written if name not in bound
+    )
+    assert not phantom, (
+        f"prose writes a private name the package does not define: {phantom}. Whatever the "
+        f"sentence says about it, a reader who searches for the name finds nothing"
     )
 
 

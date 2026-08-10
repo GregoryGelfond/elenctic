@@ -8,12 +8,12 @@ defaults or discards.
 
 Four responsibilities:
 
-- **One comment reader of record.** ``_comments`` is the only thing here that decides what a
-  comment is, and it decides it as clingo's lexer does; both ``_tag_comments`` (behind the
-  collection predicate) and ``_blocks`` (behind the parse) read it. The two must come from one
-  reading: split them and either a trailing ``% @expect …`` is still never collected, or a file
-  is collected and then told it declares no ``@expect`` while its author is looking straight at
-  one.
+- **One comment reader of record.** ``_lex`` is the only thing here that decides what a comment
+  is, and it decides it as clingo's lexer does; both ``_tag_comments`` (behind the collection
+  predicate) and ``_blocks`` (behind the parse) take their comments from it. The two must come
+  from one reading: split them and either a trailing ``% @expect …`` is still never collected, or
+  a file is collected and then told it declares no ``@expect`` while its author is looking
+  straight at one.
 - **Brace-bounded, contiguous continuation.** A litset may span continuation comments *while a
   brace remains unclosed*; once the brace closes, a following comment is prose (e.g. a
   ``% Run: …`` header), not part of the litset. The run must also be unbroken — each
