@@ -615,6 +615,19 @@ Redirecting standard error onto standard output (`--format json 2>&1`) gives awa
 your own hand, and it is now the only way to: closing standard error costs the document nothing, so
 `2>&-` and `2>/dev/null` are two spellings of one wish and behave alike.
 
+**Closing a stream is read as "discard what goes there", and the two streams answer differently
+because what they carry differs.** Closing standard error discards the diagnostics and costs the
+report nothing. Closing standard *output* discards the report — `elenctic run tests/ >&-` and
+`elenctic explain tests/ >&-` run to completion and leave with the status they would have left with
+anyway, `0`, `1` or `2` as the corpus decides, so a caller reading only the status is unaffected.
+
+The exception is the pair whose whole purpose is an artefact on that stream: `run --format json`
+and `schema` are **refused**, with a usage error and status `2`, when the process has no standard
+output. Those two have nothing left to do, and the alternative is the one outcome that misleads —
+producing nothing, on both streams, under a status that says nothing went wrong. It is a refusal
+rather than a guess for the same reason the other two are: elenctic will not decide on your behalf
+where a document you asked for should go.
+
 ### The corpus is code you run
 
 elenctic runs the programs it is given, so a corpus is as trusted as code you would run. It is

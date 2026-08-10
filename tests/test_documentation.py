@@ -167,12 +167,16 @@ def test_every_command_line_the_documents_show_is_one_elenctic_accepts() -> None
 # about pipelines and redirections, which is nobody's grammar to check.
 _SHELL_OPERATORS = frozenset({"|", ">", ">>", "<", "&&", ";"})
 
-# A redirection naming its descriptor is one word rather than two — `2>&-`, `2>&1`, `2>/dev/null` —
-# so the set above cannot see it, and the whole of it reached the parser as an argument. It is the
-# same construct as the `>` already there and is cut for the same reason: the shell consumes it and
-# elenctic never sees it. The leading digit is required, which is what keeps a `<target>`
-# metavariable out — that one closes with `>` and is a placeholder, not a redirection.
-_REDIRECTION = re.compile(r"^\d+[<>]")
+# A redirection is often one word where the set above expects two — `>&-`, `2>&1`, `2>/dev/null`,
+# `>/dev/null` — so the whole of it reached the parser as an argument. It is the same construct as
+# the `>` already there and is cut for the same reason: the shell consumes it and elenctic never
+# sees it.
+#
+# Two shapes, and the asymmetry between them is what keeps a `<target>` metavariable out. A word
+# *opening* with `>` is always a redirection, because no argument or placeholder starts that way. A
+# word opening with `<` is not — `<target>` is how these documents write a placeholder — so on that
+# side a descriptor number is required, which a placeholder never has.
+_REDIRECTION = re.compile(r"^(>|\d+[<>])")
 
 
 def _ends_the_command_line(word: str) -> bool:

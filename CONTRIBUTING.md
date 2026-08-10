@@ -29,9 +29,15 @@ clingcon — you do not need any of them installed already. The pinned environme
 **macOS on Apple silicon and Intel, and Linux on x86-64** — `osx-arm64`, `osx-64` and `linux-64`,
 which is the list in `pixi.toml` — and CI runs on Linux and macOS. Anything else, Windows and
 64-bit ARM Linux included, is not in the set, so `pixi install` will fail there rather than build
-something untested. If you want to work on a platform that is missing, say so on the issue
-tracker: adding one is a change to the lock file and the CI matrix, not something to carry as a
-local patch.
+something untested.
+
+**64-bit ARM Linux is absent for a reason worth knowing, since it is otherwise the obvious
+omission:** conda-forge packages clingo for `linux-aarch64` but **not clingcon**, so the
+environment cannot be solved there — `pixi` reports no candidates for it. That is upstream
+packaging rather than a decision here, and it is why the platform list is not simply widened. If
+you want a platform that is missing, say so on the issue tracker rather than carrying a local
+patch: it is a change to the lock file and the CI matrix, and for this one it needs a clingcon
+build that does not yet exist.
 
 ```console
 $ git clone https://github.com/GregoryGelfond/elenctic
