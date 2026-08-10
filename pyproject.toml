@@ -92,7 +92,10 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 # The curated surface re-exports each name as itself (`X as X`), which is how a type checker is told
 # that a name imported into a package's __init__ is part of its public API — without it, every
 # consumer running a strict check is told the package exports nothing. Left alone, isort gives each
-# aliased name an import statement of its own, which turns one readable block into sixty-five.
+# aliased name an import statement of its own — one line per curated name, where the curated surface
+# is most of what this package is. The count is deliberately not written here: it said sixty-five
+# when it was already sixty-eight, because nothing prompts an edit to a comment when a name is
+# added, and the mechanism is what the setting is here for.
 combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
