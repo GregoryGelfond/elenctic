@@ -15,19 +15,35 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import pytest
-from clingo import Control
+from clingo import Control, Model, Symbol, parse_term
 
-from elenctic.result import Conclusion, Determination, SolveOutcome
+from elenctic.discovery import discover
+from elenctic.expectation import WitnessClaim
+from elenctic.harness import case_verdict, run_case
+from elenctic.result import (
+    Conclusion,
+    ConsistentEnumeration,
+    Determination,
+    Observable,
+    SolveOutcome,
+    Verdict,
+)
+from elenctic.solvers import _Collector
 
 __all__ = [
     "Streams",
     "a_clock_the_deadline_has_already_passed_on",
+    "answer",
     "child_environment",
     "cli_help_section",
     "cli_help_sections",
     "cli_help_text",
     "decided",
     "document_of",
+    "enumeration",
+    "literals",
+    "observable",
+    "on_model_for",
     "opt_mode_in_force",
     "run_cli",
     "run_cli_with_neither_stream_reachable",
@@ -36,6 +52,7 @@ __all__ = [
     "run_cli_without_standard_error",
     "run_cli_without_standard_output",
     "without_standard_error",
+    "witness",
 ]
 
 # How long a child may take before it is a hang rather than a slow run. It has to exceed the largest
@@ -52,6 +69,52 @@ def opt_mode_in_force(control: Control) -> str:
     ``solvers._set_opt_mode`` isolates for the write, so the narrowing lives here once instead of at
     each reading."""
     return str(control.configuration.solve.opt_mode)  # type: ignore[union-attr]
+
+
+def observable(*names: str) -> Observable:
+    """One answer set, as the terms it shows.
+
+    Read with ``parse_term`` rather than built with ``Function``, which is the wider of the two
+    spellings this suite had grown: a bare name parses to exactly the function ``Function(name)``
+    builds, and ``p(a)`` and ``-p(a)`` parse to terms the narrower one cannot express at all. So the
+    two are one helper, and the one kept is the one that can say everything the other could.
+    """
+    return Observable(frozenset(parse_term(name) for name in names))
+
+
+def literals(*names: str) -> frozenset[Symbol]:
+    """A set of ground literals, written the way a contract writes them."""
+    return frozenset(parse_term(name) for name in names)
+
+
+def witness(*names: str) -> WitnessClaim:
+    """An ``@model`` claim over the shown literals ``names``."""
+    return WitnessClaim(shown=literals(*names))
+
+
+def enumeration(*observables: Observable) -> ConsistentEnumeration:
+    """The answer sets of a consistent program, in the shape the checks read them from."""
+    return ConsistentEnumeration(observables)
+
+
+def answer(tmp_path: Path, name: str, body: str) -> tuple[Verdict, tuple[str, ...]]:
+    """Run one case written to ``tmp_path``, and return its verdict with every message it reported.
+
+    The file is written here rather than through a caller's own helper: the modules this came from
+    each keep a ``_write`` of their own for the cases they build by hand, and those spell the same
+    two lines several different ways across the suite. Depending on one of them would tie this to
+    whichever spelling its first caller happened to have.
+    """
+    case_file = tmp_path / name
+    case_file.write_text(body, encoding="utf-8")
+    (case,) = discover(case_file)
+    reports = run_case(case)
+    return case_verdict(reports), tuple(report.message for report in reports)
+
+
+def on_model_for(collector: _Collector) -> Callable[[Model], bool]:
+    """The plain (non-theory) callback factory the optimal driver takes."""
+    return collector.on_model
 
 
 def decided(determination: Determination) -> SolveOutcome:

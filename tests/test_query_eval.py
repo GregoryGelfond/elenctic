@@ -20,10 +20,7 @@ from elenctic.query import (
     unify,
 )
 from elenctic.result import HarnessError
-
-
-def atoms(*names: str) -> frozenset[Symbol]:
-    return frozenset(parse_term(name) for name in names)
+from support import literals
 
 
 @pytest.mark.parametrize(
@@ -79,11 +76,11 @@ def test_contrary_literal_flips_sign() -> None:
     ],
 )
 def test_singleton_answer(literal: str, cautious: tuple[str, ...], expected: Answer) -> None:
-    assert singleton_answer(parse_term(literal), atoms(*cautious)) is expected
+    assert singleton_answer(parse_term(literal), literals(*cautious)) is expected
 
 
 def models(*sets: tuple[str, ...]) -> frozenset[frozenset[Symbol]]:
-    return frozenset(atoms(*s) for s in sets)
+    return frozenset(literals(*s) for s in sets)
 
 
 @pytest.mark.parametrize(
@@ -152,7 +149,7 @@ def test_classify_assigns_each_query_its_form() -> None:
 
 def test_binding_set_yes_reads_intersection() -> None:
     goal = QueryLiteral("reachable", True, (Var("X"),))
-    inter = atoms("reachable(s)", "reachable(a)", "reachable(t)")
+    inter = literals("reachable(s)", "reachable(a)", "reachable(t)")
     assert binding_set(goal, Answer.yes, inter, None) == {
         (parse_term("s"),),
         (parse_term("a"),),
@@ -162,14 +159,14 @@ def test_binding_set_yes_reads_intersection() -> None:
 
 def test_binding_set_no_reads_contrary() -> None:
     goal = QueryLiteral("reachable", True, (Var("X"),))
-    inter = atoms("reachable(s)", "-reachable(x)")
+    inter = literals("reachable(s)", "-reachable(x)")
     assert binding_set(goal, Answer.no, inter, None) == {(parse_term("x"),)}
 
 
 def test_binding_set_unknown_uses_brave_domain() -> None:
     goal = QueryLiteral("reachable", True, (Var("X"),))
-    inter = atoms("reachable(s)")
-    union = atoms("reachable(s)", "reachable(a)", "-reachable(b)")
+    inter = literals("reachable(s)")
+    union = literals("reachable(s)", "reachable(a)", "-reachable(b)")
     # brave domain {s, a, b} − yes {s} − no {} = {a, b}
     assert binding_set(goal, Answer.unknown, inter, union) == {
         (parse_term("a"),),
@@ -180,12 +177,12 @@ def test_binding_set_unknown_uses_brave_domain() -> None:
 def test_binding_set_unknown_requires_union() -> None:
     goal = QueryLiteral("reachable", True, (Var("X"),))
     with pytest.raises(ValueError, match="brave consequences"):
-        binding_set(goal, Answer.unknown, atoms("reachable(s)"), None)
+        binding_set(goal, Answer.unknown, literals("reachable(s)"), None)
 
 
 def test_binding_set_repeated_variable_one_column() -> None:
     goal = QueryLiteral("rel", True, (Var("X"), Var("X")))
-    inter = atoms("rel(a,a)", "rel(b,c)")  # only rel(a,a) unifies under X=X
+    inter = literals("rel(a,a)", "rel(b,c)")  # only rel(a,a) unifies under X=X
     assert binding_set(goal, Answer.yes, inter, None) == {(parse_term("a"),)}
 
 

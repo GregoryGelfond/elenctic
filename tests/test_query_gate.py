@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 
 from elenctic.discovery import DiscoveryError, discover
-from elenctic.harness import case_verdict, run_case
 from elenctic.program import Restricted, Unrestricted
 from elenctic.result import Verdict
+from support import answer
 
 _SHOW = re.compile(r"^#show\b.*$", re.MULTILINE)
 
@@ -23,13 +23,6 @@ def _write(tmp_path: Path, name: str, body: str) -> Path:
     path = tmp_path / name
     path.write_text(body, encoding="utf-8")
     return path
-
-
-def _answer(tmp_path: Path, name: str, body: str) -> tuple[Verdict, tuple[str, ...]]:
-    """Run one case, and return its verdict with the message of every check it reported."""
-    (case,) = discover(_write(tmp_path, name, body))
-    reports = run_case(case)
-    return case_verdict(reports), tuple(report.message for report in reports)
 
 
 # --- the routes that certified a false claim. Each was measured reporting `1/1 passed`, exit 0. ---
@@ -118,7 +111,7 @@ _ANSWERED_NOT_REFUSED = [
     ("name", "body"), _ANSWERED_NOT_REFUSED, ids=[r[0] for r in _ANSWERED_NOT_REFUSED]
 )
 def test_a_query_the_program_can_answer_is_answered(tmp_path: Path, name: str, body: str) -> None:
-    verdict, messages = _answer(tmp_path, f"{name}.lp", body)
+    verdict, messages = answer(tmp_path, f"{name}.lp", body)
     assert verdict is Verdict.FAIL, messages
 
 
@@ -146,7 +139,7 @@ def test_each_refused_case_really_does_state_something_false(
     program that shows every atom, whose projection is the identity — and the claim must **FAIL**
     there. That is the measurement that the claim is false, rather than a comment saying so.
     """
-    verdict, messages = _answer(tmp_path, f"{name}-control.lp", _SHOW.sub("", body))
+    verdict, messages = answer(tmp_path, f"{name}-control.lp", _SHOW.sub("", body))
     assert verdict is Verdict.FAIL, (
         f"{name}: the contract passes against a program that hides nothing, so this fixture is not "
         f"a false claim and the refusal above is an over-refusal. {messages}"
@@ -169,7 +162,7 @@ def test_a_true_claim_is_no_longer_failed_for_an_unshown_contrary(tmp_path: Path
 def test_a_program_with_no_show_answers_its_queries(tmp_path: Path) -> None:
     # Refused before, with a diagnostic reading "absent from the shown vocabulary {}" — false, since
     # a program with no #show shows every atom. `-fly(tweety)` is a fact, so the answer is `no`.
-    verdict, messages = _answer(
+    verdict, messages = answer(
         tmp_path,
         "no-show.lp",
         "% @expect sat\n% @query no { fly(tweety) }\nfly(sam). -fly(tweety).\n",
@@ -184,7 +177,7 @@ def test_a_program_whose_only_show_is_a_term_directive_answers_its_queries(
     # A `#show <term> : <body>.` directive does not restrict the output, so this program shows every
     # atom too — but it was read as declaring `label/1` and nothing else, which refused a query over
     # a literal that is in fact readable.
-    verdict, messages = _answer(
+    verdict, messages = answer(
         tmp_path,
         "term-only.lp",
         "% @expect sat\n% @query no { fly(tweety) }\n"
@@ -327,8 +320,8 @@ def test_an_admitted_query_answers_the_program_and_not_its_show_directives(
         f"{name}: the distractor is inside the shown vocabulary, so this row hides nothing"
     )
 
-    verdict, messages = _answer(tmp_path, f"{name}.lp", restricted)
-    control_verdict, control_messages = _answer(tmp_path, f"{name}-control.lp", unrestricted)
+    verdict, messages = answer(tmp_path, f"{name}.lp", restricted)
+    control_verdict, control_messages = answer(tmp_path, f"{name}-control.lp", unrestricted)
 
     assert verdict is control_verdict is Verdict.PASS, (messages, control_messages)
     assert messages == control_messages

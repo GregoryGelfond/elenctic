@@ -7,7 +7,7 @@ the accessor seam. Pure over a ``Determination``; tested with no solver.
 """
 
 import pytest
-from clingo import Symbol, parse_term
+from clingo import parse_term
 
 from elenctic.checks import (
     Check,
@@ -25,7 +25,6 @@ from elenctic.expectation import WitnessClaim
 from elenctic.result import (
     ConsistentBrave,
     ConsistentCautious,
-    ConsistentEnumeration,
     ConsistentOptimum,
     ConsistentWitness,
     Field,
@@ -35,27 +34,11 @@ from elenctic.result import (
     Optimum,
     Verdict,
 )
-from support import decided
-
-
-def obs(*names: str) -> Observable:
-    return Observable(frozenset(parse_term(name) for name in names))
-
-
-def lits(*names: str) -> frozenset[Symbol]:
-    return frozenset(parse_term(name) for name in names)
-
-
-def wm(*names: str) -> WitnessClaim:
-    return WitnessClaim(shown=lits(*names))
-
-
-def enum(*observables: Observable) -> ConsistentEnumeration:
-    return ConsistentEnumeration(observables)
+from support import decided, enumeration, literals, observable, witness
 
 
 def test_check_returns_checkreport_with_verdict_and_label() -> None:
-    report = expect_sat(line=1)(decided(enum(obs("a"))))
+    report = expect_sat(line=1)(decided(enumeration(observable("a"))))
     assert isinstance(report, CheckReport)
     assert report.verdict is Verdict.PASS
     assert report.label == "@expect sat"
@@ -66,10 +49,10 @@ def test_check_returns_checkreport_with_verdict_and_label() -> None:
     [
         pytest.param(expect_sat(line=1), "@expect sat", id="expect-sat"),
         pytest.param(expect_unsat(line=1), "@expect unsat", id="expect-unsat"),
-        pytest.param(has_model(wm("a"), line=1), "@model", id="model"),
+        pytest.param(has_model(witness("a"), line=1), "@model", id="model"),
         pytest.param(count_is(1, line=1), "@count", id="count"),
-        pytest.param(cautious_contains(lits("a"), line=1), "@cautious", id="cautious"),
-        pytest.param(brave_contains(lits("a"), line=1), "@brave", id="brave"),
+        pytest.param(cautious_contains(literals("a"), line=1), "@cautious", id="cautious"),
+        pytest.param(brave_contains(literals("a"), line=1), "@brave", id="brave"),
         pytest.param(cost_is((1,), line=1), "@cost", id="cost"),
         pytest.param(
             assign_contains(frozenset({(parse_term("x"), 1)}), line=1), "@assign", id="assign"
@@ -85,16 +68,16 @@ def test_undecided_when_inconclusive(check: Check, label: str) -> None:
 def test_check_label_is_readable_without_solving() -> None:
     # the contract-tag label is a first-class attribute, readable before any solve.
     assert expect_sat(line=1).label == "@expect sat"
-    assert has_model(wm("a"), line=1).label == "@model"
-    assert cautious_contains(lits("a"), line=1).label == "@cautious"
+    assert has_model(witness("a"), line=1).label == "@model"
+    assert cautious_contains(literals("a"), line=1).label == "@cautious"
 
 
 def test_check_declares_what_it_reads_statically() -> None:
     # the wiring rule's LHS: reads is statically inspectable, no solve needed.
     assert expect_sat(line=1).reads == frozenset()
-    assert cautious_contains(lits("a"), line=1).reads == frozenset({Field.CAUTIOUS})
-    assert brave_contains(lits("a"), line=1).reads == frozenset({Field.BRAVE})
-    assert has_model(wm("a"), line=1).reads == frozenset({Field.SHOWN_CENSUS})
+    assert cautious_contains(literals("a"), line=1).reads == frozenset({Field.CAUTIOUS})
+    assert brave_contains(literals("a"), line=1).reads == frozenset({Field.BRAVE})
+    assert has_model(witness("a"), line=1).reads == frozenset({Field.SHOWN_CENSUS})
     assert count_is(2, line=1).reads == frozenset({Field.FULL_CENSUS})
     assign_reads = assign_contains(frozenset({(parse_term("x"), 1)}), line=1).reads
     assert assign_reads == frozenset({Field.FULL_CENSUS})
@@ -103,7 +86,7 @@ def test_check_declares_what_it_reads_statically() -> None:
 
 
 def test_expect_sat() -> None:
-    assert expect_sat(line=1)(decided(enum(obs("a")))).verdict is Verdict.PASS
+    assert expect_sat(line=1)(decided(enumeration(observable("a")))).verdict is Verdict.PASS
     failed = expect_sat(line=1)(decided(Inconsistent()))
     assert failed.verdict is Verdict.FAIL  # AS(P) = ∅ is the regression catch
     assert "∅" in failed.message
@@ -111,30 +94,32 @@ def test_expect_sat() -> None:
 
 def test_expect_unsat() -> None:
     assert expect_unsat(line=1)(decided(Inconsistent())).verdict is Verdict.PASS
-    failed = expect_unsat(line=1)(decided(ConsistentWitness(obs("a"))))
+    failed = expect_unsat(line=1)(decided(ConsistentWitness(observable("a"))))
     assert failed.verdict is Verdict.FAIL
     assert "a" in failed.message  # the witnessing model is surfaced
 
 
 def test_has_model_is_existential_over_whole_shown_model_and_total() -> None:
-    result = enum(obs("a", "b"), obs("c"))
-    assert has_model(wm("a", "b"), line=1)(decided(result)).verdict is Verdict.PASS
-    partial = has_model(wm("a"), line=1)(decided(result))
+    result = enumeration(observable("a", "b"), observable("c"))
+    assert has_model(witness("a", "b"), line=1)(decided(result)).verdict is Verdict.PASS
+    partial = has_model(witness("a"), line=1)(decided(result))
     assert partial.verdict is Verdict.FAIL  # the whole shown model, not a subset
     assert "a" in partial.message
-    empty = has_model(wm("a"), line=1)(decided(Inconsistent()))
+    empty = has_model(witness("a"), line=1)(decided(Inconsistent()))
     assert empty.verdict is Verdict.FAIL  # AS(P) = ∅ arm
 
 
 def test_count_is_total_at_both_ends() -> None:
-    two = enum(obs("a"), obs("b"))
+    two = enumeration(observable("a"), observable("b"))
     assert count_is(2, line=1)(decided(two)).verdict is Verdict.PASS
     missed = count_is(2, line=1)(decided(Inconsistent()))
     assert missed.verdict is Verdict.FAIL
     assert "2" in missed.message, "the count the contract asked for"
     assert "0" in missed.message, "and the count an inconsistent program has"
     assert count_is(0, line=1)(decided(Inconsistent())).verdict is Verdict.PASS  # @count 0 ⟺ unsat
-    wrong = count_is(2, line=1)(decided(enum(obs("a"), obs("b"), obs("c"))))
+    wrong = count_is(2, line=1)(
+        decided(enumeration(observable("a"), observable("b"), observable("c")))
+    )
     assert wrong.verdict is Verdict.FAIL  # wrong count on a Consistent enumeration
     assert "2" in wrong.message, "the count the contract asked for"
     assert "3" in wrong.message, "and the count the enumeration actually found"
@@ -146,31 +131,31 @@ def test_counting_to_zero_is_settled_without_a_census() -> None:
     # runs. Driven through the witness shape, which carries no census at all: a check still
     # reaching for one raises here rather than quietly asking for an enumeration to count to zero.
     assert count_is(0, line=1).reads == frozenset()
-    refuted = count_is(0, line=1)(decided(ConsistentWitness(obs("p(x)"))))
+    refuted = count_is(0, line=1)(decided(ConsistentWitness(observable("p(x)"))))
     assert refuted.verdict is Verdict.FAIL
     assert refuted.message == "expected 0 models, but AS(P) ≠ ∅ — a model exists"
     assert count_is(0, line=1)(decided(Inconsistent())).message == "|models| = 0"
 
 
 def test_cautious_reads_intersection_and_is_total_on_unsat() -> None:
-    present = ConsistentCautious(lits("a", "b"))
-    assert cautious_contains(lits("a"), line=1)(decided(present)).verdict is Verdict.PASS
-    missing = cautious_contains(lits("c"), line=1)(decided(present))
+    present = ConsistentCautious(literals("a", "b"))
+    assert cautious_contains(literals("a"), line=1)(decided(present)).verdict is Verdict.PASS
+    missing = cautious_contains(literals("c"), line=1)(decided(present))
     assert missing.verdict is Verdict.FAIL
     assert "c" in missing.message
     assert "⋂" in missing.message
-    unsat = cautious_contains(lits("a"), line=1)(decided(Inconsistent()))
+    unsat = cautious_contains(literals("a"), line=1)(decided(Inconsistent()))
     assert unsat.verdict is Verdict.FAIL  # AS(P) = ∅ arm; never evaluate L ⊆ (missing)
 
 
 def test_brave_reads_union_and_is_total_on_unsat() -> None:
-    present = ConsistentBrave(lits("a", "b"))
-    assert brave_contains(lits("a"), line=1)(decided(present)).verdict is Verdict.PASS
-    missing = brave_contains(lits("c"), line=1)(decided(present))
+    present = ConsistentBrave(literals("a", "b"))
+    assert brave_contains(literals("a"), line=1)(decided(present)).verdict is Verdict.PASS
+    missing = brave_contains(literals("c"), line=1)(decided(present))
     assert missing.verdict is Verdict.FAIL
     assert "c" in missing.message
     assert "⋃" in missing.message
-    unsat = brave_contains(lits("a"), line=1)(decided(Inconsistent()))
+    unsat = brave_contains(literals("a"), line=1)(decided(Inconsistent()))
     assert unsat.verdict is Verdict.FAIL
 
 
@@ -187,7 +172,7 @@ def test_cost_compares_the_vector_by_value() -> None:
 
 def test_assign_is_existential_over_observables() -> None:
     target = frozenset({(parse_term("digit(s)"), 9)})
-    result = enum(Observable(frozenset(), target))
+    result = enumeration(Observable(frozenset(), target))
     assert assign_contains(target, line=1)(decided(result)).verdict is Verdict.PASS
     missed = assign_contains(frozenset({(parse_term("digit(s)"), 1)}), line=1)(decided(result))
     assert missed.verdict is Verdict.FAIL
@@ -198,7 +183,7 @@ def test_assign_is_existential_over_observables() -> None:
 
 def test_assign_finds_a_match_among_multiple_observables() -> None:
     target = frozenset({(parse_term("x"), 2)})
-    result = enum(
+    result = enumeration(
         Observable(frozenset(), frozenset({(parse_term("x"), 1)})),
         Observable(frozenset(), frozenset({(parse_term("x"), 2)})),
     )
@@ -213,8 +198,10 @@ def test_where_witness_couples_shown_and_assignment_on_one_model() -> None:
     claim = WitnessClaim(
         shown=frozenset({parse_term("a")}), assign=frozenset({(parse_term("v"), 1)})
     )
-    coupled = enum(Observable(frozenset({parse_term("a")}), frozenset({(parse_term("v"), 1)})))
-    split = enum(
+    coupled = enumeration(
+        Observable(frozenset({parse_term("a")}), frozenset({(parse_term("v"), 1)}))
+    )
+    split = enumeration(
         Observable(frozenset({parse_term("a")}), frozenset({(parse_term("v"), 9)})),
         Observable(frozenset({parse_term("b")}), frozenset({(parse_term("v"), 1)})),
     )

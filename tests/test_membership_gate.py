@@ -18,8 +18,8 @@ from pathlib import Path
 import pytest
 
 from elenctic.discovery import DiscoveryError, discover
-from elenctic.harness import case_verdict, run_case
 from elenctic.result import Verdict
+from support import answer
 
 _SHOW = re.compile(r"^#show\b.*$", re.MULTILINE)
 
@@ -28,13 +28,6 @@ def _write(tmp_path: Path, name: str, body: str) -> Path:
     path = tmp_path / name
     path.write_text(body, encoding="utf-8")
     return path
-
-
-def _answer(tmp_path: Path, name: str, body: str) -> tuple[Verdict, tuple[str, ...]]:
-    """Run one case, and return its verdict with the message of every check it reported."""
-    (case,) = discover(_write(tmp_path, name, body))
-    reports = run_case(case)
-    return case_verdict(reports), tuple(report.message for report in reports)
 
 
 # --- the wrong answers: a TRUE membership claim reported FAIL, one per field ---
@@ -96,7 +89,7 @@ def test_each_refused_claim_really_was_true(tmp_path: Path, name: str, body: str
     there. That is the measurement that the claim is true and the FAIL was a wrong answer, rather
     than a comment saying so.
     """
-    verdict, messages = _answer(tmp_path, f"{name}-control.lp", _SHOW.sub("", body))
+    verdict, messages = answer(tmp_path, f"{name}-control.lp", _SHOW.sub("", body))
     assert verdict is Verdict.PASS, (
         f"{name}: the claim fails against a program that hides nothing, so this fixture is not a "
         f"true claim and the refusal above is not a wrong-answer guard. {messages}"
@@ -152,7 +145,7 @@ _ALLOWED = [
 
 @pytest.mark.parametrize(("name", "body"), _ALLOWED, ids=[r[0] for r in _ALLOWED])
 def test_a_claim_the_program_can_answer_is_answered(tmp_path: Path, name: str, body: str) -> None:
-    verdict, messages = _answer(tmp_path, f"{name}.lp", body)
+    verdict, messages = answer(tmp_path, f"{name}.lp", body)
     assert verdict is Verdict.PASS, messages
 
 

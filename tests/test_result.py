@@ -40,6 +40,7 @@ from elenctic.result import (
     shown_optimal_census_of,
     witness_of,
 )
+from support import observable
 
 # --- Observable and Verdict ---
 
@@ -93,12 +94,8 @@ def test_verdict_three_valued() -> None:
 # --- the Determination arms ---
 
 
-def _obs(*names: str) -> Observable:
-    return Observable(frozenset(Function(n) for n in names))
-
-
 def test_consistent_shapes_are_consistent_others_are_not() -> None:
-    assert isinstance(ConsistentWitness(_obs("a")), Consistent)
+    assert isinstance(ConsistentWitness(observable("a")), Consistent)
     assert isinstance(ConsistentCautious(frozenset()), Consistent)
     assert not isinstance(Inconsistent(), Consistent)
     assert not isinstance(Inconclusive(), Consistent)
@@ -124,7 +121,7 @@ def test_determination_three_arm_match_is_total() -> None:
 
     assert classify(Inconsistent()) == "inconsistent"
     assert classify(Inconclusive()) == "inconclusive"
-    assert classify(ConsistentWitness(_obs("a"))) == "consistent"
+    assert classify(ConsistentWitness(observable("a"))) == "consistent"
 
 
 def test_field_vocabulary_is_the_eight_capabilities() -> None:
@@ -159,12 +156,12 @@ def test_optimum_rejects_an_empty_cost_vector() -> None:
 
 
 def test_witness_of_reads_the_default_witness() -> None:
-    witness = _obs("a")
+    witness = observable("a")
     assert witness_of(ConsistentWitness(witness)) == witness
 
 
 def test_observables_of_reads_the_enumeration_census() -> None:
-    census = (_obs("a"), _obs("b"))
+    census = (observable("a"), observable("b"))
     assert observables_of(ConsistentEnumeration(census)) == census
 
 
@@ -187,7 +184,7 @@ def test_brave_of_reads_the_native_brave_run() -> None:
 
 
 def test_optimal_observables_of_reads_the_optimal_class() -> None:
-    optimal = (_obs("a"),)
+    optimal = (observable("a"),)
     assert optimal_observables_of(ConsistentOptimalEnumeration(optimal, Optimum((1,)))) == optimal
 
 
@@ -210,7 +207,7 @@ def test_optimal_consequence_accessors_seam_off_a_non_optimal_shape() -> None:
 
 def test_optimum_of_reads_single_and_class() -> None:
     assert optimum_of(ConsistentOptimum(Optimum((1,)))).cost == (1,)
-    assert optimum_of(ConsistentOptimalEnumeration((_obs("a"),), Optimum((2,)))).cost == (2,)
+    assert optimum_of(ConsistentOptimalEnumeration((observable("a"),), Optimum((2,)))).cost == (2,)
 
 
 # --- accessor seam: SeamError off a shape that does not populate the field ---

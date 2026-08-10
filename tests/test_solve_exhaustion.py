@@ -48,6 +48,7 @@ from elenctic.solvers import (
     _optimal_enum_two_phase,
     _solve_under_budget,
 )
+from support import on_model_for
 
 # Decided in a handful of conflicts, expensive to enumerate: 8-queens has 92 answer sets, so a
 # search cut short still answers "satisfiable" while covering a fraction of them. The #minimize
@@ -111,11 +112,6 @@ def _control(
     if models is not None:
         control.configuration.solve.models = models  # type: ignore[union-attr]
     return control
-
-
-def _on_model_for(collector: _Collector) -> Callable[[Model], bool]:
-    """The plain (non-theory) callback factory the optimal driver takes."""
-    return collector.on_model
 
 
 def _assert_partial(completed: bool, result: SolveResult) -> None:
@@ -258,7 +254,7 @@ def test_a_partial_first_phase_of_the_optimal_driver_is_inconclusive() -> None:
     # Phase 1 proves the optimum. A search that stopped early holds a best-so-far, not a proven
     # optimum, so there is no bound to enumerate the optimal class at.
     outcome = _optimal_enum_two_phase(
-        _control(Mode.OPTIMAL_ENUM, _PARTIAL), _on_model_for, 30.0, False
+        _control(Mode.OPTIMAL_ENUM, _PARTIAL), on_model_for, 30.0, False
     )
     assert isinstance(outcome.determination, Inconclusive)
 
@@ -289,7 +285,7 @@ def test_a_partial_second_phase_of_the_optimal_driver_reports_that_it_did_not_fi
 
     monkeypatch.setattr(solvers, "_solve_under_budget", one_good_then_partial)
 
-    outcome = _optimal_enum_two_phase(_control(Mode.OPTIMAL_ENUM), _on_model_for, 30.0, False)
+    outcome = _optimal_enum_two_phase(_control(Mode.OPTIMAL_ENUM), on_model_for, 30.0, False)
     assert calls == 2, "phase 1 must have proven an optimum, so that phase 2 ran"
     assert outcome.conclusion is Conclusion.INCOMPLETE, (
         "part of the optimal class is not the optimal class, and the outcome says so"
@@ -328,5 +324,5 @@ def test_a_complete_search_over_a_collection_is_consistent(mode: Mode) -> None:
 
 def test_a_complete_optimal_class_is_consistent() -> None:
     # Both phases of the optimal driver finish when nothing caps them.
-    outcome = _optimal_enum_two_phase(_control(Mode.OPTIMAL_ENUM), _on_model_for, 30.0, False)
+    outcome = _optimal_enum_two_phase(_control(Mode.OPTIMAL_ENUM), on_model_for, 30.0, False)
     assert isinstance(outcome.determination, Consistent)

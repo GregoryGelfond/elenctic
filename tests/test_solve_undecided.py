@@ -19,6 +19,7 @@ from elenctic import solvers
 from elenctic.result import Inconclusive
 from elenctic.run import Mode
 from elenctic.solvers import _Collector, _drive, _optimal_enum_two_phase, _solve_under_budget
+from support import on_model_for
 
 # Small to ground, expensive to decide: a 60-queens placement whose constraints are only discovered
 # by search. The #minimize gives the optimization modes an objective to work on, so a mode that
@@ -52,11 +53,6 @@ def _limited(mode: Mode, program: str = _HARD) -> Control:
     return control
 
 
-def _on_model_for(collector: _Collector) -> Callable[[Model], bool]:
-    """The plain (non-theory) callback factory the optimal driver takes."""
-    return collector.on_model
-
-
 def test_a_conflict_limited_solve_completes_without_deciding() -> None:
     # The premise every test below rests on: a *completed* solve that answers nothing.
     completed, result = _solve_under_budget(_limited(Mode.ENUM_ALL), _Collector().on_model, 30.0)
@@ -79,7 +75,7 @@ def test_an_undecided_solve_is_inconclusive(mode: Mode) -> None:
 
 def test_an_undecided_first_phase_of_the_optimal_driver_is_inconclusive() -> None:
     # Phase 1 proves the optimum. If it does not decide, there is no optimum to enumerate at.
-    determination = _optimal_enum_two_phase(_limited(Mode.OPTIMAL_ENUM), _on_model_for, 30.0, False)
+    determination = _optimal_enum_two_phase(_limited(Mode.OPTIMAL_ENUM), on_model_for, 30.0, False)
     assert isinstance(determination.determination, Inconclusive)
 
 
@@ -107,7 +103,7 @@ def test_an_undecided_second_phase_of_the_optimal_driver_is_inconclusive(
     control = Control(list(Mode.OPTIMAL_ENUM.args), logger=_quiet)
     control.add("base", [], _EASY)
     control.ground([("base", [])])
-    determination = _optimal_enum_two_phase(control, _on_model_for, 30.0, False)
+    determination = _optimal_enum_two_phase(control, on_model_for, 30.0, False)
     assert calls == 2, "phase 1 must have decided, so that phase 2 ran"
     assert isinstance(determination.determination, Inconclusive)
 
@@ -137,5 +133,5 @@ def test_an_unproven_optimum_is_undecided_not_an_accusation_against_the_program(
     control = Control(list(Mode.OPTIMAL_ENUM.args), logger=_quiet)
     control.add("base", [], _EASY)  # _EASY carries a #minimize
     control.ground([("base", [])])
-    outcome = _optimal_enum_two_phase(control, _on_model_for, 30.0, False)
+    outcome = _optimal_enum_two_phase(control, on_model_for, 30.0, False)
     assert isinstance(outcome.determination, Inconclusive)

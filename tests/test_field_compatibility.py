@@ -32,7 +32,6 @@ from elenctic.result import (
     Field,
     Inconclusive,
     Inconsistent,
-    Observable,
     Optimum,
     SeamError,
     Verdict,
@@ -46,20 +45,15 @@ from elenctic.result import (
     witness_of,
 )
 from elenctic.run import Mode, populates, runs_for, shape_for
-from support import decided
-
-
-def _obs(*names: str) -> Observable:
-    return Observable(frozenset(Function(n) for n in names))
-
+from support import decided, observable
 
 # A minimal Consistent shape for each (mode, projects_to_shown), with the fields it makes readable.
 _MODE_SHAPES: list[tuple[Mode, bool, Consistent, frozenset[Field]]] = [
-    (Mode.DEFAULT, False, ConsistentWitness(_obs("a")), frozenset({Field.WITNESS})),
+    (Mode.DEFAULT, False, ConsistentWitness(observable("a")), frozenset({Field.WITNESS})),
     (
         Mode.ENUM_ALL,
         False,
-        ConsistentEnumeration((_obs("a"),)),
+        ConsistentEnumeration((observable("a"),)),
         frozenset({Field.SHOWN_CENSUS, Field.FULL_CENSUS, Field.CAUTIOUS, Field.BRAVE}),
     ),
     (
@@ -73,7 +67,7 @@ _MODE_SHAPES: list[tuple[Mode, bool, Consistent, frozenset[Field]]] = [
     (
         Mode.OPTIMAL_ENUM,
         False,
-        ConsistentOptimalEnumeration((_obs("a"),), Optimum((0,))),
+        ConsistentOptimalEnumeration((observable("a"),), Optimum((0,))),
         frozenset({Field.SHOWN_OPTIMAL_CENSUS, Field.FULL_OPTIMAL_CENSUS, Field.OPTIMUM}),
     ),
     (
@@ -164,7 +158,7 @@ def test_expect_unsat_passes_only_on_inconsistent() -> None:
     # reading observables == () off a non-enumeration shape (the old silent-miscompile, now gone).
     assert expect_unsat(line=1)(decided(Inconsistent())).verdict is Verdict.PASS
     assert (
-        expect_unsat(line=1)(decided(ConsistentWitness(_obs("a")))).verdict is Verdict.FAIL
+        expect_unsat(line=1)(decided(ConsistentWitness(observable("a")))).verdict is Verdict.FAIL
     )  # rides DEFAULT
     assert expect_unsat(line=1)(decided(Inconclusive())).verdict is Verdict.UNDECIDED
 
