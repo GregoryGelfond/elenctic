@@ -441,7 +441,7 @@ elenctic = { git = "https://github.com/GregoryGelfond/elenctic.git" }
 # pin a release for reproducibility, e.g. { git = "...", tag = "v0.3.0" }
 ```
 
-Then `pixi run elenctic run <path>` runs a corpus of contracts.
+Then `pixi run elenctic run PATH` runs a corpus of contracts.
 
 ### With pip
 
@@ -497,10 +497,10 @@ default). Without `--strict` the first is a warning and the second is recorded s
 `--strict` both become errors and the run exits `2` however every contract fared. Nothing else
 changes: a verdict is never affected by the flag.
 
-Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation <file.lp>`
-(the parsed contract), `python -m elenctic.run <file.lp>` (the derived run plan),
-`python -m elenctic.discovery <file-or-dir>` (the discovered cases), and
-`python -m elenctic.solvers <MODE> <file.lp>` (one solve's outcome, with clingo).
+Each pipeline stage is also runnable for inspection: `python -m elenctic.expectation FILE.lp`
+(the parsed contract), `python -m elenctic.run FILE.lp` (the derived run plan),
+`python -m elenctic.discovery FILE-OR-DIR` (the discovered cases), and
+`python -m elenctic.solvers MODE FILE.lp` (one solve's outcome, with clingo).
 
 ### Machine-readable output
 

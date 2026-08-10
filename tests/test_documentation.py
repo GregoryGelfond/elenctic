@@ -17,7 +17,6 @@ either.
 import contextlib
 import importlib
 import io
-import itertools
 import json
 import re
 import shlex
@@ -162,25 +161,34 @@ def test_every_command_line_the_documents_show_is_one_elenctic_accepts() -> None
     )
 
 
-# What separates a command line from the shell around it. Cutting here rather than parsing the shell
-# keeps the question this test asks — *would elenctic accept this?* — from becoming a second one
-# about pipelines and redirections, which is nobody's grammar to check.
-_SHELL_OPERATORS = frozenset({"|", ">", ">>", "<", "&&", ";"})
-
-# A redirection is often one word where the set above expects two — `>&-`, `2>&1`, `2>/dev/null`,
-# `>/dev/null` — so the whole of it reached the parser as an argument. It is the same construct as
-# the `>` already there and is cut for the same reason: the shell consumes it and elenctic never
-# sees it.
+# What separates a command line from the shell around it: the words the shell would hand to
+# elenctic, up to the first thing it keeps for itself.
 #
-# Two shapes, and the asymmetry between them is what keeps a `<target>` metavariable out. A word
-# *opening* with `>` is always a redirection, because no argument or placeholder starts that way. A
-# word opening with `<` is not — `<target>` is how these documents write a placeholder — so on that
-# side a descriptor number is required, which a placeholder never has.
-_REDIRECTION = re.compile(r"^(>|\d+[<>])")
+# This was a hand-written list of shell operators, and it was wrong three times in one afternoon —
+# it learned `2>&-`, then `>&-`, each time because a document happened to use one. Measured against
+# eleven ordinary constructs it still missed six, among them `&>out`, `|&`, `<<EOF` and a trailing
+# `&`. A list of operators is a list of the ones somebody thought of, and there is no reading of it
+# that says which are absent.
+#
+# So the operator set is not written here. `shlex` in punctuation mode isolates each one as its own
+# token, from the shell's grammar rather than from anyone's recollection of it, and handles quoting
+# on the way. One rule is still ours, and it is the shell's too: a redirection may carry the
+# descriptor it applies to, written tight against the operator (`2>&1`). It is removed first, and
+# the tightness is what makes that safe — `--budget 60 > out` keeps its `60`, because that one has
+# a space after it and is an argument.
+_FD_PREFIX = re.compile(r"(?<![\w-])\d+(?=[<>])")
+_SHELL_PUNCTUATION = frozenset("();<>|&")
 
 
-def _ends_the_command_line(word: str) -> bool:
-    return word in _SHELL_OPERATORS or _REDIRECTION.match(word) is not None
+def _argv_shown_by(line: str) -> list[str]:
+    lexer = shlex.shlex(_FD_PREFIX.sub("", line), posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    argv: list[str] = []
+    for word in list(lexer)[1:]:
+        if word and set(word) <= _SHELL_PUNCTUATION:
+            break
+        argv.append(word)
+    return argv
 
 
 def _command_lines() -> list[tuple[str, str]]:
@@ -233,6 +241,87 @@ def _shown_in(raw: str) -> list[str]:
     ]
 
 
+def test_no_command_line_shows_a_placeholder_the_shell_would_read_as_a_redirection() -> None:
+    # `elenctic run <target> --format json` is not a command line a reader can copy. A shell reads
+    # `<target>` as "take standard input from `target`" and then `>` takes the *next word* as a file
+    # to write to — so the flags after it are consumed by the redirection rather than passed on.
+    # `elenctic run <path>` is worse and easier to spot: it is a syntax error outright.
+    #
+    # Both shipped. The check beside this one could not see either, because it reads the command
+    # line the *shell* would build, which is exactly the truncated one — the defect and the blind
+    # spot have the same cause. So the rule is about the document instead: inside a command line, an
+    # angle-bracket placeholder is never what the author meant, because the shell always has a
+    # meaning for it. Write it in capitals.
+    #
+    # (`bash -n` was tried as the instrument and is not one: it rejects `<path>` and *accepts*
+    # `<target> --format json`, which is valid shell doing the wrong thing. It would also put a
+    # platform dependency in the gate for a class this rule already covers exactly.)
+    shown = _command_lines()
+    assert shown, "the pattern found no command line, which means it is no longer the pattern"
+    placeholders = [
+        (where, line, found) for where, line in shown if (found := re.findall(r"<[^<>]*>", line))
+    ]
+    assert not placeholders, (
+        "shown to a reader, and read by a shell as a redirection rather than as a placeholder:\n"
+        + "\n".join(f"  {where}: {line}\n      {found}" for where, line, found in placeholders)
+        + "\n  Write a placeholder in capitals — TARGET, not <target>."
+    )
+
+
+def test_the_shell_is_cut_away_from_a_command_line_and_the_arguments_are_not() -> None:
+    # The extraction above is the instrument the two checks either side of it read through, so it
+    # owes a table of its own. It replaced a hand-written list of shell operators that was widened
+    # twice in one afternoon, each time because a document used a form nobody had listed; measured
+    # afterwards against ordinary constructs, that list still missed six of eleven. Every row marked
+    # below is one it got wrong, and they are here so that a future simplification back to a list
+    # cannot pass.
+    #
+    # The last two rows are the ones that make this a check rather than an assertion in one
+    # direction: an argument that merely looks like a descriptor must survive, and a wrong flag in
+    # front of a redirection must still be reached.
+    cases: tuple[tuple[str, list[str]], ...] = (
+        ("elenctic run tests/", ["run", "tests/"]),
+        ("elenctic run tests/ | tee ci.log", ["run", "tests/"]),
+        ("elenctic run tests/ > ci.log 2>&1", ["run", "tests/"]),
+        ("elenctic run tests/ --format json 2>/dev/null", ["run", "tests/", "--format", "json"]),
+        ("elenctic run tests/ >&-", ["run", "tests/"]),
+        ("elenctic run tests/ &>out", ["run", "tests/"]),  # missed by the old list
+        ("elenctic run tests/ &>>out", ["run", "tests/"]),  # missed
+        ("elenctic run tests/ <&0", ["run", "tests/"]),  # missed
+        ("elenctic run tests/ |& less", ["run", "tests/"]),  # missed
+        ("elenctic run tests/ &", ["run", "tests/"]),  # missed
+        ("elenctic run tests/ <<EOF", ["run", "tests/"]),  # missed
+        ("elenctic run tests/ <<<data", ["run", "tests/"]),  # missed
+        ("elenctic run tests/krbook", ["run", "tests/krbook"]),
+        # A number that is an argument, not a descriptor: the space is what tells them apart, and
+        # dropping it would stop checking the flag it belongs to without failing anything.
+        ("elenctic run tests/ --budget 60 > out", ["run", "tests/", "--budget", "60"]),
+    )
+    wrong = [(line, want, got) for line, want in cases if (got := _argv_shown_by(line)) != want]
+    assert not wrong, "the shell was cut in the wrong place:\n" + "\n".join(
+        f"  {line!r}\n      got  {got}\n      want {want}" for line, want, got in wrong
+    )
+    # And the direction a table of expected values cannot hold on its own: the parser is still
+    # reached through it, so a command line that is wrong in front of a redirection still fails.
+    assert _refused("elenctic run tests/ --nope > out") is not None, (
+        "a flag elenctic does not have, shown before a redirection, must still be caught"
+    )
+
+    # The table above hands `_argv_shown_by` its input directly, which is not where that input comes
+    # from — so on its own it says nothing about the thing that builds one. This is the
+    # composition, for the form it exists to handle: a command line shown inside a longer one.
+    # Writing the first row of the table as `pixi run elenctic …` is how this was noticed: fed
+    # straight in it keeps the `pixi`, and the guard read as broken when the fixture was.
+    embedded = _shown_in("run it with `pixi run elenctic run tests/krbook` from the root")
+    assert embedded == ["elenctic run tests/krbook"], (
+        f"a command line shown inside a longer one is read from the word onward: got {embedded}"
+    )
+    assert _argv_shown_by(embedded[0]) == ["run", "tests/krbook"]
+    assert _shown_in("the program is called `elenctic`") == [], (
+        "and the bare name carrying no arguments is not a command line"
+    )
+
+
 def _refused(line: str) -> str | None:
     """Why the parser will not take ``line``, or ``None`` when it takes it.
 
@@ -241,8 +330,7 @@ def _refused(line: str) -> str | None:
     what argparse writes is the diagnostic, and it is wanted in the failure message rather than in
     the middle of the run.
     """
-    words = shlex.split(line, comments=True)
-    argv = list(itertools.takewhile(lambda word: not _ends_the_command_line(word), words[1:]))
+    argv = _argv_shown_by(line)
     said, printed = io.StringIO(), io.StringIO()
     try:
         with contextlib.redirect_stderr(said), contextlib.redirect_stdout(printed):

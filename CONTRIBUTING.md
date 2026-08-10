@@ -75,7 +75,7 @@ expected, and what elenctic said. If elenctic named the **harness** locus — `H
 one case, `harness error:` where it cost the whole run — please report it: that word means
 elenctic violated one of its own invariants, and it is ours to fix rather than yours.
 
-If you can, include the output of `elenctic run <target> --format json`, which carries the same run
+If you can, include the output of `elenctic run TARGET --format json`, which carries the same run
 in a form that does not depend on how your terminal rendered it.
 
 ## What the gate holds you to
@@ -94,7 +94,7 @@ rather than asking for new work. Two exceptions are worth knowing about before t
 - **`T20` forbids `print`** everywhere except the modules that are meant to write to a terminal —
   the command line, the renderer that turns a run into prose, the streams layer the command line
   hands standard output over through, and the four whose documented
-  `python -m elenctic.<module> <file.lp>` entry prints an inspection of one stage. They are listed
+  `python -m elenctic.MODULE FILE.lp` entry prints an inspection of one stage. They are listed
   in `pyproject.toml`. If you want to see something while debugging, use a module logger; the
   library writes to no stream, and that is a guarantee its callers rely on.
 - **`RET501` is switched off in `corpus.py`**, and only there. The observer protocols spell their
@@ -168,10 +168,10 @@ side by side on the same layer — so no single module is "the top" of it but `c
 Each of `expectation`, `run`, `discovery` and `solvers` is runnable on its own for inspection:
 
 ```console
-$ pixi run python -m elenctic.expectation <file.lp>      # the parsed contract
-$ pixi run python -m elenctic.run <file.lp>              # the derived run plan
-$ pixi run python -m elenctic.discovery <file-or-dir>    # the discovered cases
-$ pixi run python -m elenctic.solvers <MODE> <file.lp>   # one solve's outcome
+$ pixi run python -m elenctic.expectation FILE.lp      # the parsed contract
+$ pixi run python -m elenctic.run FILE.lp              # the derived run plan
+$ pixi run python -m elenctic.discovery FILE-OR-DIR    # the discovered cases
+$ pixi run python -m elenctic.solvers MODE FILE.lp   # one solve's outcome
 ```
 
 `solvers.py` is the only module that **runs a solve**, and that boundary is sharper than "it uses
