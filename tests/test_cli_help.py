@@ -13,9 +13,12 @@ leaves from there, so it never reaches the region where standard output is a des
 a stream, which is the reason the machine-readable tests need a child.
 """
 
+import re
+from pathlib import Path
+
 import pytest
 
-from elenctic.cli import _Command, main
+from elenctic.cli import _build_parser, _Command, main
 from elenctic.outcome import ExitStatus
 from support import cli_help_section, cli_help_sections, cli_help_text
 
@@ -91,6 +94,36 @@ def test_every_option_is_filed_under_a_heading_that_says_what_it_is_for(command:
         f"{command} offers {sorted(filed_here)}, and this table names {sorted(_HOMES[command])}. A "
         f"dial belongs to the command that reads it, and one nothing reads is worse than none"
     )
+
+
+def test_a_command_line_naming_no_command_is_refused_and_says_which_there_are(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # `elenctic` alone used to run the default target. It is now a command line that names no
+    # command, and the closing text of this same help already promises what becomes of one: the
+    # reason goes to standard error, standard output stays empty, and the status is 2. Held here
+    # because nothing else runs elenctic with no arguments at all — so the parser being told the
+    # command is required, and the frame that turns that word into a value, were both load-bearing
+    # and unwatched.
+    with pytest.raises(SystemExit) as leaving:
+        main([])
+    captured = capsys.readouterr()
+
+    assert leaving.value.code == ExitStatus.USER_FAULT
+    assert captured.out == "", "standard output stays empty, as the help says it does"
+    for command in _Command:
+        assert command.value in captured.err, f"the refusal does not offer {command.value}"
+
+
+@pytest.mark.parametrize("command", ["run", "explain"])
+def test_the_target_a_command_defaults_to_is_the_one_its_help_names(command: str) -> None:
+    # Two places say what happens when a target is left off — the value the parser applies, and the
+    # sentence beside it — and nothing has held them together. The sentence is the only one a reader
+    # ever sees, so a default that moved would be documented as the old one indefinitely.
+    (named,) = re.findall(r"\(default: (\S+?)/?\)", " ".join(cli_help_text(command).split()))
+    defaulted = _build_parser().parse_args([command]).target
+
+    assert defaulted == Path(named), f"{command} walks {defaulted}, and its help says {named}"
 
 
 def test_the_commands_the_help_offers_are_the_commands_the_program_has() -> None:

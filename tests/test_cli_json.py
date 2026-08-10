@@ -104,13 +104,30 @@ elenctic.cli.run_corpus = _noisy
 # backstop instead, before a corpus has been looked at, which is what a fault nobody anticipated
 # should do: a reader told to reinstall a package that is fine has been sent to fix the wrong thing.
 #
-# It is a stub rather than a contrived file because that is the point — the mechanisms a real
-# damaged file produces are all caught now, and this holds the arm for the ones that are not.
+# Stubs rather than contrived files because that is the point — the mechanisms a real damaged file
+# produces are all caught now, and these hold the arm for the ones that are not.
+#
+# **Two of them, and the second is not a duplicate.** One of the families the handler names is
+# `JSONDecodeError`, which *is* a `ValueError` — so a `ValueError` that is not one of those is the
+# case that proves the named tuple does not swallow its own supertype, and it is the obvious fault
+# to reach for. It is also the one fault a backstop narrowed from `Exception` to `ValueError` would
+# still catch: measured, that narrowing changed nothing any test could see. A resource loader that
+# is not the filesystem raises whatever it raises, so the second stands outside that hierarchy
+# entirely, and the two together are what make the width of the catch load-bearing.
 _DESCRIPTION_IS_NOT_TEXT = """
 import elenctic.cli
 
 def _unreadable():
     raise ValueError("the packaged description is not valid text")
+
+elenctic.cli.schema_text = _unreadable
+"""
+
+_DESCRIPTION_LOADER_MISBEHAVES = """
+import elenctic.cli
+
+def _unreadable():
+    raise RuntimeError("the loader this package was installed under gave up")
 
 elenctic.cli.schema_text = _unreadable
 """
@@ -526,7 +543,12 @@ def test_an_allocation_failure_with_no_case_to_name_says_so_in_the_record(tmp_pa
     assert "resource error: " in streams.err, "and the reader is told in prose as well"
 
 
-def test_a_fault_while_printing_the_description_produces_no_document() -> None:
+@pytest.mark.parametrize(
+    "prelude",
+    [_DESCRIPTION_IS_NOT_TEXT, _DESCRIPTION_LOADER_MISBEHAVES],
+    ids=["a value error that is not one of the named ones", "a family the handler never heard of"],
+)
+def test_a_fault_while_printing_the_description_produces_no_document(prelude: str) -> None:
     # A document reports a run, and the description asks for none — so a fault there is reported as
     # prose and a status, the same way its readable-environment sibling already is. A run report
     # here would describe a corpus that was never looked at, and it was one conjunct in `main` that
@@ -537,7 +559,7 @@ def test_a_fault_while_printing_the_description_produces_no_document() -> None:
     # That state can no longer be typed — this command has no format to be asked for, which
     # `test_cli_help` holds by asserting it offers no dial at all — so what is left to measure is
     # the end of it: a fault here publishes nothing, whichever frame meets it.
-    streams = _described(prelude=_DESCRIPTION_IS_NOT_TEXT)
+    streams = _described(prelude=prelude)
 
     assert streams.status == ExitStatus.HARNESS_FAULT
     assert streams.out == ""
