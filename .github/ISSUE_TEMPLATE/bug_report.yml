@@ -1,0 +1,56 @@
+name: Bug report
+description: Something elenctic did that it should not have, or did not do that it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful report contains the `.lp` file that provokes it, what you expected, and
+        what elenctic said. If elenctic named the **harness** locus — `HARNESS ERROR —` for one
+        case, `harness error:` where it cost the whole run — that means elenctic violated one of
+        its own invariants, and it is ours to fix rather than yours.
+
+  - type: textarea
+    id: case
+    attributes:
+      label: The case
+      description: The `.lp` file — contract and program — that provokes it. Trim it if you can.
+      render: prolog
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: The verdict, diagnostic or exit status you were looking for, and why.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What elenctic did
+      description: >-
+        What it printed, verbatim — please paste rather than retype. If you can, include the output
+        of `elenctic run TARGET --format json`, which carries the same run in a form that does not
+        depend on how your terminal rendered it.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `python -c "import elenctic; print(elenctic.__version__)"`.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python version, and how you installed elenctic and its solvers.
+    validations:
+      required: false

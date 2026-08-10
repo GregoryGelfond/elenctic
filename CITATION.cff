@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: "elenctic: a declarative testing framework for Answer Set Programming"
+message: "If you use elenctic in academic work, please cite it as below."
+type: software
+authors:
+  - family-names: Gelfond
+    given-names: Gregory
+repository-code: "https://github.com/GregoryGelfond/elenctic"
+license: MIT
+# Single-sourced from `elenctic.__version__`, and checked against it — a citation naming a release
+# that was never cut is worse than one naming none.
+version: 0.3.0
+abstract: >-
+  elenctic checks Answer Set Programming encodings against contracts written as
+  in-file annotations, in the program's own reasoning modes: what holds in every
+  answer set (cautious), what holds in some (brave), what is optimal, how many
+  solutions there are, and what the program answers to a three-valued epistemic
+  query (yes / no / unknown, after Gelfond and Kahl). Verdicts are three-valued,
+  so a search that could not decide is never reported as a program that decided
+  wrongly.
+keywords:
+  - answer set programming
+  - knowledge representation
+  - logic programming
+  - software testing
+  - clingo
