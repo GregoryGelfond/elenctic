@@ -107,10 +107,12 @@ rather than asking for new work. Two exceptions are worth knowing about before t
 
 These are not enforced by the gate, and following them will make a patch much easier to take.
 
-**A test's name is a sentence, and a comment above it states the defect it guards.** That is why
-`D103` (a docstring on every function) is deliberately not selected: a name and a reason are two
-statements already, and a docstring would be a third. Test *modules* do carry a docstring saying
-what they hold, and that one *is* enforced.
+**A test's name states the claim it holds.** Where the defect it guards is not evident from that
+name, a comment at the head of the body says what it is — and where that reason runs to a paragraph
+rather than a line, it is written as a docstring instead. Which of the two is a question of length
+and nothing else. That is why `D103` (a docstring on every function) is deliberately not
+selected: it would ask for one everywhere, including on the tests whose name has already said what
+they hold. Test *modules* do carry a docstring saying what they hold, and that one *is* enforced.
 
 **Assert the whole line, not a substring of it.** This has cost real time here more than once: six
 diagnostic labels were once free to be swapped because the only assertion was over the message,
@@ -122,7 +124,10 @@ can defend a bug — two cases in one test here asserted that valid programs wer
 rejection was the defect. Relatedly, give `pytest.raises` a `match=`: without one it passes on any
 exception of that class raised anywhere underneath, including for a reason that has nothing to do
 with what is being rejected. The lint asks for one on the broad built-in families (`ValueError`,
-`OSError`, `Exception`) and cannot ask on elenctic's own — write one there anyway.
+`OSError`, `Exception`) and on every exception class elenctic itself defines — that second set is
+derived from the package and checked against it, so a new family joins the gate by existing rather
+than by anyone remembering. A narrow built-in raised by a test double is outside both deliberately,
+and there what is worth asserting is usually what the exception carries rather than what it says.
 
 **Comments say *why*, and are self-contained.** A reader of this repository has the repository and
 nothing else — so no `see §3.2`, no `per decision #131`, no milestone or task numbers, and no
@@ -137,8 +142,10 @@ anything a script might match on, say so plainly and give the before and after.
 the indentation — do not retype it or tidy it. One that was typed out by hand was indented two
 columns short of what the tool actually prints, and a reader would have chased the difference;
 another was compacted onto fewer lines "for readability" and then described output no invocation
-produced. Only one block is mechanically held — the worked library example is extracted from whichever
-document holds it and executed by `tests/test_documentation.py` — so the rest is on you.
+produced. Only one block is held in full — the worked library example is extracted from whichever
+document holds it and executed by `tests/test_documentation.py`. The command lines *inside* a
+transcript are checked against the parser, as below; what a transcript says the command printed is
+checked by nothing, so the rest is on you.
 
 **The corpus to try things against is the project's own.** `pixi run elenctic run tests/krbook/encodings`
 runs four programs from the Gelfond and Kahl textbook end to end; `--strict` and the `explain`
@@ -148,11 +155,11 @@ command are the two things worth trying on it first.
 `` `elenctic.run_corpus` `` in any shipped document is verified to name the place that thing
 actually lives — so writing them dotted gets you that check for free. Every command line any of
 them shows a reader is also run past the argument parser and must be one it accepts, so a flag
-that moves cannot leave an example behind. Which documents: everything this repository ships but
-the changelog — the landing page, this guide, `SECURITY.md`, and every page under `docs/`, derived
-rather than listed, so a page added there is checked without anyone being told. What counts as one: a line at a `$`
-prompt, and a backticked span read from the word `elenctic` onward — including where it sits inside
-a longer command, so the `pixi run elenctic` form a few paragraphs up is checked too. The bare
+that moves cannot leave an example behind. Which documents: every Markdown file this repository
+ships but the changelog, read from git rather than from a list here, so a document added anywhere
+is checked without anyone being told. What counts as one: a line at a `$` prompt that runs
+`elenctic`, and a backticked span read from the word `elenctic` onward — including where it sits
+inside a longer command, so the `pixi run elenctic` form a few paragraphs up is checked too. The bare
 name carrying no arguments is not a command line, since that is also how these documents write the
 program's name. The changelog is deliberately outside this second check: it has to be able to name
 the spelling that *stopped* working, which is the one thing the check forbids.

@@ -27,6 +27,7 @@ import json
 import pkgutil
 import re
 import shlex
+import subprocess
 import tomllib
 from pathlib import Path
 from urllib.parse import unquote
@@ -64,8 +65,27 @@ def _documents_of_instruction() -> dict[str, str]:
     forbids the document from doing its job. It is named here, once, where a reader can see the
     exception is deliberate rather than an omission — which is exactly what the first version of
     this could not show about ``SECURITY.md``.
+
+    **Asked of git, because git is the authority on what this repository ships.** The second version
+    globbed the root and ``docs/``, which is the same list of names one glob shorter: it reached
+    eight of the nine Markdown files under version control and silently missed the pull-request
+    template, which tells a contributor what to do and is read more often than most of ``docs/``.
+    Any filesystem walk wide enough to find it also finds the caches and the environment, and
+    excluding those means maintaining a list of the tools that happen to be installed — whereas
+    ``.gitignore`` is that list, already written, and ``git ls-files`` is how to read it.
     """
-    shipped = sorted(_ROOT.glob("*.md")) + sorted((_ROOT / "docs").rglob("*.md"))
+    listed = subprocess.run(
+        ["git", "-C", str(_ROOT), "ls-files", "-z", "*.md"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    shipped = sorted(_ROOT / name for name in listed.split("\0") if name)
+    # A sweep over nothing passes every check it feeds, so the empty case is a failure rather than a
+    # quiet success: outside a checkout this module cannot answer the question it exists to ask.
+    assert shipped, (
+        "git listed no Markdown; this is not a checkout, and every sweep below is vacuous"
+    )
     return {
         str(path.relative_to(_ROOT)): path.read_text(encoding="utf-8")
         for path in shipped

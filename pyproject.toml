@@ -36,7 +36,7 @@ Changelog = "https://github.com/GregoryGelfond/elenctic/blob/main/CHANGELOG.md"
 theory = ["clingcon>=5.2.1"]  # the theory fragment (@assign, CSP @count); conda-forge-primary
 
 [project.scripts]
-elenctic = "elenctic.cli:main"  # the corpus runner (`elenctic run [target]`)
+elenctic = "elenctic.cli:main"  # the corpus runner (`elenctic run TARGET`)
 
 [tool.hatch.version]
 path = "src/elenctic/__init__.py"  # single source of truth for the version (read from __version__)
@@ -74,14 +74,20 @@ select = [
     # different ValueError raised somewhere underneath — a green test asserting a fault the code
     # never had.
     "PT",
-    # Five docstring rules, not the family. `D` as a whole costs about 1,180 findings here, and 706
-    # of them are D103 on tests — which fights a convention this suite already has and which is
-    # better: a test's name is a sentence and a comment above it states the defect it guards, so a
-    # docstring would be a third statement of what two already say. D205 and D209 (347 between them)
-    # impose a one-line summary on prose deliberately opened as a multi-line sentence. D415 is that
-    # same imposition wearing another hat — measured, all three of its findings here were opening
-    # sentences that wrap, not summaries missing a full stop — so it is left out with them. What is
-    # kept is the part that catches something missing or malformed rather than differently shaped.
+    # Four docstring rules, not the family, and chosen by measuring what each would cost here. Most
+    # of what `D` as a whole costs is D103 on tests, which asks for a docstring on every test —
+    # including the ones whose name has already said what they hold. What this suite writes instead
+    # is a comment at the head of the body where the defect a test guards is not evident from its
+    # name, and a docstring where that reason runs to a paragraph. D205 and D209
+    # are the next largest share and impose a one-line summary on prose deliberately opened as a
+    # multi-line sentence. D415 is that same imposition wearing another hat — measured, its findings
+    # here are opening sentences that wrap, not summaries missing a full stop — so it is left out
+    # with them. What is kept is the part that catches something missing or malformed rather than
+    # differently shaped.
+    #
+    # The counts those judgements were made from are deliberately not written here. They were, and
+    # every one of them had drifted by the next reading: a number in a comment is a second thing to
+    # keep true, and nothing prompts an edit to it. Re-measure with `ruff check . --select D103`.
     "D100", "D102", "D301", "D403",
 ]
 # We deliberately use mathematical Unicode (⋂ ⋃ ⊆ ⊇ → ≤ ∅ ∈ …) as KR notation in
@@ -141,7 +147,7 @@ combine-as-imports = true
 # The modules that are meant to write to a terminal: the command line, the renderer that turns a run
 # into prose, the streams layer the command line hands standard output over through, and the four
 # whose documented
-# `python -m elenctic.<module> <file.lp>` entry point prints an inspection of one stage. Every other
+# `python -m elenctic.MODULE FILE.lp` entry point prints an inspection of one stage. Every other
 # module in the package prints nothing, and no test prints — measured, which is what makes T20 a
 # guarantee here rather than a style preference. Note the rule's fix DELETES the print, so an
 # --unsafe-fixes run without these would quietly remove elenctic's own output. The list is the
