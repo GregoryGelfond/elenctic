@@ -8,9 +8,9 @@ reader to sort an action from a dial. And the statuses the help documents are th
 ladder actually produces — asserted against ``exit_status`` itself, in ``test_exit_status.py``,
 because a second list written beside a function is a second thing to keep true.
 
-``main`` is called rather than a process spawned: ``--help`` is answered inside ``parse_args`` and
-leaves from there, so it never reaches the region where standard output is a descriptor rather than
-a stream, which is the reason the machine-readable tests need a child.
+``main`` is called rather than a process spawned: ``--help`` is answered while the command line is
+read and leaves from there, so it never reaches the region where standard output is a descriptor
+rather than a stream, which is the reason the machine-readable tests need a child.
 """
 
 import re
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from elenctic.cli import _build_parser, _Command, main
+from elenctic.cli import _Command, _parse, main
 from elenctic.outcome import ExitStatus
 from support import cli_help_section, cli_help_sections, cli_help_text
 
@@ -121,7 +121,7 @@ def test_the_target_a_command_defaults_to_is_the_one_its_help_names(command: str
     # sentence beside it — and nothing has held them together. The sentence is the only one a reader
     # ever sees, so a default that moved would be documented as the old one indefinitely.
     (named,) = re.findall(r"\(default: (\S+?)/?\)", " ".join(cli_help_text(command).split()))
-    defaulted = _build_parser().parse_args([command]).target
+    defaulted = _parse([command]).target
 
     assert defaulted == Path(named), f"{command} walks {defaulted}, and its help says {named}"
 
@@ -220,3 +220,60 @@ def test_the_help_says_what_a_command_line_that_cannot_be_run_does(help_text: st
     _, _, closing = help_text.rpartition("\n\n")
     assert "refused" in closing, f"the help closes with:\n{closing}"
     assert "standard output" in closing, "what a refusal leaves on the stream a consumer parses"
+
+
+@pytest.mark.parametrize("command", list(_Command), ids=lambda command: command.value)
+def test_an_option_a_command_does_not_define_is_refused_by_that_command(
+    command: _Command, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The one refusal that used to arrive under the wrong parser. argparse hands the tail to the
+    # command's own parser, takes back whatever it could not use, and then reports it from the
+    # *program's* parser — so a reader who asked a command for a dial it does not have was shown a
+    # usage line listing three command names and no options at all, and left to work out for
+    # themselves which command takes the thing they typed. Every other near miss already arrives
+    # under the command that owns it, which is what made this one worth repairing rather than
+    # redesigning.
+    #
+    # Over every command rather than over the one that was reported: the leftover path belongs to
+    # the program and not to any command, so the same command line typed at `run`, at `explain` or
+    # at `schema` arrived the same way, and a rule stated over three forms is checked on three.
+    with pytest.raises(SystemExit) as leaving:
+        main([command.value, "--nonesuch"])
+    said = capsys.readouterr().err
+
+    assert leaving.value.code == ExitStatus.USER_FAULT, "a command line that cannot be run"
+    assert said.startswith(f"usage: elenctic {command.value} "), (
+        f"the refusal opens with the program's usage rather than {command.value}'s:\n{said}"
+    )
+    assert f"elenctic {command.value}: error: unrecognized arguments: --nonesuch" in said, said
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--strict", "run", "."], ["--format=json", "run", "."], ["--nonesuch", "run", "."]],
+    ids=["a dial written before the command", "a dial with its value attached", "no dial at all"],
+)
+def test_a_refusal_never_denies_an_option_the_usage_beside_it_offers(
+    argv: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A dial written before the command word is the commonest slip there is, and it reaches the
+    # refusal above by a different route: the *program's* parser cannot use it either, so it is a
+    # leftover of the program's rather than of the command's. Handed to the command anyway, the
+    # refusal printed `run`'s usage — which lists `--strict` — directly above the sentence saying
+    # `--strict` was not recognized. A reader is then told the option both does and does not exist.
+    #
+    # What is asserted is the contradiction and not the route to it: whichever parser answers, no
+    # option it names as unusable may appear in the usage it printed. That holds for a command line
+    # nobody has thought of yet, where a rule about which parser reports would only hold for these.
+    with pytest.raises(SystemExit) as leaving:
+        main(argv)
+    said = capsys.readouterr().err
+    *usage, complaint = said.strip().splitlines()
+    denied = {word.split("=")[0] for word in complaint.split() if word.startswith("--")}
+    offered = set(re.findall(r"--[a-z][a-z-]*", " ".join(usage)))
+
+    assert leaving.value.code == ExitStatus.USER_FAULT
+    assert not denied & offered, (
+        f"the refusal calls {sorted(denied & offered)} unusable, and prints a usage offering it:\n"
+        f"{said}"
+    )

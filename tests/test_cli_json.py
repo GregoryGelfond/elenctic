@@ -449,6 +449,9 @@ def test_a_dry_run_has_no_machine_readable_form_and_says_so(tmp_path: Path) -> N
     assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == "", "a command line that cannot be run has produced no run to report"
     assert "--format json" in streams.err, "and the refusal names what was asked for"
+    # Under the dry run's own usage, which lists what it *does* take. It used to arrive under the
+    # program's — three command names and no options — for a word only a command could refuse.
+    assert streams.err.startswith("usage: elenctic explain "), streams.err
 
 
 def test_the_dry_run_says_where_its_missing_machine_readable_form_went() -> None:

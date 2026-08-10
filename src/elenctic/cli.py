@@ -50,9 +50,10 @@ import argparse
 import sys
 import textwrap
 import traceback
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from enum import Enum
+from itertools import takewhile
 from json import JSONDecodeError
 from pathlib import Path
 
@@ -231,8 +232,13 @@ def _exit_status_help() -> str:
     return f"exit status, the first rung that applies:\n{rungs}\n\n{refusal}"
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _build_parser() -> tuple[argparse.ArgumentParser, Mapping[str, argparse.ArgumentParser]]:
     """The command line: three commands, each carrying the dials it reads and no others.
+
+    Returns the program's parser and the mapping from a command word to the parser that owns it.
+    The mapping is ``argparse``'s own, built from the ``add_parser`` calls below rather than written
+    out again beside them, so a fourth command joins it by existing. ``_parse`` is the only caller
+    that needs it, and what it needs it for is saying which command a refusal belongs to.
 
     A dial a command does not read is worse than an absent one, and elenctic had three of them: the
     dry run accepted ``--budget`` and ``--deadline``, read neither, and still refused a value of
@@ -332,7 +338,44 @@ def _build_parser() -> argparse.ArgumentParser:
         "nothing is solved — which is why this command takes neither a target nor any dial of a "
         "run. A command line it cannot use is still refused.",
     )
-    return parser
+    return parser, commands.choices
+
+
+def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
+    """Read a command line, or leave through the parser that owns the command it named.
+
+    ``argparse`` parses a command's tail with that command's own parser, takes back whatever it
+    could not use, and then reports it from the *program's* parser. Every other near miss — a
+    mistyped command, a value outside a choice — is already raised by the parser that owns it; this
+    one was not, so a reader who asked a command for a dial it does not have met a usage line
+    carrying three command names and no options, for a word that was only ever a command's to
+    refuse. The leftovers are taken here and handed to that command instead, which is the whole of
+    the change: what is accepted is unchanged, and only who reports a refusal moves.
+
+    Reported by calling the command's own ``error`` rather than through ``_refusal``, because the
+    boundary is already drawn and stated in ``main``: a command line this program cannot parse is
+    ``argparse``'s to refuse, and inventing a second channel for it would put two spellings of one
+    refusal in front of a reader. Both leave with the same status.
+
+    A token written *before* the command word is the **program's** leftover and not the command's,
+    and ``argparse`` merges the two lists into one. Handing that one to the command as well is what
+    the first version of this did, and it produced a refusal that contradicted itself: ``elenctic
+    --strict run …`` printed ``run``'s usage, which lists ``--strict``, above a sentence saying
+    ``--strict`` was not recognized. A dial written before the command word is the commonest slip
+    there is, so it is separated out here and left with the program, where it is true — the program
+    defines no such option, and says so under a usage line that offers none.
+    """
+    parser, commands = _build_parser()
+    args, leftover = parser.parse_known_args(argv)
+    if leftover:
+        # `args.command` is bound wherever this line is reached: the subparsers action is required,
+        # and a command line naming none is refused inside the parse above. That also means some
+        # word here names a command, so the run below stops at one rather than consuming everything.
+        written = sys.argv[1:] if argv is None else list(argv)
+        ahead = set(takewhile(lambda word: word not in commands, written))
+        owner = parser if ahead & set(leftover) else commands[args.command]
+        owner.error(f"unrecognized arguments: {' '.join(leftover)}")
+    return args
 
 
 def _add_target(command: argparse.ArgumentParser) -> None:
@@ -385,7 +428,7 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
     # First, and before the parser can write a word: everything past this line assumes there are
     # two streams to write to, and a process can be started with only one.
     establish_standard_error()
-    args = _build_parser().parse_args(argv)
+    args = _parse(argv)
     # Which of the three this invocation is, settled here and read as that everywhere below. The
     # parser restricts the word to the three, so this cannot fail on anything a command line says.
     command = _Command(args.command)

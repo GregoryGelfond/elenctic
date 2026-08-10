@@ -344,7 +344,8 @@ def cli_help_text(*command: str) -> str:
     wrong.
 
     A call rather than a process, and rebinding the stream rather than the descriptor, because
-    ``--help`` is answered inside ``parse_args`` and leaves from there — it never reaches the region
+    ``--help`` is answered while the command line is read and leaves from there — it never reaches
+    the region
     where standard output is a descriptor, which is what forces the machine-readable tests to spawn
     a child. It lives here because the help is read by tests of two different subjects: what the
     help *is*, and whether what it says about the exit status is what the ladder produces.

@@ -31,7 +31,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import elenctic
-from elenctic.cli import _build_parser
+from elenctic.cli import _parse
 from elenctic.expectation import KNOWN_TAGS, ContractError, has_contract, parse_contract
 from elenctic.outcome import ErrorKind
 from elenctic.registry import THEORY_EXTRA_ADVICE
@@ -562,7 +562,7 @@ def _refused(line: str) -> str | None:
     said, printed = io.StringIO(), io.StringIO()
     try:
         with contextlib.redirect_stderr(said), contextlib.redirect_stdout(printed):
-            _build_parser().parse_args(argv)
+            _parse(argv)
     except SystemExit as leaving:
         if leaving.code:
             return said.getvalue().strip().splitlines()[-1]
