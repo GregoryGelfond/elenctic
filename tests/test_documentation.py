@@ -69,7 +69,7 @@ def test_the_help_states_the_default_budget_the_way_the_readme_does() -> None:
     # time: an expectation spelled with the same format string as the line under test would follow
     # it wherever it went.
     (gloss,) = re.findall(r"\(default [0-9][^)]*\)", _README)
-    assert gloss in " ".join(cli_help_text().split()), (
+    assert gloss in " ".join(cli_help_text("run").split()), (
         f"the README's gloss {gloss!r} is not how --help says it"
     )
 
@@ -169,29 +169,26 @@ _SHELL_OPERATORS = frozenset({"|", ">", ">>", "<", "&&", ";"})
 
 
 def _command_lines() -> list[tuple[str, str]]:
-    """Every ``elenctic …`` command line the documents show a reader, with where it was found.
+    """Every ``elenctic …`` command line the two documents of *instructions* show a reader.
 
-    Two forms, because the documents use two: a transcript or usage line opening with a prompt, and
-    a command written inline in prose. Both are things a reader copies.
+    Two forms, because they use two: a transcript or usage line opening with a prompt, and a command
+    written inline in prose. Both are things a reader copies.
 
-    The changelog is read from its unreleased section alone. An entry under a shipped release says
-    what *that* release did, in the grammar it had — rewriting those to parse today would make the
-    history false, which is a worse defect than the one this test exists to catch. It is the one
-    document read from part of itself, so it carries the line it starts at: a failure naming a line
-    the reader then opens has to name the line in the file, not the line in the excerpt.
+    **The changelog is not among them, and the boundary is what the document is for.** These two
+    tell a reader what to run, so every command line in them must be one that runs. A changelog
+    records what changed — and when a command line is what changed, saying so means naming the
+    spelling that stopped working, in prose, in a migration table, and in the alternation notation
+    that describes a grammar. A rule requiring every quoted command line to parse forbids the
+    changelog from doing its job, and three exemptions to keep it in are a rule that does not fit
+    the document. It was checked here first, for one commit, and it did catch two entries written in
+    a spelling that had gone stale; what is given up is catching the next such entry, and what it
+    costs is that the changelog is swept by a person at the moment a grammar changes, which is when
+    they are already sweeping.
     """
-    opening = _CHANGELOG.index("## [Unreleased]")
-    unreleased = _CHANGELOG[opening:].split("\n## [", 1)[0]
-    assert unreleased.strip(), "the changelog's unreleased section is not where this reads it from"
-    read = (
-        ("README.md", _README, 1),
-        ("CONTRIBUTING.md", _CONTRIBUTING, 1),
-        ("CHANGELOG.md", unreleased, _CHANGELOG.count("\n", 0, opening) + 1),
-    )
     return [
         (f"{name}:{number}", line)
-        for name, text, first in read
-        for number, raw in enumerate(text.splitlines(), start=first)
+        for name, text in (("README.md", _README), ("CONTRIBUTING.md", _CONTRIBUTING))
+        for number, raw in enumerate(text.splitlines(), start=1)
         for line in _shown_in(raw)
     ]
 

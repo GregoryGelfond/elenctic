@@ -405,7 +405,7 @@ def test_the_status_a_process_returns_is_read_off_the_run_it_produced(
 
     monkeypatch.setattr(cli, "exit_status", only_status)
     target = _corpus(tmp_path, good=_PASSES, broken=_WILL_NOT_GROUND)
-    assert main([str(target)]) == 99, "the status is whatever reading the outcome returned"
+    assert main(["run", str(target)]) == 99, "the status is whatever reading the outcome returned"
     (outcome,) = seen
     assert len(outcome.cases) == 1, "and the outcome read is the one the run produced"
     assert len(outcome.errors) == 1
@@ -463,7 +463,7 @@ def test_an_observation_the_run_stayed_silent_about_is_still_recorded(
     # it rather than asserted on the run, because a grade that decides what is *printed* can only be
     # checked where something is printed.
     capsys.readouterr()
-    main([str(target)])
+    main(["run", str(target)])
     reported = capsys.readouterr().err
     assert "lib.lp" in reported, "the warned one is said once"
     assert "case.lp" not in reported, "and the silent one is recorded without being said"

@@ -31,7 +31,7 @@ def _corpus(root: Path, count: int) -> str:
 def test_a_run_without_a_deadline_is_unchanged(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    status = main([_corpus(tmp_path, 3)])
+    status = main(["run", _corpus(tmp_path, 3)])
     assert status == ExitStatus.OK
     assert "3/3 passed" in capsys.readouterr().out
 
@@ -43,7 +43,7 @@ def test_a_passed_deadline_stops_the_run_and_accounts_for_what_was_not_reached(
     # matters is that the cases that did not run are counted rather than omitted: a summary that
     # explained them by leaving them out would read as a smaller corpus.
     monkeypatch.setattr(corpus, "monotonic", a_clock_the_deadline_has_already_passed_on(600.0))
-    status = main([_corpus(tmp_path, 3), "--deadline", "600"])
+    status = main(["run", _corpus(tmp_path, 3), "--deadline", "600"])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (
         "an unfinished run is the error register, never a verdict"
@@ -57,6 +57,6 @@ def test_a_generous_deadline_does_not_interfere(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # The other side: a deadline nobody meets must be invisible.
-    status = main([_corpus(tmp_path, 3), "--deadline", "600"])
+    status = main(["run", _corpus(tmp_path, 3), "--deadline", "600"])
     assert status == ExitStatus.OK
     assert "3/3 passed" in capsys.readouterr().out

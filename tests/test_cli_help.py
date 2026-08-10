@@ -15,7 +15,7 @@ a stream, which is the reason the machine-readable tests need a child.
 
 import pytest
 
-from elenctic.cli import main
+from elenctic.cli import _Command, main
 from elenctic.outcome import ExitStatus
 from support import cli_help_section, cli_help_sections, cli_help_text
 
@@ -23,21 +23,28 @@ from support import cli_help_section, cli_help_sections, cli_help_text
 # that adding a flag and forgetting to file it fails here instead of being carried along by
 # whatever the parser reports about itself.
 #
+# Keyed by command, because a command is its own help screen: a dial belongs to the command that
+# reads it, and asking one screen about another's option is asking the wrong parser. The command
+# with no dials at all is here too, with nothing filed, so that giving it one is a change to this
+# table rather than a change nothing notices.
+#
 # The whole mapping and not a count of its headings. "More than one heading" is a weaker claim than
 # the one being made: two groups can be given the same title, argparse prints it twice, the option
 # that says who the report is written for ends up under a heading that does not say so — and a
 # count of distinct headings is still two.
 _HOMES = {
-    "--explain": "instead of running the corpus",
-    "--print-schema": "instead of running the corpus",
-    "--format": "the report",
-    "--strict": "the run",
-    "--budget": "the run",
-    "--deadline": "the run",
+    "run": {
+        "--format": "the report",
+        "--strict": "the run",
+        "--budget": "the run",
+        "--deadline": "the run",
+    },
+    "explain": {"--strict": "the run"},
+    "schema": {},
 }
 
 
-def _options_by_heading() -> dict[str, list[str]]:
+def _options_by_heading(*command: str) -> dict[str, list[str]]:
     """Which options ``--help`` filed under each of its headings.
 
     An option is an indented line whose first word begins with a dash — structural, so the reading
@@ -45,7 +52,7 @@ def _options_by_heading() -> dict[str, list[str]]:
     """
     return {
         heading: [line.split()[0].rstrip(",") for line in lines if line[2:3].startswith("-")]
-        for heading, lines in cli_help_sections().items()
+        for heading, lines in cli_help_sections(*command).items()
     }
 
 
@@ -65,18 +72,42 @@ def test_asking_for_the_help_is_not_a_diagnostic(capsys: pytest.CaptureFixture[s
     assert captured.out.startswith("usage: elenctic")
 
 
-def test_every_option_is_filed_under_a_heading_that_says_what_it_is_for() -> None:
-    # Six options in one block leaves a reader to work out for themselves that two of them do
-    # something other than run the corpus, one chooses who the report is written for, and three
-    # bound or sharpen the run. The headings say it instead.
-    filed = _options_by_heading()
+@pytest.mark.parametrize("command", sorted(_HOMES))
+def test_every_option_is_filed_under_a_heading_that_says_what_it_is_for(command: str) -> None:
+    # Options in one undifferentiated block leave a reader to sort them: which chooses who the
+    # report is written for, and which bound or sharpen the run. The headings say it instead. Two
+    # of the options this once covered are commands now and have no heading to be under, which is
+    # the same sentence one level up — a reader no longer sorts an action out of a block of dials.
+    filed = _options_by_heading(command)
     catch_all = filed.get("options", [])
     assert catch_all == ["-h"], (
         "the catch-all heading names nothing about what an option is for, so it is left to the one "
-        f"option this program did not define; it holds {catch_all}"
+        f"option this program did not define; under {command} it holds {catch_all}"
     )
     homes = {option: heading for heading, options in filed.items() for option in options}
-    assert {option: homes.get(option) for option in _HOMES} == _HOMES
+    assert {option: homes.get(option) for option in _HOMES[command]} == _HOMES[command]
+    filed_here = {option for options in filed.values() for option in options} - {"-h"}
+    assert filed_here == set(_HOMES[command]), (
+        f"{command} offers {sorted(filed_here)}, and this table names {sorted(_HOMES[command])}. A "
+        f"dial belongs to the command that reads it, and one nothing reads is worse than none"
+    )
+
+
+def test_the_commands_the_help_offers_are_the_commands_the_program_has() -> None:
+    # The one thing `_Command`'s docstring claims cannot drift — the word a reader types and the
+    # case the code dispatches on — asserted rather than claimed. Read off the help rather than off
+    # the parser, because the help is what a reader has, and a command the parser takes and the help
+    # never mentions is a command nobody can find.
+    # A command is a line indented under the choices line argparse writes above them, which is at a
+    # shallower indent and is not one — structural, so the reading survives whatever width the help
+    # is wrapped to, and does not read `{run,explain,schema}` as a command called that.
+    offered = cli_help_section("commands")
+    listed = {line.split()[0] for line in offered if line.startswith("    ") and line[4].isalpha()}
+
+    assert listed == {command.value for command in _Command}, (
+        f"the help offers {sorted(listed)}; the program has {sorted(c.value for c in _Command)}"
+    )
+    assert listed == set(_HOMES), "and this file's table names the same ones"
 
 
 # What each rung's gloss must actually tell a reader. Stated here rather than derived, because it

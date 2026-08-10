@@ -58,11 +58,12 @@ program is satisfiable, has exactly **2** answer sets, has `biscuit` in **every*
 has `tea` and `coffee` each in **some** one (brave — read severally, not jointly). Run it:
 
 ```console
-$ elenctic encodings/
+$ elenctic run encodings/
+
 1/1 passed
 ```
 
-`--explain` shows how each tag is routed to a solver run and the fields it reads, *without
+`elenctic explain` shows how each tag is routed to a solver run and the fields it reads, *without
 solving*, and whether that run collapses its answer sets onto the shown atoms — which is what
 `projects` reports. It is `yes` only under a theory solver, since that is the only place the
 collapse can lose anything; a plain clingo run is `no` because there is nothing behind the shown
@@ -70,7 +71,7 @@ view to lose, not because a projection was declined. This contract needs three r
 enumeration for `@count`, and the native cautious and brave runs):
 
 ```console
-$ elenctic encodings/ --explain
+$ elenctic explain encodings/
 encodings/drinks/drinks.lp [clingo]
     ENUM_ALL (projects: no):
         @count — reads {full census}
@@ -91,7 +92,7 @@ elenctic tells you what it expected, what the program actually does, and the lin
 judged, and exits non-zero:
 
 ```console
-$ elenctic encodings/
+$ elenctic run encodings/
 encodings/drinks/drinks.lp [clingo] — FAIL
   [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) (observed { biscuit }; missing { tea })
 
@@ -142,7 +143,8 @@ The single answer set is `{ fly(sam), -fly(tweety) }` — note it contains *neit
 `-fly(opus)`. So all three questions hold, and elenctic confirms it:
 
 ```console
-$ elenctic encodings/
+$ elenctic run encodings/
+
 1/1 passed
 ```
 
@@ -389,7 +391,7 @@ elenctic = { git = "https://github.com/GregoryGelfond/elenctic.git" }
 # pin a release for reproducibility, e.g. { git = "...", tag = "v0.3.0" }
 ```
 
-Then `pixi run elenctic <path>` runs a corpus of contracts.
+Then `pixi run elenctic run <path>` runs a corpus of contracts.
 
 ### With pip
 
@@ -417,14 +419,14 @@ bug usefully.
 The standalone runner discovers cases under a target (a single `.lp` file or a directory) and runs them:
 
 ```console
-$ elenctic [target]            # default target tests/; `elenctic --help` lists the exit statuses
-$ elenctic tests/feasible.lp   # run a single case file
-$ elenctic tests/ --explain    # narrate the derived run plan, without solving
-$ elenctic tests/ --strict     # fail the run on any corpus-hygiene issue (the CI gate)
-$ elenctic tests/ --budget 60      # per-solve time limit (default 30s)
-$ elenctic tests/ --deadline 600   # once solving has run 10 minutes, start no more cases; those not reached are reported as not run
-$ elenctic tests/ --format json    # the machine-readable report (below)
-$ elenctic --print-schema          # the JSON schema of that report, without running anything
+$ elenctic run [target]        # default target tests/; `elenctic --help` lists the exit statuses
+$ elenctic run tests/feasible.lp   # run a single case file
+$ elenctic explain tests/          # narrate the derived run plan, without solving
+$ elenctic run tests/ --strict     # fail the run on any corpus-hygiene issue (the CI gate)
+$ elenctic run tests/ --budget 60      # per-solve time limit (default 30s)
+$ elenctic run tests/ --deadline 600   # once solving has run 10 minutes, start no more cases; those not reached are reported as not run
+$ elenctic run tests/ --format json    # the machine-readable report (below)
+$ elenctic schema                      # the JSON schema of that report, without running anything
 ```
 
 `--budget` and `--deadline` each take a **positive finite** number of seconds: a run that wants no
@@ -435,8 +437,8 @@ bounds actually bound* below.
 **The two streams are split under every format, not only under `--format json`.** Standard output
 carries the *report* — the rendering of each case that did not pass, and the tally. Standard error
 carries everything *about* the run: the per-case error lines, the corpus-hygiene block, and the
-notice that a deadline stopped it. So `elenctic tests/ | tee ci.log` keeps `0/3 passed, 2 could not
-be run` and loses which two and why; `elenctic tests/ > ci.log 2>&1` keeps both.
+notice that a deadline stopped it. So `elenctic run tests/ | tee ci.log` keeps `0/3 passed, 2 could not
+be run` and loses which two and why; `elenctic run tests/ > ci.log 2>&1` keeps both.
 
 **What `--strict` fails a build on** is corpus hygiene, and there are exactly two observations: an
 **orphan library** (a contract-free `.lp` that no case `#include`s — a forgotten case, or dead
@@ -469,7 +471,7 @@ does not, because exactly one of `tea` and `coffee` is chosen:
 ```
 
 ```console
-$ elenctic menu.lp --format json
+$ elenctic run menu.lp --format json
 {
   "schema_version": 2,
   "invocation": {
@@ -547,13 +549,13 @@ Every `message` is **opaque**: display it, do not parse it, and expect its wordi
 Paths in the document follow the target as you named it, so a relative target yields relative paths;
 resolve them against the directory you ran from, which the document does not record.
 
-`elenctic --print-schema` writes the JSON Schema of this document and exits, without looking for a
-corpus. Three things are refused rather than guessed at: a `--format` this version does not know;
-`--explain --format json` (a dry run narrates a plan, and this version describes no document for
-one); and a `--budget` or `--deadline` that is not a positive finite number of seconds. A refused
-command line produces **no** document, so check the exit status before parsing — and note that
-`--print-schema` puts the *schema* on that stream, which parses as JSON and has none of the fields
-above.
+`elenctic schema` writes the JSON Schema of this document and exits, without looking for a corpus.
+Two things are refused rather than guessed at: a `--format` this version does not know, and a
+`--budget` or `--deadline` that is not a positive finite number of seconds. A dry run has no
+machine-readable form in this version, and that is now said by the grammar rather than refused:
+`--format` is one of `run`'s options, and `elenctic explain` has none. A refused command line
+produces **no** document, so check the exit status before parsing — and note that `elenctic schema`
+puts the *schema* on that stream, which parses as JSON and has none of the fields above.
 
 Redirecting standard error onto standard output (`--format json 2>&1`) gives away the guarantee by
 your own hand.

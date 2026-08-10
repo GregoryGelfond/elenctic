@@ -616,7 +616,7 @@ def test_printing_the_schema_writes_the_packaged_file_and_nothing_else(
 ) -> None:
     # Captured at the descriptor, which is what a shell redirect sees. Anything above it cannot
     # observe the encoding the bytes are written in, and the file is not ASCII.
-    status = main(["--print-schema"])
+    status = main(["schema"])
 
     captured = capfdbinary.readouterr()
     assert status == ExitStatus.OK
@@ -624,13 +624,13 @@ def test_printing_the_schema_writes_the_packaged_file_and_nothing_else(
     assert captured.err == b"", "nothing shares the stream the description is written to"
 
 
-def test_printing_the_schema_asks_nothing_of_a_corpus(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_printing_the_schema_asks_nothing_of_a_corpus(capsys: pytest.CaptureFixture[str]) -> None:
     # It is answered from the package alone, so it is answered before anything is looked for on
-    # disk. A target that does not exist is a fault worth 2 on any other invocation, and someone
-    # asking what the output looks like has no reason to have a corpus at all.
-    status = main(["--print-schema", str(tmp_path / "no_such_corpus")])
+    # disk — and now before anything can be named: a target that does not exist is a fault worth 2
+    # on either other command, and someone asking what the output looks like has no reason to have
+    # a corpus at all, so this command takes none. What is left to hold here is the half that is
+    # about the answer rather than about the grammar: no corpus has to exist for there to be one.
+    status = main(["schema"])
 
     assert status == ExitStatus.OK
     assert capsys.readouterr().out == schema_text()
@@ -646,7 +646,7 @@ def test_a_copy_of_the_package_carrying_no_description_says_so(
     # that cannot help them.
     monkeypatch.setattr("elenctic.json_report.SCHEMA_VERSION", 999)
 
-    status = main(["--print-schema"])
+    status = main(["schema"])
 
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (

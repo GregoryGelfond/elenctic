@@ -27,7 +27,7 @@ from jsonschema import Draft202012Validator
 
 from elenctic.json_report import SCHEMA_VERSION, dumps, schema_text
 from elenctic.outcome import ExitStatus
-from support import Streams, child_environment, document_of, run_cli
+from support import Streams, child_environment, cli_help_text, document_of, run_cli
 
 _PASSES = (
     "% @elenctic solver clingo\n% @expect sat\n% @count 2\n\n"
@@ -132,6 +132,16 @@ def _reported(
     return run_cli(
         target, "--format", "json", *flags, prelude=prelude, env=env, hash_seed=hash_seed
     )
+
+
+def _described(*, prelude: str = "", env: dict[str, str] | None = None) -> Streams:
+    """One invocation of the command that writes the description of the report.
+
+    No target and no format, because that command has neither: it is answered from the installed
+    package, so there is nothing about a corpus for it to be told and nothing about a run for it to
+    choose. Passing either would be measuring a usage error rather than the description.
+    """
+    return run_cli(None, command="schema", prelude=prelude, env=env)
 
 
 def _status_off_the_document(document: dict[str, Any]) -> int:
@@ -412,15 +422,27 @@ def test_a_format_this_version_does_not_know_is_refused(tmp_path: Path) -> None:
 
 def test_a_dry_run_has_no_machine_readable_form_and_says_so(tmp_path: Path) -> None:
     # The dry run narrates a plan rather than producing a report, and this version describes no
-    # document for a plan. Refused before anything is discovered: there is no half-run to report.
-    streams = _reported(_corpus(tmp_path, passes=_PASSES), "--explain")
+    # document for a plan. It used to be a pairing of two flags that each made sense alone, refused
+    # in a paragraph of elenctic's own; now the format is one of `run`'s options and there is no
+    # such pairing to type. What is kept is that nothing is published either way — and the *reason*,
+    # which the paragraph was carrying and which the parser's terser refusal does not say, is
+    # asserted below to be somewhere a reader meets before typing it rather than after.
+    streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--format", "json", command="explain")
 
     assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == "", "a command line that cannot be run has produced no run to report"
-    assert "usage error" in streams.err
-    assert "--explain" in streams.err
-    assert "--format json" in streams.err
-    assert "alone" in streams.err, "and it says what to ask for instead, which is why it is refused"
+    assert "--format json" in streams.err, "and the refusal names what was asked for"
+
+
+def test_the_dry_run_says_where_its_missing_machine_readable_form_went() -> None:
+    # The knowledge the removed paragraph carried, kept where a reader meets it *before* typing the
+    # flag. Held here rather than left to the prose, because prose nothing reads is exactly how the
+    # sentence would come to be dropped in a later edit — and then the reader who asks argparse for
+    # `--format` on a plan is told only that it is unrecognized.
+    said = " ".join(cli_help_text("explain").split())
+
+    assert "no machine-readable form for a plan" in said, "why there is no --format here"
+    assert "`run`" in said, "and where the format that does exist belongs"
 
 
 def test_a_budget_that_is_not_a_positive_finite_number_of_seconds_leaves_no_document(
@@ -504,13 +526,18 @@ def test_an_allocation_failure_with_no_case_to_name_says_so_in_the_record(tmp_pa
     assert "resource error: " in streams.err, "and the reader is told in prose as well"
 
 
-def test_a_fault_while_printing_the_description_produces_no_document(tmp_path: Path) -> None:
-    # A document reports a run, and printing the description asks for none — so a fault there is
-    # reported as prose and a status, the same way its readable-environment sibling already is.
-    # A run report here would describe a corpus that was never looked at.
-    target = _corpus(tmp_path, passes=_PASSES)
-
-    streams = _reported(target, "--print-schema", prelude=_DESCRIPTION_IS_NOT_TEXT)
+def test_a_fault_while_printing_the_description_produces_no_document() -> None:
+    # A document reports a run, and the description asks for none — so a fault there is reported as
+    # prose and a status, the same way its readable-environment sibling already is. A run report
+    # here would describe a corpus that was never looked at, and it was one conjunct in `main` that
+    # kept it from being written: with `--print-schema --format json` and the conjunct deleted, a
+    # 529-byte document claiming `"target": "tests"` and `"total": 0` was published under a status
+    # that says elenctic is broken.
+    #
+    # That state can no longer be typed — this command has no format to be asked for, which
+    # `test_cli_help` holds by asserting it offers no dial at all — so what is left to measure is
+    # the end of it: a fault here publishes nothing, whichever frame meets it.
+    streams = _described(prelude=_DESCRIPTION_IS_NOT_TEXT)
 
     assert streams.status == ExitStatus.HARNESS_FAULT
     assert streams.out == ""
@@ -547,7 +574,7 @@ def test_a_damaged_description_is_reported_rather_than_published(
     # sentence rather than in one of their own.
     prelude = _installed_with_the_description(tmp_path, schema_text()[:kept])
 
-    streams = _reported(tmp_path / "no_such_directory", "--print-schema", prelude=prelude)
+    streams = _described(prelude=prelude)
 
     assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == "", "half a description, or none of one, is not a description to publish"
@@ -578,7 +605,7 @@ def test_a_description_that_cannot_be_read_says_which_of_the_reasons_it_was(tmp_
     # has "the code and not the data".
     prelude = _installed_with_a_directory_where_the_description_goes(tmp_path)
 
-    streams = _reported(tmp_path / "no_such_directory", "--print-schema", prelude=prelude)
+    streams = _described(prelude=prelude)
 
     assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == ""
@@ -606,7 +633,7 @@ def test_the_reason_a_description_could_not_be_read_is_shown_safely(tmp_path: Pa
         "elenctic.cli.schema_text = _unreadable\n"
     )
 
-    streams = _reported(tmp_path / "no_such_directory", "--print-schema", prelude=prelude)
+    streams = _described(prelude=prelude)
 
     assert streams.status == ExitStatus.USER_FAULT
     assert erases_the_line not in streams.err, "the escape reached the reader's terminal intact"
@@ -624,7 +651,7 @@ def test_running_out_of_memory_printing_the_description_does_not_blame_a_corpus(
         "_hungry", "lambda *a, **k: (_ for _ in ()).throw(MemoryError())"
     )
 
-    streams = _reported(tmp_path / "no_such_directory", "--print-schema", prelude=prelude)
+    streams = _described(prelude=prelude)
 
     assert streams.out == "", "nothing is published when the description could not be held"
     assert "resource error: " in streams.err, "still the allocation failure it is, not a bug report"
@@ -637,46 +664,66 @@ def test_running_out_of_memory_printing_the_description_does_not_blame_a_corpus(
     )
 
 
-def test_printing_the_description_is_not_a_document_and_asks_nothing_of_a_corpus(
-    tmp_path: Path,
-) -> None:
-    # ``--print-schema`` is an action rather than a format: it answers from the package alone, so
-    # under either format it writes the description itself, and a target that does not exist never
-    # turns the question into a fault.
-    streams = _reported(tmp_path / "no_such_directory", "--print-schema")
+def test_running_out_of_memory_writing_the_description_does_not_blame_a_corpus_either() -> None:
+    # The sibling of the test above, on the other side of the one statement that separates them.
+    # Reading the packaged description was answered by the sentence about a description; *writing*
+    # it fell out of that frame and was met by the run's backstop, which told a reader who ran no
+    # corpus to reduce what theirs grounds. The two messages exist in order to be told apart, and
+    # nothing held the boundary between them — the failure was one statement past the guard.
+    prelude = (
+        "import elenctic.cli\n"
+        "def _out_of_memory(_document):\n"
+        "    raise MemoryError\n"
+        "elenctic.cli.publish = _out_of_memory\n"
+    )
+
+    streams = _described(prelude=prelude)
+
+    assert streams.out == "", "nothing is published when the description could not be written"
+    assert "resource error: " in streams.err, "still the allocation failure it is, not a bug report"
+    assert "running this corpus" not in streams.err, "no corpus was run"
+    assert "reduce what it grounds and enumerates" not in streams.err, (
+        "the remedy offered was for a run that did not happen"
+    )
+    assert "no corpus was looked at and nothing was grounded" in streams.err, (
+        "and the reader is told which of the two kinds of allocation failure this was"
+    )
+
+
+def test_the_description_is_what_this_command_writes_and_it_asks_nothing_of_a_corpus() -> None:
+    # An action rather than a format, which is now what the grammar says rather than what its help
+    # said: there is no format here to choose and no target to walk, so the one thing this command
+    # can write is the description, and nothing about a corpus can turn the question into a fault.
+    streams = _described()
 
     assert streams.status == ExitStatus.OK
     assert streams.err == ""
     assert document_of(streams)["title"] == "elenctic run report", "the description, not a report"
 
 
-def test_asking_for_two_actions_at_once_is_refused_rather_than_ranked(tmp_path: Path) -> None:
-    # Two actions asked for at once, each of which is the whole of what an invocation does. What
-    # this held before was that *which one won* was a decision rather than a consequence of
-    # statement order — and it was a decision written down only here, in a test, where the reader
-    # who typed both could not find it. The same guarantee is kept and the decision is different:
-    # neither wins, and the exclusion is stated by the parser, so it reaches the usage line the
-    # refusal itself prints.
-    streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--explain", "--print-schema")
-
-    assert streams.status == ExitStatus.USER_FAULT
-    assert streams.out == "", "neither action ran"
-    assert "not allowed with argument --explain" in streams.err
-    assert "[--explain | --print-schema]" in streams.err, "the usage line says so on its own"
-
-
-def test_a_command_line_that_cannot_be_run_is_refused_even_when_it_asks_only_for_the_description(
-    tmp_path: Path,
-) -> None:
-    # The parser refuses a duration it cannot convert before it looks at any other flag, and this
-    # refuses one it can convert but cannot use, at the same point and for the same reason. A
-    # command line answered by one and accepted by the other would be refused or not depending on
-    # which flag it was paired with.
-    streams = run_cli(_corpus(tmp_path, passes=_PASSES), "--print-schema", "--budget", "0")
+def test_a_command_line_that_cannot_be_run_writes_no_description(tmp_path: Path) -> None:
+    # This used to hold that a duration the parser could convert but elenctic could not use was
+    # refused here as well as on a run, so that a command line was not refused-or-not depending on
+    # which flag it was paired with. The dial is now `run`'s, because `run` is what reads it — so
+    # the pairing is refused by there being no such flag here, and what is kept is the half that is
+    # still about this command: a refused command line publishes nothing.
+    streams = run_cli(None, "--budget", "0", command="schema")
 
     assert streams.status == ExitStatus.USER_FAULT
     assert streams.out == "", "the description is not written for a command line that was refused"
-    assert "--budget" in streams.err
+    assert "--budget" in streams.err, "and the refusal names what was asked for"
+
+
+def test_the_description_takes_no_target(tmp_path: Path) -> None:
+    # It is answered from the installed package, so a target could only ever be accepted and
+    # ignored — which is what it was, with the help saying so in a sentence. A reader who names
+    # their corpus here believes they are being told about *it*; now they are told they are not,
+    # instead of being handed something unrelated with the status that says nothing went wrong.
+    streams = run_cli(_corpus(tmp_path, passes=_PASSES), command="schema")
+
+    assert streams.status == ExitStatus.USER_FAULT
+    assert streams.out == "", "and nothing is published to be mistaken for a description of it"
+    assert "unrecognized" in streams.err
 
 
 def test_the_document_is_utf8_whatever_the_environment_would_have_chosen(tmp_path: Path) -> None:
@@ -699,7 +746,7 @@ def test_the_document_is_utf8_whatever_the_environment_would_have_chosen(tmp_pat
 
 
 def test_the_description_is_utf8_whatever_the_environment_would_have_chosen(tmp_path: Path) -> None:
-    streams = _reported(tmp_path, "--print-schema", env=_STDOUT_CANNOT_ENCODE)
+    streams = _described(env=_STDOUT_CANNOT_ENCODE)
 
     assert streams.status == ExitStatus.OK
     assert streams.out == schema_text()

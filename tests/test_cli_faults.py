@@ -38,7 +38,7 @@ def _corpus(root: Path, **cases: str) -> str:
 def test_an_ungroundable_case_exits_as_an_error_not_a_verdict(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    status = main([_corpus(tmp_path, broken=_UNSAFE)])
+    status = main(["run", _corpus(tmp_path, broken=_UNSAFE)])
     captured = capsys.readouterr()
     # An error register, not a verdict: 1 would claim the case was tested and decided wrong.
     # 2 rather than 3 because the program under test is the author's to fix, not elenctic's.
@@ -54,7 +54,7 @@ def test_an_ungroundable_case_does_not_cost_the_other_cases_their_results(
 ) -> None:
     # The sharp end of the defect: the run used to abort on the broken case, so the healthy cases'
     # results went with it — including the summary line — and stdout came back empty.
-    status = main([_corpus(tmp_path, aaa_good=_GOOD, zzz_broken=_UNSAFE)])
+    status = main(["run", _corpus(tmp_path, aaa_good=_GOOD, zzz_broken=_UNSAFE)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT
     assert "passed" in captured.out, "the summary of the cases that ran must survive"
@@ -68,7 +68,7 @@ def test_an_undiscoverable_case_does_not_cost_the_other_cases_their_results(
     # case that fails while the corpus is being *walked* — an unresolvable #include, an undecodable
     # byte, a malformed contract — aborted discovery itself, so no case ran at all and every other
     # result was lost. Whether a case can be run is a fact about that case, at either stage.
-    status = main([_corpus(tmp_path, aaa_good=_GOOD, zzz_bad=_BAD_INCLUDE)])
+    status = main(["run", _corpus(tmp_path, aaa_good=_GOOD, zzz_bad=_BAD_INCLUDE)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT
     assert "Traceback" not in captured.err
@@ -83,7 +83,7 @@ def test_an_explicitly_named_undiscoverable_file_is_still_loud(
     # Tolerance belongs to the walk, not to a file the user pointed at. Naming one file and getting
     # a summary saying nothing ran would bury the only thing that was asked about.
     (tmp_path / "named.lp").write_text(_BAD_INCLUDE, encoding="utf-8")
-    status = main([str(tmp_path / "named.lp")])
+    status = main(["run", str(tmp_path / "named.lp")])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT
     assert "Traceback" not in captured.err
@@ -94,7 +94,7 @@ def test_a_missing_declared_solver_exits_as_an_error_with_a_remedy(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
-    status = main([_corpus(tmp_path, theory=_THEORY)])
+    status = main(["run", _corpus(tmp_path, theory=_THEORY)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT
     # The remedy reaches the reader, asked of the one home rather than copied: a verbatim copy here
@@ -111,7 +111,7 @@ def test_a_missing_declared_solver_costs_only_the_cases_that_declare_it(
     # that do not declare it are unaffected and still report — one missing package must not zero
     # a whole corpus.
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
-    status = main([_corpus(tmp_path, aaa_good=_GOOD, zzz_theory=_THEORY)])
+    status = main(["run", _corpus(tmp_path, aaa_good=_GOOD, zzz_theory=_THEORY)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT
     assert "1/2 passed" in captured.out
@@ -123,7 +123,7 @@ def test_a_dry_run_does_not_require_the_declared_solver(
     # --explain narrates the derived run plan without solving, so requiring the backend to be
     # installed for it would be gating a command on something it never uses.
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
-    status = main([_corpus(tmp_path, theory=_THEORY), "--explain"])
+    status = main(["explain", _corpus(tmp_path, theory=_THEORY)])
     captured = capsys.readouterr()
     assert status == ExitStatus.OK
     assert "clingcon" in captured.out, "the plan still names the declared solver"
@@ -145,7 +145,7 @@ def test_a_harness_fault_at_solve_time_costs_only_the_case_that_met_it(
         return run_plan(case, runs, budget=budget)
 
     monkeypatch.setattr(corpus, "run_plan", broken)
-    status = main([_corpus(tmp_path, aaa_good=_GOOD, mmm_broken=_GOOD, zzz_good=_GOOD)])
+    status = main(["run", _corpus(tmp_path, aaa_good=_GOOD, mmm_broken=_GOOD, zzz_good=_GOOD)])
     captured = capsys.readouterr()
     assert status == ExitStatus.HARNESS_FAULT, (
         "a harness fault is elenctic's own error register — never a verdict, and never filed with "
@@ -182,7 +182,7 @@ def test_a_corpus_cannot_write_a_terminal_escape_into_a_diagnostic_it_causes(
         '% @expect sat\n% @count 1\n#include "nowhere.lp".\na.\n', encoding="utf-8"
     )
 
-    assert main([str(tmp_path)]) == ExitStatus.USER_FAULT
+    assert main(["run", str(tmp_path)]) == ExitStatus.USER_FAULT
 
     said = capsys.readouterr().err
     assert _ERASES_THE_LINE not in said, "the escape reached the reader's terminal intact"
@@ -202,7 +202,7 @@ def test_a_path_the_corpus_chose_is_sanitized_before_a_reader_sees_it(
         "% @expect sat\n% @count 1\np(X) :- q(Y).\n#show p/1.\n", encoding="utf-8"
     )
 
-    assert main([str(tmp_path)]) == ExitStatus.USER_FAULT
+    assert main(["run", str(tmp_path)]) == ExitStatus.USER_FAULT
 
     said = capsys.readouterr().err
     assert _ERASES_THE_LINE not in said, "the escape reached the reader's terminal intact"
@@ -249,12 +249,17 @@ def test_no_string_the_corpus_chose_reaches_a_reader_as_a_terminal_escape(
     # to `case_unusable`, while naming that same file makes its fault the whole run's and sends it
     # to `corpus_unreadable`. Only the first was covered, so the second was reachable with hostile
     # text and unsanitized.
+    #
+    # Both commands that walk a corpus, because both render what they walked, and the dial that
+    # escalates hygiene on each — the escape reaches a reader through whichever of them met it.
     targets = [str(tmp_path), str(tmp_path / f"ev{_ERASES_THE_LINE}il.lp")]
-    for target, flags in [(t, f) for t in targets for f in ([], ["--strict"], ["--explain"])]:
-        main([target, *flags])
+    invocations = [["run"], ["run", "--strict"], ["explain"], ["explain", "--strict"]]
+    for target, asked in [(t, a) for t in targets for a in invocations]:
+        command, *flags = asked
+        main([command, target, *flags])
         seen = capsys.readouterr()
         shown = seen.out + seen.err
-        where = f"{Path(target).name} {flags or ''}".strip()
+        where = f"{Path(target).name} {' '.join(asked)}".strip()
         assert _ERASES_THE_LINE not in shown, f"an escape reached the reader under {where}"
         assert "\\x1b" in shown, f"and nothing was silently dropped under {where}"
 
@@ -268,7 +273,7 @@ def test_the_deadline_notice_is_not_printed_for_a_case_that_simply_could_not_run
     # --deadline at all announced that a deadline it never had was passed.
     (tmp_path / "broken.lp").write_text(_UNSAFE, encoding="utf-8")
 
-    assert main([str(tmp_path)]) == ExitStatus.USER_FAULT
+    assert main(["run", str(tmp_path)]) == ExitStatus.USER_FAULT
 
     said = capsys.readouterr().err
     assert "DEADLINE" not in said, "no deadline was given, so none can have been passed"
@@ -281,7 +286,7 @@ def test_a_corpus_that_could_not_be_read_reports_no_tally(
     # that was looked at and found to hold nothing, which is a different thing from one that could
     # not be read at all. The suppression was reasoned about in a docstring and held by nothing —
     # every test of this path read standard error and none read standard output.
-    assert main([str(tmp_path / "no_such_directory")]) == ExitStatus.USER_FAULT
+    assert main(["run", str(tmp_path / "no_such_directory")]) == ExitStatus.USER_FAULT
 
     seen = capsys.readouterr()
     assert seen.out == "", "nothing ran, so there is nothing to tally"

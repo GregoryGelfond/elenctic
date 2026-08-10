@@ -36,7 +36,7 @@ Changelog = "https://github.com/GregoryGelfond/elenctic/blob/main/CHANGELOG.md"
 theory = ["clingcon>=5.2.1"]  # the theory fragment (@assign, CSP @count); conda-forge-primary
 
 [project.scripts]
-elenctic = "elenctic.cli:main"  # the corpus runner (`elenctic [target]`)
+elenctic = "elenctic.cli:main"  # the corpus runner (`elenctic run [target]`)
 
 [tool.hatch.version]
 path = "src/elenctic/__init__.py"  # single source of truth for the version (read from __version__)
@@ -44,7 +44,7 @@ path = "src/elenctic/__init__.py"  # single source of truth for the version (rea
 [tool.hatch.build.targets.wheel]
 packages = ["src/elenctic"]  # everything under here ships, including two files that are not code
                              # and are load-bearing anyway: schema/output-v*.schema.json, which
-                             # `--print-schema` reads back as a package resource, and py.typed,
+                             # `elenctic schema` reads back as a package resource, and py.typed,
                              # without which a consumer's type checker skips this package entirely
                              # and every annotation in it is invisible to them (PEP 561).
                              # Narrowing this to *.py drops both, silently, and leaves every import

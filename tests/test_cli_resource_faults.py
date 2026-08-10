@@ -57,7 +57,7 @@ def test_running_out_of_memory_is_reported_as_an_error_not_a_traceback(
         raise MemoryError("std::bad_alloc")
 
     monkeypatch.setattr(corpus, "run_plan", out_of_memory)
-    status = main([str(tmp_path)])
+    status = main(["run", str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (
         "a resource run out of is the error register, never a verdict"
@@ -83,7 +83,7 @@ def test_a_case_that_runs_out_of_memory_costs_only_its_own_result(
         return run_plan(case, runs, budget=budget)  # the other two cases run for real
 
     monkeypatch.setattr(corpus, "run_plan", greedy)
-    status = main([str(tmp_path)])
+    status = main(["run", str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (
         "a resource the run used up is the error register, never a verdict"
@@ -106,7 +106,7 @@ def test_memory_run_out_of_outside_a_case_is_still_reported(
         raise MemoryError("std::bad_alloc")
 
     monkeypatch.setattr(corpus, "inspect_corpus", out_of_memory)
-    status = main([str(tmp_path)])
+    status = main(["run", str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT
     assert "Traceback" not in captured.err
@@ -125,7 +125,7 @@ def test_an_unexpected_fault_is_framed_as_an_elenctic_bug(
         raise ZeroDivisionError("an elenctic bug")
 
     monkeypatch.setattr(corpus, "run_plan", unexpected)
-    status = main([str(tmp_path)])
+    status = main(["run", str(tmp_path)])
     captured = capsys.readouterr()
     assert status == ExitStatus.HARNESS_FAULT, (
         "elenctic's own register, apart from the faults a user can fix"
@@ -160,7 +160,7 @@ def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_stat
 
     monkeypatch.setattr(corpus, "run_plan", unexpected)
     monkeypatch.setattr(cli, "exit_status", watched)
-    assert main([str(tmp_path)]) == ExitStatus.HARNESS_FAULT
+    assert main(["run", str(tmp_path)]) == ExitStatus.HARNESS_FAULT
     capsys.readouterr()
     (outcome,) = filed
     (record,) = outcome.errors

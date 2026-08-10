@@ -107,40 +107,58 @@ def _corpus(root: Path, **cases: str) -> Path:
 
 
 @pytest.mark.parametrize(
-    ("described", "case", "flags", "prelude", "left_with"),
+    ("described", "case", "command", "flags", "prelude", "left_with"),
     [
         (
             "the document, written through",
             _PASSES,
+            "run",
             ("--format", "json"),
             _A_SMALL_BUFFER,
             ExitStatus.OK,
         ),
-        ("the document, still held", _PASSES, ("--format", "json"), _A_LARGE_BUFFER, ExitStatus.OK),
-        ("prose, written as the run goes", _FAILS, (), _A_LARGE_BUFFER, ExitStatus.NOT_PASSED),
+        (
+            "the document, still held",
+            _PASSES,
+            "run",
+            ("--format", "json"),
+            _A_LARGE_BUFFER,
+            ExitStatus.OK,
+        ),
+        (
+            "prose, written as the run goes",
+            _FAILS,
+            "run",
+            (),
+            _A_LARGE_BUFFER,
+            ExitStatus.NOT_PASSED,
+        ),
         # The row this table was missing, and the one the human format actually meets in CI:
         # every prose row held "the stream keeps what it is given" fixed, so the tally — the
         # one standard-output write made outside the frame that answers for standard output —
         # was never reached. `PYTHONUNBUFFERED=1` in an ordinary CI image is what makes it.
-        ("prose, written through", _FAILS, (), _WRITES_THROUGH, ExitStatus.NOT_PASSED),
+        ("prose, written through", _FAILS, "run", (), _WRITES_THROUGH, ExitStatus.NOT_PASSED),
         (
             "a plan, written without solving",
             _PASSES,
-            ("--explain",),
+            "explain",
+            (),
             _A_LARGE_BUFFER,
             ExitStatus.OK,
         ),
         (
             "the description, written through",
             _PASSES,
-            ("--print-schema",),
+            "schema",
+            (),
             _A_SMALL_BUFFER,
             ExitStatus.OK,
         ),
         (
             "the description, still held",
             _PASSES,
-            ("--print-schema",),
+            "schema",
+            (),
             _A_LARGE_BUFFER,
             ExitStatus.OK,
         ),
@@ -159,6 +177,7 @@ def test_a_reader_that_stopped_leaves_the_run_with_its_own_status(
     tmp_path: Path,
     described: str,
     case: str,
+    command: str,
     flags: tuple[str, ...],
     prelude: str,
     left_with: ExitStatus,
@@ -167,8 +186,12 @@ def test_a_reader_that_stopped_leaves_the_run_with_its_own_status(
     # that failed inside the run reads as a case decided wrong, the same write in the description's
     # path reads as a bug in elenctic, and the emptying the interpreter does after this frame has
     # returned leaves with a number the ladder does not publish at all.
+    # The corpus is written whatever is asked for, and named on the command line only where the
+    # command takes one: the description is answered from the installed package, so a path there is
+    # refused rather than ignored, and this row would then be measuring a usage error.
+    corpus = _corpus(tmp_path, drinks=case)
     said, status = run_cli_with_nobody_reading(
-        _corpus(tmp_path, drinks=case), *flags, prelude=prelude
+        None if command == "schema" else corpus, *flags, command=command, prelude=prelude
     )
 
     assert status == left_with, f"{described}: a reader that stopped is not a verdict"
@@ -302,7 +325,7 @@ def test_a_caller_who_captured_standard_output_needs_no_byte_layer(tmp_path: Pat
     captured = io.StringIO()
 
     with redirect_stdout(captured):
-        status = main([str(_corpus(tmp_path / "corpus", drinks=_PASSES))])
+        status = main(["run", str(_corpus(tmp_path / "corpus", drinks=_PASSES))])
 
     assert status == ExitStatus.OK
     assert captured.getvalue() == "\n1/1 passed\n", "and the caller has the report"
@@ -337,19 +360,22 @@ def test_a_run_given_no_standard_output_at_all_is_not_a_fault(tmp_path: Path) ->
 
 
 @pytest.mark.parametrize(
-    ("described", "flags"),
-    [("the document", ("--format", "json")), ("the description", ("--print-schema",))],
+    ("described", "command", "flags"),
+    [("the document", "run", ("--format", "json")), ("the description", "schema", ())],
     ids=["document", "description"],
 )
 def test_asking_for_an_artefact_with_nowhere_to_put_it_is_refused(
-    tmp_path: Path, described: str, flags: tuple[str, ...]
+    tmp_path: Path, described: str, command: str, flags: tuple[str, ...]
 ) -> None:
     # The companion to the row above, and the distinction is the point: prose is a courtesy, so a
     # run with nobody to narrate to still runs and still earns its status. An artefact is the
     # deliverable, so asking for one with no stream to write it to is a contradiction — and met
     # mid-run rather than refused, both of these told a reader they had found a bug in elenctic,
     # over a stream that reader had closed on purpose.
-    said, status = run_cli_without_standard_output(_corpus(tmp_path, drinks=_PASSES), *flags)
+    corpus = _corpus(tmp_path, drinks=_PASSES)
+    said, status = run_cli_without_standard_output(
+        None if command == "schema" else corpus, *flags, command=command
+    )
 
     assert status == ExitStatus.USER_FAULT, f"{described}: their own doing, and theirs to undo"
     assert "usage error: " in said, f"{described}: refused before anything is looked at"

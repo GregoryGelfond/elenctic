@@ -489,7 +489,7 @@ def _main() -> None:
     path = Path(arguments[0])
     for run in runs_for(parse(path.read_text(encoding="utf-8"), source=str(path))):
         # solver-independent: the dry-run shows the mode and each check's reads, not the projection
-        # decision (which needs the solver — narrated by the CLI's --explain, which has the case).
+        # decision (which needs the solver — narrated by `elenctic explain`, which has the case).
         print(f"{run.mode.name}:")
         for check in run.checks:
             # The subject is built from the literals the contract author wrote — corpus text, and

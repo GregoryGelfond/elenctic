@@ -118,8 +118,9 @@ def child_environment(
 
 
 def run_cli(
-    target: Path,
+    target: Path | None,
     *flags: str,
+    command: str = "run",
     prelude: str = "",
     env: dict[str, str] | None = None,
     hash_seed: str | None = None,
@@ -144,7 +145,7 @@ def run_cli(
     lazy attribute resolution — into every test session that wants them.
     """
     finished = subprocess.run(
-        _child_command(target, flags, prelude),
+        _child_command(target, flags, prelude, command),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -155,12 +156,19 @@ def run_cli(
     return Streams(finished.stdout, finished.stderr, finished.returncode)
 
 
-def _child_command(target: Path, flags: tuple[str, ...], prelude: str) -> list[str]:
+def _child_command(
+    target: Path | None, flags: tuple[str, ...], prelude: str, command: str = "run"
+) -> list[str]:
     """The command that runs elenctic's console entry as a child process.
 
     Shared by every way a run is spawned below, because the part that must not vary between them is
     the child's proof that it loaded the tree under test: an instrument measuring a different
     installation reports on code nobody changed, and says nothing while doing it.
+
+    ``command`` defaults to running the corpus, which is what nearly every measurement here is
+    about. ``target`` is ``None`` for a command that takes none — the description is answered from
+    the installed package, so a path on that command line is not ignored, it is refused, and a
+    helper that passed one anyway would be measuring a usage error.
     """
     import elenctic.cli
 
@@ -168,7 +176,8 @@ def _child_command(target: Path, flags: tuple[str, ...], prelude: str) -> list[s
         sys.executable,
         "-c",
         _CHILD.format(prelude=prelude, loaded=elenctic.cli.__file__),
-        str(target),
+        command,
+        *([] if target is None else [str(target)]),
         *flags,
     ]
 
@@ -191,10 +200,10 @@ def _with_stream_closed(descriptor: int, command: list[str]) -> list[str]:
     return ["sh", "-c", f'exec "$@" {descriptor}>&-', "sh", *command]
 
 
-def without_standard_error(command: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run ``command`` with standard error closed, capturing what it puts on standard output."""
+def without_standard_error(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    """Run ``argv`` with standard error closed, capturing what it puts on standard output."""
     return subprocess.run(
-        _with_stream_closed(2, command),
+        _with_stream_closed(2, argv),
         stdout=subprocess.PIPE,
         text=True,
         encoding="utf-8",
@@ -204,18 +213,20 @@ def without_standard_error(command: list[str]) -> subprocess.CompletedProcess[st
     )
 
 
-def run_cli_without_standard_error(target: Path, *flags: str, prelude: str = "") -> tuple[str, int]:
+def run_cli_without_standard_error(
+    target: Path | None, *flags: str, command: str = "run", prelude: str = ""
+) -> tuple[str, int]:
     """One invocation of elenctic that has no standard error: what reached standard output, and the
     status it left with.
 
     Two values rather than three, because there is no third stream for one to be about.
     """
-    finished = without_standard_error(_child_command(target, flags, prelude))
+    finished = without_standard_error(_child_command(target, flags, prelude, command))
     return finished.stdout, finished.returncode
 
 
 def run_cli_without_standard_output(
-    target: Path, *flags: str, prelude: str = ""
+    target: Path | None, *flags: str, command: str = "run", prelude: str = ""
 ) -> tuple[str, int]:
     """One invocation of elenctic that has no standard output: what it said on standard error, and
     the status it left with.
@@ -225,7 +236,7 @@ def run_cli_without_standard_output(
     nothing to publish at all.
     """
     finished = subprocess.run(
-        _with_stream_closed(1, _child_command(target, flags, prelude)),
+        _with_stream_closed(1, _child_command(target, flags, prelude, command)),
         stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
@@ -236,7 +247,9 @@ def run_cli_without_standard_output(
     return finished.stderr, finished.returncode
 
 
-def run_cli_with_nobody_reading(target: Path, *flags: str, prelude: str = "") -> tuple[str, int]:
+def run_cli_with_nobody_reading(
+    target: Path | None, *flags: str, command: str = "run", prelude: str = ""
+) -> tuple[str, int]:
     """One invocation of elenctic whose standard output is a pipe with **no reader** on it: what it
     said on standard error, and the status it left with.
 
@@ -257,7 +270,7 @@ def run_cli_with_nobody_reading(target: Path, *flags: str, prelude: str = "") ->
     os.close(read_end)
     try:
         child = subprocess.Popen(
-            _child_command(target, flags, prelude),
+            _child_command(target, flags, prelude, command),
             stdout=write_end,
             stderr=subprocess.PIPE,
             text=True,
@@ -272,7 +285,7 @@ def run_cli_with_nobody_reading(target: Path, *flags: str, prelude: str = "") ->
 
 
 def run_cli_with_nobody_reading_diagnostics(
-    target: Path, *flags: str, report: Path, prelude: str = ""
+    target: Path | None, *flags: str, report: Path, command: str = "run", prelude: str = ""
 ) -> tuple[str, int]:
     """One invocation whose standard **error** is a pipe with no reader, while standard output is a
     real file being kept: what that file ended up holding, and the status the run left with.
@@ -286,7 +299,7 @@ def run_cli_with_nobody_reading_diagnostics(
     with report.open("wb") as kept:
         try:
             child = subprocess.Popen(
-                _child_command(target, flags, prelude),
+                _child_command(target, flags, prelude, command),
                 stdout=kept,
                 stderr=write_end,
                 env=child_environment(),
@@ -298,7 +311,9 @@ def run_cli_with_nobody_reading_diagnostics(
     return report.read_text(encoding="utf-8"), child.returncode
 
 
-def run_cli_with_neither_stream_reachable(target: Path, *flags: str) -> int:
+def run_cli_with_neither_stream_reachable(
+    target: Path | None, *flags: str, command: str = "run"
+) -> int:
     """One invocation with standard error **closed** and no reader on standard output: the status,
     and nothing else, because nothing else survives.
 
@@ -311,7 +326,7 @@ def run_cli_with_neither_stream_reachable(target: Path, *flags: str) -> int:
     os.close(read_end)
     try:
         child = subprocess.Popen(
-            _with_stream_closed(2, _child_command(target, flags, "")),
+            _with_stream_closed(2, _child_command(target, flags, "", command)),
             stdout=write_end,
             env=child_environment(),
         )
@@ -322,14 +337,20 @@ def run_cli_with_neither_stream_reachable(target: Path, *flags: str) -> int:
     return child.returncode
 
 
-def cli_help_text() -> str:
-    """What ``elenctic --help`` writes, having left with the status that says nothing went wrong.
+def cli_help_text(*command: str) -> str:
+    """What ``elenctic [command] --help`` writes, having left with the status that says nothing went
+    wrong.
 
     A call rather than a process, and rebinding the stream rather than the descriptor, because
     ``--help`` is answered inside ``parse_args`` and leaves from there — it never reaches the region
     where standard output is a descriptor, which is what forces the machine-readable tests to spawn
     a child. It lives here because the help is read by tests of two different subjects: what the
     help *is*, and whether what it says about the exit status is what the ladder produces.
+
+    With no argument this is the program's own help, which lists the commands and what a run leaves
+    with. With one it is that command's, which lists its dials — and the two are separate screens
+    because argparse makes them so, which is why a test about a dial has to name the command that
+    has it.
     """
     written = io.StringIO()
     from elenctic.cli import main
@@ -338,7 +359,7 @@ def cli_help_text() -> str:
     # for the help *leaves* rather than returning is the failure the `else` branch used to catch,
     # and it is what this refuses to pass without.
     with contextlib.redirect_stdout(written), pytest.raises(SystemExit) as leaving:
-        main(["--help"])
+        main([*command, "--help"])
     assert leaving.value.code == 0, f"asking for the help left with {leaving.value.code}"
     return written.getvalue()
 
@@ -361,7 +382,7 @@ def a_clock_the_deadline_has_already_passed_on(deadline: float) -> Callable[[], 
     return lambda: next(readings, deadline)
 
 
-def cli_help_sections() -> dict[str, list[str]]:
+def cli_help_sections(*command: str) -> dict[str, list[str]]:
     """``--help`` split at its headings: each heading mapped to the lines filed under it.
 
     A heading is what ``argparse`` writes at column zero ending in a colon. Reading the help by its
@@ -371,7 +392,7 @@ def cli_help_sections() -> dict[str, list[str]]:
     """
     filed: dict[str, list[str]] = {}
     under: list[str] = []
-    lines = cli_help_text().splitlines()
+    lines = cli_help_text(*command).splitlines()
     for index, line in enumerate(lines):
         if (
             line
@@ -385,7 +406,7 @@ def cli_help_sections() -> dict[str, list[str]]:
     return filed
 
 
-def cli_help_section(prefix: str) -> list[str]:
+def cli_help_section(prefix: str, *command: str) -> list[str]:
     """The lines under the one ``--help`` heading beginning with ``prefix``.
 
     By prefix rather than by exact title, so that a heading may say more about itself without every
@@ -394,7 +415,7 @@ def cli_help_section(prefix: str) -> list[str]:
     """
     matched = {
         heading: lines
-        for heading, lines in cli_help_sections().items()
+        for heading, lines in cli_help_sections(*command).items()
         if heading.startswith(prefix)
     }
     assert len(matched) == 1, f"{prefix!r} matched {sorted(matched)}"

@@ -12,6 +12,40 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ### Changed
 
+- **The command line takes a command: `elenctic run|explain|schema`.** Every invocation names one.
+
+  | 0.3.0 | 0.4.0 |
+  |---|---|
+  | `elenctic tests/` | `elenctic run tests/` |
+  | `elenctic tests/ --explain` | `elenctic explain tests/` |
+  | `elenctic --print-schema` | `elenctic schema` |
+
+  **What can break:** every existing invocation and every script that wraps one. `elenctic tests/`
+  is refused, naming the three commands. There is deliberately no default command — `elenctic
+  explain` would otherwise mean either the dry run or a corpus in a directory called `explain`, and
+  whatever settled that would be a precedence no surface states.
+
+  Three flags that each replaced the run were two booleans and a statement order, so asking for two
+  actions at once was answered by whichever branch was written first — a decision no surface
+  stated. It is now unspellable rather than refused.
+
+  **Each command carries the dials it reads, and no others.** The dry run accepted `--budget` and
+  `--deadline`, read neither, and still refused a value of either that was not a positive finite
+  number of seconds; the description accepted both, plus `--strict` and a target, and looked at none
+  of them — its help said as much, in a sentence. Those are now unrecognized arguments. A dry run
+  still has no machine-readable form in this version, so `--format` is one of `run`'s options and
+  `elenctic explain --help` says why.
+
+  `elenctic schema` takes **no target**, where `--print-schema` accepted one and ignored it: a
+  reader who names their corpus there was handed something unrelated with the status that says
+  nothing went wrong, and is now told instead.
+
+- **An allocation that fails while *writing* the packaged description no longer blames a corpus.**
+  One that failed while reading it was answered with the sentence about a description; one that
+  failed writing it fell through to the run's backstop, which asks the reader to run their corpus
+  with a memory limit and reduce what it grounds — of a command that walks no corpus and grounds
+  nothing.
+
 - **A `@cautious`/`@brave` claim over a literal the program does not declare observable is now
   refused, where it used to be FAILed.** These tags claim membership of ⋂ AS(P) and ⋃ AS(P), and
   elenctic decides them over the answer sets restricted to what the program shows. Where a claimed
@@ -103,7 +137,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
   **What can break:** code recovering a path by splitting `error.message` gets a wrong string
   rather than an error. Read `error.source`, and `error.line` beside it.
 
-  `elenctic --print-schema` prints the v2 description; the packaged file is
+  `elenctic schema` prints the v2 description; the packaged file is
   `elenctic/schema/output-v2.schema.json`.
 
 - **Library callers: what an exception's `str()` says has changed.** A fault now states the
@@ -193,7 +227,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
   writing anything, as the `elenctic` console entry always has. A stage that *does* its work in that
   state now completes as well, where the solve previously failed outright on the missing descriptor.
 
-- **A damaged output description is reported instead of published.** `elenctic --print-schema`
+- **A damaged output description is reported instead of published.** `elenctic schema`
   writes the packaged description of the machine-readable report. A packaging or vendoring step can
   drop that file, put something else in its way, re-encode it, or leave it half written; only the
   first two were reported. A file cut short was published as far as it went, and one cut to

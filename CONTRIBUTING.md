@@ -59,7 +59,7 @@ expected, and what elenctic said. If elenctic named the **harness** locus — `H
 one case, `harness error:` where it cost the whole run — please report it: that word means
 elenctic violated one of its own invariants, and it is ours to fix rather than yours.
 
-If you can, include the output of `elenctic <target> --format json`, which carries the same run in a
+If you can, include the output of `elenctic run <target> --format json`, which carries the same run in a
 form that does not depend on how your terminal rendered it.
 
 ## What the gate holds you to
@@ -124,7 +124,7 @@ produced. Only one block is mechanically held — the README's library example i
 executed by `tests/test_documentation.py` — so the rest is on you.
 
 **The corpus to try things against is the project's own.** `pixi run elenctic tests/krbook/encodings`
-runs four programs from the Gelfond and Kahl textbook end to end, and `--strict` and `--explain`
+runs four programs from the Gelfond and Kahl textbook end to end, and `--strict` and `elenctic explain`
 are the two flags worth trying on it first.
 
 **Names in the documents are checked.** A dotted name written as `` `elenctic.run_corpus` `` in the

@@ -30,7 +30,7 @@ def write(path: Path, text: str) -> Path:
 
 def test_cli_passes_a_satisfied_corpus(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
-    status = main([str(tmp_path / "encodings")])
+    status = main(["run", str(tmp_path / "encodings")])
     assert status == ExitStatus.OK
     assert "1/1 passed" in capsys.readouterr().out
 
@@ -41,7 +41,7 @@ def test_cli_fails_a_violated_corpus(tmp_path: Path, capsys: pytest.CaptureFixtu
         tmp_path / "encodings/g/e.lp",
         "a. #show a/0. #show b/0.\n% @expect sat\n% @cautious { b }\n",
     )
-    status = main([str(tmp_path / "encodings")])
+    status = main(["run", str(tmp_path / "encodings")])
     assert status == ExitStatus.NOT_PASSED
     assert "FAIL" in capsys.readouterr().out
 
@@ -52,7 +52,7 @@ def test_cli_reports_a_malformed_contract_against_its_own_file_with_exit_2(
     # A walked file that cannot be turned into a case is that file's problem, not the corpus's:
     # it is named and the other cases still run. Still the error register (2), never a verdict.
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @model { a }\n")  # no @expect
-    status = main([str(tmp_path / "encodings")])
+    status = main(["run", str(tmp_path / "encodings")])
     assert status == ExitStatus.USER_FAULT
     err = capsys.readouterr().err
     # Capitals and a dash say it cost this file and not the run; the word says a contract is what
@@ -66,7 +66,7 @@ def test_cli_reports_a_fault_that_cost_the_whole_run_with_exit_2(
 ) -> None:
     # The register above is per file; this one is genuinely about the corpus. A named target that
     # does not exist tests nothing, and there is no file to attribute it to.
-    status = main([str(tmp_path / "no_such_directory")])
+    status = main(["run", str(tmp_path / "no_such_directory")])
     assert status == ExitStatus.USER_FAULT
     # Lower case and a colon are what say the run ended here: no tally follows, because nothing ran.
     assert "discovery error: " in capsys.readouterr().err
@@ -76,7 +76,7 @@ def test_cli_explain_narrates_the_plan_without_solving(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @cautious { a }\n")
-    status = main([str(tmp_path / "encodings"), "--explain"])
+    status = main(["explain", str(tmp_path / "encodings")])
     out = capsys.readouterr().out
     assert status == ExitStatus.OK
     assert "CAUTIOUS_ALL (projects: no):" in out  # the run, its projection decision
@@ -88,7 +88,7 @@ def test_cli_explain_narrates_the_plan_without_solving(
 def test_cli_runs_the_krbook_dogfood_corpus(capsys: pytest.CaptureFixture[str]) -> None:
     # the vendored Gelfond programs pass end-to-end through the real console entry.
     krbook = Path(__file__).parent / "krbook" / "encodings"
-    status = main([str(krbook)])
+    status = main(["run", str(krbook)])
     assert status == ExitStatus.OK
     assert "4/4 passed" in capsys.readouterr().out
 
@@ -114,7 +114,7 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
         )
 
     monkeypatch.setattr(corpus, "runs_for", selectively_misroute)
-    status = main([str(tmp_path / "encodings")])
+    status = main(["run", str(tmp_path / "encodings")])
     captured = capsys.readouterr()
     assert (
         status == ExitStatus.HARNESS_FAULT
@@ -141,7 +141,7 @@ def test_cli_explain_narrates_reads_and_the_projection_decision(
         "&dom {1..3} = v(x). ok. #show ok/0.\n"
         "% @expect sat\n% @count 3\n% @elenctic solver clingcon\n",
     )
-    status = main([str(tmp_path / "encodings"), "--explain"])
+    status = main(["explain", str(tmp_path / "encodings")])
     out = capsys.readouterr().out
     assert status == ExitStatus.OK
     assert "reads {shown census}" in out  # @model narrates its read token
@@ -163,7 +163,7 @@ def test_cli_explain_leads_with_the_note_gloss(
         "% @note feasible within budget\n% @note and within the deadline\n"
         "ok.\n#show ok/0.\n",
     )
-    status = main([str(case), "--explain"])
+    status = main(["explain", str(case)])
     out = capsys.readouterr().out
     assert status == ExitStatus.OK
     first = out.index("note: feasible within budget")
@@ -180,7 +180,7 @@ def test_cli_explain_glosses_an_unsat_note(
     case = write(
         tmp_path / "u.lp", "% @expect unsat\n% @note no schedule fits the budget\na :- not a.\n"
     )
-    status = main([str(case), "--explain"])
+    status = main(["explain", str(case)])
     assert status == ExitStatus.OK
     assert "no schedule fits the budget" in capsys.readouterr().out
 
@@ -207,7 +207,7 @@ def test_the_dry_run_reports_a_misroute_it_meets_and_names_the_case(
         )
 
     monkeypatch.setattr(corpus, "runs_for", selectively_misroute)
-    status = main([str(tmp_path / "encodings"), "--explain"])
+    status = main(["explain", str(tmp_path / "encodings")])
     captured = capsys.readouterr()
     assert status == ExitStatus.HARNESS_FAULT, (
         "a plan that cannot be built is a harness error, never a clean dry run"
@@ -225,7 +225,7 @@ def test_the_dry_run_reports_a_file_it_could_not_use_and_still_narrates_the_rest
     # and the healthy case is still narrated.
     write(tmp_path / "encodings/good/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
     write(tmp_path / "encodings/bad/e.lp", '% @expect sat\n#include "no_such_library.lp".\n')
-    status = main([str(tmp_path / "encodings"), "--explain"])
+    status = main(["explain", str(tmp_path / "encodings")])
     captured = capsys.readouterr()
     assert status == ExitStatus.USER_FAULT, (
         "a file that will produce no verdict is a fault the author can fix"
@@ -238,9 +238,7 @@ def test_the_dry_run_reports_a_file_it_could_not_use_and_still_narrates_the_rest
     assert "@model" in captured.out, "the case that could be planned is still planned"
 
 
-@pytest.mark.parametrize(
-    "flags", [["--explain"], ["--explain", "--strict"]], ids=["plain", "strict"]
-)
+@pytest.mark.parametrize("flags", [[], ["--strict"]], ids=["plain", "strict"])
 def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], flags: list[str]
 ) -> None:
@@ -257,7 +255,7 @@ def test_the_dry_run_reports_no_tally_because_it_decides_nothing(
         tmp_path / "encodings/more/e.lp",
         "b. #show b/0.\n% @elenctic solver clingo\n% @expect sat\n% @model { b }\n",
     )
-    status = main([str(tmp_path / "encodings"), *flags])
+    status = main(["explain", str(tmp_path / "encodings"), *flags])
     captured = capsys.readouterr()
     assert status == ExitStatus.OK
     assert "passed" not in captured.out, "a dry run reports a plan, never a score"
@@ -300,7 +298,7 @@ def test_a_duration_that_is_not_a_positive_finite_number_of_seconds_is_refused(
     # sends the reader back to guess at the one thing they came to be told.
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
 
-    status = main([str(tmp_path / "encodings"), flag, value])
+    status = main(["run", str(tmp_path / "encodings"), flag, value])
 
     captured = capfd.readouterr()
     assert status == ExitStatus.USER_FAULT, (
@@ -331,7 +329,7 @@ def test_the_remedy_a_refused_duration_offers_is_the_one_that_flag_has(
     # is exactly the reader for whom the wrong remedy is worse than none.
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
 
-    assert main([str(tmp_path / "encodings"), flag, "0"]) == ExitStatus.USER_FAULT
+    assert main(["run", str(tmp_path / "encodings"), flag, "0"]) == ExitStatus.USER_FAULT
 
     assert remedy in capfd.readouterr().err
 
@@ -343,7 +341,7 @@ def test_a_large_finite_duration_is_the_remedy_and_is_accepted(
     # no practical limit asks for a large finite number, so that number must run the corpus.
     write(tmp_path / "encodings/g/e.lp", "a. #show a/0.\n% @expect sat\n% @model { a }\n")
 
-    status = main([str(tmp_path / "encodings"), "--budget", "1e9", "--deadline", "1e9"])
+    status = main(["run", str(tmp_path / "encodings"), "--budget", "1e9", "--deadline", "1e9"])
 
     assert status == ExitStatus.OK
     assert "1/1 passed" in capfd.readouterr().out

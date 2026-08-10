@@ -218,7 +218,7 @@ class ExitStatus(IntEnum):
 
     # "nothing went wrong" rather than "every case passed": a dry run decides nothing and leaves
     # with this, and so does a corpus that held no cases. Both are vacuously right, and neither
-    # passed anything — a reader who ran --explain and looked the status up deserves better than
+    # passed anything — a reader who ran the dry run and looked the status up deserves better than
     # being told every case passed.
     OK = (0, "nothing went wrong")
     NOT_PASSED = (1, "a case decided wrong, or could not be decided")
@@ -386,10 +386,10 @@ class Invocation:
     """
 
     # Defaulted as the command line defaults them, so the two describe the same invocation and a
-    # caller who wants what `elenctic <target>` does writes `Invocation(target=…)` and nothing else.
-    # `target` is the one with no default, because there is no corpus to run by convention from a
-    # library: the command line's own default is a convention of *its* surface, and inheriting it
-    # here would run a directory the caller never named.
+    # caller who wants what `elenctic run <target>` does writes `Invocation(target=…)` and nothing
+    # else. `target` is the one with no default, because there is no corpus to run by convention
+    # from a library: the command line's own default is a convention of *its* surface, and
+    # inheriting it here would run a directory the caller never named.
     target: Path
     strict: bool = False
     budget: float = TIME_BUDGET
