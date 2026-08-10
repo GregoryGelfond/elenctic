@@ -281,7 +281,7 @@ def test_an_unproven_optimum_is_never_built() -> None:
 def test_an_unsatisfiable_result_from_an_unfinished_search_is_refused(
     conclusion: Conclusion,
 ) -> None:
-    with pytest.raises(HarnessError):
+    with pytest.raises(HarnessError, match="unsatisfiable result reports a search"):
         SolveOutcome(Inconsistent(), conclusion)
 
 
@@ -302,7 +302,7 @@ def test_no_arm_may_be_built_without_the_search_behind_it(determination: Determi
     # come.
     with pytest.raises(TypeError):
         SolveOutcome(determination)  # type: ignore[call-arg]
-    with pytest.raises(HarnessError):
+    with pytest.raises(HarnessError, match="its search ended, and this one reports None"):
         SolveOutcome(determination, None)  # type: ignore[arg-type]
     assert SolveOutcome(determination, Conclusion.EXHAUSTED).conclusion is Conclusion.EXHAUSTED
 

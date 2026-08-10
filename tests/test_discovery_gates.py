@@ -238,7 +238,9 @@ def test_the_undeclared_refusal_states_what_is_read_what_is_declared_and_what_to
     # still put something in the output, and a sentence about the output would be false for it —
     # which is exactly the defect this whole refusal was rewritten to stop repeating.
     exp = parse("% @expect sat\n% @query no { reachable(a) }\n")
-    with pytest.raises(DiscoveryError) as caught:
+    with pytest.raises(
+        DiscoveryError, match="reads -reachable/1, which the program does not declare observable"
+    ) as caught:
         check_program(exp, _facts(shown=_shows(("reachable", 1))), "clingo", WHERE)
     assert str(caught.value) == (
         "case.lp:2: this @query reads -reachable/1, which the program does not declare "
@@ -270,7 +272,9 @@ def test_the_displayed_refusal_states_the_fault_and_a_remedy_that_keeps_the_outp
     # a real corpus, that advice broke eight cases whose contracts compare a whole observable.
     exp = parse("% @expect sat\n% @query yes { reachable(a) }\n")
     shown = _shows(("-reachable", 1), displayed=frozenset({("reachable", 1)}))
-    with pytest.raises(DiscoveryError) as caught:
+    with pytest.raises(
+        DiscoveryError, match="reads reachable/1, which the program displays with a"
+    ) as caught:
         check_program(exp, _facts(shown=shown), "clingo", WHERE)
     assert str(caught.value) == (
         "case.lp:2: this @query reads reachable/1, which the program displays with a "
@@ -293,7 +297,9 @@ def test_the_displayed_refusal_agrees_in_number_when_several_are_named() -> None
     exp = parse("% @expect sat\n% @query yes { reachable(a), blocked(b) }\n")
     displayed = frozenset({("reachable", 1), ("blocked", 1)})
     shown = _shows(_NR, _NB, displayed=displayed)
-    with pytest.raises(DiscoveryError) as caught:
+    with pytest.raises(
+        DiscoveryError, match="reads blocked/1, reachable/1, which the program displays with"
+    ) as caught:
         check_program(exp, _facts(shown=shown), "clingo", WHERE)
     message = str(caught.value)
     assert "displays with `#show <term> : <body>.` directives" in message, message

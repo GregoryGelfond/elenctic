@@ -177,7 +177,7 @@ def test_every_unfinished_conclusion_has_a_diagnostic() -> None:
     described = {Conclusion.EXHAUSTED}  # a finished search needs no excuse
     for conclusion in Conclusion:
         if conclusion in described:
-            with pytest.raises(HarnessError):
+            with pytest.raises(HarnessError, match="finished needs no partial-reading diagnostic"):
                 _partial_message(conclusion)
         else:
             assert _partial_message(conclusion), f"{conclusion.name} has no diagnostic"

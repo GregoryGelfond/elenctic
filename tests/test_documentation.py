@@ -24,6 +24,7 @@ import contextlib
 import importlib
 import io
 import json
+import pkgutil
 import re
 import shlex
 import tomllib
@@ -1264,4 +1265,68 @@ def test_every_module_allowed_to_print_is_one_that_does() -> None:
     assert not silent, (
         f"waived from T20 and printing nothing: {silent}. The list is read as the modules meant to "
         f"write to a terminal, so an entry that no longer does is a sentence about the wrong set"
+    )
+
+
+def _every_exception_this_package_defines() -> set[str]:
+    """Each exception class elenctic defines, under every dotted name a reader can import it by.
+
+    Both names, because ``ruff`` resolves a class to the qualified name the *import* spells and does
+    not follow a re-export: a test writing ``from elenctic.program import ProgramError`` is asking
+    about ``elenctic.program.ProgramError``, and one writing ``from elenctic import ProgramError``
+    is asking about ``elenctic.ProgramError``. A list carrying only the defining module's spelling
+    holds every test in the suite today and none of the ones that import from the curated surface,
+    which is the half a reader is likelier to reach for.
+
+    Walked rather than read off ``__all__``: what the setting is about is what the package
+    *defines*, and a class held back from the curated surface is still one a test can import and
+    still one a bare ``raises`` passes on.
+    """
+    defined = {
+        obj
+        for module in [elenctic, *_submodules()]
+        for obj in vars(module).values()
+        if isinstance(obj, type)
+        and issubclass(obj, BaseException)
+        # The package itself as well as everything under it: a class defined in ``__init__.py``
+        # carries the bare package name, and a prefix test alone would let that one class out of
+        # the derivation without anything saying so.
+        and obj.__module__.split(".")[0] == elenctic.__name__
+    }
+    return {f"{obj.__module__}.{obj.__qualname__}" for obj in defined} | {
+        f"{elenctic.__name__}.{obj.__qualname__}"
+        for obj in defined
+        if obj.__qualname__ in elenctic.__all__
+    }
+
+
+def _submodules() -> list[object]:
+    """Every module inside the package, imported, so walking their contents reaches them all."""
+    return [
+        importlib.import_module(found.name)
+        for found in pkgutil.walk_packages(elenctic.__path__, f"{elenctic.__name__}.")
+    ]
+
+
+def test_the_lint_asks_for_a_match_on_every_exception_this_package_defines() -> None:
+    # A require-list is an allow-list wearing the other sign, and it decays the same way: a class
+    # added next year is one the gate does not ask about, which is exactly how the convention this
+    # setting exists to enforce came to be honoured in some places and not others. The guide has
+    # asked for a `match=` on elenctic's own families for two releases; over that time the count of
+    # `pytest.raises` written without one grew rather than shrank, because nothing could ask.
+    #
+    # So the setting is derived and checked rather than maintained. What it names is a property of
+    # the package, and the package is asked for it here rather than a reader being trusted to
+    # remember. The message prints the set it derived, so the repair is a paste rather than a hunt.
+    manifest = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    asked = manifest["tool"]["ruff"]["lint"]["flake8-pytest-style"]
+    required = set(asked["raises-extend-require-match-for"])
+    assert required, "the setting is empty, and every exception this package defines is unasked"
+
+    defined = _every_exception_this_package_defines()
+    assert required == defined, (
+        "the lint and the package disagree about which exceptions must be matched on.\n"
+        f"unasked about: {sorted(defined - required)}\n"
+        f"named and undefined: {sorted(required - defined)}\n"
+        f"the setting should read:\n{sorted(defined)}"
     )

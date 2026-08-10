@@ -274,7 +274,7 @@ def test_shape_for_selects_the_projected_shape_only_for_projecting_modes() -> No
 def test_run_rejects_a_misrouted_check_at_construction() -> None:
     # @count reads the full census; CAUTIOUS_ALL does not populate it — rejected before any solve,
     # as a RoutingError (a harness bug), never a verdict; the message names the field, check, mode.
-    with pytest.raises(RoutingError) as exc:
+    with pytest.raises(RoutingError, match=r"reads \{full census\}, which CAUTIOUS_ALL") as exc:
         Run(Mode.CAUTIOUS_ALL, (checks.count_is(2, line=1),))
     message = str(exc.value)
     assert "full census" in message  # the missing field
@@ -287,7 +287,7 @@ def test_wiring_rule_catches_a_bad_projection_at_construction() -> None:
     # census), is rejected at construction: populates(ENUM_ALL, projects_to_shown=True) sheds the
     # full-census token, so the wiring rule fires before any solve — no should_project mis-derive
     # can reach one.
-    with pytest.raises(RoutingError) as exc:
+    with pytest.raises(RoutingError, match=r"reads \{full census\}, which ENUM_ALL") as exc:
         Run(Mode.ENUM_ALL, (checks.count_is(2, line=1),), project=True, theory_in_force=True)
     message = str(exc.value)
     assert "full census" in message  # the missing token

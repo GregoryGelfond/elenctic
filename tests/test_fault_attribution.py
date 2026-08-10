@@ -40,7 +40,9 @@ def test_an_unresolvable_include_is_the_one_fault_that_names_include_paths(
 ) -> None:
     # The remedy is real here, so it is offered here.
     case = _write(tmp_path, "case.lp", '#include "no_such_library.lp".\n')
-    with pytest.raises(ProgramError) as caught:
+    with pytest.raises(
+        ProgramError, match=r"cannot resolve the program: .*file could not be opened"
+    ) as caught:
         inspect((case,))
     assert "#include" in str(caught.value)
 
@@ -58,7 +60,7 @@ def test_a_fault_that_is_not_about_includes_does_not_blame_includes(
     # valid programs clingo runs, refused by a defect in elenctic's own walk that the region
     # spanning both was reporting as theirs.
     case = _write(tmp_path, "case.lp", body)
-    with pytest.raises(ProgramError) as caught:
+    with pytest.raises(ProgramError, match=r"cannot resolve the program: .*syntax error") as caught:
         inspect((case,))
     assert "#include" not in str(caught.value), "a remedy is offered only when it is the remedy"
 
@@ -75,7 +77,9 @@ def test_a_file_name_that_is_not_utf8_is_the_corpus_author_s_fault(tmp_path: Pat
     # cloned onto a machine that cannot even write it).
     named = tmp_path / "caf\udce9.lp"
 
-    with pytest.raises(ProgramError) as caught:
+    with pytest.raises(
+        ProgramError, match="cannot open the program: the file name is not valid UTF-8"
+    ) as caught:
         inspect((named,))
     assert "UTF-8" in str(caught.value)
 
@@ -123,6 +127,6 @@ def test_an_objective_that_grounds_away_is_the_program_s_fault_not_ours(tmp_path
     case = _write(tmp_path, "empty_objective.lp", "#minimize { X : p(X) }.\nq.\n#show q/0.\n")
     assert inspect((case,)).has_optimization, "the objective is syntactically present"
 
-    with pytest.raises(ProgramError) as caught:
+    with pytest.raises(ProgramError, match="optimization mode produced no cost vector") as caught:
         run_clingo(Mode.OPTIMAL, files=(case,))
     assert "ground" in str(caught.value).lower()

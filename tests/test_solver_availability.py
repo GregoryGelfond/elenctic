@@ -42,9 +42,13 @@ def test_a_missing_solver_answers_to_both_idioms(monkeypatch: pytest.MonkeyPatch
     # A caller following elenctic's error families and a caller following Python's convention for
     # a missing optional dependency should both catch this without knowing about the other.
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
-    with pytest.raises(ImportError):
+    # Written by hand, because the lint cannot ask for it here and this is the one place that
+    # matters: the class raised is elenctic's own, caught through the built-in arm it also inherits,
+    # so it is outside both the families ruff asks about by default and the ones the setting names.
+    # The spelling is the subject of the test and stays; the assertion is what closes the gap.
+    with pytest.raises(ImportError, match="clingcon is not installed"):
         check_solver_available("clingcon")
-    with pytest.raises(DiscoveryError):
+    with pytest.raises(DiscoveryError, match="clingcon is not installed"):
         check_solver_available("clingcon")
     assert issubclass(SolverUnavailableError, ImportError)
     assert issubclass(SolverUnavailableError, DiscoveryError)

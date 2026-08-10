@@ -284,7 +284,9 @@ def test_a_ground_fault_inside_an_escaping_library_discloses_nothing_from_it(
     root = tmp_path / "corpus"
     case = _write(root / "case.lp", _LOADS.format(include='"../outside/secret.lp"'))
 
-    with pytest.raises(ContainmentError) as caught:
+    with pytest.raises(
+        ContainmentError, match=r"secret\.lp, which is outside the corpus"
+    ) as caught:
         run_clingo(Mode.ENUM_ALL, files=(case,), within=Boundary(root.resolve()))
     said = str(caught.value)
     assert "secret.lp" in said, "naming the escaping path is the diagnostic"
@@ -298,7 +300,7 @@ def test_a_ground_fault_inside_an_escaping_library_discloses_nothing_from_it(
     inside = tmp_path / "corpus2"
     _write(inside / "lib/secret.lp", _UNGROUNDABLE)
     contained = _write(inside / "case.lp", _LOADS.format(include='"lib/secret.lp"'))
-    with pytest.raises(ProgramError) as published:
+    with pytest.raises(ProgramError, match=r"cannot run the program: .*secret\.lp:\d") as published:
         run_clingo(Mode.ENUM_ALL, files=(contained,), within=Boundary(inside.resolve()))
     assert not isinstance(published.value, ContainmentError), "this one reaches past nothing"
     assert "secret.lp:2:" in str(published.value), "a file inside the corpus is diagnosed in full"
@@ -327,7 +329,7 @@ def test_the_boundary_a_case_was_discovered_under_reaches_its_solve(tmp_path: Pa
     # `inspect(files, within=None)`, and it is what makes the refusal above attributable to the
     # boundary rather than to anything else about the fixture.
     unbounded = Case(path, "clingo", Sat(expect_line=1), Unrestricted())
-    with pytest.raises(ProgramError) as unheld:
+    with pytest.raises(ProgramError, match=r"cannot run the program: .*secret\.lp:\d") as unheld:
         run_case(unbounded)
     assert not isinstance(unheld.value, ContainmentError), "no boundary, no containment rule"
     assert "confidential_marker" in str(unheld.value), "and so nothing is withheld"
@@ -380,7 +382,9 @@ def test_the_theory_backend_withholds_a_parse_diagnostic_too(tmp_path: Path) -> 
     _write(tmp_path / "outside/secret.lp", "ok(1).\nconfidential_marker this is not asp\n")
     root = tmp_path / "corpus"
     case = _write(root / "case.lp", _LOADS.format(include='"../outside/secret.lp"'))
-    with pytest.raises(ContainmentError) as caught:
+    with pytest.raises(
+        ContainmentError, match=r"secret\.lp, which is outside the corpus"
+    ) as caught:
         run_clingcon(Mode.ENUM_ALL, files=(case,), within=Boundary(root.resolve()))
     assert "secret.lp" in str(caught.value), "the escaping path is named"
     assert "confidential_marker" not in str(caught.value), "and its contents are not"

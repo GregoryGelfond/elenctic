@@ -88,6 +88,42 @@ select = [
 # comments and docstrings; the ambiguous-Unicode (homoglyph) rules would flag it.
 ignore = ["RUF001", "RUF002", "RUF003"]
 
+[tool.ruff.lint.flake8-pytest-style]
+# PT011 asks for a `match=` on the broad built-in families by default, and cannot ask on a family it
+# has never heard of — so elenctic's own exceptions were left to a sentence in CONTRIBUTING.md, and
+# a convention nobody could enforce decayed exactly as one does: the count of `pytest.raises`
+# written without a `match=` grew across two releases rather than shrinking.
+#
+# Both spellings of each class, because ruff resolves a name to whatever the import statement spells
+# and does not follow a re-export: a test importing from the defining module and one importing from
+# the curated surface are asking about two different dotted names, and only one of them would be
+# asked about otherwise.
+#
+# This list is DERIVED, not maintained. `test_the_lint_asks_for_a_match_on_every_exception_this
+# _package_defines` walks the package and requires this to be exactly what it finds, so a ninth
+# exception class fails that check rather than quietly falling outside the gate — and the failure
+# prints the list to paste. Narrow built-ins are deliberately outside it: what is asked for is
+# ruff's own broad families plus what this package defines, and a synthetic `ZeroDivisionError`
+# raised by a test double belongs to neither.
+raises-extend-require-match-for = [
+    "elenctic.ContainmentError",
+    "elenctic.ContractError",
+    "elenctic.DiscoveryError",
+    "elenctic.HarnessError",
+    "elenctic.ProgramError",
+    "elenctic.RoutingError",
+    "elenctic.SeamError",
+    "elenctic.SolverUnavailableError",
+    "elenctic.discovery.DiscoveryError",
+    "elenctic.discovery.SolverUnavailableError",
+    "elenctic.expectation.ContractError",
+    "elenctic.program.ContainmentError",
+    "elenctic.program.ProgramError",
+    "elenctic.result.HarnessError",
+    "elenctic.result.SeamError",
+    "elenctic.run.RoutingError",
+]
+
 [tool.ruff.lint.isort]
 # The curated surface re-exports each name as itself (`X as X`), which is how a type checker is told
 # that a name imported into a package's __init__ is part of its public API — without it, every

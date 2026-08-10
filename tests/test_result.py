@@ -283,15 +283,24 @@ def test_a_mis_shaped_result_is_reported_the_way_the_runner_can_survive() -> Non
     # cannot be right costs one case's result. A ValueError matches no per-case arm, reaches the
     # outermost frame, and ends the run — losing every case still to come, which is the shape the
     # per-case registers exist to prevent.
-    for build in (
-        lambda: Optimum(()),
-        lambda: ConsistentEnumeration(()),
-        lambda: ConsistentShownCensus(frozenset()),
-        lambda: ConsistentOptimalEnumeration((), Optimum((1,))),
-        lambda: ConsistentShownOptimalCensus(frozenset(), Optimum((1,))),
-        lambda: SolveOutcome(Inconsistent(), Conclusion.INTERRUPTED),
+    # Each carries the invariant it is meant to break, so the family alone is not what is asserted:
+    # six builders sharing one bare `raises` would all pass on whichever guard happened to fire
+    # first, including one firing for a reason none of these is about.
+    for build, breached in (
+        (lambda: Optimum(()), "priority-ordered cost vector"),
+        (lambda: ConsistentEnumeration(()), "ConsistentEnumeration carries"),
+        (lambda: ConsistentShownCensus(frozenset()), "ConsistentShownCensus carries"),
+        (lambda: ConsistentOptimalEnumeration((), Optimum((1,))), "ConsistentOptimalEnumeration"),
+        (
+            lambda: ConsistentShownOptimalCensus(frozenset(), Optimum((1,))),
+            "ConsistentShownOptimalCensus carries",
+        ),
+        (
+            lambda: SolveOutcome(Inconsistent(), Conclusion.INTERRUPTED),
+            "unsatisfiable result reports a search",
+        ),
     ):
-        with pytest.raises(HarnessError):
+        with pytest.raises(HarnessError, match=breached):
             build()
 
 
@@ -311,7 +320,7 @@ def test_shown_census_accessor_is_total_over_both_enumeration_shapes_and_agrees(
 def test_observables_of_narrows_to_the_full_shape_only() -> None:
     # The full census (with multiplicity/assignment) is readable only off the full shape; reading it
     # off the projected shown-only shape is a SeamError by construction.
-    with pytest.raises(SeamError):
+    with pytest.raises(SeamError, match="full census read off ConsistentShownCensus"):
         observables_of(ConsistentShownCensus(frozenset({frozenset({Function("a")})})))
 
 
@@ -327,5 +336,7 @@ def test_projected_optimal_shape_carries_optimum_and_withholds_the_full_class() 
     shape = ConsistentShownOptimalCensus(frozenset({frozenset({Function("a")})}), Optimum((1,)))
     assert optimum_of(shape).cost == (1,)
     assert shown_optimal_census_of(shape) == frozenset({frozenset({Function("a")})})
-    with pytest.raises(SeamError):
+    with pytest.raises(
+        SeamError, match="full optimal census read off ConsistentShownOptimalCensus"
+    ):
         optimal_observables_of(shape)  # the full optimal class is withheld

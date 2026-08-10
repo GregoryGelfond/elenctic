@@ -44,7 +44,7 @@ def test_a_harness_bug_is_not_a_program_fault() -> None:
 def test_an_ungroundable_program_is_a_program_fault(tmp_path: Path) -> None:
     source = tmp_path / "unsafe.lp"
     source.write_text(_UNSAFE, encoding="utf-8")
-    with pytest.raises(ProgramError) as caught:
+    with pytest.raises(ProgramError, match=r"cannot run the program: .*unsafe variables") as caught:
         run_clingo(Mode.ENUM_ALL, files=(source,))
     # The message has to carry what its author needs in order to fix it. clingo reports the
     # offending line and the unsafe variable through its logger; the exception it raises says only
@@ -59,7 +59,7 @@ def test_an_ungroundable_program_is_never_unsatisfiable(tmp_path: Path) -> None:
     # against a broken program — the worst outcome available to a testing framework.
     source = tmp_path / "unsafe.lp"
     source.write_text(_UNSAFE, encoding="utf-8")
-    with pytest.raises(ProgramError):
+    with pytest.raises(ProgramError, match=r"cannot run the program: .*unsafe variables"):
         run_clingo(Mode.DEFAULT, files=(source,))
 
 
@@ -99,7 +99,7 @@ def test_an_ungroundable_theory_program_is_a_program_fault(tmp_path: Path) -> No
     # only through the plain clingo path.
     source = tmp_path / "unsafe-theory.lp"
     source.write_text("&sum { x } = 1.\n" + _UNSAFE, encoding="utf-8")
-    with pytest.raises(ProgramError) as caught:
+    with pytest.raises(ProgramError, match=r"cannot run the program: .*unsafe variables") as caught:
         run_clingcon(Mode.ENUM_ALL, files=(source,))
     assert "unsafe" in str(caught.value)
     assert "unsafe-theory.lp" in str(caught.value)
@@ -164,6 +164,6 @@ def test_the_callback_guard_records_the_original_exception() -> None:
     # The guard's own contract, exercised without a solver: it re-raises on the way out (so the
     # solve still aborts) and keeps the original, which is what the driver reads back afterwards.
     guard = _CallbackGuard(_exploding)
-    with pytest.raises(HarnessError):
+    with pytest.raises(HarnessError, match="seam breach"):
         guard(None)  # type: ignore[arg-type]
     assert isinstance(guard.failure, HarnessError)

@@ -195,7 +195,7 @@ def test_a_whole_contract_fault_has_no_line_to_name(tmp_path: Path) -> None:
     # The other footing: some contract faults are about the contract rather than about one of its
     # lines, and inventing a line for them would point a reader at a tag that is not the problem.
     case = write(tmp_path / "bad.lp", "% @model { a }\n")  # no @expect
-    with pytest.raises(ContractError) as caught:
+    with pytest.raises(ContractError, match="must declare exactly one @expect") as caught:
         discover(case)
     assert caught.value.line is None
     assert str(caught.value) == caught.value.reason, "nothing to site it at, so nothing prefixed"

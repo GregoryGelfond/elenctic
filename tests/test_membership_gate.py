@@ -158,6 +158,6 @@ def test_a_claim_the_program_can_answer_is_answered(tmp_path: Path, name: str, b
 
 def test_the_refusal_sites_the_contract_line_it_is_about(tmp_path: Path) -> None:
     body = f"% @expect sat\n%\n%\n% @cautious {{ p(x) }}\n{_PLAIN}#show q/1.\n"
-    with pytest.raises(DiscoveryError) as raised:
+    with pytest.raises(DiscoveryError, match=r"sited\.lp:4: this @cautious reads p/1") as raised:
         discover(_write(tmp_path, "sited.lp", body))
     assert raised.value.line == 4, (raised.value.line, str(raised.value))

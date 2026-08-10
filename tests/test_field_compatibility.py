@@ -114,7 +114,12 @@ def test_populates_matches_each_modes_shape_via_the_accessor_seam() -> None:
             if field in fields:
                 accessor(shape)  # readable — no SeamError
             else:
-                with pytest.raises(SeamError):
+                # Both halves of the refusal, because both are what this loop varies: an accessor
+                # that reported the wrong field would satisfy a pattern naming only the shape, and
+                # the field is the thing the iteration is about.
+                with pytest.raises(
+                    SeamError, match=rf"{field.value} read off {type(shape).__name__}"
+                ):
                     accessor(shape)
 
 
@@ -182,5 +187,5 @@ def test_forgotten_full_declaration_is_a_seam_error_not_a_silent_wrong_verdict()
         decide=decide,
     )
     projected = ConsistentShownCensus(frozenset({frozenset({Function("a")})}))
-    with pytest.raises(SeamError):
+    with pytest.raises(SeamError, match="full census read off ConsistentShownCensus"):
         liar(decided(projected))
