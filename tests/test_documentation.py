@@ -351,6 +351,29 @@ def test_the_number_of_modules_the_contributor_guide_states_is_the_number_there_
     )
 
 
+def test_the_number_of_textbook_programs_the_contributor_guide_states_is_the_number_there_are() -> (
+    None
+):
+    # The same decay as the count above, in the same document, and the one that was still unchecked:
+    # vendoring another textbook program is not an edit to a document either. The guide states this
+    # count twice — once as what the corpus is for trying things against, once as what `tests/`
+    # vendors — so both are read, and a patch that adds a program is told about both.
+    programs = [path for path in (_ROOT / "tests/krbook/encodings").iterdir() if path.is_dir()]
+    assert len(programs) < len(_IN_WORDS), (
+        f"{len(programs)} programs is past the end of the table this test spells numbers with"
+    )
+    stated = _IN_WORDS[len(programs)]
+    adrift = [
+        phrase
+        for phrase in (f"runs {stated} programs", f"vendors {stated} programs")
+        if phrase not in _CONTRIBUTING
+    ]
+    assert not adrift, (
+        f"tests/krbook/encodings holds {len(programs)} programs, and the contributor guide does "
+        f"not say so in {adrift}: {sorted(path.name for path in programs)}"
+    )
+
+
 def test_every_module_allowed_to_print_is_one_that_does() -> None:
     # The other direction from the one ruff enforces. A module that prints without a waiver fails
     # the gate loudly; a waiver that outlives the print it was written for fails nothing, and the

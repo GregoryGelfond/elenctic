@@ -25,9 +25,13 @@ it is.
 ## Getting set up
 
 The toolchain is pinned with [pixi](https://pixi.sh), which brings its own Python, clingo and
-clingcon — you do not need any of them installed already. **Linux and macOS**: those are the
-platforms the pinned environment resolves for, and the two CI runs on. Windows is not in the set,
-so `pixi install` will fail there rather than build something untested.
+clingcon — you do not need any of them installed already. The pinned environment resolves for
+**macOS on Apple silicon and Intel, and Linux on x86-64** — `osx-arm64`, `osx-64` and `linux-64`,
+which is the list in `pixi.toml` — and CI runs on Linux and macOS. Anything else, Windows and
+64-bit ARM Linux included, is not in the set, so `pixi install` will fail there rather than build
+something untested. If you want to work on a platform that is missing, say so on the issue
+tracker: adding one is a change to the lock file and the CI matrix, not something to carry as a
+local patch.
 
 ```console
 $ git clone https://github.com/GregoryGelfond/elenctic
@@ -47,7 +51,13 @@ $ pixi run test         # pytest
 $ pixi run lint         # ruff check + ruff format --check
 $ pixi run typecheck    # mypy --strict
 $ pixi run cov          # pytest with a coverage report
+$ pixi run fmt          # apply the formatting `lint` checks for
 ```
+
+`lint` reports formatting it will not apply, so `fmt` is the other half of it: `pixi run fmt` then
+`pixi run lint` is the whole of that loop. For the lint half, `ruff check --fix` applies what can
+be applied safely. **Do not reach for `--unsafe-fixes` to make the gate green** — the fix it unlocks
+for `T20` is to *delete* the `print`, which is not what anyone means by fixing a lint about it.
 
 **Python 3.14 is a deliberate floor**, not an accident of what was current. The implementation uses
 3.14 idioms that are load-bearing rather than decorative, so patches may use them freely.
@@ -59,8 +69,8 @@ expected, and what elenctic said. If elenctic named the **harness** locus — `H
 one case, `harness error:` where it cost the whole run — please report it: that word means
 elenctic violated one of its own invariants, and it is ours to fix rather than yours.
 
-If you can, include the output of `elenctic run <target> --format json`, which carries the same run in a
-form that does not depend on how your terminal rendered it.
+If you can, include the output of `elenctic run <target> --format json`, which carries the same run
+in a form that does not depend on how your terminal rendered it.
 
 ## What the gate holds you to
 
@@ -78,8 +88,9 @@ rather than asking for new work. Two exceptions are worth knowing about before t
 - **`T20` forbids `print`** everywhere except the modules that are meant to write to a terminal —
   the command line, the renderer that turns a run into prose, the streams layer the command line
   hands standard output over through, and the four whose documented
-  `python -m elenctic.<module> <file.lp>` entry prints an inspection of one stage. They are listed in `pyproject.toml`. If you want to see something while debugging, use
-  a module logger; the library writes to no stream, and that is a guarantee its callers rely on.
+  `python -m elenctic.<module> <file.lp>` entry prints an inspection of one stage. They are listed
+  in `pyproject.toml`. If you want to see something while debugging, use a module logger; the
+  library writes to no stream, and that is a guarantee its callers rely on.
 - **`RET501` is switched off in `corpus.py`**, and only there. The observer protocols spell their
   no-op default bodies `return None`, which the rule objects to — but mypy treats a body that is
   only a docstring as *implicitly abstract*, which would make every announcement mandatory for
@@ -127,14 +138,27 @@ executed by `tests/test_documentation.py` — so the rest is on you.
 runs four programs from the Gelfond and Kahl textbook end to end; `--strict` and the `explain`
 command are the two things worth trying on it first.
 
-**Names in the documents are checked.** A dotted name written as `` `elenctic.run_corpus` `` in the
-README or changelog is verified to name the place that thing actually lives — so writing them dotted
-gets you that check for free.
+**Names in the documents are checked, and so are the command lines.** A dotted name written as
+`` `elenctic.run_corpus` `` in the README, this guide or the changelog is verified to name the
+place that thing actually lives — so writing them dotted gets you that check for free. Every
+command line either document shows a reader is also run past the argument parser and must be one it
+accepts, so a flag that moves cannot leave an example behind. What counts as one: a line at a `$`
+prompt, and a backticked span read from the word `elenctic` onward — including where it sits inside
+a longer command, so the `pixi run elenctic` form a few paragraphs up is checked too. The bare
+name carrying no arguments is not a command line, since that is also how these documents write the
+program's name. The changelog is deliberately outside this second check: it has to be able to name
+the spelling that *stopped* working, which is the one thing the check forbids.
 
 ## Where things are
 
-`src/elenctic/` holds eighteen modules arranged as a pipeline a reader can walk in order, plus the
-package surface in `__init__.py`.
+`src/elenctic/` holds eighteen modules, plus the package surface in `__init__.py`. They form an
+**acyclic layered graph**, which is the property worth knowing before you decide where something
+belongs: `display`, `registry`, `streams` and `terms` are the shared vocabulary at the bottom and
+depend on nothing else here; `cli` is alone at the top; and between them each module depends only
+on layers below it. So there is an order a reader can walk, and a patch that introduces a cycle is
+a patch that will be asked to move something. It is not a straight line — several modules sit
+side by side on the same layer — so no single module is "the top" of it but `cli`.
+
 Each of `expectation`, `run`, `discovery` and `solvers` is runnable on its own for inspection:
 
 ```console
@@ -144,11 +168,18 @@ $ pixi run python -m elenctic.discovery <file-or-dir>    # the discovered cases
 $ pixi run python -m elenctic.solvers <MODE> <file.lp>   # one solve's outcome
 ```
 
-`solvers.py` is the only impure module, and the boundary is sharper than "it uses clingo" — several
-modules do, for symbols and for parsing. It is the only one under `src/elenctic/` that *runs a
-solve*: nothing else there constructs a `Control` or calls `.solve()`, and everything above it is a
-pure function of what it returned. (`tests/spikes/` does drive clingo directly, deliberately — its
-whole job is to confirm the solver behaviour elenctic relies on.) A patch that puts a solve somewhere else is a patch that will be asked to move it.
+`solvers.py` is the only module that **runs a solve**, and that boundary is sharper than "it uses
+clingo" — seven modules do, three different ways. Only `solvers.py` constructs a `Control`;
+`program.py` and `terms.py` use clingo's *parser* (to read a program's text and to read one term
+out of a contract); and those two plus `checks.py`, `expectation.py`, `query.py` and `result.py`
+use clingo's *symbol* vocabulary, which is values rather than solving. Everything above
+`solvers.py` is a pure function of what it returned, and a patch that puts a solve somewhere else
+under `src/elenctic/` is a patch that will be asked to move it.
+
+That rule is about `src/elenctic/` and not about `tests/`, where several modules construct a
+`Control` directly to set up or confirm a solver behaviour. `tests/spikes/` is the deliberate home
+for the confirming kind — its whole job is to pin the clingo and clingcon behaviour elenctic relies
+on — but it is not the only test that drives clingo, and nothing stops a test from doing so.
 
 `tests/` mirrors that shape. `tests/krbook/` vendors four programs from the Gelfond and Kahl
 textbook, checked end to end against the semantics they are published with.

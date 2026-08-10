@@ -250,8 +250,9 @@ class Sat:
     @property
     def has_optimal_base(self) -> bool:
         """Whether any *optimal*-base tag is present — ``@optimal`` (= ``@model optimal``),
-        ``@cautious optimal``, ``@brave optimal``, ``@count optimal`` — the modes that share the one
-        ``OPTIMAL_ENUM`` enumeration of ``Opt(P)``. The single home for optimal-base
+        ``@cautious optimal``, ``@brave optimal``, ``@count optimal``, ``@assign optimal`` — the
+        modes that share the one ``OPTIMAL_ENUM`` enumeration of ``Opt(P)``. The single home for
+        optimal-base
         membership: ``run`` routes ``@cost``'s shared solve on it, and :attr:`requires_optimization`
         reads it (the relation lifted into the visible language, not two
         copy-pasted disjunctions)."""

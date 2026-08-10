@@ -22,7 +22,9 @@ carries several checks that do not all range over the same thing: a census over 
 is not the census, while a check that reads nothing from the collection is settled by one model
 whatever the rest of the search would have found.
 
-Checks are pure over a ``SolveOutcome``; only ``solvers.py`` touches clingo/clingcon.
+Checks are pure over a ``SolveOutcome``; only ``solvers.py`` ever runs a solve. The ``Symbol``
+imported below is clingo's value vocabulary, not a solver — a check reads and builds symbols (and
+so does ``terms.contrary``, which it calls), and neither is a question put to a solver.
 """
 
 from collections.abc import Callable, Iterable

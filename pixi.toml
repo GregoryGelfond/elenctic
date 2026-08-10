@@ -36,5 +36,9 @@ elenctic = { path = ".", editable = true }
 test = "pytest -q"
 cov = "pytest --cov=elenctic --cov-report=term-missing"
 lint = "ruff check . && ruff format --check ."
+# The other half of `lint`, which reports formatting and applies none of it. Deliberately only the
+# formatter: `ruff check --fix` changes what the code says, and a task named `fmt` that also did
+# that would be doing something its name does not carry.
+fmt = "ruff format ."
 typecheck = "mypy"
 check = { depends-on = ["lint", "typecheck", "test"] }

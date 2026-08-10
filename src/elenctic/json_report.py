@@ -137,7 +137,7 @@ def schema_text() -> str:
 
 def _case(outcome: CaseOutcome) -> dict[str, object]:
     return {
-        "source": _text(outcome.case.path),
+        "source": _text(outcome.case.contract_source),
         "solver": _text(outcome.case.solver),
         "verdict": outcome.verdict.value,
         "checks": [_check(report) for report in outcome.reports],
