@@ -58,10 +58,13 @@ program is satisfiable, has exactly **2** answer sets, has `biscuit` in **every*
 has `tea` and `coffee` each in **some** one (brave — read severally, not jointly). Run it:
 
 ```console
-$ elenctic run encodings/
+$ elenctic run encodings/drinks/
 
 1/1 passed
 ```
+
+Each example below names its own directory, so each tally is about the one case being discussed;
+point elenctic at `encodings/` and it runs everything under it, which is the usual way to use it.
 
 `elenctic explain` shows how each tag is routed to a solver run and the fields it reads, *without
 solving*, and whether that run collapses its answer sets onto the shown atoms — which is what
@@ -71,7 +74,7 @@ view to lose, not because a projection was declined. This contract needs three r
 enumeration for `@count`, and the native cautious and brave runs):
 
 ```console
-$ elenctic explain encodings/
+$ elenctic explain encodings/drinks/
 encodings/drinks/drinks.lp [clingo]
     ENUM_ALL (projects: no):
         @count — reads {full census}
@@ -92,7 +95,7 @@ elenctic tells you what it expected, what the program actually does, and the lin
 judged, and exits non-zero:
 
 ```console
-$ elenctic run encodings/
+$ elenctic run encodings/drinks/
 encodings/drinks/drinks.lp [clingo] — FAIL
   [FAIL] @cautious { tea } (line 10): { tea } ⊄ ⋂ AS(P) (observed { biscuit }; missing { tea })
 
@@ -143,7 +146,7 @@ The single answer set is `{ fly(sam), -fly(tweety) }` — note it contains *neit
 `-fly(opus)`. So all three questions hold, and elenctic confirms it:
 
 ```console
-$ elenctic run encodings/
+$ elenctic run encodings/birds/
 
 1/1 passed
 ```
@@ -153,7 +156,8 @@ overrides the default. Does Opus fly? **unknown** — the default is blocked (he
 nothing settles the matter either way. That `unknown` is the point of `@query`: it is exactly what
 the consequence vocabulary (`@cautious`/`@brave`) cannot express. And the `no` is *known* falsity, not
 a mere failure to derive — it holds because the program entails the **contrary** `-fly(tweety)`, which
-is why the encoding must `#show` `-fly`.
+is why the encoding must `#show` `-fly`. It must show `fly` too, and does: a `@query` is refused
+unless every signature it reads is declared, contraries included, whichever answer it claims.
 
 ## What it gives you over hand-written solver calls
 
@@ -167,8 +171,11 @@ is why the encoding must `#show` `-fly`.
 
 ## The contract
 
-A **contract block** is a run of `%`-comment lines `% @<tag> …`. Every model-bearing tag ranges over
-the **observable**.
+A **contract block** is a run of `%`-comment lines `% @<tag> …`. It does not have to come first: a
+run of tag lines *after* the program is a contract too, and a file carrying one anywhere is a case.
+A `%* … *%` block comment is a comment all the way through, so a tag written inside one is not a
+contract tag and a file whose only tags are in there is a library rather than a case. Every
+model-bearing tag ranges over the **observable**.
 
 ### Governing principles
 
@@ -176,6 +183,25 @@ the **observable**.
 an answer set onto its `#show`-declared predicates, plus the theory (CSP) assignment when a theory is
 in force. Hidden atoms are not checkable. A **strong-negation literal** `-a` is a *distinct* atom from
 `a`, observable only if the program shows it on the same footing.
+
+Which is to say the program is tested through the interface it declares, and clingo gives you two
+`#show`s that read alike and are not:
+
+- `#show p/1.` **declares** the predicate `p/1` observable. One such directive anywhere also
+  narrows the output to what is declared — that is clingo's rule, not elenctic's.
+- `#show hello : p.` **displays** a term. It puts `hello` in the output when `p` holds, but `hello`
+  is not an atom of any answer set, so it is not something a contract can claim. Where the program
+  declares anything at all, a claim over a displayed-but-undeclared signature is **refused**, and
+  the message says to give what the directive selects a name of its own. Where a display directive
+  is the program's only `#show`, nothing is declared, every atom is observable, and the claim is
+  read against the answer set — so `@cautious { hello }` **fails**, because the displayed term is
+  not in it.
+- A program with **no `#show` at all** declares nothing and hides nothing: clingo shows every atom,
+  and every tag reads the whole answer set. That is exact for the literal-wise tags, and rarely what
+  you want for `@model` or `@count`, which then range over every internal atom too.
+
+So the way to make a filtered value testable is not to display it — derive a predicate and declare
+that.
 
 **The base.** A model-base tag is evaluated over a chosen set of answer sets. Writing `optimal`
 before the payload chooses the optimal class `Opt(P)`; writing nothing chooses every answer set
@@ -214,11 +240,20 @@ optimal class cannot be larger than the whole). `@optimal { L }` is sugar for `@
 and shares its cell. Only `@expect` and `@cost` are one to a contract outright.
 
 A litset `{ … }` is comma-separated and paren-aware (an atom may contain commas, e.g.
-`included(s,a,2,1)`), and may span continuation `%` lines while a brace stays open. An `@`-tag's
-payload runs to the end of its line, so write explanatory comments on their own lines (a `%%` or `%`
-line), not after the payload — `% @count 2  % two answer sets` reads the comment as part of the
-count and refuses the line, loudly, rather than miscounting. (Inline-comment support after a payload
-is a planned convenience.)
+`included(s,a,2,1)`), and may span continuation `%` lines while a brace stays open. The run of
+comment lines is what carries it, so program text ends it: a litset left open when the comments stop
+is refused rather than continued past the rule in between. An `@`-tag's payload runs to the end of
+its line, so write explanatory comments on their own lines (a `%%` or `%` line), not after the
+payload — `% @count 2  % two answer sets` reads the comment as part of the count and refuses the
+line, loudly, rather than miscounting. (Inline-comment support after a payload is a planned
+convenience.)
+
+A `where { … }` clause is the one piece of contract syntax that is not `@`-initial, so it is read by
+position: it rides its witness's litset-closing line, or a continuation line while that litset's
+brace is still open. Written on a line of its own it is a *dangling* `where` and is refused — which
+means a `%` comment may not **open** with `where {`, even as prose. That is a real cost of reading
+it by position, and it is taken deliberately: a `where` clause silently dropped is a contract
+weakened without a word, which is the outcome worth more than the odd reworded comment.
 
 ### The three-valued query
 
@@ -232,16 +267,31 @@ that classical logic cannot name. (See the worked examples below.)
 
 `parse` accepts exactly the well-formed blocks and **rejects every other with a diagnostic** — it
 never silently defaults. Exactly one `@expect`; **`@expect unsat` admits no model-bearing tag at
-all** — no `@model`, `@count` (beyond `@count 0`), `@cautious`, `@brave`, `@optimal`, `@cost`,
-`@assign` or `@query`, because a program with no answer sets has nothing for any of them to be
+all** — no `@model`, `@count` (beyond `@count 0` and `@count optimal 0`, both of which are checked
+and reported), `@cautious`, `@brave`, `@optimal`, `@cost`, `@assign` or `@query`, because a program
+with no answer sets has nothing for any of them to be
 about, which is what makes a contract one shape or the other rather than a bag of tags;
 single-valued witness/scalar tags per `(mode, base)` cell; `@count 0 ⟺ @expect unsat`; and the
 precondition tags are checked at discovery **against the actual encoding**, not at parse time.
 
 Those discovery-time preconditions are the ones most likely to surprise, so in full. `@cost` and the
 `optimal` base need an optimizing encoding (a `#minimize`, `#maximize` or `:~`). `@assign`, `@assign
-optimal` and a `where`-witness need clingcon. A `no` or `unknown` `@query` needs the contrary
-`#show`n, since an unshown literal can never enter ⋂ or ⋃. A program with a theory atom needs a
+optimal` and a `where`-witness need clingcon. **A `@query` needs every signature it reads declared
+observable.** elenctic does not check the answer you wrote; it *computes* the query's three-valued
+answer from what the solver puts in the output and then compares. A literal that never reaches the
+output cannot be told apart from one no answer set contains, so the computation would describe the
+`#show` directives rather than the program. What each form reads differs, because what each form
+computes differs:
+
+- A **ground** `@query` — `{ fly(sam) }`, or a conjunction — reads every conjunct **and every
+  conjunct's contrary**, whichever answer it claims. Its answer is three-valued, and `no` is
+  distinguishable from `unknown` only by seeing the contrary. So a `yes` query missing the contrary
+  is refused for exactly the reason a `no` one is: unshown, a true `no` would compute as `unknown`.
+- A **binding** `@query` — `{ q(X̄) } = { B }` — collects the tuples whose answer is the stated one,
+  which is a one-sided reading, so it needs only the goal it collects: `q` for `yes`, `-q` for `no`,
+  and both for `unknown`. Requiring the other sign would refuse contracts elenctic answers exactly.
+
+A program with a theory atom needs a
 theory solver declared, since plain clingo grounds theory atoms and silently ignores the constraints
 — a wrong PASS. And two more that the grammar above gives no hint of:
 
@@ -296,10 +346,9 @@ direction either, since `elenctic.SolverUnavailableError` is a `DiscoveryError` 
 the fault it reports belongs to the environment. Five of the seven do have an exception a library
 consumer can catch: `elenctic.ContractError`, `elenctic.DiscoveryError`, `elenctic.ProgramError`,
 `elenctic.HarnessError`, and `elenctic.SolverUnavailableError` — which is also an `ImportError`, so
-either idiom catches a missing backend. The one closed
-question about a locus is `is_elenctic_bug` on `elenctic.ErrorKind` — whether to report it or fix
-it — and that is what the exit status reads, so a locus added later never changes what a status
-means. A case that cannot be run does not stop the others: it is reported on its own and the rest
+either idiom catches a missing backend. The one closed question about a locus is `is_elenctic_bug`
+on `elenctic.ErrorKind` — whether to report it or fix it — and that is what the exit status reads,
+so a locus added later never changes what a status means. A case that cannot be run does not stop the others: it is reported on its own and the rest
 of the corpus still runs.
 
 ## Worked examples
@@ -372,9 +421,10 @@ would bury the only thing that was asked about.
 
 ## Installation
 
-elenctic is installed from git; it is not published to PyPI. It runs on **Python ≥ 3.14** (a deliberate floor: the implementation uses modern Python
-idioms) and needs **clingo**, plus **clingcon** for the theory fragment (`@assign` and CSP `@count`).
-Both solvers are on conda-forge *and* on PyPI.
+elenctic is installed from git; it is not published to PyPI. It runs on **Python ≥ 3.14** (a
+deliberate floor: the implementation uses modern Python idioms) and needs **clingo**, plus
+**clingcon** for the theory fragment (`@assign` and CSP `@count`). Both solvers are on conda-forge
+*and* on PyPI.
 
 ### In a [pixi](https://pixi.sh) project (recommended)
 
@@ -457,6 +507,10 @@ Each pipeline stage is also runnable for inspection: `python -m elenctic.expecta
 `--format json` writes the whole run as **one JSON object on standard output**, and moves everything
 else — the per-case report, the hygiene summary, every diagnostic — to standard error. Standard
 output carries a whole document or nothing at all, so a consumer can parse it without filtering.
+**Closing standard error is honoured as "discard the diagnostics" rather than paid for by the
+document**: `elenctic run tests/ --format json 2>&-` writes the same bytes on standard output as
+`2>/dev/null` does, and a reader that stops reading — a pipe into `head`, a pager you quit — leaves
+the run with its own exit status and one sentence about the truncation, not a traceback.
 The example below runs this case, which claims that every answer set contains `tea` — and it
 does not, because exactly one of `tea` and `coffee` is chosen:
 
@@ -558,7 +612,8 @@ produces **no** document, so check the exit status before parsing — and note t
 puts the *schema* on that stream, which parses as JSON and has none of the fields above.
 
 Redirecting standard error onto standard output (`--format json 2>&1`) gives away the guarantee by
-your own hand.
+your own hand, and it is now the only way to: closing standard error costs the document nothing, so
+`2>&-` and `2>/dev/null` are two spellings of one wish and behave alike.
 
 ### The corpus is code you run
 
@@ -621,9 +676,7 @@ class Watching(elenctic.RunObserver):
         print(f"  {outcome.verdict.value}")
 
 
-invocation = elenctic.Invocation(
-    target=Path("encodings"), strict=False, budget=30.0, deadline=None
-)
+invocation = elenctic.Invocation(target=Path("encodings"))
 outcome = elenctic.run_corpus(invocation, observer=Watching())
 
 Path("report.json").write_text(
@@ -640,15 +693,25 @@ conjured. The announcements are `corpus_unreadable`, `case_unusable`, `case_star
 reported through a module logger and the records are unaffected, because in a CI job or an editor
 the records are the deliverable and the channel an observer writes to is the part that fails.
 
+`elenctic.Invocation` carries the same three dials the command line does, with the same defaults, so
+only the target has to be given: `strict=False`, `budget=elenctic.TIME_BUDGET` (the constant behind
+`--budget`), and `deadline=None`. All four are keyword-only.
+
 `elenctic.explain_corpus` is the same shape for the dry run — it takes the same
 `elenctic.Invocation`, announces `case_planned` through an `elenctic.PlanObserver`, and returns an
 `elenctic.PlanOutcome`. `elenctic.exit_status` is total over both.
 
 For one case at a time rather than a corpus: `elenctic.discover` yields cases, `elenctic.run_case`
 yields the per-check reports, `elenctic.case_verdict` folds them, and `elenctic.render` formats the
-diagnostic — which is what you want to drive `pytest.mark.parametrize` with. `elenctic.discover`
-also hands back a `elenctic.HygieneReport`, whose `clean` says whether the corpus carried any
-health observation at all — the raw detection state, before any invocation grades it.
+diagnostic — which is what you want to drive `pytest.mark.parametrize` with.
+
+`elenctic.discover` gives you the cases and nothing else, and raises on any file it could not turn
+into one. When you want corpus hygiene as well, call `elenctic.inspect_corpus`: it walks once and
+hands back an `elenctic.Corpus`, whose `cases` are the same, whose `hygiene` is an
+`elenctic.HygieneReport` — its `clean` says whether the corpus carried any health observation at
+all, the raw detection state before any invocation grades it — and whose `unrunnable` carries the
+files that could not be made into cases, paired with why. That last field is what lets a runner
+report a broken file and still run the rest of the corpus, which is what the command line does.
 
 elenctic ships `py.typed`, so all of this is typed for whatever checker you run.
 

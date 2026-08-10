@@ -167,6 +167,17 @@ def test_every_command_line_the_documents_show_is_one_elenctic_accepts() -> None
 # about pipelines and redirections, which is nobody's grammar to check.
 _SHELL_OPERATORS = frozenset({"|", ">", ">>", "<", "&&", ";"})
 
+# A redirection naming its descriptor is one word rather than two — `2>&-`, `2>&1`, `2>/dev/null` —
+# so the set above cannot see it, and the whole of it reached the parser as an argument. It is the
+# same construct as the `>` already there and is cut for the same reason: the shell consumes it and
+# elenctic never sees it. The leading digit is required, which is what keeps a `<target>`
+# metavariable out — that one closes with `>` and is a placeholder, not a redirection.
+_REDIRECTION = re.compile(r"^\d+[<>]")
+
+
+def _ends_the_command_line(word: str) -> bool:
+    return word in _SHELL_OPERATORS or _REDIRECTION.match(word) is not None
+
 
 def _command_lines() -> list[tuple[str, str]]:
     """Every ``elenctic …`` command line the two documents of *instructions* show a reader.
@@ -227,7 +238,7 @@ def _refused(line: str) -> str | None:
     the middle of the run.
     """
     words = shlex.split(line, comments=True)
-    argv = list(itertools.takewhile(lambda word: word not in _SHELL_OPERATORS, words[1:]))
+    argv = list(itertools.takewhile(lambda word: not _ends_the_command_line(word), words[1:]))
     said, printed = io.StringIO(), io.StringIO()
     try:
         with contextlib.redirect_stderr(said), contextlib.redirect_stdout(printed):

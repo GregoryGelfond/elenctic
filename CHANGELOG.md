@@ -10,6 +10,30 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+### Added
+
+- **A refused command line names the word you probably meant.** `elenctic rnu tests/` now answers
+  *invalid choice: 'rnu', maybe you meant 'run'?* rather than leaving a reader to spot the near miss
+  in the enumeration themselves, and the same holds for a value — `--format huamn` names `human`.
+  The command word makes mistyping one possible in the first place, so this arrives with it.
+
+- **`elenctic.error_detail`** — the reason a caught fault gives, and the contract line it gives it
+  about, as a pair. The sibling of `error_kind`: that one reads *where the fault lies* off the
+  class, this reads *what it says* and *where it says it* off the value. It is what a caller
+  building its own `ErrorRecord` wants, and it is how elenctic builds its own — so a runner of your
+  own files a fault exactly as the shipped one does, without parsing a sentence to get there.
+
+- **A vocabulary for what a program declares observable: `ShownVocabulary`, `Unrestricted`,
+  `Restricted` and `Signature`.** A program with no `#show` at all and a program that shows nothing
+  are opposite states — clingo shows everything in the first and nothing in the second — and both
+  used to arrive as an empty set of signatures, so nothing downstream could tell them apart. They
+  are now two shapes rather than one value, which is what lets the checks below be right about
+  either. `ProgramFacts.shown` and `Case.shown` carry a `ShownVocabulary` where they carried a
+  `frozenset` of signature pairs: **breaking for anyone reading those fields.**
+
+- **`elenctic.run_plan`** joins `run_case` on the curated surface, so a runner of your own can hold
+  a plan and run it rather than only run a case end to end.
+
 ### Changed
 
 - **The command line takes a command: `elenctic run|explain|schema`.** Every invocation names one.
@@ -25,9 +49,9 @@ means for them — a reader deciding whether to upgrade should not have to read 
   explain` would otherwise mean either the dry run or a corpus in a directory called `explain`, and
   whatever settled that would be a precedence no surface states.
 
-  Three flags that each replaced the run were two booleans and a statement order, so asking for two
-  actions at once was answered by whichever branch was written first — a decision no surface
-  stated. It is now unspellable rather than refused.
+  The two flags that each replaced the run were two independent booleans, so asking for both at
+  once was answered by whichever branch was written first — a decision no surface stated. It is now
+  unspellable rather than refused.
 
   **Each command carries the dials it reads, and no others.** The dry run accepted `--budget` and
   `--deadline`, read neither, and still refused a value of either that was not a positive finite
@@ -66,6 +90,30 @@ means for them — a reader deciding whether to upgrade should not have to read 
   predicate reaches the output through a `#show <term> : <body>.` directive, give what that
   directive selects a name of its own and claim that instead. The message says which.
 
+- **A `@query` whose answer the program does not determine is now refused rather than answered.**
+  This is the change with the most reach, and the one this release exists for. elenctic does not
+  check the answer you claimed; it *computes* the query's three-valued answer from what the solver
+  puts in the output. A literal that never reaches the output cannot be told apart from one no
+  answer set contains, so where a signature the query reads is undeclared the computed answer
+  described the `#show` directives rather than the program — and elenctic reported it as a verdict.
+  Two routes were silently **wrong**, not merely unhelpful: `@query unknown { p }` passed where the
+  true answer is `yes` because `p` was a fact that nothing showed, and `@query no { q(X) } = { }`
+  passed on a program whose `no`-set was not empty.
+
+  A `@query` now needs **every signature it reads** declared observable, and what a query reads
+  depends on its form. A **ground** query reads every conjunct and every conjunct's contrary,
+  whichever answer it claims — so a `yes` query missing the contrary is refused exactly as a `no`
+  one is, which is the part most likely to surprise. A **binding** query (`{ q(X̄) } = { B }`)
+  collects the tuples whose answer is the stated one, which is one-sided, so it reads `q` for `yes`,
+  `-q` for `no`, and both for `unknown`; requiring the other sign there would refuse contracts
+  elenctic answers exactly. **What can break:** a case that reported `1/1 passed`, or a FAIL, now
+  reports a discovery error at exit `2`, naming the claim's line and the signature to declare.
+
+  The other direction, so the trade is visible: **a `@query` in a program with no `#show` at all is
+  now answered where it was refused.** No declaration means clingo shows every atom, which is the
+  most observable a program gets; reading that as "shows nothing" was the same conflation, costing
+  a refusal instead of a wrong answer.
+
 - **A `@query` over a signature that is displayed *and* declared, or displayed by an otherwise
   unrestricted program, is now answered rather than refused.** Both were refused on the ground that
   a display directive could put in the output a term no answer set contains. It cannot: since 0.3.0
@@ -73,6 +121,67 @@ means for them — a reader deciding whether to upgrade should not have to read 
   sees it. What is left of the display form is that it emits its term only where its body holds,
   which costs nothing when the signature is declared as well or when the program restricts nothing.
   The refusal for a signature that is displayed and *not* declared is unchanged.
+
+- **Escaped text is now spelled the way Python spells it, and is reversible.** `elenctic.legible`
+  promised a `\xNN` escape and produced one only below U+0100: `:02x` is a *minimum* width, so
+  U+2028 came out as `\x2028` and U+10FFFF as `\x10ffff`, which read under every convention as
+  `\x20` followed by literal digits. Worse, `\` was printable and so never escaped, which made the
+  encoding **not injective** — a path holding a real escape and a path holding the four characters
+  `\x1b` rendered identically, in the report and in the `source` field of the machine-readable
+  document, and a consumer un-escaping to recover the path re-injected the real escape into its own
+  terminal. Escapes are now `\xNN`, `\uNNNN` and `\UNNNNNNNN` by width, and a backslash is doubled.
+  **What can break:** anything matching on the old rendering, and anything that un-escaped it.
+
+  **`explain` renders its subject through the same sanitizer**, which it did not. A repeatable
+  tag's claim is text a corpus author wrote, and a `#show`n string term carries whatever is between
+  its quotes, so a dry run over a hostile corpus wrote raw control characters to the terminal — the
+  one frame of four that the guarantee stated per module had never been applied to.
+
+- **A `where { … }` clause is refused wherever it is mis-placed, not only under a witness tag.**
+  The guard said it was unconditional and required the tag above it to be `@model` or `@optimal`, so
+  a `where` following a `@note` was **silently dropped**: the author's theory binding vanished, and
+  because nothing recorded that a theory was wanted the clingcon requirement did not fire either —
+  a contract quietly weakened, which is the outcome the guard exists to prevent. **What can break:**
+  a `%` comment that *opens* with `where {` — set-builder notation in prose, say — is now read as a
+  mis-placed clause and refused. That is a real cost of reading the one non-`@` piece of contract
+  syntax by position, and it is taken deliberately: reword the comment.
+
+- **`@count 0` and `@count optimal 0` under `@expect unsat` are checked and reported.** Both were
+  accepted by the parser and then discarded, so a contract that claimed something was checked for
+  nothing — against this file's own promise that a parse never silently discards, and against the
+  schema's sentence that a document holds one entry per contract claim. `Unsat` now carries `count`
+  and `count_optimal`, and refuses a non-zero count at construction. **What can break:** an unsat
+  case gains an entry per claim in the machine-readable document, and a FAIL line per claim in the
+  human report when the program turns out to be satisfiable. `Unsat` is a curated export, so a
+  caller constructing one gains two optional fields.
+
+- **A file's contract is read by a real tokenizer, so five things that were nearly-contracts now
+  are not — or now are.** Contract tags were found by scanning lines; the scan did not know what
+  clingo's comment grammar is, and five states came out wrong. Each is a migration line:
+
+  - **A run of tag lines *after* the program is a contract**, so a file that was a library because
+    its tags trailed the rules is now a case. This is the one most likely to turn a green corpus
+    red, and it is the one to look at first.
+  - **Tags only inside a `%* … *%` block comment no longer make a file a case.** A block comment is
+    a comment all the way through.
+  - **A `%`-tag inside a `#script` body no longer makes a file a case**, for the same reason.
+  - **A litset continuation ends at program text**, and at a comment that does not begin its line,
+    rather than running past the rule in between.
+  - **A file whose `%*` or `#script` never closes is refused at exit `2`** rather than filed away as
+    a library. It was a *bug fix* rather than a tightening: an unterminated block swallows the rest
+    of the file, so every contract below it was out of force and the file was silently treated as
+    something to include rather than something to run.
+
+- **The curated surface stops accepting what it cannot honour.** Five changes, all breaking for
+  someone: `solve`'s `solver` parameter is typed `Solver` rather than `str`, so an unknown name is
+  a type error at the call site instead of a `ValueError` mid-run; `HygieneReport` is keyword-only
+  (its two neighbouring fields are both `tuple[Path, ...]`, so a transposed pair type-checked clean
+  and rendered a plausible row); `CheckReport` enforces the `@`-tag invariant its internal sibling
+  always did, since its `label` goes straight into the published `tag` field; `Observable` refuses
+  an assignment giving one variable two values, and does so with `HarnessError` rather than
+  `ValueError`, so it costs one case its verdict instead of the whole run; and `Invocation`'s
+  `strict`, `budget` and `deadline` now **default**, to exactly the command line's defaults, where
+  all four fields were required and a consumer's reasonable prediction was false.
 
 - **A containment diagnostic no longer claims the set it shows is ⋂ AS(P).** It reports what was
   observed, because the set elenctic can show is the shown projection and on any program that
@@ -90,21 +199,6 @@ means for them — a reader deciding whether to upgrade should not have to read 
   ```
 
   The same text is the `message` field of a check in the machine-readable report.
-
-### Added
-
-- **A refused command line names the word you probably meant.** `elenctic rnu tests/` now answers
-  *invalid choice: 'rnu', maybe you meant 'run'?* rather than leaving a reader to spot the near miss
-  in the enumeration themselves, and the same holds for a value — `--format huamn` names `human`.
-  The command word makes mistyping one possible in the first place, so this arrives with it.
-
-- **`elenctic.error_detail`** — the reason a caught fault gives, and the contract line it gives it
-  about, as a pair. The sibling of `error_kind`: that one reads *where the fault lies* off the
-  class, this reads *what it says* and *where it says it* off the value. It is what a caller
-  building its own `ErrorRecord` wants, and it is how elenctic builds its own — so a runner of your
-  own files a fault exactly as the shipped one does, without parsing a sentence to get there.
-
-### Changed
 
 - **Every diagnostic now names its file exactly once, wherever the fault was met.** This is the
   remaining half of 0.3.0's heading work, and it is settled the way that entry said it would have
@@ -223,6 +317,47 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ### Fixed
 
+- **`--format json` no longer writes a corrupt document when standard error is closed.** Run as
+  `2>&-`, elenctic wrote its diagnostics and its tally onto **standard output**, in front of the
+  JSON — so the document did not parse, and on a passing corpus the status was still `0`: an
+  unparseable document and a success signal together. Two mechanisms, and fixing one would have
+  left four of the five routes open. With descriptor 2 closed it is the lowest free number, so the
+  save-and-restore that exists to move diagnostics off the document pointed standard output at
+  itself; and this language leaves `sys.stderr` unbuilt in that state, so `print` falls back to
+  standard output from frames the redirect never covered — including argparse's own, which elenctic
+  does not own at all. elenctic now establishes a standard error before anything else runs, so
+  `2>&-` and `2>/dev/null` are two spellings of one wish and behave alike.
+
+- **A reader that stops reading no longer looks like a failed corpus.** Piping into `head`, or
+  quitting a pager, produced four different answers depending on format and how much had been
+  buffered: exit `1` — the rung that means *a case was decided wrong* — with a raw Python traceback;
+  exit `120`, which is on no documented ladder; or, for `--print-schema`, exit `3`, telling a reader
+  who piped the schema into `head` that they had found a bug in elenctic. A run now leaves with the
+  status it would have left with anyway, plus one sentence on standard error saying the output was
+  cut short. **What can break:** a script keying on `120`, or reading exit `1` after a closed pipe
+  as a corpus failure, sees different numbers — which is the point.
+
+- **A case is judged against its corpus boundary before the solver's account of an escaping file
+  escapes.** Containment was checked *after* the program had been read, so a case reaching outside
+  its corpus for a file that would not parse was answered with clingo's diagnostic about that file —
+  disclosing that it exists, roughly how long it is, and the coordinates it objected to, from a
+  corpus. The rule's own docstring said the diagnostic names the escaping path and nothing from
+  inside it. It does now, and the same rule is enforced whether the escaping file fails to parse or
+  fails to ground.
+
+- **The containment diagnostic says why the boundary is where it is when you name a single case.**
+  Naming one file makes that file's own directory the corpus root, so `elenctic run corpus/x/case.lp`
+  refused an `#include` that `elenctic run corpus/` accepts — the first thing anyone does when a
+  case fails in CI, and neither the published documentation nor the message mentioned that the
+  invocation form changes the rule. The behaviour is unchanged and deliberate; it is now said out
+  loud, with the remedy.
+
+- **The diagnostic a missing theory solver gives now names an install command that works.** It said
+  `pip install "elenctic[theory]"`, and elenctic is not on PyPI, so the likeliest exit `2` a real
+  user meets handed them a command that cannot succeed — and for the recommended path it was wrong
+  twice, since clingcon comes from conda-forge and the extra is not needed there. The message now
+  gives the conda-forge route and the git-URL form of the extra.
+
 - **A refusal from a pipeline-stage module no longer lands in its payload.** The four inspection
   entries — `python -m elenctic.expectation|run|discovery|solvers` — print a usage line and leave
   with status 2 when the command line is wrong. Run with standard error *closed* rather than
@@ -244,7 +379,7 @@ means for them — a reader deciding whether to upgrade should not have to read 
   Running out of memory on that path no longer reports itself as a corpus that grounded too much —
   no corpus is walked when the description is printed.
 
-- **`--print-schema` writes the packaged file byte for byte, including its line endings.** It was
+- **`elenctic schema` writes the packaged file byte for byte, including its line endings.** It was
   read as text, so a checkout or archive that gave the file CRLF had them translated back to LF on
   the way out, and what was published differed from what shipped by exactly the bytes someone
   diffing the two would see.
@@ -256,12 +391,13 @@ means for them — a reader deciding whether to upgrade should not have to read 
 ## [0.3.0] - 2026-08-04
 
 The minor bump is deliberate, and this is the release with the most to re-check in it so far.
-Six things can stop working: a fault in elenctic now exits `3` rather than `2`; **every**
-diagnostic heading changed; `HygieneReport.render` is gone; `Sat`, `Unsat` and `CheckReport`
-gained required fields and are keyword-only; `Collection` moved module; and four invariant
-breaches raise `HarnessError` where they raised `ValueError`. Each is marked below. If you only
-run the command line, the first two are the ones to look at; if you import elenctic, read the
-rest.
+Six things can stop working: a fault in elenctic now exits `3` where it exited `2`; most
+diagnostic headings changed, and the table below says which did not; `HygieneReport.render` is
+gone; `Sat`, `Unsat` and `CheckReport` gained required fields, and the records a machine-readable
+report is built from — `CheckReport` among them — are now keyword-only; `Collection` moved module;
+and three invariants elenctic checks about its own result raise `HarnessError` where they raised
+`ValueError`. Each is marked below. If you only run the command line, the first two are the ones to
+look at; if you import elenctic, read the rest.
 
 ### Added
 
@@ -557,8 +693,7 @@ rest.
   it costs that case its verdict rather than the run:
 
   ```
-  CONTRACT ERROR — empty.lp:2: empty literal set {()}: it parses to no literals at all,
-  and a litset needs at least one (an atom or -atom)
+  CONTRACT ERROR — empty.lp:2: empty literal set {()}: it parses to no literals at all, and a litset needs at least one (an atom or -atom)
   ```
 
 - **A solve cut short by `--budget` no longer throws away the answer it did reach.** A cancelled
@@ -580,10 +715,7 @@ rest.
 
   ```
   case.lp [clingo] — UNDECIDED
-    [UNDECIDED] @count (line 2): the search was cut short before covering the collection this
-    reads, so what it holds is part of the collection and not the collection — UNDECIDED, never
-    FAIL. The per-solve time budget is what stops a search this way from the command line, so a
-    larger --budget may decide it
+    [UNDECIDED] @count (line 2): the search was cut short before covering the collection this reads, so what it holds is part of the collection and not the collection — UNDECIDED, never FAIL. The per-solve time budget is what stops a search this way from the command line, so a larger --budget may decide it
   ```
 
 - **An optimal-class run that could not finish enumerating no longer reports the program as having
@@ -621,41 +753,43 @@ the corpus the run was pointed at, so a corpus that reached outside it — absol
 through a symlink — is refused rather than read. Reaching up and across to a shared encoding
 remains the ordinary shape of a corpus and is unaffected.
 
-### Security
+### Added
 
-- **A case may only load files from the corpus it belongs to.** `#include` resolution belongs to
-  clingo, which opens whatever path it is handed, and nothing constrained what a case could hand
-  it — so a corpus could name any file the process can read, absolutely, by climbing out with
-  `../`, or through a symlink. What is read does not stay read, either: a contract that fails
-  renders the model it was judged against, so a case that includes a file and then asserts
-  something false about it publishes that file's contents through elenctic's own diagnostic.
-  Containment is rooted at the directory the run was pointed at, not at the case's own, because
-  reaching across to a shared encoding is the ordinary shape of a corpus.
+- **`--deadline`**, which bounds the whole run rather than one solve. `--budget` bounds a single
+  solve; a case routes to as many as four, and a corpus has as many cases as it has files, so the
+  cost of a run is a product of three numbers of which only one was bounded. Past the deadline the
+  run stops dispatching and every case it did not reach is counted into the not-run register, so
+  the corpus total stays the corpus total. It is off unless asked for: a default low enough to
+  bound a hostile corpus would turn a large honest one into cases that could not be run.
 
-- **Corpus-controlled text can no longer rewrite the report it appears in.** A case's path, its
-  `@note` prose, the atoms in its answer sets and the solver's diagnostics about it all reached the
-  terminal verbatim, and a terminal acts on some of that text rather than showing it — so a corpus
-  could clear the screen, move the cursor, or overwrite a line just printed. Such text now passes
-  through an escaping step: printable characters, spaces and newlines survive, anything else
-  becomes a visible `\xNN`. Newlines are deliberately kept, since a solver diagnostic is
-  legitimately multi-line; a newline can add a line but cannot conceal or overwrite one.
+### Changed
 
-- **A solve is now bounded in memory as well as in time.** A solve holds every model it is shown,
-  and the time budget says nothing about how fast they arrive — so a corpus could exhaust memory
-  inside a budget that never expired, which made the advertised hang protection a bound on one
-  resource presented as the bound. A model cap stops the search, on both the clingo and clingcon
-  paths. It needs no verdict vocabulary of its own: a stopped search reports itself as not
-  exhausted, and running out of room and running out of time are the same fact about knowledge.
+- **A defect in elenctic's own code is now reported as one.** A failure inside the AST walk or the
+  solve reduction used to be translated into a program fault, which named the corpus author. Worse,
+  it named *every* author: the same internal failure recurs for each case, so one defect in
+  elenctic produced an accusation against every file in the corpus and a summary saying none of
+  them passed.
 
-- **The contract scanner finishes, and its lines are clingo's lines.** While a braced payload was
-  open, every following line re-read the whole accumulated text and every continuation rebuilt it —
-  two quadratics, the first running for each line in the file, all of it during the corpus walk and
-  so upstream of every budget. A tag carrying ~24 KB followed by 40 000 ordinary lines took half a
-  minute; it now takes a tenth of a second. Separately, the scan split on Python's notion of a line
-  boundary — which includes `\v`, `\f`, the file/group/record separators, NEL, and the Unicode line
-  and paragraph separators — while a clingo `%` comment runs to a newline. A single physical line
-  could therefore carry a second contract tag that elenctic acted on and no reviewer could see.
+  ```text
+  # before, with a defect injected into elenctic's own solve reduction
+  PROGRAM ERROR — alpha.lp: cannot run the program (alpha.lp): <the internal failure>
+  PROGRAM ERROR — beta.lp: cannot run the program (beta.lp): <the internal failure>
 
+  0/2 passed, 2 could not be run
+  ```
+
+  ```text
+  # after
+  internal error: this is an elenctic bug, not a fault in your corpus. Please report it
+  with the traceback below.
+  Traceback (most recent call last):
+    ...
+  ```
+
+  Both exit `2`. The change costs the run rather than the case — the same trade the outermost
+  handler already makes for every other unanticipated fault — and it is the right one here, because
+  what the run would go on to produce is of unknown worth once elenctic is known to be broken. If
+  you match on `PROGRAM ERROR` lines in CI, note that a class of them has moved.
 ### Fixed
 
 - **A search that stopped early is no longer reported as a complete collection.** A solve settles
@@ -720,46 +854,64 @@ remains the ordinary shape of a corpus and is unaffected.
   reaches the top frame says whose it is before printing one — the traceback is the report, and the
   sentence above it is what tells a user this is not theirs to fix.
 
-### Added
+### Security
 
-- **`--deadline`**, which bounds the whole run rather than one solve. `--budget` bounds a single
-  solve; a case routes to as many as four, and a corpus has as many cases as it has files, so the
-  cost of a run is a product of three numbers of which only one was bounded. Past the deadline the
-  run stops dispatching and every case it did not reach is counted into the not-run register, so
-  the corpus total stays the corpus total. It is off unless asked for: a default low enough to
-  bound a hostile corpus would turn a large honest one into cases that could not be run.
+- **A case may only load files from the corpus it belongs to.** `#include` resolution belongs to
+  clingo, which opens whatever path it is handed, and nothing constrained what a case could hand
+  it — so a corpus could name any file the process can read, absolutely, by climbing out with
+  `../`, or through a symlink. What is read does not stay read, either: a contract that fails
+  renders the model it was judged against, so a case that includes a file and then asserts
+  something false about it publishes that file's contents through elenctic's own diagnostic.
+  Containment is rooted at the directory the run was pointed at, not at the case's own, because
+  reaching across to a shared encoding is the ordinary shape of a corpus.
 
-### Changed
+- **Corpus-controlled text can no longer rewrite the report it appears in.** A case's path, its
+  `@note` prose, the atoms in its answer sets and the solver's diagnostics about it all reached the
+  terminal verbatim, and a terminal acts on some of that text rather than showing it — so a corpus
+  could clear the screen, move the cursor, or overwrite a line just printed. Such text now passes
+  through an escaping step: printable characters, spaces and newlines survive, anything else
+  becomes a visible `\xNN`. Newlines are deliberately kept, since a solver diagnostic is
+  legitimately multi-line; a newline can add a line but cannot conceal or overwrite one.
 
-- **A defect in elenctic's own code is now reported as one.** A failure inside the AST walk or the
-  solve reduction used to be translated into a program fault, which named the corpus author. Worse,
-  it named *every* author: the same internal failure recurs for each case, so one defect in
-  elenctic produced an accusation against every file in the corpus and a summary saying none of
-  them passed.
+- **A solve is now bounded in memory as well as in time.** A solve holds every model it is shown,
+  and the time budget says nothing about how fast they arrive — so a corpus could exhaust memory
+  inside a budget that never expired, which made the advertised hang protection a bound on one
+  resource presented as the bound. A model cap stops the search, on both the clingo and clingcon
+  paths. It needs no verdict vocabulary of its own: a stopped search reports itself as not
+  exhausted, and running out of room and running out of time are the same fact about knowledge.
 
-  ```text
-  # before, with a defect injected into elenctic's own solve reduction
-  PROGRAM ERROR — alpha.lp: cannot run the program (alpha.lp): <the internal failure>
-  PROGRAM ERROR — beta.lp: cannot run the program (beta.lp): <the internal failure>
-
-  0/2 passed, 2 could not be run
-  ```
-
-  ```text
-  # after
-  internal error: this is an elenctic bug, not a fault in your corpus. Please report it
-  with the traceback below.
-  Traceback (most recent call last):
-    ...
-  ```
-
-  Both exit `2`. The change costs the run rather than the case — the same trade the outermost
-  handler already makes for every other unanticipated fault — and it is the right one here, because
-  what the run would go on to produce is of unknown worth once elenctic is known to be broken. If
-  you match on `PROGRAM ERROR` lines in CI, note that a class of them has moved.
+- **The contract scanner finishes, and its lines are clingo's lines.** While a braced payload was
+  open, every following line re-read the whole accumulated text and every continuation rebuilt it —
+  two quadratics, the first running for each line in the file, all of it during the corpus walk and
+  so upstream of every budget. A tag carrying ~24 KB followed by 40 000 ordinary lines took half a
+  minute; it now takes a tenth of a second. Separately, the scan split on Python's notion of a line
+  boundary — which includes `\v`, `\f`, the file/group/record separators, NEL, and the Unicode line
+  and paragraph separators — while a clingo `%` comment runs to a newline. A single physical line
+  could therefore carry a second contract tag that elenctic acted on and no reviewer could see.
 
 ## [0.1.3] - 2026-07-27
 
+### Added
+
+- **`SolverUnavailableError`** (`elenctic.SolverUnavailableError`), raised when a case declares a
+  solver this environment does not have. It is deliberately both a `DiscoveryError` — a corpus
+  naming an absent solver cannot be run — and an `ImportError`, which is what a missing optional
+  dependency is in Python, so a caller following either convention catches it without knowing
+  about the other. The same type is raised whether the condition is met through the corpus walk
+  or through a direct `solve` call.
+
+### Changed
+
+- **`ProgramError` is no longer a subclass of `HarnessError`, and is now exported.** The
+  inheritance asserted that a broken program under test is a kind of elenctic bug, which is
+  false and is why a program that would not ground had no register to be routed to. The two are
+  now disjoint roots: `ContractError`, `DiscoveryError` and `ProgramError` are the author's to
+  fix, `HarnessError` is elenctic's. **This is a breaking change** for any consumer that caught
+  program faults via `HarnessError`; catch `elenctic.ProgramError` instead.
+
+- The exit status `2` now covers a program that cannot be run, alongside a bad contract, a
+  mis-shaped corpus and an internal error. No status changed meaning; the register gained a
+  member.
 ### Fixed
 
 - **A program that cannot be run is reported, instead of crashing the run.** A program that
@@ -797,30 +949,15 @@ remains the ordinary shape of a corpus and is unaffected.
   cancelled path, the latter of which would otherwise have reported an internal bug as the
   verdict `UNDECIDED`.
 
-### Added
-
-- **`SolverUnavailableError`** (`elenctic.SolverUnavailableError`), raised when a case declares a
-  solver this environment does not have. It is deliberately both a `DiscoveryError` — a corpus
-  naming an absent solver cannot be run — and an `ImportError`, which is what a missing optional
-  dependency is in Python, so a caller following either convention catches it without knowing
-  about the other. The same type is raised whether the condition is met through the corpus walk
-  or through a direct `solve` call.
-
-### Changed
-
-- **`ProgramError` is no longer a subclass of `HarnessError`, and is now exported.** The
-  inheritance asserted that a broken program under test is a kind of elenctic bug, which is
-  false and is why a program that would not ground had no register to be routed to. The two are
-  now disjoint roots: `ContractError`, `DiscoveryError` and `ProgramError` are the author's to
-  fix, `HarnessError` is elenctic's. **This is a breaking change** for any consumer that caught
-  program faults via `HarnessError`; catch `elenctic.ProgramError` instead.
-
-- The exit status `2` now covers a program that cannot be run, alongside a bad contract, a
-  mis-shaped corpus and an internal error. No status changed meaning; the register gained a
-  member.
-
 ## [0.1.2] - 2026-07-16
 
+### Added
+
+- `Collection` (`elenctic.Collection`), what a reading ranges over (AS(P), Opt(P), or one
+  answer set), readable as `Mode.asks`. It is *derived* from the fields a mode populates,
+  not declared beside them, so a mode cannot claim one collection while reading another's.
+  Each mode now states the optimization its collection requires instead of inheriting the
+  solver's default, and a gating test holds every mode to it.
 ### Fixed
 
 - **The AS(P) tags now mean AS(P) on an optimizing encoding.** clingo optimizes by
@@ -851,14 +988,6 @@ remains the ordinary shape of a corpus and is unaffected.
   pruned to the optimum. Theory-native optimization stays outside v1, but the exclusion is
   now **loud**: discovery reports a corpus error (exit 2) naming the fix, rather than a
   quiet wrong verdict.
-
-### Added
-
-- `Collection` (`elenctic.Collection`), what a reading ranges over (AS(P), Opt(P), or one
-  answer set), readable as `Mode.asks`. It is *derived* from the fields a mode populates,
-  not declared beside them, so a mode cannot claim one collection while reading another's.
-  Each mode now states the optimization its collection requires instead of inheriting the
-  solver's default, and a gating test holds every mode to it.
 
 ## [0.1.1] - 2026-06-26
 
