@@ -265,7 +265,7 @@ def conjunctive_answer(
     conjuncts: tuple[Symbol, ...], census: frozenset[frozenset[Symbol]]
 ) -> Answer:
     """The three-valued answer to a ground *conjunctive* query (Gelfond–Kahl Def 2.2.2, corrected
-    per the published errata to the 2014 textbook — ``krr_book.html#errata``). Strong-Kleene
+    per the published errata to the Gelfond and Kahl textbook). Strong-Kleene
     evaluation over the answer-set census: in a model M the conjunction is true iff every conjunct
     is in M, false iff some conjunct's *contrary* is in M (else unknown-in-M); the answer is **yes**
     iff true in all answer sets, **no** iff false in all, else **unknown**.
@@ -275,8 +275,8 @@ def conjunctive_answer(
     shown, so false-in-M depends only on ``shown(M)``: evaluating over the set of distinct shown
     projections is exact, and projection (which preserves that set) does not change the answer. The
     census is needed, not ⋂ — "false in all" is ``∀M ∃i: l̄i∈M``, where each model may falsify a
-    *different* conjunct, which ⋂/⋃ cannot express (the old ``∃i: l̄i∈⋂`` was the wrong, stronger ∃∀
-    reading).
+    *different* conjunct, which ⋂/⋃ cannot express — ``∃i: l̄i∈⋂`` is the stronger ∃∀ reading and
+    not this one.
 
     Precondition: ``census`` is non-empty (AS(P)=∅ is the ``Inconsistent`` arm upstream, and a
     ``ConsistentEnumeration`` carries ≥1 observable by construction). An empty census is a caller

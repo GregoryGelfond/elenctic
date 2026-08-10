@@ -1,36 +1,15 @@
 """The contract: in-file ``@``-annotations parsed into an ``Expectation``.
 
-``Expectation`` is a sum of two well-formed shapes (``Unsat`` | ``Sat``) so illegal states
-are unrepresentable: a parsed contract is structurally a valid one. ``parse(text)`` is
-pure and total in the sense that every input either yields an ``Expectation`` or raises a
-``ContractError`` naming what is wrong (and, given a ``source``, where) — it never silently
-defaults or discards.
+``Expectation`` is a sum of two well-formed shapes (``Unsat`` | ``Sat``) so illegal states are
+unrepresentable: a parsed contract is structurally a valid one. ``parse(text)`` is pure and total
+in the sense that every input either yields an ``Expectation`` or raises a ``ContractError``
+naming what is wrong (and, given a ``source``, where) — it never silently defaults or discards.
 
-Four responsibilities:
-
-- **One comment reader of record.** ``_lex`` is the only thing here that decides what a comment
-  is, and it decides it as clingo's lexer does; both ``_tag_comments`` (behind the collection
-  predicate) and ``_blocks`` (behind the parse) take their comments from it. The two must come
-  from one reading: split them and either a trailing ``% @expect …`` is still never collected, or
-  a file is collected and then told it declares no ``@expect`` while its author is looking
-  straight at one.
-- **Brace-bounded, contiguous continuation.** A litset may span continuation comments *while a
-  brace remains unclosed*; once the brace closes, a following comment is prose (e.g. a
-  ``% Run: …`` header), not part of the litset. The run must also be unbroken — each
-  continuation on the line after the last — so a litset never absorbs a comment written on the
-  far side of a rule. ``_blocks`` tracks both.
-- **Provenance.** A diagnostic about one offending tag is sited at ``source:line`` (or
-  ``line N``, for a caller who parsed text from nowhere); discovery passes the file path as
-  ``source``. One about the contract as a whole has no line to be sited at, and so is the reason
-  alone — the file being what the caller passed in. Both carry the coordinate as data as well
-  (``ContractError.line``), which is what a record reads rather than parsing the sentence back.
-- **Single source of truth via a typed builder.** Tags accumulate into a typed
-  ``_Builder`` rather than an untyped state dict, so the construction of ``Sat`` needs no casts.
-
-Litset tokenization delegates to clingo's term parser via ``terms``. The
-*preconditions* (``optimal``/``@cost`` need an optimizing encoding; ``@assign`` needs clingcon;
-a ``no``/``unknown`` ``@query`` needs the contrary literal shown) require the encoding/``#show``
-set and so are checked at **discovery**, not here.
+The channel is comments, so what this module reads as an annotation is exactly what clingo reads
+as a comment. Litset tokenization delegates to clingo's term parser via ``terms``. The
+*preconditions* (``optimal``/``@cost`` need an optimizing encoding; ``@assign`` needs clingcon; a
+``no``/``unknown`` ``@query`` needs the contrary literal shown) require the encoding/``#show`` set
+and so are checked at **discovery**, not here.
 """
 
 import re
@@ -69,14 +48,12 @@ class ContractError(Exception):
     it is wrong on — and composes ``source:line: reason`` for ``str()``. Both, because two consumers
     want different things from one fault: a caller catching this wants a self-describing sentence,
     while :class:`~elenctic.outcome.ErrorRecord` already holds the file and needs the reason
-    without it. Recovering the reason by stripping a prefix off ``str()`` would be string surgery
-    over a path the corpus author chose, which is the shape of rule this package has already
-    retired once.
+    without it — which recovering by stripping a prefix off ``str()`` would make string surgery
+    over a path the corpus author chose.
 
     The **file** is not carried, and that asymmetry is the rule rather than an oversight: a fault
     states the provenance its raiser's caller could not already know. Whoever called
-    :func:`parse_contract` passed ``source``; nobody outside can know the line. And a line is
-    spelled with its file because half a coordinate points at line 3 of nothing."""
+    :func:`parse_contract` passed ``source``; nobody outside can know the line."""
 
     def __init__(self, reason: str, *, source: str | None = None, line: int | None = None) -> None:
         super().__init__(sited(reason, source, line))
@@ -89,17 +66,14 @@ def sited(reason: str, source: str | None, line: int | None) -> str:
 
     ``source:line`` — what clingo, rustc and pytest all write, and what an author's editor already
     knows how to open. A fault with no line has no coordinate, so it is the reason alone: the file
-    on its own is what its caller passed in, and repeating that is the duplication this spelling
-    exists to end.
+    on its own is what its caller passed in.
 
     A caller may parse text that came from nowhere — :func:`parse` takes ``source=None`` — and then
-    the line is real while the file is not, so it is spelled out in words. Rendering ``None`` where
-    a path goes would name a file called None rather than no file at all, which is the one thing
-    worse here than saying nothing.
+    the line is real while the file is not, so it is spelled out in words: rendering ``None`` where
+    a path goes would name a file called None rather than no file at all.
 
     Here rather than in each carrier because two disjoint exception roots compose one, and this
-    module owns the contract coordinate — the same argument :func:`require_line` makes for living
-    here while its other callers do not."""
+    module owns the contract coordinate."""
     if line is None:
         return reason
     return f"line {line}: {reason}" if source is None else f"{source}:{line}: {reason}"
@@ -109,8 +83,7 @@ def require_line(line: int) -> None:
     """Reject a line that is not 1-based. The one home for the invariant every carrier of a
     contract coordinate shares — the claim, the two contract shapes, the check and the report it
     produces — so they cannot come to disagree about it. Public because the last two of those live
-    in another module: the coordinate is a contract fact, so the predicate stays where the
-    tokenizer that computes one does."""
+    in another module."""
     if line < 1:
         raise ValueError(f"a contract line is 1-based, got {line}")
 
@@ -119,10 +92,8 @@ def require_tag(label: str) -> None:
     """Reject a label that is not a contract tag. The companion of :func:`require_line`, and here
     for the same reason: a check and the report it produces both claim their label is the tag the
     claim was written with, and the report's label is what the published document calls ``tag``.
-
-    The check enforced this and the report did not, which is the wrong way round — the report is the
-    shape a consumer constructs when driving a case from a runner of their own, so it is the one
-    place the invariant can actually be broken."""
+    The report is the shape a consumer constructs when driving a case from a runner of their own,
+    so it is the one place the invariant can actually be broken."""
     if not label.startswith("@"):
         raise ValueError(f"a check label must be a contract tag, got {label!r}")
 
@@ -136,11 +107,6 @@ class Claimed[T]:
     somewhere, so a claim without a line would be a state the contract cannot be in. A claim
     brace-continued over several lines reports the line its tag opened on — one claim, one
     coordinate, and the tag is where a reader looks for it.
-
-    Lines are counted by newlines alone, which is how clingo, a diff and a reviewer count them.
-    That is narrower than Python's own ``str.splitlines``, which also breaks on a vertical tab, a
-    form feed and several Unicode separators; resolving this coordinate with ``splitlines`` would
-    point at the wrong line in a file containing any of them.
 
     This wraps a claim; it is not itself one. ``WitnessClaim`` is the other direction — a payload
     shape, the thing a ``@model`` cell holds — so ``Claimed[WitnessClaim]`` is a witness payload
@@ -160,8 +126,7 @@ class WitnessClaim:
 
     ``assign`` empty ⇒ a bare witness (``@model { L }``); non-empty ⇒ a ``where``-qualified joint
     witness (``@model { L } where { A }``), binding shown and assignment to one model. The
-    expectation-side counterpart of the result-side ``ConsistentWitness`` (hence ``…Claim``). One
-    cell holds one ``WitnessClaim``: ``assign`` empty (bare) or the ``where``-binding."""
+    expectation-side counterpart of the result-side ``ConsistentWitness`` (hence ``…Claim``)."""
 
     shown: frozenset[Symbol]
     assign: frozenset[tuple[Symbol, int]] = frozenset()
@@ -171,12 +136,10 @@ def _require_zero(claim: Claimed[int] | None, tag: str) -> None:
     """Reject a non-zero count on an unsat contract. ``@count n`` for ``n ≥ 1`` asserts a model
     exists, which is what ``@expect unsat`` denies; the cross-tag rule refuses the pair, and this is
     the same fact stated where the shape can no longer be built without it — the module's illegal
-    states are unrepresentable, not merely rejected on one path in.
-
-    It earns its place because the shape is *exported*: a consumer driving a case from a runner of
-    their own constructs it directly, and a non-zero count there would derive a check that reads the
-    census onto a witness solve, which is a routing fault reported as an elenctic bug rather than
-    the contract error it is. ``ValueError`` for the reason :func:`require_line` gives — this is a
+    states are unrepresentable, not merely rejected on one path in. That matters because the shape
+    is *exported*: a consumer constructing one directly with a non-zero count would derive a check
+    that reads the census onto a witness solve, a routing fault reported as an elenctic bug rather
+    than the contract error it is. ``ValueError`` for the reason :func:`require_line` gives — a
     consumer's bad argument, not a value elenctic built mid-solve."""
     if claim is not None and claim.value != 0:
         raise ValueError(
@@ -195,9 +158,8 @@ class Unsat:
     they say it again: ``@count 0`` is ``|AS(P)| = 0`` and ``@count optimal 0`` is ``|Opt(P)| = 0``,
     both of which ``AS(P) = ∅`` already asserts (``_validate`` admits them only at 0, and only
     here). They are carried rather than folded into ``@expect`` because a claim is written on a line
-    by an author who expects an answer against it: dropping a restatement would leave that line with
-    no check, no report and no entry in the published document — a claim the contract makes and
-    nothing answers."""
+    by an author who expects an answer against it: folding a restatement away would leave that line
+    with no check, no report and no entry in the published document."""
 
     expect_line: int
     count: Claimed[int] | None = None
@@ -252,10 +214,8 @@ class Sat:
         """Whether any *optimal*-base tag is present — ``@optimal`` (= ``@model optimal``),
         ``@cautious optimal``, ``@brave optimal``, ``@count optimal``, ``@assign optimal`` — the
         modes that share the one ``OPTIMAL_ENUM`` enumeration of ``Opt(P)``. The single home for
-        optimal-base
-        membership: ``run`` routes ``@cost``'s shared solve on it, and :attr:`requires_optimization`
-        reads it (the relation lifted into the visible language, not two
-        copy-pasted disjunctions)."""
+        optimal-base membership: ``run`` routes ``@cost``'s shared solve on it, and
+        :attr:`requires_optimization` reads it."""
         return (
             self.optimal_model is not None
             or bool(self.cautious_optimal)
@@ -283,8 +243,9 @@ class Sat:
         Opt(P), so neither is included.
 
         Discovery gates on this where AS(P) is not computable. The single home for AS(P)-reading
-        membership, as :attr:`has_optimal_base` is for the optimal base; a test holds it to the runs
-        ``run.runs_for`` actually derives, so the two cannot drift."""
+        membership, and it must agree with the runs ``run.runs_for`` derives — the two range over
+        the same tags, so a tag added to one and not the other is a contract read against a
+        collection nothing computed."""
         return (
             self.model is not None
             or self.count is not None
@@ -303,10 +264,8 @@ class Sat:
         A reader that treats them alike needs them in one place, and discovery's readability gate is
         such a reader: what it requires of a claimed literal turns on the claim being *single-sided*
         — asserting membership and never its absence, so the literal's own signature is consulted
-        and its contrary is not — which all four are, and not on which collection is read.
-
-        The single home for the consequence family, as :attr:`has_optimal_base` is for the optimal
-        base: a fifth cell is added here once, rather than found by whoever notices it missing."""
+        and its contrary is not — which all four are, and not on which collection is read. The
+        single home for the consequence family: a fifth cell is added here once."""
         return tuple(
             (tag, claim)
             for tag, claims in (
@@ -656,12 +615,11 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
             # next line, where the rule stands between the two halves of a litset just as surely
             # as it would on a line of its own.
             #
-            # The asymmetry with the tag itself is deliberate. A tag names itself — `@word` — so
-            # it is unambiguous wherever it stands, trailing a rule included, which is the whole
-            # of the trailing-tag repair. A continuation names nothing: it is ordinary text that
-            # means something only because of where it sits. Where the information separating a
-            # continuation from a remark is not in the line, the settled principle takes the
-            # refusal, and a brace left open fails loudly at `_base_litset`.
+            # The asymmetry with the tag itself is deliberate. A tag names itself — `@word` — so it
+            # is unambiguous wherever it stands, trailing a rule included. A continuation names
+            # nothing: it is ordinary text that means something only because of where it sits, so
+            # where the line does not carry that information the refusal is taken, and a brace left
+            # open fails loudly at `_base_litset`.
             close()
         if (tag := _TAG.match(comment.body)) is not None:
             close()
@@ -674,8 +632,8 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
         elif depth > 0:
             # The open brace is tracked as the payload grows rather than re-derived from the whole
             # payload per line, and the pieces are joined once at the end rather than copied per
-            # line. Both were quadratic in the continued region, and this scan runs before clingo
-            # is invoked and before any budget exists, so nothing else would have stopped it.
+            # line: either alternative is quadratic in the continued region, and this scan runs
+            # before clingo is invoked and before any budget exists, so nothing else would stop it.
             piece = comment.body.strip()
             fragments.append(piece)
             depth, in_quote = _scan_braces(piece, depth, in_quote)
@@ -689,12 +647,10 @@ def _blocks(text: str, source: str | None = None) -> list[_Block]:
             # came before: a stranded clause costs the author the same binding whether the tag
             # above it is a witness, a `@note`, or nothing at all.
             #
-            # It costs a comment line that opens `where {` and meant nothing by it — set-builder
-            # notation in prose. That is the right way round to be wrong: the alternative reads
-            # further along the line to guess which was meant, and every such rule is a character
-            # away from letting a real clause through. `% where { v=1 }.` — a clause and a full
-            # stop — is the shape that decided it, since dropping that one is a wrong answer
-            # while refusing a comment is a refusal the author can answer.
+            # It costs a prose comment that opens `where {` and meant set-builder notation by it.
+            # That is the right way round to be wrong: a refusal the author can answer beats a
+            # binding silently dropped, and reading further along the line to guess which was meant
+            # is a rule forever a character away from letting a real clause through.
             raise ContractError(
                 "dangling `where`: a `where { … }` clause qualifies a @model / @optimal witness — "
                 "write it on that tag's litset-closing line, or on a continuation line while the "
@@ -746,9 +702,9 @@ def has_contract(text: str) -> bool:
 
     Never raises, and never invokes clingo: it must answer for every ``.lp`` file in the tree,
     libraries included, and a file that cannot be parsed still has a plain answer to *what is
-    written in it* — with one exception, which is why the reading reports it. Where an
-    unterminated ``%*`` or ``#script`` swallows the rest of the file, there is no such answer:
-    everything below the opener is unread. Answering **library** there would file the case away on
+    written in it*. There is one exception, and it is why ``_lex`` reports an unterminated
+    construct at all: where a ``%*`` or ``#script`` swallows the rest of the file, everything below
+    the opener is unread. Answering **library** there would file the case away on
     the strength of the part that could not be read, and a library nothing runs is silent — the
     author's contract would never run and the corpus would still come back green. So such a file
     is a case, and ``parse_contract`` says what is wrong with it."""

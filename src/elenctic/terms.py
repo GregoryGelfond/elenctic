@@ -38,8 +38,7 @@ def parse_term(text: str) -> Symbol:
     not frame, arriving on a stream it did not choose, interleaved with whatever else is there.
     The contract being parsed comes from a ``.lp`` file, so that text is influenced by the file.
     Capturing it and folding it into the raised error keeps every diagnostic on one channel, with
-    the provenance the caller adds; the failure type is unchanged, so the callers that already
-    translate it keep working.
+    the provenance the caller adds.
 
     A term carrying a character clingo's lexer will not take gets **elenctic's own sentence**, not
     clingo's. clingo quotes the offending byte, a lone UTF-8 lead byte does not decode, and the

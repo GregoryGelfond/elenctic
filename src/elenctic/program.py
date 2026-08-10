@@ -1,12 +1,12 @@
-"""Resolved-program inspection — the program-level facts read from the *resolved* AST (the case file
-plus its ``#include``s), the shared fix vector for theory-presence detection and the
+"""Resolved-program inspection — the program-level facts read from the *resolved* AST (the case
+file plus its ``#include``s), the shared fix vector for theory-presence detection and the
 preconditions over the resolved program.
 
-One ``clingo.ast.parse_files`` pass: ``parse_files`` resolves
-``#include`` relative to the including file and exposes the included nodes in the AST, so the
-case-file-text regex scan (which the migration of ``#show``/``#minimize`` into libraries would
-defeat) is retired. Theory **presence** only — never identity (the gate is theory-agnostic).
-Principle: *contract-level facts read the case file; program-level facts read the resolved program.*
+One ``clingo.ast.parse_files`` pass: it resolves ``#include`` relative to the including file and
+exposes the included nodes in the AST, so a fact declared in a library is read exactly as one
+declared in the case file. Theory **presence** only — never identity (the gate is
+theory-agnostic). Principle: *contract-level facts read the case file; program-level facts read
+the resolved program.*
 """
 
 import os
@@ -44,11 +44,12 @@ __all__ = [
 class Boundary:
     """The directory a case's program may not reach past, and why it is where it is.
 
-    A value rather than a bare path because the rule is enforced in two frames — the one that judges
-    the files a completed parse resolved, and the one that judges the diagnostics a failed parse
-    left behind — and which of them a reader meets is decided by whether the escaping file happened
-    to parse. Everything they say about the boundary therefore has to come from one place, or the
-    same mistake gets a better explanation on the luckier path.
+    A value rather than a bare path because the rule is enforced in two frames — the walk that
+    judges the files a completed parse resolved (``discovery._within_root``), and the one that
+    judges the diagnostics a failed parse left behind (:func:`refuse_strangers`) — and which of
+    them a reader meets is decided by whether the escaping file happened to parse. Everything they
+    say about the boundary therefore has to come from one place, or the same mistake gets a better
+    explanation on the luckier path.
 
     ``from_named_file`` says the run was pointed at one case rather than at a directory.
 
@@ -116,13 +117,10 @@ class ProgramError(Exception):
 class ContainmentError(ProgramError):
     """A case that loads a file from outside the corpus it belongs to.
 
-    Its own class because it is its own locus, and because one rule met at two moments must not
-    read as two problems. Whether the escaping file *parses* decides which frame notices — the
-    sources a completed parse resolved, or the diagnostics a failed one left behind — and that is an
+    Its own class because it is its own locus, and because one rule met at two moments (the two
+    frames :class:`Boundary` names) must not read as two problems: which frame notices is an
     accident of the offending file's syntax, not a difference the author has any use for. Reported
-    as two kinds it would need two buckets in a consumer's report and a rule for merging them; this
-    package has made that mistake once already, when one broken ``#include`` was announced as a case
-    fault or a program fault depending on which phase walked into it.
+    as two kinds it would need two buckets in a consumer's report and a rule for merging them.
 
     A ``ProgramError`` by inheritance so that every register already catching that family keeps
     catching this, and so the discovery layer can raise it without either layer importing the
@@ -139,9 +137,9 @@ class Unrestricted:
     directives of the ``#show <term> : <body>.`` form — which display a term without switching the
     solver into selective output (measured; see :func:`inspect`).
 
-    ``displayed`` is carried here for the same reason it is carried below, and the reason is that
-    *unrestricted is not the same as faithful*: the output contains every literal of the answer set,
-    and it may also contain terms that are in no answer set at all."""
+    ``displayed`` is carried here for the same reason :class:`Restricted` carries it: *unrestricted
+    is not the same as faithful*: the output contains every literal of the answer set, and it may
+    also contain terms that are in no answer set at all."""
 
     displayed: frozenset[Signature] = frozenset()
 
@@ -184,8 +182,7 @@ class ProgramFacts:
     sign-aware signature rather than by name, so a literal ``#show``n at the wrong arity is a
     *loud* precondition failure and not a silent miss. ``has_optimization`` — a ``#minimize``,
     ``#maximize``, or ``:~`` is present. ``has_maximize`` — an objective uses ``#maximize`` (a
-    negated-weight ``Minimize`` node), which v1 cannot present a natural ``@cost`` over (the
-    guarded miscompile).
+    negated-weight ``Minimize`` node), which v1 cannot present a natural ``@cost`` over.
     ``has_projection`` — a ``#project`` directive is present. Presence, not identity, for the same
     reason the theory-atom gate reads presence: what matters is that the program narrows the
     solver's own projection, and elenctic cannot tell from a parse whether the narrowing reaches
@@ -346,17 +343,15 @@ class Diagnostics:
     def text(self) -> str:
         """Everything clingo has written so far, decoded, ending in exactly one newline.
 
-        Decoded **here**, by elenctic, in an ordinary frame that may fail safely — which is the
-        whole difference from the decode this replaces. ``errors="replace"`` because a byte clingo
-        quotes out of a program need not be valid UTF-8 on its own, and a diagnostic carrying one
-        U+FFFD is a report where a raised ``UnicodeDecodeError`` is the absence of one.
+        Decoded **here**, by elenctic, in an ordinary frame that may fail safely.
+        ``errors="replace"`` because a byte clingo quotes out of a program need not be valid UTF-8
+        on its own, and a diagnostic carrying one U+FFFD is a report where a raised
+        ``UnicodeDecodeError`` is the absence of one.
 
         clingo ends each message with a newline and separates messages with a blank line, so the
         text arrives with a blank line at the end that terminates nothing. Only that padding is
         dropped: the last message keeps its own newline, because whatever a caller appends is a
-        separate sentence and reads as one. Trimming it instead runs the two together — and the
-        first message this was measured on ends in a semicolon, so a caller joining with one
-        produced ``;;``.
+        separate sentence and reads as one — trimming it runs the two together.
 
         Read without disturbing the write position, so the region may be read again as it goes."""
         position = self._stream.tell()
@@ -387,12 +382,11 @@ def captured_diagnostics() -> Iterator[Diagnostics]:
     elenctic can catch. Reading the descriptor instead puts the decode in :meth:`Diagnostics.text`,
     where a bad byte is a character in a diagnostic rather than the end of the run.
 
-    **The text is kept whole and never split back into messages.** clingo ends each with a blank
-    line, and splitting on it recovered the list byte-for-byte over every diagnostic measured —
-    until a directory named with a newline in it put a blank line *inside* one, and one message
-    became three. Message boundaries are not in the text; they are in a separator the corpus author
-    can write. A rule whose input the constrained party chooses is not a rule, so no such rule is
-    stated: what clingo wrote is reported in clingo's own framing.
+    **The text is kept whole and never split back into messages.** clingo separates messages with a
+    blank line, but a directory named with a newline in it puts a blank line *inside* one, and the
+    split turns one message into three. Message boundaries are not in the text; they are in a
+    separator the corpus author can write, and a rule whose input the constrained party chooses is
+    not a rule — so what clingo wrote is reported in clingo's own framing.
 
     At the descriptor rather than at ``sys.stderr``, because clingo writes from C++ and rebinding a
     Python object leaves that untouched. A temporary file rather than a pipe, because a pipe's
@@ -545,13 +539,11 @@ def _is_theory_objective(node: AST) -> bool:
     whose term names one of them. Read by name, since the objective belongs to the theory rather
     than to clingo: no ``Minimize`` node is produced and no clingo optimization flag reaches it.
 
-    The term's type is asked before its name, rather than reading the name with a default to fall
-    back on. The fallback would work here — a missing field on an AST node does return the default
-    — but relying on it is what hid a defect in the signature reader, where the same expression
-    over a *symbol* raises instead, so the default could never fire. Nothing about the two spellings
-    distinguishes them at a glance, so neither is written. clingo represents a theory atom's term
-    as a function node in every form it accepts, in a head or a body, with arguments or with a
-    condition, so asking is total."""
+    The term's type is asked before its name rather than read with a default to fall back on. A
+    default would work on an AST node and cannot work on a *symbol*, where the same expression
+    raises instead — and nothing about the two spellings distinguishes them at a glance, so
+    neither is written. clingo represents a theory atom's term as a function node in every form it
+    accepts, in a head or a body, with arguments or with a condition, so asking is total."""
     return (
         node.ast_type is ASTType.TheoryAtom
         and node.term.ast_type is ASTType.Function
