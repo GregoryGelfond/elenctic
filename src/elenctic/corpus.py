@@ -64,33 +64,25 @@ class Observer(Protocol):
     """What both modes tell a caller as they go — the announcements a run and a dry run share.
 
     A run holds everything it produced until it returns, which is the right shape for a caller that
-    wants the result and the wrong one for a caller watching a hundred and thirty-five cases go by.
-    So a caller may hand in an observer, and the run announces each thing as it establishes it. The
-    default is to announce nothing at all: what this replaced wrote its prose unasked, and an
-    embedder could only silence it by taking over their own process's streams — which costs them
-    their own output to buy quiet, and still leaves the run's records reachable only by reading the
-    prose back.
+    wants the result and the wrong one for a caller watching a long corpus go by. So a caller may
+    hand in an observer and the run announces each thing as it establishes it. The default announces
+    nothing at all, so an embedder buys quiet without taking over their own process's streams.
 
-    **What is announced is a record, never a sentence.** A caller rendering prose already has
-    everything the run knows, in the shape the run knows it in, and nothing has to be recovered by
-    reading a string that was written to be read by a person. What the *record* cannot carry is
-    where in the run it was met — the same ``ErrorRecord`` describes a file discovery could not use
-    and a case whose program would not ground — so that is what the method name carries. Two
-    announcements rather than one field: a field would have to be published in the machine-readable
-    document, where it would say something about elenctic's own phases rather than about the fault.
+    **What is announced is a record, never a sentence**, so nothing has to be recovered by reading a
+    string written to be read by a person. What the record cannot carry is *where in the run* it was
+    met — the same ``ErrorRecord`` describes a file discovery could not use and a case whose program
+    would not ground — so the method name carries that instead of a field, a field being something
+    the machine-readable document would then have to publish about elenctic's own phases.
 
     Every error and every verdict announced is the same object the run files, so a report rendered
     as the run goes and one rendered from the return value cannot describe it differently. Corpus
-    hygiene is the exception and deliberately so: it is established before the first case is
-    reached, it has no as-it-happens character, and it is read off the returned outcome — which is
-    what the console entry does with it.
+    hygiene is the deliberate exception: established before the first case is reached, it has no
+    as-it-happens character and is read off the returned outcome instead.
 
-    Every method has a body that does nothing, and an implementation that **inherits** one of these
-    gets those bodies, so it overrides only what it wants to hear about. An implementation that does
-    not inherit is checked structurally and must supply every member: these are protocols, and a
-    default body is inherited, never conjured. That is the one way this differs from the standard
-    library's observers — a test result, a markup parser, a stream protocol — which are ordinary
-    base classes and so offer only the first of the two.
+    Every method has a body that does nothing, so an implementation that **inherits** one of these
+    overrides only what it wants to hear about, while one checked structurally must supply every
+    member — a default body is inherited, never conjured. That is the one way this differs from the
+    standard library's observers, which are ordinary base classes and so offer only the first.
     """
 
     def corpus_unreadable(self, record: ErrorRecord) -> None:
@@ -192,44 +184,33 @@ def _tell[O, T](
 ) -> None:
     """Make one announcement, and let nothing it does stop the run.
 
-    **The announcement is selected in here, not at the call site**, which is what makes the
-    guarantee below true of the *lookup* as well as of the call. Reaching for an observer's method
-    can fail on its own: an implementation checked structurally rather than by inheritance supplies
-    every member or none, and one that exposes an announcement as a computed attribute fails where
-    it is read. Written the other way round — the method resolved by the caller and handed in
-    already bound — those faults happen outside this frame and take the whole run with them, which
-    is the one thing the isolation exists to prevent.
+    **The announcement is selected in here, not at the call site**, which makes the guarantee true
+    of the *lookup* as well as of the call. Reaching for an observer's method can fail on its own —
+    an implementation checked structurally rather than by inheritance supplies every member or none,
+    and one exposing an announcement as a computed attribute fails where it is read. Resolved by the
+    caller and handed in already bound, those faults would happen outside this frame and take the
+    whole run with them.
 
     **Announcing is a courtesy; establishing is the work.** A caller hands in an observer to watch
-    what happens, not to take part in it, so a fault in the watching cannot be allowed to change
-    what was established — and without this it changes it completely: the announcement sites are
-    outside the per-case handlers, so an observer that raised on the third case of a hundred and
-    thirty-five discarded all hundred and thirty-five, and the console entry reported the caller's
-    own bug as elenctic's.
+    what happens, not to take part in it, so a fault in the watching cannot change what was
+    established. The announcement sites are outside the per-case handlers, so without this one
+    raising observer discards every case's records — and this module's guarantee everywhere else is
+    that one bad file costs its own result and no other's.
 
-    That is the wrong trade in every way elenctic is used. Under a test runner or in CI the records
-    *are* the deliverable, and losing them to a rendering fault loses the run. In an editor the
-    observer publishes diagnostics over a channel that fails for ordinary reasons — a client that
-    went away, a cancelled request — and an integration in which that costs the whole corpus is one
-    nobody can rely on. It is also the guarantee the rest of this module already gives: one bad file
-    costs its own result and no other's.
+    Reported through a logger, this package's channel for something only a developer can act on, and
+    silent unless that developer asks for it. There is no diagnostic to write and no record to file:
+    it is not a fact about the corpus, and putting it in the registers would report it to the wrong
+    reader under the wrong locus.
 
-    Reported through a logger, which is this package's channel for something only a developer can
-    act on, and silent unless that developer asks for it — a library that wrote to a stream here
-    would be back where it started. There is no diagnostic to write and no record to file: it is not
-    a fact about the corpus, and putting it in the registers would report it to the wrong reader
-    under the wrong locus.
+    **Once per run, not once per announcement.** What actually fails here is an observer whose
+    destination went away — a reader that stopped reading, an editor's socket that closed — and that
+    is one event rather than one per case, so reporting it per announcement buries the only one that
+    was news.
 
-    **Once per run, not once per announcement.** The thing that actually fails here is an observer
-    whose destination went away — a reader that stopped reading, an editor's socket that closed —
-    and that is one event, not one per case. Reported per announcement it produced a full traceback
-    for every case in a corpus of a hundred and thirty-five, which buries the first and only one of
-    which was news.
-
-    The isolation is a service to *callers*, and this frame does not claim more than that.
-    Elenctic's own console is announced to through this same seam, so a fault arriving here is not
-    necessarily somebody else's: for the command line it is usually a reader who has gone, which is
-    answered where the report is handed over rather than here.
+    The isolation is a service to *callers*, and this frame claims no more than that. Elenctic's own
+    console is announced to through this same seam, so a fault arriving here is not necessarily
+    somebody else's: for the command line it is usually a reader who has gone, which is answered
+    where the report is handed over rather than here.
     """
     try:
         announce(told.observer)(value)

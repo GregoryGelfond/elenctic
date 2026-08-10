@@ -2,18 +2,15 @@
 
 Everything elenctic prints about a case is influenced by the case: its path, its ``@note`` prose,
 the atoms in its answer sets, and the solver's own diagnostics about it. Running a corpus means
-trusting it as code; showing its *text* is a separate question, and the answer there is that the
-text is not to be trusted with a terminal — a corpus is cloned, or it arrives in a pull request, and
-a terminal treats some of that text as
-instructions rather than as characters. An escape sequence can clear the screen or move the cursor;
-a carriage return can overwrite the line just printed. Since elenctic exists to produce a verdict a
-reader can act on, text that can rewrite the report is a defect in the product itself, not a
-cosmetic one.
+trusting it as code; showing its *text* is a separate question, and a terminal treats some of that
+text as instructions rather than characters — an escape sequence moves the cursor, a carriage
+return overwrites the line just printed. Since elenctic exists to produce a verdict a reader can
+act on, text that can rewrite the report is a defect in the product rather than a cosmetic one.
 
-So corpus-controlled text passes through :func:`legible` before it is shown. This module has no
-elenctic dependencies, so every renderer reaches it — the human one, and the machine-
-readable one, which needs exactly the same guarantee for a related reason: text a parser would act
-on can break the document it appears in as surely as text a terminal acts on can rewrite a report.
+So corpus-controlled text passes through :func:`legible` before it is shown. No elenctic
+dependencies, so every renderer reaches it — the human one, and the machine-readable one, which
+needs the same guarantee for a related reason: text a parser would act on can break the document
+it appears in as surely as text a terminal acts on can rewrite a report.
 """
 
 __all__ = ["legible"]
@@ -26,30 +23,26 @@ def legible(text: str) -> str:
     a backslash is doubled. Escaping rather than dropping keeps the fact that something was there —
     a reader should be able to see that a corpus tried something, not find text quietly missing.
 
-    **Newlines are deliberately kept.** A solver diagnostic is legitimately multi-line, and
-    mangling the most common error a user will ever see costs more than the one thing a newline
-    still allows: adding a line. It cannot overwrite a line already printed, conceal one, or move
-    the cursor, which is what everything else being escaped prevents. A reader who cannot trust
-    line *counts* can still trust every line's contents.
+    **Newlines are deliberately kept.** A solver diagnostic is legitimately multi-line, and mangling
+    the most common error a user will ever see costs more than the one thing a newline still allows:
+    adding a line. It cannot overwrite a line already printed, conceal one, or move the cursor. A
+    reader who cannot trust line *counts* can still trust every line's contents.
 
-    ``str.isprintable`` is the exact predicate wanted here: it is false for every C0 and C1 control
-    and for every separator except the space — including the ones that split a line for Python but
-    not for clingo or for a diff.
+    ``str.isprintable`` is the exact predicate wanted: false for every C0 and C1 control and for
+    every separator except the space, including the ones that split a line for Python but not for
+    clingo or for a diff.
 
-    **The escape says where it ends, and the encoding is injective.** Both halves are load-bearing
-    and neither is decoration:
+    **The escape says where it ends, and the encoding is injective.** Both halves are load-bearing:
 
     - The width is fixed by the codepoint — ``\xNN``, ``\uNNNN``, ``\UNNNNNNNN``, exactly two, four
-      or eight hex digits. A single ``\x`` form for every codepoint runs past two digits for
-      anything above U+00FF, and ``\x`` means *exactly two digits* wherever a reader has met it, so
-      ``\x2028`` reads as U+0020 followed by a literal ``28``. An escape a reader decodes wrongly
-      has not made the text legible.
-    - The backslash is doubled, because without it two different strings render the same one:
-      a path holding a real ESC and a path holding the four characters ``\``, ``x``, ``1``, ``b``
-      are then indistinguishable, both in the report and in the ``source`` field of the published
-      document. That costs more than ambiguity. A consumer that decodes the escapes to recover the
-      real path would turn the second back into a real ESC and feed it to its own terminal —
-      re-opening, one layer out, the hole this function exists to close.
+      or eight hex digits. ``\x`` means *exactly two digits* wherever a reader has met it, so a
+      single ``\x`` form for every codepoint would render U+2028 as ``\x2028``, which reads as
+      U+0020 followed by a literal ``28``.
+    - The backslash is doubled, or two different strings render the same one: a path holding a real
+      ESC and a path holding the four characters ``\``, ``x``, ``1``, ``b`` would be
+      indistinguishable in the report and in the published document's ``source`` field. A consumer
+      decoding the escapes to recover the real path would turn the second back into a real ESC and
+      feed it to its own terminal, re-opening the hole this function exists to close.
     """
     return "".join(_shown(character) for character in text)
 
