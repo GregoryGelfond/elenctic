@@ -14,6 +14,7 @@ from clingo import parse_term
 
 from elenctic.checks import (
     Check,
+    _show_goal,
     assign_optimal_contains,
     brave_optimal_contains,
     cautious_optimal_contains,
@@ -21,11 +22,13 @@ from elenctic.checks import (
     has_optimal_model,
     query_matches,
 )
+from elenctic.expectation import WitnessClaim
 from elenctic.query import Answer, BindingQuery, GroundQuery, QueryLiteral, Var
 from elenctic.result import (
     ConsistentCautious,
     ConsistentOptimalEnumeration,
     ConsistentWitness,
+    Field,
     Inconclusive,
     Inconsistent,
     Observable,
@@ -261,3 +264,31 @@ def test_assign_optimal_contains_reads_the_optimal_assignment() -> None:
     assert (
         assign_optimal_contains(want, line=1)(decided(Inconclusive())).verdict is Verdict.UNDECIDED
     )
+
+
+def test_a_where_qualified_optimal_claim_reads_the_full_optimal_census() -> None:
+    # `@optimal { L } where { A }` is the joint form: ONE optimal model must satisfy both halves.
+    # It reads the full optimal census rather than the shown one, because the assignment is the
+    # dimension projection erases — so unlike its bare sibling it cannot ride a projecting run.
+    # Every test of this check used the bare form; the joint arm had never been decided either way.
+    claim = WitnessClaim(shown=literals("a"), assign=frozenset({(parse_term("w"), 2)}))
+    together = opt_enum(Observable(literals("a"), frozenset({(parse_term("w"), 2)})))
+    # Both halves present, but in different models: the claim is about one model, so this FAILs.
+    apart = opt_enum(
+        Observable(literals("a"), frozenset({(parse_term("w"), 9)})),
+        Observable(literals("b"), frozenset({(parse_term("w"), 2)})),
+    )
+
+    assert has_optimal_model(claim, line=1).reads == frozenset({Field.FULL_OPTIMAL_CENSUS})
+    assert has_optimal_model(claim, line=1)(decided(together)).verdict is Verdict.PASS
+    assert has_optimal_model(claim, line=1)(decided(apart)).verdict is Verdict.FAIL
+    assert has_optimal_model(claim, line=1)(decided(Inconsistent())).verdict is Verdict.FAIL
+
+
+def test_a_goal_carrying_no_arguments_renders_without_empty_parentheses() -> None:
+    # `BindingQuery` refuses a goal with no variables, but the renderer takes a `QueryLiteral`,
+    # which permits one — and `_parse_goal` builds exactly that shape before the parser checks it.
+    # Rendered by the general arm it would read `p()`, which is not a literal any ASP reader
+    # accepts, in a diagnostic whose whole job is to quote the claim back.
+    assert _show_goal(QueryLiteral("p", True, ())) == "p"
+    assert _show_goal(QueryLiteral("p", False, ())) == "-p"

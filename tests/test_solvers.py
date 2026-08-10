@@ -20,7 +20,7 @@ from clingo.solving import SolveResult
 
 from elenctic import solvers
 from elenctic.checks import cost_is, count_is, count_optimal_is
-from elenctic.program import ProgramError
+from elenctic.program import ProgramError, captured_diagnostics
 from elenctic.registry import Solver
 from elenctic.result import (
     Conclusion,
@@ -33,6 +33,7 @@ from elenctic.result import (
     ConsistentShownCensus,
     ConsistentWitness,
     Field,
+    HarnessError,
     Inconsistent,
     Observable,
     SeamError,
@@ -607,3 +608,22 @@ def test_run_clingcon_suppresses_solver_diagnostics_on_stderr(
     captured = capfd.readouterr()
     assert "does not occur" not in captured.err
     assert captured.out == ""  # nor to standard output, as for clingo above
+
+
+def test_a_solve_that_recurses_past_the_limit_is_not_reported_as_a_program_fault() -> None:
+    # `_program_faults` turns clingo's own failures into a `ProgramError` naming the case. A
+    # RecursionError is neither: it is this interpreter running out of stack, and dressing it as a
+    # fault in the corpus would send a reader to look for a defect in their own program.
+    with (
+        captured_diagnostics() as diagnostics,
+        pytest.raises(RecursionError),
+        solvers._program_faults(diagnostics),
+    ):
+        raise RecursionError("stack exhausted")
+
+
+def test_an_optimization_setting_clingo_will_not_take_is_a_harness_fault() -> None:
+    # The setting is elenctic's to choose, so a value clingo refuses is elenctic's mistake and not
+    # the corpus's — reported as a harness fault rather than as anything about the program.
+    with pytest.raises(HarnessError, match="rejected the optimization mode elenctic built"):
+        solvers._set_opt_mode(Control(), "not-a-mode")

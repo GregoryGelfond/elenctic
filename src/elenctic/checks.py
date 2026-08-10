@@ -373,6 +373,9 @@ def _show_goal(goal: QueryLiteral) -> str:
     """Render a query goal literal ``reachable(X)`` / ``-blocked(X)`` for a diagnostic."""
     sign = "" if goal.positive else "-"
     if not goal.args:
+        # `BindingQuery` refuses a goal with no variables, but this takes a `QueryLiteral`, which
+        # permits one — and the parser builds exactly that shape before it checks. Rendered by the
+        # arm below a bare goal would come out `p()`, which is not a literal any ASP reader accepts.
         return f"{sign}{goal.name}"
     args = ", ".join(arg.name if isinstance(arg, Var) else str(arg) for arg in goal.args)
     return f"{sign}{goal.name}({args})"

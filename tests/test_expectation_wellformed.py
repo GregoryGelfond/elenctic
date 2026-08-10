@@ -3,6 +3,8 @@ rejected with a ``ContractError`` that names what is wrong (and, with a ``source
 The precondition rules (optimization/clingcon/contrary-shown) need the
 encoding and are checked at discovery, not here."""
 
+import re
+
 import pytest
 from clingo import parse_term
 
@@ -323,3 +325,17 @@ def test_a_comment_opening_a_where_clause_is_refused_even_as_prose() -> None:
     # weakened. Neither corpus this project runs contains such a line.
     with pytest.raises(ContractError, match=r"dangling `where`"):
         parse("% @expect sat\n% @model { a }\n% where {x : p(x)} ranges over the grid\n")
+
+
+@pytest.mark.parametrize(
+    "tag",
+    ["@optimal { a }", "@cautious optimal { a }", "@brave optimal { a }"],
+    ids=["@optimal", "@cautious optimal", "@brave optimal"],
+)
+def test_an_unsat_contract_naming_an_optimal_model_bearing_tag_is_refused(tag: str) -> None:
+    # Every model-bearing tag is excluded by `@expect unsat`, and the diagnostic names the specific
+    # offenders so a reader is not left to work out which of their lines is the problem. The three
+    # optimal ones were listed by that enumeration and never reached by a test, so nothing held
+    # that they were named rather than silently passed over.
+    with pytest.raises(ContractError, match=re.escape(tag.split(" {")[0])):
+        parse(f"% @expect unsat\n% {tag}\n", source="case.lp")

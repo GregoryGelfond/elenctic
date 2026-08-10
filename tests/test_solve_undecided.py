@@ -16,7 +16,7 @@ from clingo import Control
 from clingo.solving import Model, SolveResult
 
 from elenctic import solvers
-from elenctic.result import Inconclusive
+from elenctic.result import Conclusion, Inconclusive
 from elenctic.run import Mode
 from elenctic.solvers import _Collector, _drive, _optimal_enum_two_phase, _solve_under_budget
 from support import on_model_for
@@ -135,3 +135,13 @@ def test_an_unproven_optimum_is_undecided_not_an_accusation_against_the_program(
     control.ground([("base", [])])
     outcome = _optimal_enum_two_phase(control, on_model_for, 30.0, False)
     assert isinstance(outcome.determination, Inconclusive)
+
+
+def test_an_optimal_search_that_saw_no_model_at_all_claims_nothing() -> None:
+    # Three states, and this is the first: a search that reported no model says nothing about the
+    # program, which is not the same as one that reported models and found no objective to
+    # optimize. Folding them together would report "the ground program carries no objective" about
+    # a program the search never got far enough to read.
+    empty = _Collector()
+
+    assert solvers._consistent_shape(Mode.OPTIMAL, empty, False, Conclusion.EXHAUSTED) is None

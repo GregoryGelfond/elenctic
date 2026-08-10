@@ -2,9 +2,18 @@
 the ``Expectation`` sum, continuation lines join an unclosed litset (and *only* that),
 and a source label threads file:line provenance into diagnostics."""
 
+import pytest
 from clingo import Symbol, parse_term
 
-from elenctic.expectation import Claimed, Sat, Unsat, WitnessClaim, parse
+from elenctic.expectation import (
+    Claimed,
+    ContractError,
+    Sat,
+    Unsat,
+    WitnessClaim,
+    parse,
+    require_tag,
+)
 from elenctic.query import Answer, GroundQuery
 
 
@@ -275,3 +284,27 @@ def test_where_continues_while_a_brace_is_open() -> None:
     assert isinstance(exp, Sat)
     binding = frozenset({(parse_term("v"), 1), (parse_term("w"), 2)})
     assert cell(exp.model) == WitnessClaim(shown=L("a"), assign=binding)
+
+
+def test_a_check_label_that_is_not_a_contract_tag_is_refused() -> None:
+    # A report's label is what the published document calls `tag`, so a consumer driving a case
+    # from a runner of their own is the one who can break the invariant — which is why it is
+    # enforced here rather than only where checks are built.
+    with pytest.raises(ValueError, match="must be a contract tag"):
+        require_tag("expect")
+
+
+@pytest.mark.parametrize(
+    ("contract", "refused"),
+    [
+        ("% @expect sat\n% @optimal a\n", r"expected .* litset"),
+        ("% @expect sat\n% @assign x=1\n", "expected a brace set"),
+    ],
+    ids=["@optimal without braces", "@assign without braces"],
+)
+def test_a_payload_written_without_its_braces_is_refused(contract: str, refused: str) -> None:
+    # The braces are the grammar, and dropping them is what a reader does first. Both payload
+    # parsers refused it already and neither refusal had ever been provoked, so nothing said
+    # whether the message named the shape that was wanted.
+    with pytest.raises(ContractError, match=refused):
+        parse(contract, source="case.lp")

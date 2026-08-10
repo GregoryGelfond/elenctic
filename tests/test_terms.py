@@ -4,7 +4,7 @@ the contrary of a literal, together with what each refuses and the quoting it mu
 import pytest
 from clingo import Function, Number, parse_term
 
-from elenctic.terms import contrary, parse_litset, parse_tupleset
+from elenctic.terms import contrary, parse_litset, parse_tupleset, signature_of
 
 
 @pytest.mark.parametrize(
@@ -76,3 +76,25 @@ def test_parse_litset_rejects(body: str) -> None:
 def test_parse_litset_preserves_quoted_comma() -> None:
     # The headline robustness claim: a comma inside a quoted string is one atom (clingo parses it).
     assert parse_litset('p("a,b")') == (parse_term('p("a,b")'),)
+
+
+def test_a_blank_litset_body_is_refused() -> None:
+    # A claim over no literals is vacuous, which is a PASS the corpus did not ask for.
+    with pytest.raises(ValueError, match=r"^empty literal set: a litset needs"):
+        parse_litset("")
+
+
+def test_a_litset_body_that_parses_to_no_literals_is_refused() -> None:
+    # The second of the two, and the one a blank-text guard cannot catch: `{ () }` is not blank, so
+    # it reaches the parser, and the empty tuple then flattens to no literals at all. Asserted
+    # against the whole opening of the message rather than the phrase both refusals share — written
+    # the loose way, this test passes on the blank-body guard above and says nothing about this one.
+    with pytest.raises(ValueError, match=r"^empty literal set \{\(\)\}: it parses to no literals"):
+        parse_litset("()")
+
+
+def test_a_term_that_is_not_a_literal_has_no_signature() -> None:
+    # `#show` names a predicate, and a number names none. Asked of a non-function symbol, this
+    # refuses rather than inventing a signature no `#show` could ever declare.
+    with pytest.raises(ValueError, match="not a literal"):
+        signature_of(Number(42))

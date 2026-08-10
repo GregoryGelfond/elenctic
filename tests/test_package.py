@@ -255,3 +255,10 @@ def test_running_a_corpus_does_not_reach_for_the_console_entry(tmp_path: Path) -
         check=False,
     )
     assert ran.returncode == 0, ran.stderr or ran.stdout
+
+
+def test_dir_of_the_package_is_the_curated_surface() -> None:
+    # The lazy resolver means the module's own namespace does not hold the curated names until
+    # something asks for them, so a bare `dir()` would show a reader almost nothing — and tab
+    # completion in a REPL is how most people meet an API for the first time.
+    assert dir(elenctic) == sorted(elenctic.__all__)

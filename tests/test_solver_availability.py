@@ -6,11 +6,16 @@ with the command that fixes it, is both earlier and more useful than an import t
 from inside the solver facade on the first case that needs it.
 """
 
+import sys
+from pathlib import Path
+
 import pytest
 
 from elenctic import discovery
 from elenctic.discovery import DiscoveryError, SolverUnavailableError, check_solver_available
 from elenctic.registry import BACKING_MODULES, SOLVERS, THEORY_EXTRA_ADVICE
+from elenctic.run import Mode
+from elenctic.solvers import run_clingcon
 
 
 def test_every_registered_solver_names_a_backing_module() -> None:
@@ -52,3 +57,32 @@ def test_a_missing_solver_answers_to_both_idioms(monkeypatch: pytest.MonkeyPatch
         check_solver_available("clingcon")
     assert issubclass(SolverUnavailableError, ImportError)
     assert issubclass(SolverUnavailableError, DiscoveryError)
+
+
+def test_an_installation_too_broken_to_answer_counts_as_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `find_spec` is documented to raise rather than return None for some broken installations, and
+    # a case declaring that solver must then be refused with the remedy — not crash the run with an
+    # exception from the import system that names neither the case nor what to do about it.
+    def broken(_name: str) -> None:
+        raise ValueError("a broken installation")
+
+    monkeypatch.setattr(discovery, "find_spec", broken)
+    assert discovery._installed("clingcon") is False
+
+
+def test_the_theory_facade_called_directly_reports_a_missing_solver_itself(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Discovery checks a declared solver before any run reaches its facade, so a case never gets
+    # here — but a caller driving the facade themselves bypasses that check entirely, and must meet
+    # the same condition with the same type and the same remedy rather than an ImportError from
+    # somewhere inside. The comment at that arm says it exists for exactly this caller; nothing had
+    # ever been that caller.
+    case = tmp_path / "case.lp"
+    case.write_text("% @expect sat\na.\n", encoding="utf-8")
+    monkeypatch.setitem(sys.modules, "clingcon", None)
+
+    with pytest.raises(SolverUnavailableError, match="clingcon is not installed"):
+        run_clingcon(Mode.ENUM_ALL, files=(case,))

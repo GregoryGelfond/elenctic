@@ -6,7 +6,14 @@ from pathlib import Path
 import pytest
 from clingo.ast import AST, ASTType, parse_string
 
-from elenctic.program import ProgramError, Restricted, Unrestricted, inspect
+from elenctic.program import (
+    ProgramError,
+    Restricted,
+    Unrestricted,
+    _parse_faults,
+    captured_diagnostics,
+    inspect,
+)
 
 
 def _write(tmp_path: Path, name: str, body: str) -> Path:
@@ -305,3 +312,37 @@ def test_percent_inside_a_string_term_is_not_a_comment(tmp_path: Path) -> None:
     assert inspect((case,)).shown == Restricted(
         signatures=frozenset({("label", 1)}), displayed=frozenset()
     )
+
+
+def test_a_show_directive_naming_no_predicate_declares_none(tmp_path: Path) -> None:
+    # `#show "text" : p.` and `#show 42 : p.` are both programs clingo runs, and neither declares a
+    # predicate — so the shown vocabulary must not gain an entry for either. The type is asked
+    # before the name because a symbol's name is defined only for a function symbol.
+    # Four shapes, because they reach the reader by two different routes: a string and a number are
+    # symbolic terms whose symbol is not a function, and an arithmetic term is not a symbolic term
+    # at all. Both fall through to "this declares no predicate", and only one of the two had ever
+    # been read.
+    case = _write(
+        tmp_path,
+        "shown.lp",
+        '% @expect sat\np.\n#show "text" : p.\n#show 42 : p.\n#show 1+1 : p.\n#show (1,2) : p.\n',
+    )
+
+    shown = inspect((case,)).shown
+
+    assert isinstance(shown, Unrestricted), "no #show p/n, so the program shows everything"
+    assert shown.displayed == frozenset(), "and neither directive names a predicate to record"
+
+
+def test_a_parse_that_recurses_past_the_limit_is_not_reported_as_a_program_fault() -> None:
+    # `_parse_faults` turns clingo's own failures into a `ProgramError` carrying its diagnostic. A
+    # RecursionError is neither — it is this interpreter running out of stack — and it is a
+    # RuntimeError subclass, so it would otherwise be swept up by the arm that catches those and
+    # sent a reader looking for a defect in their own program. The solver facade re-raises it for
+    # the same reason; both halves of that rule are now held.
+    with (
+        captured_diagnostics() as diagnostics,
+        pytest.raises(RecursionError),
+        _parse_faults(diagnostics),
+    ):
+        raise RecursionError("stack exhausted")

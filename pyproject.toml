@@ -190,3 +190,55 @@ exclude = ["tests/spikes/"]
 [[tool.mypy.overrides]]
 module = ["clingcon", "clingcon.*"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+# `branch` because a statement-only measure calls a two-armed `if` covered when one arm ever ran,
+# and the arms this package cares about most are refusals — the half a test is least likely to take.
+branch = true
+# `parallel`, with `COVERAGE_PROCESS_START` set by the task, because a large part of this suite runs
+# elenctic as a CHILD PROCESS: everything about which stream a byte landed on has to, since a test
+# runner replaces this language's standard output with an object of its own. Without it the whole
+# machine-readable path reads as dead code — measured, `cli.py` alone went from 89% to 99% when the
+# children were followed, having changed not at all.
+parallel = true
+source = ["elenctic"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+precision = 2
+# A ratchet, not an aspiration: this is the figure the suite reaches today, so a change that lowers
+# it fails rather than being noticed later or not at all. It is held by `pixi run check`, which runs
+# the suite under coverage rather than beside it.
+#
+# What the number counts is stated where it can be checked: statements AND branches, with the
+# exhaustiveness arms and the import-time integrity assertions excluded below, and with child
+# processes followed. Each of those three moves the figure, so a floor quoted without them is a
+# different measurement wearing the same percentage.
+fail_under = 99.6
+# The exhaustiveness arms. `assert_never` is reached only by a value the type system says cannot
+# exist, so the arm is unreachable exactly while the taxonomy it guards is complete — and a test
+# that reached one would have to construct the impossible value first. Excluded rather than waived
+# per-site: a `# pragma: no cover` on each is a claim about each, and this is one claim about all.
+# The arm is any `case` whose body is that call — written from what an exhaustiveness arm IS,
+# rather than from the two spellings this package happens to use (`case _:` and
+# `case unreachable:`), which is a rule that would need widening the next time one is written.
+exclude_also = [
+    "^\\s*case [^\\n]*:\\n\\s*assert_never\\(",
+    # The import-time integrity assertions, identified by the marker they already carry. Each
+    # compares two tables in this package — the registered solvers against their backing modules,
+    # the lowering rows against the mode taxonomy, the facades against the registry — and fires
+    # only if those have drifted apart. That is the same condition as an exhaustiveness arm: not
+    # reachable by any input, only by the package being internally inconsistent, and a test that
+    # reached one would have to corrupt a module to do it.
+    #
+    # The marker is the discriminator rather than `raise AssertionError`, which would also swallow
+    # the lowering-row guard in `run._Lowering.__post_init__` — that one takes a value a caller
+    # constructs, so it IS reachable, and it is provoked by a test.
+    # Anchored to the `if`, not to the marker alone: the same marker appears as a standalone
+    # comment inside `run._Lowering.__post_init__`, whose guard takes a value a caller constructs
+    # and IS provoked by a test. Matching the bare marker leaves that guard one edit — moving the
+    # comment up onto the `if` line, which is how the other four are written — from silently
+    # leaving the denominator.
+    "^\\s*if .*# raised, not asserted",
+]

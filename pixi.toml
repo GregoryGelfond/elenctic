@@ -34,11 +34,21 @@ elenctic = { path = ".", editable = true }
 
 [tasks]
 test = "pytest -q"
-cov = "pytest --cov=elenctic --cov-report=term-missing"
 lint = "ruff check . && ruff format --check ."
 # The other half of `lint`, which reports formatting and applies none of it. Deliberately only the
 # formatter: `ruff check --fix` changes what the code says, and a task named `fmt` that also did
 # that would be doing something its name does not carry.
 fmt = "ruff format ."
 typecheck = "mypy"
-check = { depends-on = ["lint", "typecheck", "test"] }
+# `cov` rather than `test`: it runs the same suite, and it is what holds the coverage floor. A
+# number nothing gates on is a report, and this project does not keep those.
+check = { depends-on = ["lint", "typecheck", "cov"] }
+
+# `COVERAGE_PROCESS_START` is what makes the number true rather than merely large. A large part of
+# this suite runs elenctic as a CHILD PROCESS — everything about which stream a byte landed on has
+# to — and coverage follows a child only when that variable points it at a configuration. Without
+# it the whole machine-readable path reads as untested: measured, `cli.py` alone reported 89% and
+# reports 99% with the children followed, having changed not at all.
+[tasks.cov]
+cmd = "pytest --cov=elenctic --cov-report=term-missing"
+env = { COVERAGE_PROCESS_START = "$PIXI_PROJECT_ROOT/pyproject.toml" }

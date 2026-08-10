@@ -30,6 +30,7 @@ from elenctic.result import (
     Consistent,
     ConsistentShownCensus,
     ConsistentShownOptimalCensus,
+    ConsistentWitness,
     Field,
     HarnessError,
     collection_of,
@@ -39,6 +40,8 @@ from elenctic.run import (
     Mode,
     RoutingError,
     Run,
+    _Collapse,
+    _Lowering,
     populates,
     reads_full_census,
     runs_for,
@@ -644,3 +647,18 @@ def test_where_witness_reads_full_token_and_suppresses_projection() -> None:
     )
     assert reads_full_census(where_check)  # the where-clause makes it read the full census
     assert should_project(True, Mode.ENUM_ALL, (where_check,)) is False  # suppressed
+
+
+def test_a_lowering_row_cannot_shed_a_field_it_never_populated() -> None:
+    # The two halves of a projecting row are one fact: what it gives up under `--project` must be
+    # something it had. A row promising to shed a field it never populates would leave `populates`
+    # and `shape_for` describing different runs, and the disagreement would surface as a SeamError
+    # in whichever check read the field first. Raised at import, so it can only be provoked by
+    # building a row directly — and nothing had.
+    with pytest.raises(AssertionError, match=r"sheds .* but does not populate it"):
+        _Lowering(
+            search=(),
+            populates=frozenset({Field.WITNESS}),
+            shape=ConsistentWitness,
+            collapse=_Collapse(sheds=Field.FULL_CENSUS, shape=ConsistentShownCensus),
+        )

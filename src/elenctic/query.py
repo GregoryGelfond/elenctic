@@ -125,6 +125,18 @@ class BindingQuery:
     goal: QueryLiteral
     bindings: frozenset[tuple[Symbol, ...]]
 
+    def __post_init__(self) -> None:
+        # Enforced here as well as in the parser, for the reason `GroundQuery` enforces its own:
+        # the evaluators and every diagnostic that renders a goal assume the binding form has
+        # something to bind. Left to the parser alone, a caller assembling a query themselves could
+        # build one the corpus grammar refuses, and the arity mismatch would surface somewhere with
+        # no account of which claim was at fault.
+        if not self.goal.variables:
+            raise ValueError(
+                "a binding query goal must contain at least one variable; "
+                "use the ground form '@query A { … }' for a ground goal"
+            )
+
 
 type Query = GroundQuery | BindingQuery
 

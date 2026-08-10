@@ -77,3 +77,48 @@ def test_parse_binding_query_strong_negation_goal() -> None:
 def test_parse_query_rejects(answer: str, payload: str, match: str) -> None:
     with pytest.raises(ValueError, match=match):
         parse_query(answer, payload)
+
+
+def test_a_ground_query_with_no_conjuncts_is_unrepresentable() -> None:
+    # The empty conjunction is vacuously true, so a query carrying one would PASS whatever the
+    # program says — refused at construction rather than left for an evaluator to notice, which is
+    # the same boundary `terms.parse_litset` draws. Never provoked until now: the refusal was
+    # written and no test had ever reached it.
+    with pytest.raises(ValueError, match="needs at least one conjunct"):
+        GroundQuery(Answer.yes, ())
+
+
+def test_a_ground_query_conjunct_that_is_not_a_literal_is_refused() -> None:
+    # `contrary` and both evaluators assume every conjunct is a function symbol; a number or a
+    # string reaching them would fail somewhere with no account of which claim was at fault.
+    with pytest.raises(ValueError, match="must be literals"):
+        GroundQuery(Answer.yes, (parse_term("42"),))
+
+
+@pytest.mark.parametrize(
+    ("goal", "refused"),
+    [
+        ("p(X", "malformed query goal"),
+        ("-p(X", "malformed query goal"),
+        ("P(X)", "must be an ASP constant"),
+        ("-P(X)", "must be an ASP constant"),
+    ],
+    ids=["unclosed", "unclosed and negated", "a variable in predicate position", "and negated"],
+)
+def test_a_binding_goal_that_is_not_an_asp_literal_is_refused(goal: str, refused: str) -> None:
+    # Written in the BINDING form deliberately: a ground payload is read by `terms.parse_litset`,
+    # and only a goal on the left of the binding separator reaches this parser at all. A predicate
+    # name that is not an ASP constant is what a reader is most likely to write here, since `P(X)`
+    # is how the same claim is spelled in most other notations — and until now nothing had ever
+    # provoked either refusal.
+    with pytest.raises(ValueError, match=refused):
+        parse_query("unknown", f"{{ {goal} }} = {{ (a) }}")
+
+
+def test_a_binding_query_built_without_a_variable_is_refused_by_the_type() -> None:
+    # The parser refuses this shape, and so does the type — the same two layers `parse_litset` and
+    # `GroundQuery` already form. A caller assembling a query themselves is the one who can reach
+    # past the parser, and every evaluator and every diagnostic that renders a goal assumes the
+    # binding form has something to bind.
+    with pytest.raises(ValueError, match="at least one variable"):
+        BindingQuery(Answer.unknown, QueryLiteral("p", True, ()), frozenset())

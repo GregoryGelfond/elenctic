@@ -125,3 +125,34 @@ def test_a_stage_that_does_its_work_survives_having_no_standard_error(tmp_path: 
 
     assert finished.returncode == ExitStatus.OK
     assert "ConsistentWitness" in finished.stdout, "the inspection this entry point exists for"
+
+
+def test_the_console_entry_is_also_runnable_as_a_module() -> None:
+    # `python -m elenctic.cli` is how the working tree is measured when the installed console
+    # script would be the wrong copy, so it is a real entry and not an accident of layout. Nothing
+    # ran it: the console script reaches `main` by another route entirely.
+    finished = subprocess.run(
+        [sys.executable, "-m", "elenctic.cli", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert finished.returncode == ExitStatus.OK
+    assert finished.stdout.startswith("usage: elenctic")
+
+
+def test_the_solve_stage_refuses_a_mode_it_does_not_have(tmp_path: Path) -> None:
+    # The one entry point that takes a word from the command line rather than only a path, so it is
+    # the one that can be given something outside the taxonomy. It names what it does know, because
+    # a reader who typed the wrong mode cannot see the enumeration from where they are standing.
+    case = tmp_path / "case.lp"
+    case.write_text("% @expect sat\na.\n", encoding="utf-8")
+    finished = subprocess.run(
+        [sys.executable, "-m", "elenctic.solvers", "NOT_A_MODE", str(case)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert finished.returncode == ExitStatus.USER_FAULT
+    assert "unknown mode 'NOT_A_MODE'" in finished.stderr
+    assert "ENUM_ALL" in finished.stderr, "and it lists the modes there are"
