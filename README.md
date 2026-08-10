@@ -344,13 +344,17 @@ report carries:
 Loci name *places*, not exception classes, and deliberately: a deadline raises no exception at all
 and a resource running out arrives as a built-in — and the mapping is not one-to-one in the other
 direction either, since `elenctic.SolverUnavailableError` is a `DiscoveryError` by inheritance while
-the fault it reports belongs to the environment. `containment` is that shape mirrored: the class
-raised for it is a `ProgramError` by inheritance, so the family already catches it, and it is filed
-under a locus of its own because one rule met at two moments — while the escaping file is read, or
-while it is grounded — must not reach a reader as two different problems. Five of the eight do have
-an exception a library consumer can catch: `elenctic.ContractError`, `elenctic.DiscoveryError`,
-`elenctic.ProgramError`, `elenctic.HarnessError`, and `elenctic.SolverUnavailableError` — which is
-also an `ImportError`, so either idiom catches a missing backend. The one closed question about a
+the fault it reports belongs to the environment, and `elenctic.ContainmentError` is that shape
+mirrored — a `ProgramError` by inheritance, filed under a locus of its own because one rule met at
+two moments (while the escaping file is read, or while it is grounded) must not reach a reader as
+two different problems. Six of the eight do have an exception a library consumer can catch:
+`elenctic.ContractError`, `elenctic.DiscoveryError`, `elenctic.ProgramError`,
+`elenctic.ContainmentError`, `elenctic.HarnessError`, and `elenctic.SolverUnavailableError`. The
+last two of those are subclasses, so either idiom works: catch the parent to treat a family alike,
+or the child to answer one member differently — a case reaching outside its corpus is a question
+about the corpus you were given, not about how one encoding is written, and a runner may well want
+to stop for it. The remaining two have no class to catch by design: a deadline raises no exception
+at all, and a resource running out arrives as a built-in. The one closed question about a
 locus is `is_elenctic_bug`
 on `elenctic.ErrorKind` — whether to report it or fix it — and that is what the exit status reads,
 so a locus added later never changes what a status means. A case that cannot be run does not stop the others: it is reported on its own and the rest

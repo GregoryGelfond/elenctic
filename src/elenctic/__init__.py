@@ -23,7 +23,10 @@ which covers both a solve that decided nothing and a search too partial for what
   also an :class:`ImportError`, so either idiom catches it.
 - :class:`ProgramError` — a program elenctic cannot run: an unresolvable ``#include``, a parse
   error, or a program that will not ground. The *program under test* is broken, so its author fixes
-  the ``.lp``.
+  the ``.lp``. Its subclass :class:`ContainmentError` reports a case loading a file from outside the
+  corpus it belongs to — filed under a locus of its own, because what is wrong there is *where* the
+  program reaches rather than how it is written, and a caller may well want to answer the two
+  differently. Either idiom catches it, as with the pair above.
 - :class:`HarnessError` (and its subclasses :class:`RoutingError`, :class:`SeamError`) — an internal
   invariant elenctic itself violated: a stale route, a narrowing-seam breach. A *harness bug*, never
   a statement about the program under test, so the runner reports it under a distinct "harness
@@ -129,6 +132,7 @@ if TYPE_CHECKING:  # static visibility for the lazily-resolved curated surface
     )
     from elenctic.program import (
         Boundary as Boundary,
+        ContainmentError as ContainmentError,
         ProgramError as ProgramError,
         Restricted as Restricted,
         ShownVocabulary as ShownVocabulary,
@@ -210,6 +214,7 @@ _EXPORTS: dict[str, tuple[str, ...]] = {
     ),
     "elenctic.program": (
         "Boundary",
+        "ContainmentError",
         "ProgramError",
         "Restricted",
         "ShownVocabulary",

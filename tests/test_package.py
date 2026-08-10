@@ -27,9 +27,10 @@ _CURATED = {
     # the outcomes a solve produced, and how far the search behind them got
     "Determination", "Verdict", "Observable", "Optimum", "SolveOutcome", "Consistent",
     "Inconclusive", "Inconsistent", "Conclusion", "Collection",
-    # the error taxonomy
-    "ContractError", "DiscoveryError", "SolverUnavailableError", "ProgramError", "HarnessError",
-    "RoutingError", "SeamError",
+    # the error taxonomy, subclasses included: each of these is a family a consumer is told to
+    # catch, and one they cannot name is one they can only catch by widening to its parent
+    "ContractError", "DiscoveryError", "SolverUnavailableError", "ProgramError",
+    "ContainmentError", "HarnessError", "RoutingError", "SeamError",
     # the solver registry
     "Solver", "SOLVERS",
     # running a whole corpus, watching it, and reading what it produced
@@ -117,6 +118,41 @@ def test_a_consumer_can_match_on_what_a_case_makes_observable(tmp_path: Path) ->
                 seen["unrestricted"] = displayed
     assert seen["restricted"] == (frozenset({("a", 0)}), frozenset())
     assert seen["unrestricted"] == frozenset()
+
+
+def test_every_exception_a_consumer_can_meet_is_one_they_can_name() -> None:
+    # The taxonomy in the package docstring is *published*: a consumer is told which families to
+    # catch and which of them are theirs to fix. A family they cannot name is one they cannot
+    # catch, so they widen to the parent and lose the distinction the class was created to draw.
+    #
+    # Derived from what the package defines rather than from a list here, and the derivation is the
+    # point: `ContainmentError` was the one class this rule was silently broken for, and it was
+    # broken by the seam that created it rather than by anyone deciding so. Every other exception
+    # elenctic defines is curated, subclasses included — `SolverUnavailableError` under
+    # `DiscoveryError`, `SeamError` and `RoutingError` under `HarnessError`.
+    #
+    # Every one of these can reach a caller: `discover`, `run_case` and `solve` raise them, and the
+    # taxonomy exists because a caller is expected to tell them apart. So the rule is total and
+    # needs no waiver — an exception class that could not escape would be the first thing to
+    # justify one.
+    package = Path(elenctic.__file__).parent
+    defined = {
+        node.name: path.name
+        for path in sorted(package.glob("*.py"))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ClassDef)
+        and any(
+            isinstance(base, ast.Name) and (base.id == "Exception" or base.id.endswith("Error"))
+            for base in node.bases
+        )
+    }
+    assert defined, "no exception class was found at all, so this is no longer reading the package"
+    unnameable = sorted(name for name in defined if name not in elenctic.__all__)
+    assert not unnameable, (
+        f"elenctic defines these exception classes and a consumer cannot name any of them: "
+        f"{[(name, defined[name]) for name in unnameable]}. Catching one means widening to its "
+        f"parent, which is the distinction the subclass exists to draw"
+    )
 
 
 def test_public_api_is_curated_not_dumped() -> None:

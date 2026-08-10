@@ -198,11 +198,16 @@ means for them — a reader deciding whether to upgrade should not have to read 
   row.
 
   **Breaking for a library consumer who catches it by class.** 0.3.0 raised a `DiscoveryError`;
-  this raises a `ContainmentError`, which is a **`ProgramError`** by inheritance and no longer a
-  `DiscoveryError` at all. `except elenctic.DiscoveryError` stops catching an escaping `#include`;
-  `except elenctic.ProgramError` catches it. The family moved because what is wrong is the program
-  under test reaching somewhere it may not, which is its author's to fix — not the shape of the
-  corpus around it.
+  this raises **`elenctic.ContainmentError`**, which is a `ProgramError` by inheritance and no
+  longer a `DiscoveryError` at all. `except elenctic.DiscoveryError` stops catching an escaping
+  `#include`; `except elenctic.ProgramError` catches it, and `except elenctic.ContainmentError`
+  catches only it. The family moved because what is wrong is the program under test reaching
+  somewhere it may not, which is its author's to fix — not the shape of the corpus around it.
+
+  The class is **new on the curated surface**, and it is the distinction worth having a name for:
+  every other locus a runner may want to answer differently already had one, and a case reaching
+  outside the corpus it was given is a question about that corpus rather than about how one
+  encoding is written. `elenctic.error_kind` still answers the same question from the value.
 
 - **A containment diagnostic no longer claims the set it shows is ⋂ AS(P).** It reports what was
   observed, because the set elenctic can show is the shown projection and on any program that
