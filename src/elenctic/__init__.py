@@ -24,9 +24,8 @@ which covers both a solve that decided nothing and a search too partial for what
 - :class:`ProgramError` — a program elenctic cannot run: an unresolvable ``#include``, a parse
   error, or a program that will not ground. The *program under test* is broken, so its author fixes
   the ``.lp``. Its subclass :class:`ContainmentError` reports a case loading a file from outside the
-  corpus it belongs to — filed under a locus of its own, because what is wrong there is *where* the
-  program reaches rather than how it is written, and a caller may well want to answer the two
-  differently. Either idiom catches it, as with the pair above.
+  corpus it belongs to, filed under a locus of its own because what is wrong there is *where* the
+  program reaches rather than how it is written.
 - :class:`HarnessError` (and its subclasses :class:`RoutingError`, :class:`SeamError`) — an internal
   invariant elenctic itself violated: a stale route, a narrowing-seam breach. A *harness bug*, never
   a statement about the program under test, so the runner reports it under a distinct "harness
@@ -37,22 +36,20 @@ is not a ``HarnessError``: a broken program under test is not evidence of a brok
 
 **The three registers.** A whole run lands in a :class:`RunOutcome`, which keeps apart the three
 kinds of thing a run produces: a :class:`CaseOutcome` per case that reached a verdict, an
-:class:`ErrorRecord` per reason a verdict could not be produced, and a :class:`HygieneRecord` per
-observation about the corpus's health — that one carrying the :class:`Grade` the run graded it,
-since how loudly an observation is taken is a policy the caller sets and a consumer should be told
-rather than left to re-derive. Every discovered case has exactly one home among the first two, and
-:func:`summary` projects the counts out of them rather than tallying beside them — so a reader is
-never shown fewer cases than exist with nothing said about where the rest went.
+:class:`ErrorRecord` per
+reason a verdict could not be produced, and a :class:`HygieneRecord` per observation about the
+corpus's health — that one carrying the :class:`Grade` the run graded it, since how loudly an
+observation is taken is a policy the caller sets. Every discovered case has exactly one home among
+the first two, and :func:`summary` projects the counts out of them rather than tallying beside them,
+so a reader is never shown fewer cases than exist with nothing said about where the rest went.
 
 **Running a corpus.** :func:`run_corpus` takes an :class:`Invocation` — the settled form of a
 command line — and returns a :class:`RunOutcome`; :func:`explain_corpus` derives the run plans
 instead and returns a :class:`PlanOutcome`; :func:`exit_status` reads either against the
 :class:`ExitStatus` ladder, and :func:`as_json` renders one as the published document. Both runners
-are silent, and a caller who wants to watch a long run as it happens supplies a
-:class:`RunObserver` or a :class:`PlanObserver`, which is told each verdict, plan and fault as it
-is established. ``elenctic.cli`` is these calls with a command line in front of them; a
-consumer who wants elenctic's results somewhere else has the same pieces, and can equally work one
-case at a time with :func:`run_case`.
+are silent: a caller who wants to watch a long run supplies a :class:`RunObserver` or a
+:class:`PlanObserver`, told each verdict, plan and fault as it is established. ``elenctic.cli`` is
+these calls with a command line in front of them.
 
 The curated surface is resolved **lazily** (PEP 562): importing ``elenctic`` does not eagerly load
 every submodule, so ``import elenctic`` stays cheap (clingo loads only when a solver is actually
