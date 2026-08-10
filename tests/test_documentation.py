@@ -1,17 +1,22 @@
-"""What the documents state about this package, checked against the package.
+"""What the shipped documents state about this package, checked against the package.
 
-The README is what everyone arriving reads, the changelog is what everyone upgrading reads, and the
-contributor guide is what everyone patching reads — and all three are enforced by nothing that runs,
-so a sentence in any of them stays true only for as long as somebody remembers to move it. What is
-held here is the part that is mechanically checkable: a claim naming a value, a name or a count the
-package also holds — and, in one direction the other way, a claim the *package* makes that one of
-these documents settles. The boundary is worth stating plainly: a green run here does not mean any
-of them is right, only that it does not contradict the package about the few things it names in the
-package's own terms.
+The landing page is what everyone arriving reads, the guides are what a user returns to, the
+changelog is what everyone upgrading reads, and the contributor guide is what everyone patching
+reads — and every one of them is enforced by nothing that runs, so a sentence in any of them stays
+true only for as long as somebody remembers to move it. What is held here is the part that is
+mechanically checkable: a claim naming a value, a name or a count the package also holds — and, in
+one direction the other way, a claim the *package* makes that one of these documents settles. The
+boundary is worth stating plainly: a green run here does not mean any of them is right, only that
+it does not contradict the package about the few things it names in the package's own terms.
 
-All three are read from the source tree rather than from the installed package, which is where they
-are and where an edit to them lands. None is shipped inside the wheel, and these tests are not
-either.
+**A claim is looked for across the documents rather than in a named file.** Which page holds a given
+sentence is an editorial decision that changes; whether the package still agrees with it is not. A
+check keyed to a file name stops checking anything the day the section moves, and stops silently,
+which is the failure this module exists to prevent — so each of these asserts it *found* its
+subject before it judges it.
+
+All are read from the source tree rather than from the installed package, which is where they are
+and where an edit to them lands. None is shipped inside the wheel, and these tests are not either.
 """
 
 import ast
@@ -23,6 +28,7 @@ import re
 import shlex
 import tomllib
 from pathlib import Path
+from urllib.parse import unquote
 
 import elenctic
 from elenctic.cli import _build_parser
@@ -41,21 +47,28 @@ _CONTRIBUTING = (_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
 def _documents_of_instruction() -> dict[str, str]:
     """Every document that tells a reader how to use elenctic, keyed by the path a failure names.
 
-    **Derived, not listed.** The landing page, the contributor guide, and everything under ``docs/``
-    — so a page added there is swept because of what it *is*, rather than because somebody
-    remembered to add it to a tuple here. The sweeps below were keyed to two file names until the
-    reference material moved out of the README, and a name is exactly the wrong key for a thing that
-    moves.
+    **Derived, not listed** — every Markdown document this repository ships, save the one exception
+    below. A page is swept because of what it *is*, rather than because somebody remembered to add
+    it to a tuple here.
 
-    ``CHANGELOG.md`` is deliberately outside this set, on the boundary these checks already draw: a
-    changelog records what changed, and when a command line or a contract is what changed, saying so
-    means naming the spelling that *stopped* working. A rule requiring every such line to still work
-    forbids the document from doing its job.
+    Written first as *the landing page, the contributor guide, and everything under* ``docs/``,
+    which is a list of three wearing a derivation's clothes: it silently omitted ``SECURITY.md``,
+    which is a document of instruction by every test that matters — a reader follows it, and it
+    shows a command line they copy. The rule is what the repository ships to a reader, and the only
+    reason to know a file's name is to exclude it.
+
+    ``CHANGELOG.md`` is that one exclusion, on the boundary these checks already draw: a changelog
+    records what changed, and when a command line or a contract is what changed, saying so means
+    naming the spelling that *stopped* working. A rule requiring every such line to still work
+    forbids the document from doing its job. It is named here, once, where a reader can see the
+    exception is deliberate rather than an omission — which is exactly what the first version of
+    this could not show about ``SECURITY.md``.
     """
-    named = {"README.md": _README, "CONTRIBUTING.md": _CONTRIBUTING}
-    return named | {
+    shipped = sorted(_ROOT.glob("*.md")) + sorted((_ROOT / "docs").rglob("*.md"))
+    return {
         str(path.relative_to(_ROOT)): path.read_text(encoding="utf-8")
-        for path in sorted((_ROOT / "docs").rglob("*.md"))
+        for path in shipped
+        if path.name != "CHANGELOG.md"
     }
 
 
@@ -65,42 +78,187 @@ _INSTRUCTIONS = _documents_of_instruction()
 # in one. Joined with a blank line so nothing reads across a boundary that is not a paragraph break.
 _INSTRUCTED = "\n\n".join(_INSTRUCTIONS.values())
 
+# The same text with every run of whitespace collapsed to one space. A claim written in prose is
+# wrapped, and where the wrap falls is an editorial accident — so a check looking for a *phrase*
+# looks here, and one looking for a line or a table row looks above. Without this, reflowing a
+# paragraph could split a sentence a check matches on, and the check would report the claim missing
+# when a reader can see it perfectly well.
+_INSTRUCTED_FLAT = " ".join(_INSTRUCTED.split())
+
 # A dotted name under this package, written as code — `elenctic.outcome.ExitStatus` and the like.
 # Anchored at `elenctic.` so that a backticked flag, path or scrap of ASP is not mistaken for one.
 _DOTTED_NAME = re.compile(r"`(elenctic(?:\.[A-Za-z_][A-Za-z0-9_]*)+)`")
 
 
 def test_the_release_a_reader_is_told_to_pin_is_this_release() -> None:
-    # The one line in the README that goes stale by the project doing nothing wrong: cutting a
+    # The one line in the documents that goes stale by the project doing nothing wrong: cutting a
     # release moves the version, and the example keeps naming whichever release was current when it
     # was written — which still reads as current, and is the version a reader will actually pin.
     # Asserted as a set, so a second example added later cannot go stale quietly either.
-    pinned = set(re.findall(r'tag = "(v[^"]+)"', _README))
+    pinned = set(re.findall(r'tag = "(v[^"]+)"', _INSTRUCTED))
     assert pinned == {f"v{elenctic.__version__}"}, (
-        "the README's pin example must name this release; the version is single-sourced from "
+        "the pin example must name this release; the version is single-sourced from "
         "elenctic.__version__, and cutting a release moves both"
     )
 
 
-def test_the_default_budget_the_readme_states_is_the_default_the_package_has() -> None:
-    # Stated twice in the README — as the gloss on the flag, and as a value inside the one worked
+def test_the_badges_claim_what_the_package_declares() -> None:
+    # A badge is a claim, and it is the loudest one on the page: it is the first thing a visitor
+    # reads and the last thing anyone edits. Three of these are claims about values that live in
+    # `pyproject.toml` — the licence, the version floor, and which workflow reports the build — and
+    # a badge is an image, so a drifted one goes on rendering confidently in the wrong colour.
+    #
+    # The fourth is different in kind and is checked differently: `ruff` claims a practice rather
+    # than a value, so what holds it is that the practice is configured. A project that stopped
+    # using ruff would keep the badge, because nothing about deleting a lint configuration prompts
+    # anyone to look at an image at the top of a document.
+    manifest = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    badges = dict(re.findall(r"^\[!\[([^\]]+)\]\(([^)]+)\)\]", _README, re.M))
+    licence = manifest["project"]["license"]
+    # Each is looked up by the alt text a reader would see, and each is asserted present before it
+    # is judged: a badge that was removed and one that disagrees are different news, and a bare
+    # lookup would report the first as the second — or as a KeyError, which is neither.
+    wanted = ["CI", "Ruff", "Python", f"License: {licence}"]
+    missing = [name for name in wanted if name not in badges]
+    assert not missing, f"the badge row no longer carries {missing}; it carries {sorted(badges)}"
+
+    # The build badge names the workflow it reports on, and a renamed workflow renders as a
+    # permanently unknown build rather than as an error anyone is told about.
+    workflow = re.search(r"/actions/workflows/([^/]+)/badge\.svg", badges["CI"])
+    assert workflow is not None, "the CI badge no longer names a workflow"
+    assert (_ROOT / ".github/workflows" / workflow.group(1)).is_file(), (
+        f"the CI badge reports on {workflow.group(1)}, and there is no such workflow"
+    )
+
+    # The floor, read out of the badge the way a reader sees it rather than out of its escaping.
+    shown = unquote(badges["Python"])
+    floor = manifest["project"]["requires-python"].lstrip(">=")
+    required = manifest["project"]["requires-python"]
+    assert f"≥ {floor}" in shown, (
+        f"the Python badge shows {shown!r} and the package requires {required!r}"
+    )
+
+    assert f"License-{licence}-" in badges[f"License: {licence}"], (
+        f"the licence badge does not show {licence!r}: {badges[f'License: {licence}']}"
+    )
+    assert "ruff" in manifest["tool"], "the badge claims ruff and the project does not configure it"
+
+
+def test_every_place_that_says_where_elenctic_comes_from_says_the_same_thing() -> None:
+    """Where elenctic is installed from is one fact, and this package states it in five places.
+
+    Four are instructions a reader follows and the fifth is a diagnostic elenctic prints at someone
+    who is already stuck, so a disagreement is met by the reader least able to work around it. Only
+    one pairing was held — the theory-install line against the constant — which is the pairing that
+    caught the advice naming an install that resolved nothing. The others were free to drift: a
+    fenced TOML block is read by nothing here, since the command-line check reads only lines opening
+    with ``elenctic`` and the contract check only ``asp`` blocks.
+
+    That matters on one particular day. Publishing to an index is a change to *every* one of these,
+    and the ones nothing holds are the ones that would be left behind — leaving the recommended
+    install pointing at a git URL for a package that no longer needs it.
+
+    So the fact is derived at each site and the sites are required to agree, rather than each being
+    compared against a spelling written here. What the correct answer *is* stays outside this check,
+    which is what lets it go on holding after the answer changes.
+    """
+    from_git: dict[str, bool] = {}
+
+    # The premise, stated in prose. Absent, the reader is being told elenctic comes from an index.
+    from_git["the prose"] = "not published to PyPI" in _INSTRUCTED_FLAT
+
+    # The pixi block, which is the *recommended* install and the one furthest from any check.
+    pixi = re.search(r"^elenctic = (.+)$", _INSTRUCTED, re.M)
+    assert pixi is not None, "no document shows a pixi dependency entry for elenctic any more"
+    from_git["the pixi entry"] = "git" in pixi.group(1)
+
+    # Every `pip install …` line naming elenctic, of which there are two: the answer-set fragment
+    # and the theory extra. Asserted non-empty, because a check that found none would pass.
+    installs = re.findall(r"pip install \"?([^\"\n]*elenctic[^\"\n]*)\"?", _INSTRUCTED)
+    assert installs, "no document shows a pip install for elenctic any more"
+    for shown in installs:
+        from_git[f"pip install {shown.strip()}"] = "git+" in shown
+
+    # And the sentence elenctic itself prints when the theory backend is missing.
+    from_git["THEORY_EXTRA_ADVICE"] = "git+" in THEORY_EXTRA_ADVICE
+
+    answers = set(from_git.values())
+    assert len(answers) == 1, (
+        "these disagree about where elenctic is installed from, so following one and reading "
+        "another leaves a reader with an install that cannot work:\n"
+        + "\n".join(
+            f"  {'from git ' if git else 'from index'}  {site}"
+            for site, git in sorted(from_git.items(), key=lambda pair: (pair[1], pair[0]))
+        )
+    )
+
+
+def test_the_version_the_citation_file_states_is_this_release() -> None:
+    # A citation file names a version, and a version in a file nothing reads is a version nobody
+    # updates — so this joins the pin example as a thing the release cut has to move, and as a thing
+    # that says so when it is forgotten. A citation naming a release that was never cut is worse
+    # than one naming none: it sends a reader looking for an artefact that does not exist.
+    #
+    # Read with a pattern rather than a YAML parser, deliberately. The file is YAML, and parsing it
+    # would need a dependency this project does not otherwise have; what is being checked is one
+    # scalar on one line, and a pattern that fails to find it fails loudly below.
+    citation = (_ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    stated = re.search(r"^version: (.+)$", citation, re.M)
+    assert stated is not None, "CITATION.cff no longer states a version in the shape this reads"
+    assert stated.group(1).strip().strip('"') == elenctic.__version__, (
+        f"CITATION.cff cites {stated.group(1).strip()} and this is {elenctic.__version__}"
+    )
+
+
+def test_every_link_between_the_documents_goes_somewhere() -> None:
+    # A `docs/` tree means relative links, and a relative link is the one thing in a document that
+    # is both certain to be written and certain to rot: moving a page is an edit to every document
+    # that points at it, and nothing about moving a file prompts that edit.
+    #
+    # Resolved against the directory of the document holding the link, which is what a reader's
+    # renderer does. Anchors are checked as far as the file — whether a heading exists is a question
+    # about how a renderer slugs one, and that answer differs between renderers.
+    # **Both notations markdown has**, because a link written the other way is still a link a
+    # reader follows, and converting a table to the reference form is an ordinary tidying edit —
+    # one that would otherwise lift those links out of this check without removing them from the
+    # page. Inline first, then the definitions a reference link resolves through.
+    linked = [
+        (name, target)
+        for name, text in _INSTRUCTIONS.items()
+        for target in re.findall(r"\[[^\]]*\]\(([^)]+)\)", text)
+        + re.findall(r"^\[[^\]]+\]:\s*(\S+)", text, re.M)
+    ]
+    # And the found-guard every other sweep here has, for the case where there is nothing left to
+    # read at all: a check that reports a clean result about an empty set has stopped measuring.
+    assert linked, "no document holds a link any more, which means this is no longer reading them"
+    broken = [
+        f"{name} -> {target}"
+        for name, target in linked
+        if not target.startswith(("http://", "https://", "mailto:", "#"))
+        and not (_ROOT / name).parent.joinpath(target.split("#", 1)[0]).exists()
+    ]
+    assert not broken, "a link in a document points at nothing:\n  " + "\n  ".join(broken)
+
+
+def test_the_default_budget_the_documents_state_is_the_default_the_package_has() -> None:
+    # Stated twice — as the gloss on the flag, and as a value inside the one worked
     # machine-readable document — and held by nothing; these quote the constant where the help
     # interpolates it.
-    assert f"(default {TIME_BUDGET:g}s)" in _README, "the flag's gloss names the shipped default"
-    assert f'"budget": {TIME_BUDGET}' in _README, "and so does the worked document"
+    assert f"(default {TIME_BUDGET:g}s)" in _INSTRUCTED_FLAT, "the flag's gloss names the default"
+    assert f'"budget": {TIME_BUDGET}' in _INSTRUCTED_FLAT, "and so does the worked document"
 
 
-def test_the_help_states_the_default_budget_the_way_the_readme_does() -> None:
+def test_the_help_states_the_default_budget_the_way_the_documents_do() -> None:
     # Interpolating the constant is not enough on its own, which is how these two came to disagree:
-    # the default is a float, so its bare repr reads `30.0s` where the README says `30s`, and a
+    # the default is a float, so its bare repr reads `30.0s` where the documents say `30s`, and a
     # reader comparing the flag's gloss with the documentation found two different numbers.
     #
-    # What is held is the *agreement*, read out of the README rather than written here a third
+    # What is held is the *agreement*, read out of the documents rather than written here a third
     # time: an expectation spelled with the same format string as the line under test would follow
     # it wherever it went.
-    (gloss,) = re.findall(r"\(default [0-9][^)]*\)", _README)
+    (gloss,) = re.findall(r"\(default [0-9][^)]*\)", _INSTRUCTED_FLAT)
     assert gloss in " ".join(cli_help_text("run").split()), (
-        f"the README's gloss {gloss!r} is not how --help says it"
+        f"the documents' gloss {gloss!r} is not how --help says it"
     )
 
 
@@ -112,7 +270,7 @@ def test_the_model_cap_the_documents_state_is_the_one_the_package_enforces() -> 
     # Read as the words the sentence uses rather than as digits: a bound of this size is written
     # "a million" by anyone describing it, and a check keyed on `1000000` would pass a document that
     # had stopped saying anything a reader could act on.
-    stated = re.search(r"holds at most (a million|[\d,]+) answer sets", _INSTRUCTED)
+    stated = re.search(r"holds at most (a million|[\d,]+) answer sets", _INSTRUCTED_FLAT)
     assert stated is not None, (
         "no document states the enumeration bound any more, and it has no flag — so nothing tells "
         "a reader why an honest @count comes back UNDECIDED"
@@ -126,17 +284,23 @@ def test_the_model_cap_the_documents_state_is_the_one_the_package_enforces() -> 
     )
 
 
-def test_the_readme_does_not_keep_a_second_copy_of_the_exit_status_ladder() -> None:
-    # The ladder has one home, `ExitStatus`, and `--help` is rendered from it. A copy here would be
-    # a second thing to keep true, and it is exactly the copy that went stale: it is prose, so
-    # nothing renders it and nothing checks it. What the README carries instead is a pointer.
+def test_no_document_keeps_a_second_copy_of_the_exit_status_ladder() -> None:
+    # The ladder has one home, `ExitStatus`, and `--help` is rendered from it. A copy in prose is a
+    # second thing to keep true, and it is exactly the copy that went stale: nothing renders it and
+    # nothing checks it. What the documents carry instead is a pointer, and the pointer is asserted
+    # too — dropping it would leave a reader with no canonical list at all, which the negative half
+    # of this check cannot see.
     #
-    # The document section is not a copy in this sense and is deliberately left alone: it states
+    # Stated over the whole set rather than over a slice of one file. It used to bound itself by two
+    # headings in one file, which meant it stopped checking anything the moment either moved; what
+    # it forbids is a *copy*, and a copy is no more welcome on one page than another.
+    #
+    # The machine-readable page is not a copy in this sense and is deliberately untouched: it states
     # the ladder as something a consumer computes *from the document*, which is a different claim
     # from what the process returns, and it is checked against the packaged description elsewhere.
-    running = _README.split("## Running", 1)[1].split("### Machine-readable output", 1)[0]
-    assert "elenctic --help" in running, "the invitation to read the canonical list"
-    assert "3 an elenctic bug" not in running, "and not a second list beside it"
+    # So the negative is keyed on the spelling the prose copy used, not on the numbers.
+    assert "elenctic --help" in _INSTRUCTED_FLAT, "the invitation to read the canonical list"
+    assert "3 an elenctic bug" not in _INSTRUCTED_FLAT, "and not a second list beside it"
 
 
 def test_every_name_the_documents_tell_a_reader_to_import_is_one_they_can() -> None:
@@ -309,15 +473,26 @@ def test_no_command_line_shows_a_placeholder_the_shell_would_read_as_a_redirecti
     # (`bash -n` was tried as the instrument and is not one: it rejects `<path>` and *accepts*
     # `<target> --format json`, which is valid shell doing the wrong thing. It would also put a
     # platform dependency in the gate for a class this rule already covers exactly.)
+    #
+    # Both bracket forms, because both are how an author reaches for a placeholder and both are
+    # shell syntax: `<x>` is a redirection, and `[x]` is a glob matching one of the characters
+    # inside it — so `elenctic run [target]` runs against a file called `t`, `a`, `r`, `g` or `e`
+    # if one is there, and against a directory literally named `[target]` if not. That one shipped,
+    # and the check beside this could not see it either: `[target]` is a perfectly good word to a
+    # lexer, so the parser accepts it as a target and nothing objects. The rule is about the
+    # notation rather than about either character: a placeholder is written in capitals, which no
+    # shell reads as anything.
     shown = _command_lines()
     assert shown, "the pattern found no command line, which means it is no longer the pattern"
     placeholders = [
-        (where, line, found) for where, line in shown if (found := re.findall(r"<[^<>]*>", line))
+        (where, line, found)
+        for where, line in shown
+        if (found := re.findall(r"<[^<>]*>|\[[^\[\]]*\]", line))
     ]
     assert not placeholders, (
         "shown to a reader, and read by a shell as a redirection rather than as a placeholder:\n"
         + "\n".join(f"  {where}: {line}\n      {found}" for where, line, found in placeholders)
-        + "\n  Write a placeholder in capitals — TARGET, not <target>."
+        + "\n  Write a placeholder in capitals — TARGET, not <target> or [target]."
     )
 
 
@@ -468,35 +643,43 @@ def _unparsed(block: str) -> Exception | None:
     return None
 
 
-def test_the_readmes_library_example_runs_and_does_what_it_says(tmp_path: Path) -> None:
+def test_the_library_example_runs_and_does_what_it_says(tmp_path: Path) -> None:
     """The worked example a consumer copies, run as written rather than read.
 
-    This is the one block in either document that a reader will paste into their own project, and
-    the release it demonstrates is the one this branch exists for — so "does it still import" is
-    not the question. It is extracted from the README itself, so an edit to the prose is what runs.
+    This is the one block in the documents that a reader will paste into their own project, and the
+    release it demonstrates is the one this branch exists for — so "does it still import" is not the
+    question. It is extracted from the document itself, so an edit to the prose is what runs.
 
     Run as a process, in a directory laid out the way the example assumes, because the example ends
     by leaving with a status and writes a file beside itself. Both are part of what it claims.
+
+    **Found by being the only one, rather than by where it sits.** This used to slice a named
+    heading out of one file, and slicing is what kept going wrong: it was bounded by a heading that
+    later moved *above* it, so the split cut nothing and the slice ran to end of file — passing only
+    because exactly one Python block happened to follow. Asking the whole document set for its
+    Python blocks and requiring exactly one has no slice to be wrong about, and it fails loudly
+    rather than vacuously if the example is moved, duplicated or dropped.
     """
     import subprocess
     import sys
 
-    # Bounded by the next top-level heading rather than by a named one. It was named, and the
-    # section it named later moved *above* this one — so the split stopped cutting anything and
-    # the slice ran to the end of the file. It kept passing because exactly one Python block
-    # happened to follow, which is an instrument that has silently stopped measuring.
-    after = _README.split("## Using elenctic as a library", 1)[1]
-    assert "\n## " in after, "the library section is last, so nothing bounds the slice below"
-    section = after.split("\n## ", 1)[0]
-    block = re.search(r"```python\n(.*?)```", section, re.S)
-    assert block is not None, "the library section no longer holds a Python block to check"
+    found = [
+        (name, match.group(1))
+        for name, text in _INSTRUCTIONS.items()
+        for match in re.finditer(r"```python\n(.*?)```", text, re.S)
+    ]
+    assert len(found) == 1, (
+        f"the documents should hold exactly one Python example, and this is what a consumer "
+        f"copies; found {[name for name, _ in found]}"
+    )
+    (_where, example) = found[0]
 
     (tmp_path / "encodings").mkdir()
     (tmp_path / "encodings" / "case.lp").write_text(
         "% @elenctic solver clingo\n% @expect sat\n% @model { a }\na.\n#show a/0.\n",
         encoding="utf-8",
     )
-    (tmp_path / "example.py").write_text(block.group(1), encoding="utf-8")
+    (tmp_path / "example.py").write_text(example, encoding="utf-8")
 
     done = subprocess.run(
         [sys.executable, "example.py"], cwd=tmp_path, capture_output=True, text=True
@@ -520,7 +703,7 @@ def test_the_changelog_has_a_dated_section_for_the_version_being_shipped() -> No
 
     Bumping ``__version__`` and forgetting to rename ``[Unreleased]`` ships a package whose
     changelog has no section for it — silently, because every other check here compares the version
-    against the README rather than against the changelog. Cutting a release is exactly when a
+    against the package rather than against the changelog. Cutting a release is exactly when a
     document goes stale, so the cut is what this holds.
     """
     dated = re.search(r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$", _CHANGELOG, re.M)
@@ -534,19 +717,19 @@ def test_the_changelog_has_a_dated_section_for_the_version_being_shipped() -> No
     )
 
 
-def test_the_install_a_diagnostic_advises_is_the_one_the_readme_shows() -> None:
+def test_the_install_a_diagnostic_advises_is_the_one_the_documents_show() -> None:
     # The one claim here that runs from the package to the document rather than the other way. The
-    # README states, and it is true, that elenctic is not published to PyPI — which makes a bare
+    # documents state, and it is true, that elenctic is not published to PyPI — which makes a bare
     # `pip install "elenctic[theory]"` a command that resolves nothing, and it is the likeliest
     # exit-2 a real user meets, so it is the worst place in the package for advice that cannot work.
     #
-    # What is held is the *agreement*, and the working form is read out of the README rather than
+    # What is held is the *agreement*, and the working form is read out of the document rather than
     # written a second time here: spelled out, this test would be satisfied by any command that
     # merely looked plausible, including the next one somebody invents.
-    assert "not published to PyPI" in _README, "the premise, stated where a reader meets it"
-    (shown,) = re.findall(r'pip install "elenctic\[theory\][^"]*"', _README)
+    assert "not published to PyPI" in _INSTRUCTED_FLAT, "the premise, where a reader meets it"
+    (shown,) = re.findall(r'pip install "elenctic\[theory\][^"]*"', _INSTRUCTED_FLAT)
     assert shown in THEORY_EXTRA_ADVICE, (
-        f"a diagnostic advises {THEORY_EXTRA_ADVICE!r}, and the README installs it with {shown!r}"
+        f"a diagnostic advises {THEORY_EXTRA_ADVICE!r}, and the documents install it with {shown!r}"
     )
 
 
@@ -604,37 +787,37 @@ def test_the_number_of_textbook_programs_the_contributor_guide_states_is_the_num
     )
 
 
-def test_every_locus_the_package_can_file_is_one_the_readme_names() -> None:
+def test_every_locus_the_package_can_file_is_one_the_documents_name() -> None:
     # The same vocabulary is documented twice, and only one copy was held. The packaged schema
     # glosses every `kind` a run can publish, and `test_json_schema.py` holds it against `ErrorKind`
-    # itself; the README's locus table is the copy a reader meets first, and nothing asked it. So it
+    # itself; the locus table is the copy a reader meets first, and nothing asked it. So it
     # was the one that went stale — `containment` was added to the package during this release and
     # the table kept its seven rows, while a corpus whose case reaches outside itself publishes
     # `"kind": "containment"` and prints `CONTAINMENT ERROR —`.
     #
     # Derived from `ErrorKind` rather than from a list here, which is the whole point: a locus added
     # later is a row this test asks for, and there is nowhere to add one without being asked.
-    rows = set(re.findall(r"^\| `([a-z_]+)` \| ", _README, re.M))
+    rows = set(re.findall(r"^\| `([a-z_]+)` \| ", _INSTRUCTED, re.M))
     members = {kind.value for kind in ErrorKind}
     assert not members - rows, (
-        f"a run can file these loci and the README's table has no row for them: "
+        f"a run can file these loci and no locus table has a row for them: "
         f"{sorted(members - rows)}. A reader met by the diagnostic, and a consumer decoding "
         f"`kind`, both look the word up in that table"
     )
     assert not rows - members, (
-        f"the README's table has rows for loci nothing can file: {sorted(rows - members)}"
+        f"a locus table has rows for loci nothing can file: {sorted(rows - members)}"
     )
     # And the count the prose states beside it, which is the half a new row leaves behind: the
     # sentence about which loci a consumer can catch counts them, and it counted seven.
-    assert f"of the {_IN_WORDS[len(members)]}" in _README, (
+    assert f"of the {_IN_WORDS[len(members)]}" in _INSTRUCTED_FLAT, (
         f"there are {len(members)} loci, and the prose beside the table does not say "
         f"{_IN_WORDS[len(members)]}"
     )
 
 
-def test_the_fields_the_readme_calls_closed_are_the_ones_the_schema_closes() -> None:
+def test_the_fields_the_documents_call_closed_are_the_ones_the_schema_closes() -> None:
     # The second instance of the class the locus table is the first of: a vocabulary written down
-    # twice, once where a machine can be asked and once where only a reader goes. Here the README is
+    # twice, once where a machine can be asked and once where only a reader goes. Here the prose is
     # the copy that is right and unheld — it names five closed enumerations and three open-valued
     # fields, and this is the sentence `schema_version` is *defined* by, so a field that quietly
     # gained or lost an `enum` would leave a consumer's upgrade policy resting on a wrong list.
@@ -646,9 +829,9 @@ def test_the_fields_the_readme_calls_closed_are_the_ones_the_schema_closes() -> 
         (_ROOT / "src/elenctic/schema/output-v2.schema.json").read_text(encoding="utf-8")
     )
     closed, open_valued = _vocabulary_fields(schema)
-    stated = set(re.findall(r"`(\w+)`", _readme_span("closed enumerations (", ")")))
+    stated = set(re.findall(r"`(\w+)`", _instructed_span("closed enumerations (", ")")))
     assert closed == stated, (
-        f"the schema closes {sorted(closed)} with an enum, and the README's three-tier paragraph "
+        f"the schema closes {sorted(closed)} with an enum, and the three-tier paragraph "
         f"names {sorted(stated)} as the closed enumerations — a consumer reads that list to decide "
         f"what a version bump means"
     )
@@ -656,23 +839,25 @@ def test_the_fields_the_readme_calls_closed_are_the_ones_the_schema_closes() -> 
     # accept a value the schema will reject; the reverse costs a consumer nothing but caution.
     #
     # The first assertion catches most of that already, and this is not the comfort it looks like:
-    # the one cause it cannot see is the README naming a field in *both* paragraphs, where the
+    # the one cause it cannot see is a document naming a field in *both* paragraphs, where the
     # closed list still matches the schema and the sentence beside it contradicts itself. Measured
     # by provoking exactly that, which is the only way it fires.
-    promised_open = set(re.findall(r"`(\w+)`", _readme_span("open-valued string fields — ", "—")))
-    assert promised_open, "the README no longer names any open-valued field in the shape this reads"
+    promised_open = set(
+        re.findall(r"`(\w+)`", _instructed_span("open-valued string fields — ", "—"))
+    )
+    assert promised_open, "no document names an open-valued field in the shape this reads"
     assert not promised_open & closed, (
-        f"the README tells a consumer to treat {sorted(promised_open)} as open and to expect "
+        f"the documents tell a consumer to treat {sorted(promised_open)} as open and to expect "
         f"unfamiliar values, and the schema closes {sorted(promised_open & closed)}"
     )
     assert promised_open <= open_valued, (
-        f"the README names {sorted(promised_open - open_valued)} as an open-valued string field of "
+        f"{sorted(promised_open - open_valued)} is named as an open-valued string field of "
         f"the document, and the schema has no such string field"
     )
 
 
-def _readme_span(opening: str, closing: str) -> str:
-    """The README text between the first ``opening`` and the next ``closing`` after it.
+def _instructed_span(opening: str, closing: str) -> str:
+    """The text between the first ``opening`` and the next ``closing``, across the documents.
 
     By the words of the sentence rather than by a line or a heading, because this paragraph is
     prose that wraps: a slice taken by line would move the first time somebody reflowed it, and one
@@ -681,13 +866,17 @@ def _readme_span(opening: str, closing: str) -> str:
     **Both delimiters are required to be there**, and the closing one is the half that matters. A
     ``split`` that does not find its closing text returns everything after the opening instead —
     so a reworded sentence would quietly widen the span to the rest of the document rather than
-    narrow it, and a caller counting names in it would be reading the whole README. Absent, this
+    narrow it, and a caller counting names in it would be reading every document. Absent, this
     says which sentence moved; present and wrong, the caller's own assertion says the rest.
     """
-    after = _README.split(opening, 1)
-    assert len(after) == 2, f"the README no longer says {opening!r}"
-    assert closing in after[1], f"the README no longer says {closing!r} after {opening!r}"
-    return after[1].split(closing, 1)[0]
+    holding = [name for name, text in _INSTRUCTIONS.items() if opening in " ".join(text.split())]
+    assert len(holding) == 1, (
+        f"a span is read out of one document, and {opening!r} is in {holding or 'none of them'}"
+    )
+    page = " ".join(_INSTRUCTIONS[holding[0]].split())
+    after = page.split(opening, 1)[1]
+    assert closing in after, f"{holding[0]} no longer says {closing!r} after {opening!r}"
+    return after.split(closing, 1)[0]
 
 
 def _vocabulary_fields(schema: dict[str, object]) -> tuple[set[str], set[str]]:
@@ -697,7 +886,7 @@ def _vocabulary_fields(schema: dict[str, object]) -> tuple[set[str], set[str]]:
     ``$ref`` is followed, and that is the whole reason this is a function rather than a search for
     the word ``enum``: a check's ``status`` and a case's ``verdict`` are both written as a reference
     to one shared definition, so a reading that stopped at the property would report the closed set
-    as four where it is five — and would have called a correct README wrong.
+    as four where it is five — and would have called a correct document wrong.
     """
     defs = schema.get("$defs", {})
     assert isinstance(defs, dict)

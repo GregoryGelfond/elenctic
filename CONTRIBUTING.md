@@ -137,18 +137,20 @@ anything a script might match on, say so plainly and give the before and after.
 the indentation — do not retype it or tidy it. One that was typed out by hand was indented two
 columns short of what the tool actually prints, and a reader would have chased the difference;
 another was compacted onto fewer lines "for readability" and then described output no invocation
-produced. Only one block is mechanically held — the README's library example is extracted and
-executed by `tests/test_documentation.py` — so the rest is on you.
+produced. Only one block is mechanically held — the worked library example is extracted from whichever
+document holds it and executed by `tests/test_documentation.py` — so the rest is on you.
 
 **The corpus to try things against is the project's own.** `pixi run elenctic run tests/krbook/encodings`
 runs four programs from the Gelfond and Kahl textbook end to end; `--strict` and the `explain`
 command are the two things worth trying on it first.
 
 **Names in the documents are checked, and so are the command lines.** A dotted name written as
-`` `elenctic.run_corpus` `` in the README, this guide or the changelog is verified to name the
-place that thing actually lives — so writing them dotted gets you that check for free. Every
-command line either document shows a reader is also run past the argument parser and must be one it
-accepts, so a flag that moves cannot leave an example behind. What counts as one: a line at a `$`
+`` `elenctic.run_corpus` `` in any shipped document is verified to name the place that thing
+actually lives — so writing them dotted gets you that check for free. Every command line any of
+them shows a reader is also run past the argument parser and must be one it accepts, so a flag
+that moves cannot leave an example behind. Which documents: everything this repository ships but
+the changelog — the landing page, this guide, `SECURITY.md`, and every page under `docs/`, derived
+rather than listed, so a page added there is checked without anyone being told. What counts as one: a line at a `$`
 prompt, and a backticked span read from the word `elenctic` onward — including where it sits inside
 a longer command, so the `pixi run elenctic` form a few paragraphs up is checked too. The bare
 name carrying no arguments is not a command line, since that is also how these documents write the
