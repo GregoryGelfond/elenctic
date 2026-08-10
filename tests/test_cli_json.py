@@ -665,7 +665,7 @@ def test_the_reason_a_description_could_not_be_read_is_shown_safely(tmp_path: Pa
 def test_running_out_of_memory_printing_the_description_does_not_blame_a_corpus(
     tmp_path: Path,
 ) -> None:
-    # ``--print-schema`` is answered from the package alone: no target is walked, nothing is
+    # The description is answered from the package alone: no target is walked, nothing is
     # grounded, and no case runs. The allocation backstop it shared with a run told such a reader to
     # "reduce what it grounds and enumerates" — the same overreach the cut-short report sentence was
     # rewritten for, one arm over.
@@ -721,19 +721,6 @@ def test_the_description_is_what_this_command_writes_and_it_asks_nothing_of_a_co
     assert streams.status == ExitStatus.OK
     assert streams.err == ""
     assert document_of(streams)["title"] == "elenctic run report", "the description, not a report"
-
-
-def test_a_command_line_that_cannot_be_run_writes_no_description(tmp_path: Path) -> None:
-    # This used to hold that a duration the parser could convert but elenctic could not use was
-    # refused here as well as on a run, so that a command line was not refused-or-not depending on
-    # which flag it was paired with. The dial is now `run`'s, because `run` is what reads it — so
-    # the pairing is refused by there being no such flag here, and what is kept is the half that is
-    # still about this command: a refused command line publishes nothing.
-    streams = run_cli(None, "--budget", "0", command="schema")
-
-    assert streams.status == ExitStatus.USER_FAULT
-    assert streams.out == "", "the description is not written for a command line that was refused"
-    assert "--budget" in streams.err, "and the refusal names what was asked for"
 
 
 def test_the_description_takes_no_target(tmp_path: Path) -> None:

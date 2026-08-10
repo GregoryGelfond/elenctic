@@ -120,7 +120,7 @@ def test_a_missing_declared_solver_costs_only_the_cases_that_declare_it(
 def test_a_dry_run_does_not_require_the_declared_solver(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # --explain narrates the derived run plan without solving, so requiring the backend to be
+    # The dry run narrates the derived run plan without solving, so requiring the backend to be
     # installed for it would be gating a command on something it never uses.
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     status = main(["explain", _corpus(tmp_path, theory=_THEORY)])

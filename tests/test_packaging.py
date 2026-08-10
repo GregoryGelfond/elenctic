@@ -4,7 +4,7 @@ Two files elenctic ships are not code, and both are load-bearing. ``py.typed`` i
 checker this package is annotated; without it, every annotation in a package gated on ``mypy
 --strict`` is invisible to whoever installs it, and the checker reports missing stubs rather than
 anything about elenctic. ``schema/output-v*.schema.json`` is the published description of the
-machine-readable report, which ``--print-schema`` reads back as a package resource.
+machine-readable report, which ``elenctic schema`` reads back as a package resource.
 
 Neither is reachable by a test that reads the source tree, and that is not a quibble: **the marker
 was missing for the whole life of the project and no check here noticed**, because everything this
@@ -73,7 +73,7 @@ def test_a_built_distribution_carries_the_files_that_are_not_code(
     # The whole hazard is that these arrive by inclusion rather than by being written down: the
     # backend is told `packages = ["src/elenctic"]` and everything under it comes along. Narrowing
     # that to `*.py` — a plausible tidy-up — drops both files silently, leaves the package
-    # importable, and breaks a consumer's type checking and `--print-schema` with nothing to say
+    # importable, and breaks a consumer's type checking and `elenctic schema` with nothing to say
     # why.
     assert any(name.endswith(carried) for name in built[distribution]), (
         f"the {distribution} does not carry {carried}. It ships by being under the package "

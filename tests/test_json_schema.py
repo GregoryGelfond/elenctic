@@ -22,7 +22,7 @@ they are what a consumer's parser meets before any schema is consulted: that the
 strict reader accepts, and that the description the command line prints is the file that ships.
 
 That second one is byte for byte, and it is stated that way because it is the whole of its value —
-someone redirecting `--print-schema` into their own repository diffs the result against the
+someone redirecting `elenctic schema` into their own repository diffs the result against the
 published file, so a re-render, or a line ending quietly translated on the way through, is a
 difference they have to account for and cannot explain. The same guarantee has an under-side: what
 ships has to *be* a description. A packaging or vendoring step that leaves the file half written, or
@@ -240,7 +240,7 @@ def test_what_the_package_hands_back_is_the_file_that_ships() -> None:
     # the file instead of the file. That is not a hypothetical edit: re-parsing and re-dumping a
     # JSON document on the way out looks like tidying, and it escapes every test that compares the
     # output to the same function's return value. Compared as bytes, since that is what someone
-    # redirecting `--print-schema` into their own repository diffs against the published ones.
+    # redirecting `elenctic schema` into their own repository diffs against the published ones.
     packaged = Path(elenctic.__file__).parent / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
 
     assert schema_text().encode("utf-8") == packaged.read_bytes()

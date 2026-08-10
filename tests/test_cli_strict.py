@@ -117,7 +117,7 @@ def test_hygiene_records_are_aggregated_and_reported_together(
 def test_explain_also_reports_hygiene_and_strict_still_escalates(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # --explain is a corpus inspection, so hygiene is reported there too; --strict escalates it to
+    # The dry run is a corpus inspection, so hygiene is reported there too; --strict escalates it to
     # exit 2 even in the dry-run (lint a corpus's hygiene without solving it).
     write(tmp_path / "case.lp", _DECLARED)
     write(tmp_path / "orphan.lp", "never(included).\n")
@@ -125,7 +125,7 @@ def test_explain_also_reports_hygiene_and_strict_still_escalates(
     assert "orphan" in capsys.readouterr().err.lower()
     assert (
         main(["explain", str(tmp_path), "--strict"]) == ExitStatus.USER_FAULT
-    )  # escalates in --explain too
+    )  # escalates in the dry run too
 
 
 # --- the exit-code interaction with the verdict register ---

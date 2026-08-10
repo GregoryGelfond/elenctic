@@ -199,9 +199,23 @@ def _shown_in(raw: str) -> list[str]:
     A prompt makes a command line whatever follows it, bare ``elenctic`` included. Backticks do not:
     they are also how these documents write the program's *name*, and a name takes no arguments —
     so an inline one counts as a command line only where it carries some.
+
+    An inline one is read from ``elenctic`` onward rather than from the backtick, because a command
+    line is often shown inside a longer one — ``pixi run elenctic …`` is how the contributor guide
+    tells a reader to invoke it, and anchoring at the backtick read straight past it. That was not
+    hypothetical: the one such line in these documents named no command and was refused, and this
+    test said nothing about it.
+
+    The word has to *start* where it is found, which is what keeps ``@elenctic solver clingcon``
+    out. That is a contract tag a corpus author writes in a comment, and the only thing it shares
+    with a command line is the eight letters in the middle of it.
     """
     prompted = [raw.removeprefix("$ ")] if raw.startswith("$ elenctic") else []
-    return prompted + re.findall(r"`(elenctic [^`]*)`", raw)
+    return prompted + [
+        span[found.start() :]
+        for span in re.findall(r"`([^`]*)`", raw)
+        if (found := re.search(r"(?<![\w@.-])elenctic ", span)) is not None
+    ]
 
 
 def _refused(line: str) -> str | None:

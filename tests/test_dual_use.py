@@ -57,7 +57,7 @@ def test_run_module_prints_the_derived_plan(tmp_path: Path) -> None:
 
 
 def test_the_run_module_does_not_print_a_corpus_escape_to_a_terminal(tmp_path: Path) -> None:
-    # This entry point renders the same corpus-chosen subject the CLI's --explain does, through a
+    # This entry point renders the same corpus-chosen subject `elenctic explain` does, through a
     # frame of its own, and it writes to a terminal like any other. The subject rides a quoted
     # string term, which carries whatever the author put between the quotes all the way here.
     erases_the_line = "\x1b[2K"

@@ -123,9 +123,9 @@ another was compacted onto fewer lines "for readability" and then described outp
 produced. Only one block is mechanically held — the README's library example is extracted and
 executed by `tests/test_documentation.py` — so the rest is on you.
 
-**The corpus to try things against is the project's own.** `pixi run elenctic tests/krbook/encodings`
-runs four programs from the Gelfond and Kahl textbook end to end, and `--strict` and `elenctic explain`
-are the two flags worth trying on it first.
+**The corpus to try things against is the project's own.** `pixi run elenctic run tests/krbook/encodings`
+runs four programs from the Gelfond and Kahl textbook end to end; `--strict` and the `explain`
+command are the two things worth trying on it first.
 
 **Names in the documents are checked.** A dotted name written as `` `elenctic.run_corpus` `` in the
 README or changelog is verified to name the place that thing actually lives — so writing them dotted

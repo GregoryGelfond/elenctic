@@ -182,9 +182,10 @@ _UNBOUNDED_DEADLINE = "A run that wants no deadline leaves --deadline off, which
 _NOWHERE_TO_PUBLISH = (
     "elenctic was asked to write to standard output, and this process has none: it was started "
     "with standard output closed. run --format json writes one document there, and schema writes "
-    "the description of that document there. Leave standard output open, or ask for the human "
-    "format, which writes prose when there is somewhere to write it and is silent when there is "
-    "not."
+    "the description of that document there. Leave standard output open — or, if it was the "
+    "document you wanted, ask run for the human format instead, which writes prose when there is "
+    "somewhere to write it and is silent when there is not. The description has no such "
+    "alternative: writing it is the whole of what that command does."
 )
 
 
@@ -341,8 +342,14 @@ def _add_target(command: argparse.ArgumentParser) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> ExitStatus:
-    """Run the ``elenctic`` CLI; return the process exit status (0 pass / 1 fail or undecided /
-    2 a fault in the corpus / 3 an elenctic bug).
+    """Run the ``elenctic`` CLI; return the process exit status.
+
+    Which status means what is :class:`~elenctic.outcome.ExitStatus`'s and is not restated here.
+    It was, in four words apiece, and one of the four had gone wrong in the way this module's own
+    opening paragraph gives as the reason for writing the ladder once: "a fault in the corpus" is
+    two of the things ``2`` means and not the third, since an installation missing its own data
+    files is a fault in neither a corpus nor elenctic, and a refused command line has no corpus to
+    be a fault in.
 
     Returns it on every path this module owns. ``argparse`` leaves by raising ``SystemExit`` instead
     for the two it owns — ``--help``, and a value it cannot parse — so a caller that invokes this

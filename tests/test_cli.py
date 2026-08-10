@@ -1,4 +1,4 @@
-"""The ``elenctic`` console entry: exit status separates pass / fail / error, and ``--explain``
+"""The ``elenctic`` console entry: exit status separates pass / fail / error, and ``explain``
 narrates the derived run plan without solving."""
 
 import io
@@ -128,7 +128,7 @@ def test_cli_reports_a_misroute_as_a_harness_error_and_keeps_going(
 def test_cli_explain_narrates_reads_and_the_projection_decision(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # --explain prints each check's reads and a per-run projects: line, so the reads/populates
+    # The dry run prints each check's reads and a per-run projects: line, so the reads/populates
     # surface is dogfooded. A shown-only clingcon enumeration projects (yes); a @count one does not
     # (no). The dry-run does not solve, so clingcon need not be installed.
     write(
@@ -153,7 +153,7 @@ def test_cli_explain_narrates_reads_and_the_projection_decision(
 def test_cli_explain_leads_with_the_note_gloss(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # @note is the headline of the --explain narration — the author's what/why *above* the
+    # @note is the headline of the dry run's narration — the author's what/why *above* the
     # harness's how (the run plan, the reads). Multiple notes render in author order. A doc adjunct,
     # never a verdict (no semantic change). The position asserts pin the headline property (a note
     # loop moved below the run narration would still pass a mere substring-presence check).

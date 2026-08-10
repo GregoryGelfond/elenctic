@@ -140,9 +140,9 @@ def run_cli(
     without that, a child writing a diagnostic it could not encode would take the runner down
     instead of failing the test.
 
-    ``elenctic.cli`` is imported here rather than at module scope so that the helpers above, which
-    need nothing from the console entry, do not drag its whole import graph — and the package's
-    lazy attribute resolution — into every test session that wants them.
+    ``elenctic.cli`` is imported inside :func:`_child_command` rather than at module scope, so that
+    the helpers above, which need nothing from the console entry, do not drag its whole import graph
+    — and the package's lazy attribute resolution — into every test session that wants them.
     """
     finished = subprocess.run(
         _child_command(target, flags, prelude, command),
@@ -157,7 +157,7 @@ def run_cli(
 
 
 def _child_command(
-    target: Path | None, flags: tuple[str, ...], prelude: str, command: str = "run"
+    target: Path | None, flags: tuple[str, ...], prelude: str, command: str
 ) -> list[str]:
     """The command that runs elenctic's console entry as a child process.
 
@@ -165,10 +165,12 @@ def _child_command(
     the child's proof that it loaded the tree under test: an instrument measuring a different
     installation reports on code nobody changed, and says nothing while doing it.
 
-    ``command`` defaults to running the corpus, which is what nearly every measurement here is
-    about. ``target`` is ``None`` for a command that takes none — the description is answered from
-    the installed package, so a path on that command line is not ignored, it is refused, and a
-    helper that passed one anyway would be measuring a usage error.
+    ``command`` is required here and defaulted by each of the six wrappers, which is where a
+    caller writes one. A default on this frame as well would be one no caller could reach, and a
+    second place to change if the default ever moved. ``target`` is ``None`` for a command that
+    takes none — the description is answered from the installed package, so a path on that command
+    line is not ignored, it is refused, and a helper that passed one anyway would be measuring a
+    usage error.
     """
     import elenctic.cli
 
