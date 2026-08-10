@@ -249,6 +249,12 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="elenctic",
         description="Run a corpus of @-contracts over Answer Set Programs.",
         epilog=_exit_status_help(),
+        # A reader who mistypes a command is the reader most likely to have been right about what
+        # they wanted, and an enumeration leaves them to spot for themselves that `rnu` is one
+        # letter from `run`. Asked for on each parser rather than only this one, because the two
+        # kinds of near miss are raised in different places: a command is a choice this parser
+        # converts, and a value like `--format huamn` is one a command's own parser does.
+        suggest_on_error=True,
         # The ladder is a table, and the default formatter would reflow it into a paragraph. Only
         # the description and the epilog are left alone by this one; each option's help is still
         # wrapped to the terminal, which is what a reader wants of a sentence and not of a table.
@@ -263,6 +269,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     runner = commands.add_parser(
         _Command.RUN.value,
+        suggest_on_error=True,
         help="run the corpus and check every case against its contract",
         description="Discover the cases under `target`, validate every case's run plan before any "
         "solving, then solve and check each one. Only a case that did not pass is rendered.",
@@ -304,6 +311,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     explainer = commands.add_parser(
         _Command.EXPLAIN.value,
+        suggest_on_error=True,
         help="narrate the run plan each case derives, without solving (a dry run)",
         description="Narrate the runs each case derives — the mode, and what every check reads — "
         "without solving anything. This version describes no machine-readable form for a plan, so "
@@ -316,6 +324,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser(
         _Command.SCHEMA.value,
+        suggest_on_error=True,
         help="write the description of the machine-readable report, and nothing else",
         description="Write the JSON schema of the document `elenctic run --format json` writes, to "
         "standard output. It is answered from the installed package alone — nothing is walked and "

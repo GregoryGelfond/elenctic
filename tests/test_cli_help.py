@@ -126,6 +126,34 @@ def test_the_target_a_command_defaults_to_is_the_one_its_help_names(command: str
     assert defaulted == Path(named), f"{command} walks {defaulted}, and its help says {named}"
 
 
+@pytest.mark.parametrize(
+    ("argv", "meant"),
+    [
+        (["rnu", "."], "run"),
+        (["explian", "."], "explain"),
+        (["run", ".", "--format", "huamn"], "human"),
+    ],
+    ids=["a mistyped command", "a mistyped longer command", "a mistyped value"],
+)
+def test_a_word_close_to_one_elenctic_knows_is_named_back_to_the_reader(
+    argv: list[str], meant: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A reader who mistypes a command is the reader most likely to have been right about what they
+    # wanted, and the enumeration alone leaves them to spot the difference between `rnu` and `run`
+    # themselves. Every other tool they use — git, cargo — names the near miss instead, and this
+    # interpreter's own argument parser will too when asked.
+    #
+    # The assertion is on argparse's wording, deliberately, and nothing weaker would say anything:
+    # the word a reader meant is already in the diagnostic, because the enumeration lists it, so
+    # asserting the word alone passes whether or not the near miss was ever noticed.
+    with pytest.raises(SystemExit) as leaving:
+        main(argv)
+    said = capsys.readouterr().err
+
+    assert leaving.value.code == ExitStatus.USER_FAULT
+    assert f"maybe you meant '{meant}'?" in said, said
+
+
 def test_the_commands_the_help_offers_are_the_commands_the_program_has() -> None:
     # The one thing `_Command`'s docstring claims cannot drift — the word a reader types and the
     # case the code dispatches on — asserted rather than claimed. Read off the help rather than off

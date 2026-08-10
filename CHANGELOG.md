@@ -93,6 +93,11 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ### Added
 
+- **A refused command line names the word you probably meant.** `elenctic rnu tests/` now answers
+  *invalid choice: 'rnu', maybe you meant 'run'?* rather than leaving a reader to spot the near miss
+  in the enumeration themselves, and the same holds for a value — `--format huamn` names `human`.
+  The command word makes mistyping one possible in the first place, so this arrives with it.
+
 - **`elenctic.error_detail`** — the reason a caught fault gives, and the contract line it gives it
   about, as a pair. The sibling of `error_kind`: that one reads *where the fault lies* off the
   class, this reads *what it says* and *where it says it* off the value. It is what a caller
