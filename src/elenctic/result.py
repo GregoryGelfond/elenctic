@@ -468,11 +468,11 @@ class SolveOutcome:
     def __post_init__(self) -> None:
         if not isinstance(self.conclusion, Conclusion):
             # Checked although the annotation says it cannot happen, because this type is part of
-            # the published surface and the absence it rejects used to be *meaningful* here — an
-            # undecided solve carried no conclusion. A caller working from the old shape would
-            # otherwise build one that no reader can use, and the failure would surface as a bare
-            # lookup miss inside a check, at verdict time, on someone's corpus: not an exception
-            # the per-case handler recognises, so it would cost the run every case still to come.
+            # the published surface and the absence it rejects is a shape a caller may still hold —
+            # the message below says what it once meant. Left to the annotation, such a caller
+            # builds a result no reader can use, and the failure surfaces as a bare lookup miss
+            # inside a check, at verdict time, on someone's corpus: not an exception the per-case
+            # handler recognises, so it costs the run every case still to come.
             raise HarnessError(
                 "every solve reports how its search ended, and this one reports "
                 f"{self.conclusion!r}. Absence once meant a solve that settled nothing; it now "

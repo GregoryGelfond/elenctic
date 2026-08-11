@@ -24,9 +24,9 @@ the question; the console entry is one caller of it rather than its home.
 
 Every record here is built by keyword. These are the shapes a consumer decoding the run's output
 meets, and that output identifies a field by its name; constructing them by position would give the
-same data a second identity, one that a field inserted later silently re-means. It also closes the
-gap that motivated the rule: a record whose neighbouring fields have the same type accepts them
-transposed, type-checks clean, and reads as a plausible row.
+same data a second identity, one that a field inserted later silently re-means — and a record whose
+neighbouring fields have the same type accepts them transposed, type-checks clean, and reads as a
+plausible row.
 """
 
 import math
@@ -96,10 +96,10 @@ class ErrorKind(Enum):
     # Apart from `discovery`, and the distinction is the machine rather than the corpus. A declared
     # solver that is not installed and a copy of this package that cannot read its own packaged
     # description are both faults in what elenctic was given to run *in* — nothing about the corpus
-    # would change if either were fixed, and nothing a corpus author writes can cause either. Both
-    # were filed as `discovery` until the diagnostic heading was derived from the locus, at which
-    # point they began announcing themselves under a phase that never met them: the declared solver
-    # is checked per case at run time and not during the corpus walk at all.
+    # would change if either were fixed, and nothing a corpus author writes can cause either. The
+    # heading a reader sees is derived from the locus, so filing them under `discovery` would
+    # announce them under a phase that never met them: the declared solver is checked per case at
+    # run time and not during the corpus walk at all.
     ENVIRONMENT = "environment"
     HARNESS = "harness"
 
@@ -186,10 +186,8 @@ class HygieneKind(Enum):
 class ExitStatus(IntEnum):
     """What the process leaves with — the closed ladder, the first rung that applies winning.
 
-    The last closed vocabulary in this package to be spelled as bare integers. The others are named
-    types, and a reader who has met ``Grade`` or ``Verdict`` expects this one to be a type too; more
-    to the point, the number-to-meaning mapping was written out in six places and one of them was
-    checked, which is the shape every other rule here is arranged to avoid.
+    A named type, as every other closed vocabulary here is, so the number-to-meaning mapping has one
+    home rather than a copy at each place a status is built or read.
 
     An ``IntEnum`` rather than an ``Enum``, because the value has to survive leaving the process. It
     *is* an ``int``: ``sys.exit`` takes it, a caller comparing against a literal is unaffected, and
@@ -271,9 +269,7 @@ class ErrorRecord:
     names no single line. Together they are the whole of what this record says about *where*, and
     ``message`` is the whole of what it says about *what* — a fault's reason never restates them,
     because a fact with two producers is a fact two renderers can print twice and one edit can make
-    disagree. It printed the file twice on one line and three times on another before the two were
-    separated, in two different spellings, and which of the three a reader met was decided by which
-    frame caught the fault.
+    disagree.
 
     A reason may still quote **another tool's** coordinates — clingo reports a ground fault at
     ``file:line:col``, and that is evidence a reader acts on rather than a second claim about which

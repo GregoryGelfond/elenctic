@@ -159,12 +159,9 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
     and the sentence is rendered from the whole register once the run is over. Every other locus is
     announced where it is met.
 
-    Nothing here is keyed on the locus otherwise, and that is the whole of what changed. This used
-    to name the file for three loci and withhold it for four, reaching for whether a locus's
-    *message* happened to carry provenance of its own — which is not a property of the locus, so the
-    answer was right for some of the messages each arm covered and wrong for the rest. The fact now
-    has one home (:class:`~elenctic.outcome.ErrorRecord`'s ``source`` and ``line``) and one
-    renderer, so there is no question left for an arm to answer.
+    Nothing else here is keyed on the locus. Where a fault lies and where it is written are two
+    different facts, and the second has one home — :class:`~elenctic.outcome.ErrorRecord`'s
+    ``source`` and ``line`` — and one renderer, so no arm has provenance left to decide.
     """
     if record.kind is ErrorKind.DEADLINE:
         return None
@@ -192,18 +189,17 @@ def heading(kind: ErrorKind, scope: Scope) -> str:
     """What a fault is announced as: where it lies, and what it cost.
 
     Two facts, and neither of them a fact about elenctic. The **word** is the locus, so one fault is
-    announced by one name however it was met — this used to report which part of elenctic noticed
-    instead, which made a program that will not load a ``CASE ERROR`` when discovery walked into it
-    and a ``PROGRAM ERROR`` when the runner did, telling a reader that one broken ``#include`` was
-    two different problems. The **case and the punctuation** are what it cost, which is what
-    ``Scope`` means: capitals where the run went on and still produced a report, lower case where it
-    stopped and there is none.
+    announced by one name however it was met — reporting which part of elenctic noticed instead
+    would make one broken ``#include`` a ``CASE ERROR`` where discovery walks into it and a
+    ``PROGRAM ERROR`` where the runner does. The **case and the punctuation** are what it cost,
+    which is what ``Scope`` means: capitals where the run went on and still produced a report, lower
+    case where it stopped and there is none.
 
     The word is the locus's own name rather than a second vocabulary beside it, so nobody has to
     keep a table: what is printed here as ``PROGRAM ERROR`` is what a document calls
-    ``"kind": "program"``. Derived from the vocabulary rather than written out locus by locus,
-    because a locus added later would otherwise be announced by whatever heading the frame that met
-    it happened to carry, which is the whole of what went wrong before.
+    ``"kind": "program"``. Derived from the vocabulary rather than written out locus by locus, so a
+    locus added later cannot be announced by whatever heading the frame that met it happens to
+    carry.
 
     The two facts are taken as themselves rather than as a record holding them, and that is what
     lets every line naming a locus come through here — including the deadline notice, which is a
@@ -223,12 +219,11 @@ def heading(kind: ErrorKind, scope: Scope) -> str:
 def announced(record: ErrorRecord) -> str:
     """One record as one line: where it is, and what is wrong there.
 
-    The one renderer for a record, whichever frame met the fault and whatever it was about, and
-    the *only* one: three frames here announce records as a run goes — a corpus nothing could be
-    read from, a file discovery could not use, and a case a run could not judge — and the console
-    entry's own backstops announce three more, for a fault no register anticipated. They used to
-    compose their own line, which is how one fault came to be printed several ways depending on
-    where it was caught.
+    The one renderer for a record, whichever frame met the fault and whatever it was about, and the
+    *only* one: this module announces records as a run goes — a corpus nothing could be read from, a
+    file discovery could not use, a case a run could not judge — and the console entry's own
+    backstops announce the faults no register anticipated. Composing a line at each of those sites
+    is how one fault comes to be printed several ways depending on where it was caught.
 
     ``source:line:`` is the one spelling, the one clingo, rustc and pytest all write and the one
     an author's editor already knows how to open. A record with no line has no coordinate, so it
@@ -258,20 +253,19 @@ def render_tail(outcome: Outcome, invocation: Invocation) -> str:
     reader is told and what the exit status is read off cannot come to disagree.
 
     The tally is returned rather than printed, and that is the difference between a property of one
-    frame and a property of the program. Written here it was a standard-output write made outside
-    the frame that answers for standard output, so on a stream that writes through rather than
-    holding what it is given — which is what ``PYTHONUNBUFFERED`` in an ordinary CI image makes it —
-    a reader that had stopped reading was met by this write first, and reported as a bug in
-    elenctic. Handing it back puts *this function makes no standard-output write* where a reader
-    can see it — in the signature, and in the pair of statements at each call site in
-    :func:`~elenctic.cli.main`, rather than in a
-    promise made somewhere else about what this body does.
+    frame and a property of the program. A standard-output write made here is one made outside the
+    frame that answers for standard output, so on a stream that writes through rather than holding
+    what it is given — which is what ``PYTHONUNBUFFERED`` in an ordinary CI image makes it — a
+    reader that has stopped reading is met by this write first, and the failure reads as a bug in
+    elenctic. Handing it back puts *this function makes no standard-output write* where a reader can
+    see it: in the signature, and in the pair of statements at each call site in
+    :func:`~elenctic.cli.main`.
 
-    What it costs is that the tally now follows the two diagnostics instead of standing between
-    them. There was no order to preserve: measured, the merged view already flipped on buffering, so
-    a developer at a terminal and the same command in CI saw different orders. Both formats now
-    order deadline → hygiene → tally, which is the shape the category has — a summary last, as
-    pytest, cargo and go all put theirs.
+    What it costs is that the tally follows the two diagnostics rather than standing between them.
+    No order is lost by that — measured, the merged view flips on buffering either way, so a
+    developer at a terminal and the same command in CI see different ones. Both formats order
+    deadline → hygiene → tally, which is the shape the category has: a summary last, as pytest,
+    cargo and go all put theirs.
 
     The empty string means there is nothing to tally. A dry run decided nothing to tally, and
     neither did a run that never got past discovery: a corpus-scoped fault is the whole of what such

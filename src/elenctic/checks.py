@@ -2,12 +2,10 @@
 
 A check reads one :class:`~elenctic.result.SolveOutcome` and returns a :class:`CheckReport` — a
 three-valued :class:`~elenctic.result.Verdict`, *the diagnostic* (the contract ``label`` and an
-expected-vs-actual ``message``), and *enough to place it*: the claim's own ``subject``, the
-``line`` it was written on, and how the search behind the verdict ended. A check **dispatches on
-the arm**: ``Inconclusive`` →
-``UNDECIDED`` (a timeout is never FAIL); ``Inconsistent`` (AS(P)=∅) → the tag's static
-verdict (``@expect unsat`` PASSes, every other tag FAILs); ``Consistent`` → the per-tag decision,
-reading the fields it declared via the accessor seam (``result.*_of``).
+expected-vs-actual ``message``), and *enough to place it*: the claim's own ``subject``, the ``line``
+it was written on, and how the search behind the verdict ended. It **dispatches on the arm** before
+any per-tag decision: a solve that settled nothing is ``UNDECIDED`` whatever the tag, and AS(P)=∅ is
+answered without reading a field. :class:`Check` states the three arms.
 
 Each check declares ``reads: frozenset[Field]`` — the wiring rule (``run.py``) attaches it only to a
 run whose mode populates those fields (a misroute is a ``RoutingError`` at plan construction, before
