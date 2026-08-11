@@ -25,6 +25,15 @@ from elenctic.result import (
     Verdict,
 )
 from elenctic.run import Mode
+
+# Past `solvers.__all__`, because the derivations this file exists to pin are the ones it withholds.
+# `_conclusion`, `_cut_short` and `_outcome_unless_satisfiable` are the three readings of
+# `(completed, result)` under test, and `_consistent_shape` is the reduction they feed; asking them
+# through `solve` would exercise all four at once and pin none of them. `_drive` takes *this*
+# file's `Control`, already grounded and configured — the declared facades take a `Mode` and a
+# program and build their own, so a search rigged to end a particular way cannot be handed to
+# them. `_Collector` is what the models arrive at, and `solve` returns an outcome rather than the
+# collector that filled it.
 from elenctic.solvers import (
     _Collector,
     _conclusion,

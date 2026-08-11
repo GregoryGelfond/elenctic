@@ -14,6 +14,8 @@ from clingo import parse_term
 
 from elenctic.checks import (
     Check,
+    # `_show_goal` is past `checks.__all__`: its rendering is asserted character for character
+    # below, and a builder would only ever show it folded into a whole diagnostic.
     _show_goal,
     assign_optimal_contains,
     brave_optimal_contains,

@@ -168,6 +168,9 @@ def test_forgotten_full_declaration_is_a_seam_error_not_a_silent_wrong_verdict()
     # rides a projecting theory run without a RoutingError (its reads ⊆ populates), but trips the
     # accessor seam — a loud SeamError, never a silent wrong verdict (a projected shape has no full
     # census).
+    # `_check` is past `checks.__all__` and is reached because the check below has to *lie* —
+    # declare one field and read another. Every builder on the declared surface is honest by
+    # construction, so none of them can be made to trip the seam this is about.
     from elenctic.checks import _check
 
     def decide(shape: Consistent) -> tuple[Verdict, str]:

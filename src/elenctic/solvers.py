@@ -64,7 +64,7 @@ from elenctic.result import (
 )
 from elenctic.run import Mode
 
-__all__ = ["TIME_BUDGET", "run_clingcon", "run_clingo", "solve"]
+__all__ = ["MODEL_CAP", "TIME_BUDGET", "run_clingcon", "run_clingo", "solve"]
 
 # The hang-protection default, in seconds. A budget hit *before* the solve decides is UNDECIDED
 # and never FAIL; one hit after it decides keeps what was decided, and only the readings that

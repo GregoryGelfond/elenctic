@@ -13,6 +13,11 @@ from pathlib import Path
 import pytest
 
 from elenctic import checks
+
+# `_partial_message` and `_undecided_message` are past `checks.__all__`. What is held below is
+# that *every* `Conclusion` has a diagnostic, which is a claim about those two functions
+# themselves: a check builder reaches one of them for whichever conclusion its solve happened to
+# produce, so no run enumerates them.
 from elenctic.checks import _partial_message, _undecided_message
 from elenctic.discovery import discover
 from elenctic.expectation import parse

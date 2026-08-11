@@ -42,6 +42,13 @@ from elenctic.result import (
     Verdict,
 )
 from elenctic.run import Mode
+
+# Past `solvers.__all__`, for the reason this file's docstring gives: the partial state it is about
+# is produced by *capping* a search — a conflict limit or a model cap, never a wall-clock budget,
+# which is the one stop the declared surface does offer and the one this file rejects as
+# machine-dependent. A cap is set on a `Control` the caller owns, and `_solve_under_budget`,
+# `_drive` and `_optimal_enum_two_phase` all take one; the declared facades build their own from
+# a `Mode`. `_Collector` is what the models arrive at, and how many arrived is the evidence.
 from elenctic.solvers import (
     _Collector,
     _drive,

@@ -8,6 +8,9 @@ atoms, and whatever is on the other end of the pipe — a CI log, an editor pane
 import pytest
 from clingo import Function, Symbol
 
+# Past `checks.__all__`: the bound is the subject. `_show_set` is the renderer that truncates and
+# `_SHOWN_MEMBERS` is where it truncates, so asking them together is what makes the assertion
+# about the bound rather than about a number copied out of the source.
 from elenctic.checks import _SHOWN_MEMBERS, _show_set
 from elenctic.terms import parse_term
 

@@ -18,6 +18,9 @@ from pathlib import Path
 
 import pytest
 
+# Past `cli.__all__`, which offers `main` alone. `_Command` is the enumeration the commands are
+# derived from, so the checks below are written once and hold for a fourth; `_parse` settles a
+# command line *without running it*, which is the only way to ask what a default resolved to.
 from elenctic.cli import _Command, _parse, main
 from elenctic.outcome import ExitStatus
 from support import cli_help_section, cli_help_sections, cli_help_text

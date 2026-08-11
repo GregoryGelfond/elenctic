@@ -36,6 +36,10 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import elenctic
+
+# `_Command` and `_parse` are past `cli.__all__`, which offers `main` alone. The sweeps below are
+# derived from the command enumeration rather than written three times, and `_parse` settles a
+# command line without running it — which is what lets a documented invocation be checked here.
 from elenctic.cli import _Command, _parse
 from elenctic.expectation import KNOWN_TAGS, ContractError, has_contract, parse_contract
 from elenctic.outcome import ErrorKind, RunOutcome
@@ -622,6 +626,9 @@ def _tags_written_in(block: str) -> list[str]:
     elenctic honours, and it is measurably not what a line-anchored pattern finds. So a *mistyped*
     trailing tag would have been invisible to the check that exists to catch mistyped tags.
     """
+    # `_lex` and `_tag_comments` are past `expectation.__all__`, for the reason the docstring
+    # above gives: the question is what elenctic's own reader takes as a tag position, and
+    # `parse` answers a different one.
     from elenctic.expectation import _lex, _tag_comments
 
     return [tagged.tag for tagged in _tag_comments(_lex(block).comments)]

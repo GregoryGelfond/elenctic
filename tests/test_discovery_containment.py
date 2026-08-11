@@ -19,6 +19,10 @@ from elenctic.discovery import Case, discover, inspect_corpus
 from elenctic.expectation import Sat
 from elenctic.harness import run_case
 from elenctic.outcome import ErrorKind, error_kind
+
+# `_origins` is past `program.__all__`: it reads the file paths out of one line of clingo's
+# diagnostic text, and that reading is what containment rests on. Reached directly because a
+# whole run only shows whether the refusal happened, not which line it was derived from.
 from elenctic.program import Boundary, ContainmentError, ProgramError, Unrestricted, _origins
 from elenctic.run import Mode
 from elenctic.solvers import run_clingo, solve

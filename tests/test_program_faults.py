@@ -18,6 +18,11 @@ from clingo.solving import Model
 from elenctic.program import ProgramError
 from elenctic.result import HarnessError
 from elenctic.run import Mode
+
+# Past `solvers.__all__`: `_CallbackGuard` is what carries an exception's own type back across
+# clingo's callback boundary, so it is constructed here with a callback that explodes on purpose;
+# `_solve_under_budget` is reached for the same reason it is elsewhere — it takes this file's own
+# `Control`, where the declared facades build theirs from a `Mode` and a program.
 from elenctic.solvers import _CallbackGuard, _solve_under_budget, run_clingcon, run_clingo
 
 _UNSAFE = "q(1).\np(X) :- q(Y).\n"  # parses, but X never binds, so it will not ground

@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+# Past `cli.__all__`: `_NOWHERE_TO_PUBLISH` is the shipped sentence, and asserting the constant
+# rather than a copy of its text is what keeps this from being a second place to keep in step.
 from elenctic.cli import _NOWHERE_TO_PUBLISH, main
 from elenctic.outcome import ExitStatus
 from elenctic.streams import hand_over_standard_output

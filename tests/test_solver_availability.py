@@ -30,6 +30,7 @@ def test_an_installed_solver_passes() -> None:
 
 def test_a_missing_solver_is_a_loud_discovery_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # Simulated rather than uninstalled, so this runs in an environment that does have clingcon.
+    # `_installed` is past `discovery.__all__`, and it is the seam where the absence is decided.
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     with pytest.raises(DiscoveryError, match=r"clingcon.*not installed") as caught:
         check_solver_available("clingcon")

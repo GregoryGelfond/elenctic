@@ -97,6 +97,8 @@ def test_a_fault_in_elenctics_own_walk_is_not_the_program_s_fault(
     def broken_walk(_node: object) -> Iterator[AST]:
         raise RuntimeError("a defect in elenctic's traversal")
 
+    # `_descendants` is past `program.__all__`, and it is the traversal whose failure is being
+    # attributed — injecting the defect anywhere public would be attributing something else.
     monkeypatch.setattr(program, "_descendants", broken_walk)
     with pytest.raises(RuntimeError, match="traversal"):
         inspect((case,))
@@ -114,6 +116,8 @@ def test_a_fault_in_the_solve_reduction_is_not_the_program_s_fault(
     def broken_reduction(*_args: object, **_kwargs: object) -> NoReturn:
         raise RuntimeError("a defect in elenctic's reduction")
 
+    # `_consistent_shape` is past `solvers.__all__`, and it is the reduction whose failure is
+    # being attributed; a fault injected on the declared surface would test a different blame.
     monkeypatch.setattr(solvers, "_consistent_shape", broken_reduction)
     with pytest.raises(RuntimeError, match="reduction"):
         run_clingo(Mode.ENUM_ALL, files=(case,))

@@ -21,6 +21,10 @@ import pytest
 
 from elenctic.expectation import (
     ContractError,
+    # The three past `expectation.__all__` are the tokenizer's own stages, and the stages are the
+    # subject: `_lex` states clingo's comment grammar, `_tag_comments` decides what counts as a
+    # tag position, and `_blocks` joins continuations. `parse` runs all three and reports only
+    # what came out the far end, so it cannot say which stage read a line the wrong way.
     _blocks,
     _lex,
     _tag_comments,

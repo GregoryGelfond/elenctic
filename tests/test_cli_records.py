@@ -230,6 +230,7 @@ def test_a_declared_solver_this_environment_lacks_is_filed_against_the_environme
 ) -> None:
     # The other half of the pair above: the contract is well-formed and the solver is real, so the
     # fault is that this machine does not have it — which a different machine would not have.
+    # `_installed` is past `discovery.__all__`; patching it is how the absence is simulated.
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     target = _corpus(tmp_path, theory=_DECLARES_THE_THEORY_SOLVER)
     (record,) = run_corpus(_asked(target)).errors

@@ -173,6 +173,8 @@ def _objective_at_each_solve(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     is enforced, and this needs neither to be true.
     """
     in_force: list[str] = []
+    # `_solve_under_budget` is past `solvers.__all__`; wrapping it is how the objective in force
+    # at the moment of each solve is observed, which no return value carries.
     real = solvers._solve_under_budget
 
     def record(
@@ -626,4 +628,6 @@ def test_an_optimization_setting_clingo_will_not_take_is_a_harness_fault() -> No
     # The setting is elenctic's to choose, so a value clingo refuses is elenctic's mistake and not
     # the corpus's — reported as a harness fault rather than as anything about the program.
     with pytest.raises(HarnessError, match="rejected the optimization mode elenctic built"):
+        # `_set_opt_mode` is past `solvers.__all__`, and it is the single writer of the objective
+        # — so the refusal belongs to it and is asked of it directly.
         solvers._set_opt_mode(Control(), "not-a-mode")

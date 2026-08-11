@@ -10,6 +10,8 @@ from elenctic.program import (
     ProgramError,
     Restricted,
     Unrestricted,
+    # `_parse_faults` is past `program.__all__`: the translation from a clingo failure into a
+    # `ProgramError` is what several tests below provoke directly, one family at a time
     _parse_faults,
     captured_diagnostics,
     inspect,

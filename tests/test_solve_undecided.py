@@ -18,6 +18,13 @@ from clingo.solving import Model, SolveResult
 from elenctic import solvers
 from elenctic.result import Conclusion, Inconclusive
 from elenctic.run import Mode
+
+# Past `solvers.__all__`, and the reason is the *conflict limit* rather than stopping as such —
+# `run_clingo` and `solve` both take a `budget`, so a declared call can be interrupted, just not
+# deterministically, which is what this file's docstring requires. A conflict limit is set on a
+# `Control`, and `_solve_under_budget`, `_drive` and `_optimal_enum_two_phase` are what take one;
+# the declared facades build their own from a `Mode`. `_consistent_shape` is then asked directly
+# what such a search reduces to, and `_Collector` is what the models arrive at.
 from elenctic.solvers import _Collector, _drive, _optimal_enum_two_phase, _solve_under_budget
 from support import on_model_for
 
@@ -144,4 +151,7 @@ def test_an_optimal_search_that_saw_no_model_at_all_claims_nothing() -> None:
     # a program the search never got far enough to read.
     empty = _Collector()
 
+    # `_consistent_shape` is past `solvers.__all__`, and it is the reduction being asked here:
+    # what a search that saw nothing reduces to is its answer, and a whole solve would only
+    # show the outcome built from it.
     assert solvers._consistent_shape(Mode.OPTIMAL, empty, False, Conclusion.EXHAUSTED) is None

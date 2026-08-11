@@ -37,6 +37,8 @@ def test_the_address_a_reader_is_sent_to_is_the_one_the_project_declares() -> No
 
     with (Path(__file__).resolve().parent.parent / "pyproject.toml").open("rb") as declared:
         urls = tomllib.load(declared)["project"]["urls"]
+    # `_ISSUES` is past `cli.__all__`, and comparing against the constant rather than a copy of
+    # the URL is the whole point: the manifest and the diagnostic must name one address.
     assert urls["Issues"] == cli._ISSUES
 
 
@@ -172,6 +174,8 @@ def test_the_outermost_handler_files_the_fault_it_met_rather_than_picking_a_stat
     # The record and the diagnostic are one record read twice, so they cannot disagree about whose
     # fault this is. Without this, the terminal can say "not a fault in your corpus" while the
     # document filed beside it says the opposite, and only the reader who has both would notice.
+    # `_INTERNAL_ERROR` is past `cli.__all__`; the shipped sentence is what both must carry, so
+    # this reads the constant rather than restating it.
     assert record.message.startswith(cli._INTERNAL_ERROR), (
         "the record says whose fault it is in the same words the reader was told"
     )

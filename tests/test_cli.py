@@ -13,6 +13,8 @@ from elenctic.cli import main
 from elenctic.human_report import (
     TerminalPlan,
     TerminalRun,
+    # `_summary_line` is past `human_report.__all__`: its arithmetic is the subject, and reaching
+    # it through a rendered report would mean grepping the line back out of the prose around it.
     _summary_line,
     heading,
     render_tail,

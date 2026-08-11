@@ -16,6 +16,9 @@ from clingo import Control
 from elenctic.checks import count_is
 from elenctic.result import Conclusion, Consistent, SolveOutcome, Verdict
 from elenctic.run import Mode
+
+# `_Collector` and `_drive` are past `solvers.__all__`: the cap is counted on the collector, and
+# `_drive` takes the `Control` built below, where the declared facades build their own.
 from elenctic.solvers import MODEL_CAP, _Collector, _drive
 
 # 2^16 answer sets: far past any sane cap, cheap to enumerate, and every model has a distinct shown

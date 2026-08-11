@@ -93,6 +93,8 @@ def test_an_explicitly_named_undiscoverable_file_is_still_loud(
 def test_a_missing_declared_solver_exits_as_an_error_with_a_remedy(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # `_installed` is past `discovery.__all__`, and patching it is what makes clingcon absent
+    # without uninstalling it. Nothing on the declared surface takes "pretend this import fails".
     monkeypatch.setattr(discovery, "_installed", lambda module: module != "clingcon")
     status = main(["run", _corpus(tmp_path, theory=_THEORY)])
     captured = capsys.readouterr()

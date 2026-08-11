@@ -40,6 +40,8 @@ from elenctic.run import (
     Mode,
     RoutingError,
     Run,
+    # `_Collapse` and `_Lowering` are past `run.__all__`: a row of the taxonomy is built here
+    # directly, which is how a shape the table does not yet carry can be asked about at all.
     _Collapse,
     _Lowering,
     populates,

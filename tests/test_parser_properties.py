@@ -9,6 +9,9 @@ line-wrapped or what prose surrounds it. A failing property is a real defect, no
 from clingo import parse_term
 from hypothesis import assume, given, strategies as st
 
+# `_scan_braces` is past `expectation.__all__` and is what the property below is about: it carries
+# brace depth and quote state across a fragment, and the invariant is stated over *that pair*,
+# which `parse` neither takes nor returns.
 from elenctic.expectation import Sat, _scan_braces, parse
 from elenctic.query import QueryLiteral, Var, unify
 from elenctic.terms import parse_litset

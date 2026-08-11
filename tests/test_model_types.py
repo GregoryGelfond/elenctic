@@ -21,6 +21,10 @@ import pytest
 from clingo import Symbol
 
 from elenctic.result import HarnessError
+
+# Past `solvers.__all__`: `_Collector.on_model` is the dispatch under test, and it is handed a
+# model object of this file's own making. No public call reaches it without a real clingo solve,
+# which is exactly what cannot produce the model type this file is about.
 from elenctic.solvers import _Collector
 
 

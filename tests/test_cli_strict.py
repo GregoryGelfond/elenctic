@@ -8,6 +8,11 @@ from pathlib import Path
 import pytest
 
 from elenctic.cli import main
+
+# `ORPHAN_LIBRARY` and `UNDECLARED_SOLVER` are past `discovery.__all__`, which omits both though
+# neither carries an underscore. They are the shipped hygiene sentences, and asserting the
+# constants rather than copies of their text is what keeps this file from being a second place
+# to keep in step.
 from elenctic.discovery import ORPHAN_LIBRARY, UNDECLARED_SOLVER
 from elenctic.outcome import ExitStatus
 

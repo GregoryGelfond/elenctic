@@ -28,6 +28,10 @@ from elenctic.result import (
     SolveOutcome,
     Verdict,
 )
+
+# Past `solvers.__all__`: `_Collector` is the object clingo's model callback arrives at, and the
+# helpers below build one so a test can watch what a solve was shown. `solve` returns the outcome
+# that was derived from it, never the collector itself.
 from elenctic.solvers import _Collector
 
 __all__ = [
