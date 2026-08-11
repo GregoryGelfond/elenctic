@@ -26,9 +26,8 @@ program's concerns are not, and neither is a question about a command line:
 - **the prose a reader sees**, which is about an :class:`~elenctic.outcome.Outcome`, and is in
   :mod:`elenctic.human_report` beside the document renderer it is the counterpart of;
 - **the two streams**, which are about this process's descriptors, and are in
-  :mod:`elenctic.streams` — one module down, because the first thing asked of them has to be asked
-  by every stage entry point as well, and that module has no elenctic dependencies so all of them
-  reach it.
+  :mod:`elenctic.streams` — one module down, because every stage entry point has to ask the first
+  thing of them too.
 
 Everything below them is the library's: ``corpus.run_corpus`` and ``corpus.explain_corpus`` carry
 out an invocation, ``outcome.exit_status`` reads a status off what they produced, and both are
@@ -39,7 +38,7 @@ of their own has the same pieces, whether they want a whole corpus or ``harness.
 at a time.
 
 The exit ladder is written once, in :class:`~elenctic.outcome.ExitStatus`, and ``--help`` is
-rendered from there rather than restating it in words that could come to differ.
+rendered from there.
 """
 
 import argparse
@@ -128,15 +127,14 @@ _ISSUES = "https://github.com/GregoryGelfond/elenctic/issues"
 # that reader to elenctic's issue tracker sends them somewhere that cannot help them.
 #
 # Missing, damaged *or unreadable*, and all three words are load-bearing: a file that is present and
-# half written is the same accident, and a sentence saying this copy "has the code and not the data"
-# would be false of the reader most likely to be confused by it — the one who can see the file
-# sitting there.
+# half written is the same accident, and "has the code and not the data" is false to the reader most
+# likely to be confused by it — the one who can see the file sitting there.
 #
 # The reader's own reason is carried, because it is the only thing that separates the remedies. A
-# file that is absent is fixed by reinstalling; a file that is present and refused by its mode, or
-# has a directory sitting where it should be, is not — a reinstall into the same prefix reproduces
-# it. Without the reason, this sentence gives everybody the packaging answer, telling the second
-# reader that something they *did* configure was done to them by a vendoring step.
+# file that is absent is fixed by reinstalling; a file refused by its mode, or with a directory
+# sitting where it should be, is not — a reinstall into the same prefix reproduces it. Without the
+# reason this sentence gives everybody the packaging answer, telling the second reader that
+# something they *did* configure was done to them by a vendoring step.
 _SCHEMA_UNREADABLE = (
     "elenctic could not read its own output description: {reason}. It ships inside the package, "
     "beside the modules, at elenctic/schema/ — so this copy of it is missing, damaged, or not "
@@ -232,9 +230,9 @@ def _build_parser() -> tuple[argparse.ArgumentParser, Mapping[str, argparse.Argu
     """The command line: three commands, each carrying the dials it reads and no others.
 
     Returns the program's parser and the mapping from a command word to the parser that owns it.
-    The mapping is ``argparse``'s own, built from the ``add_parser`` calls below rather than written
-    out again beside them, so a fourth command joins it by existing. ``_parse`` is the only caller
-    that needs it, and what it needs it for is saying which command a refusal belongs to.
+    The mapping is ``argparse``'s own, built from the ``add_parser`` calls below, so a fourth
+    command joins it by existing. ``_parse`` is the only caller that needs it, and what it needs it
+    for is saying which command a refusal belongs to.
 
     A dial a command does not read is worse than an absent one — it is accepted, ignored, and still
     refused when its value is malformed — so no command offers one. A grammar that does not offer a

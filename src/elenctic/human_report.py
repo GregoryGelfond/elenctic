@@ -18,8 +18,8 @@ one; this is not.
 a reader watching a long run wants each case as it lands, so this renders in two moments where the
 document renders in one. The observers below are the as-it-goes half, turning each verdict and fault
 into a line as the run establishes it; :func:`render_tail` is the other half, the things about the
-whole run that cannot be said while it is going. Hence observers here and none in the document's
-module.
+whole run that cannot be said while it is going. That is why the observers are here and the
+document's module has none.
 
 **Every string a corpus had a hand in passes through the sanitizer.** A path, a ``@note``, an atom,
 a solver's own diagnostic: text a reader's terminal would act on rather than display can move the
@@ -74,9 +74,7 @@ class _Terminal(Observer):
 
     The prose lives here and nowhere below: a run establishes records and this turns them into
     sentences, so the same run can be watched by a reader, written as a document, or embedded in
-    something else without any of the three re-deriving what the others know. Every string a corpus
-    had a hand in passes through the sanitizer, because text a reader's terminal would act on rather
-    than display can forge a verdict in the report it appears in.
+    something else without any of the three re-deriving what the others know.
     """
 
     # Both go through the one renderer, so a fault reads the same whichever frame met it. What

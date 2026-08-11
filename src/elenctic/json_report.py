@@ -92,32 +92,28 @@ def schema_text() -> str:
     is no description to hand back.
 
     Text rather than a parsed object: the caller that is not a test writes it to standard output,
-    and someone redirecting that into a file should get the file. Parsing and re-rendering it would
-    hand them something that says the same thing in a different shape, and the whitespace of a
-    published document is part of what people diff.
+    and someone redirecting that into a file should get the file, whitespace included — that is part
+    of what people diff.
 
     **Parsed to check, never to render.** What is returned is the file, byte for byte; the parse
     establishes only that the file *is* a description before anyone is handed one. A packaging or
-    vendoring step can drop this file, re-encode it, or leave it half written, and the three are one
-    accident with one remedy — but only the first two announce themselves, by raising on the way out
-    of the read. A file cut short is read back perfectly happily as a string that describes nothing,
-    and its worst size is zero: a caller writing that to standard output writes nothing, succeeds,
-    and reports success, which is the one outcome that tells a reader there is nothing to look into.
-    So the third is made to announce itself like the other two, here, where the description is read
-    and where the fault belongs to elenctic's own packaging rather than to any caller.
+    vendoring step can drop this file, re-encode it, or leave it half written; the first two raise
+    on the way out of the read, and the third is silent — a file cut short reads back perfectly
+    happily as a string that describes nothing, and at its worst size of zero a caller writes
+    nothing, succeeds and reports success. The parse is what makes the third announce itself, here,
+    where the fault belongs to elenctic's own packaging rather than to any caller.
 
-    The version is in the resource's name rather than beside it, because the shape of a document and
-    the description of that shape are one fact. A bump that renamed the constant and not the file
-    would otherwise go on printing the description of a document the package no longer produces;
-    this way it finds nothing, and a copy of the package missing the file at all is reported the
-    same way — as elenctic's own fault, which is what a packaging fault is.
+    The version is in the resource's name, because the shape of a document and the description of
+    that shape are one fact. Under a fixed name, a bump that renamed the constant alone would go on
+    serving the description of a document the package no longer produces; under this one the lookup
+    finds nothing, and is reported like a copy of the package carrying no description at all —
+    which is what a packaging fault is.
 
-    **A release carries exactly one of these**, and a bump deletes the file it supersedes rather
-    than shipping both. What a superseded description would be for is reading a document an older
-    build wrote — and the release that wrote it still carries its own, so keeping a copy here would
-    put a second answer in the package to a question this package is not where anyone should ask.
-    It is also what keeps the constant the only thing a bump has to touch: there is no set of
-    supported versions to hold in step, and no policy owed about which of them are still served.
+    **A release carries exactly one of these**, and a bump deletes the file it supersedes. A
+    document an older build wrote is read against that release's own copy, which still carries it,
+    so a second copy here would answer a question this package is not where anyone should ask —
+    and there is no set of supported versions to hold in step, nor any policy owed about which of
+    them are still served.
     """
     resource = files("elenctic") / "schema" / f"output-v{SCHEMA_VERSION}.schema.json"
     # The bytes, decoded here, rather than a text read. Reading a resource as text opens it in
@@ -127,10 +123,9 @@ def schema_text() -> str:
     # what was read keeps the claim true and keeps the fault a mis-encoded file raises.
     description = resource.read_bytes().decode("utf-8")
     # It parses, and no more than that. Whether the description is a *well-formed schema* is a
-    # different question with a different owner — it is settled once, against the file that ships,
-    # rather than re-asked of every reader at run time — and elenctic is not a schema validator.
-    # What this separates is a description from a fragment of one, which is the whole of the damage
-    # a truncation does.
+    # different question with a different owner, settled once against the file that ships; elenctic
+    # is not a schema validator. What this separates is a description from a fragment of one, which
+    # is the whole of the damage a truncation does.
     json.loads(description)
     return description
 

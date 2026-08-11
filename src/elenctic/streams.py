@@ -3,7 +3,7 @@
 Every way elenctic can be *run* — the console entry, and each pipeline stage under
 ``python -m elenctic.<stage>`` — is a program handed a process, and a process can be started missing
 a stream rather than having it pointed somewhere. The answer is the same wherever it is asked, so it
-is stated here once rather than in each entry point.
+is stated here once.
 
 Past that, the console entry has three further questions about the same two streams and nobody else
 has any: where a published artefact goes, what is owed to a reader who stopped reading, and how to
@@ -98,10 +98,9 @@ def publish(document: str) -> None:
     """Put a published artefact on standard output, encoded as UTF-8 whatever this environment's
     locale would have chosen — or say why the reader did not get it.
 
-    Both things written this way are JSON, and JSON is UTF-8 by its own specification. Through the
-    text layer they would take whatever encoding the environment picked, which on a machine whose
-    standard output is ASCII raises on a character the document is entitled to contain: what reaches
-    the consumer is a failure to produce a report rather than the report.
+    Both things written this way are JSON, and JSON is UTF-8 by its own specification. The text
+    layer would instead take whatever encoding the environment picked, which on a machine whose
+    standard output is ASCII raises on a character the document is entitled to contain.
 
     Handing the bytes over is part of publishing rather than something left for the interpreter to
     finish, because a reader who has stopped reading can be answered while this frame is still
@@ -134,8 +133,8 @@ def hand_over_standard_output(published: bytes = b"", *, prose: str = "") -> Non
 
     **Every write whose failure would otherwise reach the backstop is one this frame makes**, which
     is what lets a failure be read as a fact about standard output. Wrapped around a caller's work
-    instead, it would answer for whatever that work wrote — and the tail writes to *both* streams,
-    so a broken standard error would be reported as a fact about a healthy standard output.
+    it would answer for whatever that work wrote, and the tail writes to *both* streams — so a
+    broken standard error would be reported as a fact about a healthy standard output.
 
     Narrower than *every* standard-output write this program makes: a run narrating itself writes a
     line per case through the corpus's announcement seam, which swallows a lost reader and goes on,
