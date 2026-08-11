@@ -82,10 +82,10 @@ __all__ = ["main"]
 class _Command(Enum):
     """The three things elenctic can be asked to do, as one value with three cases.
 
-    This module's opening paragraph has always said an invocation *is* one of three things. The code
-    said it with two independent booleans, which can be written down four ways — and the fourth,
-    both at once, was answered by whichever ``if`` had been written first. That is a decision no
-    surface states, so no reader could have found it, and no test could have been about it.
+    One value rather than independent flags, because an invocation *is* one of the three: flags can
+    be written down in combinations the type cannot, and the surplus ones would be settled by
+    whichever branch happened to be tested first — a decision no surface states, so no reader could
+    find it and no test could be about it.
 
     Held as an enumeration rather than as the strings the parser produces, because everything that
     asks *which* of the three this is wants to be told when a fourth appears. ``match`` over these
@@ -135,8 +135,8 @@ _ISSUES = "https://github.com/GregoryGelfond/elenctic/issues"
 # The reader's own reason is carried, because it is the only thing that separates the remedies. A
 # file that is absent is fixed by reinstalling; a file that is present and refused by its mode, or
 # has a directory sitting where it should be, is not — a reinstall into the same prefix reproduces
-# it. Nothing in this sentence could tell those apart, so it gave everybody the packaging answer and
-# told half of them that something they *did* configure was done to them by a vendoring step.
+# it. Without the reason, this sentence gives everybody the packaging answer, telling the second
+# reader that something they *did* configure was done to them by a vendoring step.
 _SCHEMA_UNREADABLE = (
     "elenctic could not read its own output description: {reason}. It ships inside the package, "
     "beside the modules, at elenctic/schema/ — so this copy of it is missing, damaged, or not "
@@ -236,11 +236,9 @@ def _build_parser() -> tuple[argparse.ArgumentParser, Mapping[str, argparse.Argu
     out again beside them, so a fourth command joins it by existing. ``_parse`` is the only caller
     that needs it, and what it needs it for is saying which command a refusal belongs to.
 
-    A dial a command does not read is worse than an absent one, and elenctic had three of them: the
-    dry run accepted ``--budget`` and ``--deadline``, read neither, and still refused a value of
-    either that was not a duration; the description accepted both plus ``--strict`` and a target,
-    and looked at none of them. Its own help *said* so — "the target and every dial of the run are
-    ignored" — which is the sentence a grammar makes unnecessary by not offering them.
+    A dial a command does not read is worse than an absent one — it is accepted, ignored, and still
+    refused when its value is malformed — so no command offers one. A grammar that does not offer a
+    dial needs no help text saying it is ignored.
 
     Each command's options are filed under a heading saying what they are for, and the catch-all is
     left to the one option this program did not define. The closing text, which says what the run
@@ -341,12 +339,11 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     """Read a command line, or leave through the parser that owns the command it named.
 
     ``argparse`` parses a command's tail with that command's own parser, takes back whatever it
-    could not use, and then reports it from the *program's* parser. Every other near miss — a
-    mistyped command, a value outside a choice — is already raised by the parser that owns it; this
-    one was not, so a reader who asked a command for a dial it does not have met a usage line
-    carrying three command names and no options, for a word that was only ever a command's to
-    refuse. The leftovers are taken here and handed to that command instead, which is the whole of
-    the change: what is accepted is unchanged, and only who reports a refusal moves.
+    could not use, and then reports it from the *program's* parser — which would answer a word that
+    was only ever a command's to refuse with a usage line carrying three command names and no
+    options. Every other near miss, a mistyped command or a value outside a choice, is already
+    raised by the parser that owns it. The leftovers are taken here and handed to that command
+    instead; what is accepted is unchanged, and only who reports a refusal moves.
 
     Reported by calling the command's own ``error`` rather than through ``_refusal``, because the
     boundary is already drawn and stated in ``main``: a command line this program cannot parse is
@@ -354,12 +351,12 @@ def _parse(argv: Sequence[str] | None) -> argparse.Namespace:
     refusal in front of a reader. Both leave with the same status.
 
     A token written *before* the command word is the **program's** leftover and not the command's,
-    and ``argparse`` merges the two lists into one. Handing that one to the command as well is what
-    the first version of this did, and it produced a refusal that contradicted itself: ``elenctic
-    --strict run …`` printed ``run``'s usage, which lists ``--strict``, above a sentence saying
-    ``--strict`` was not recognized. A dial written before the command word is the commonest slip
-    there is, so it is separated out here and left with the program, where it is true — the program
-    defines no such option, and says so under a usage line that offers none.
+    and ``argparse`` merges the two lists into one. Handing that one to the command as well produces
+    a refusal that contradicts itself: ``elenctic --strict run …`` would print ``run``'s usage,
+    which lists ``--strict``, above a sentence saying it was not recognized. A dial written
+    before the command word is the commonest slip there is, so it is separated out here and left
+    with the program, where the statement is true — the program defines no such option, and says so
+    under a usage line that offers none.
     """
     parser, commands = _build_parser()
     args, leftover = parser.parse_known_args(argv)
@@ -393,12 +390,9 @@ def _add_target(command: argparse.ArgumentParser) -> None:
 def main(argv: Sequence[str] | None = None) -> ExitStatus:
     """Run the ``elenctic`` CLI; return the process exit status.
 
-    Which status means what is :class:`~elenctic.outcome.ExitStatus`'s and is not restated here.
-    It was, in four words apiece, and one of the four had gone wrong in the way this module's own
-    opening paragraph gives as the reason for writing the ladder once: "a fault in the corpus" is
-    two of the things ``2`` means and not the third, since an installation missing its own data
-    files is a fault in neither a corpus nor elenctic, and a refused command line has no corpus to
-    be a fault in.
+    Which status means what is :class:`~elenctic.outcome.ExitStatus`'s and is not restated here — a
+    gloss in four words apiece cannot carry a rung that covers a corpus fault, an installation
+    missing its own data files, and a refused command line at once.
 
     Returns it on every path this module owns. ``argparse`` leaves by raising ``SystemExit`` instead
     for the two it owns — ``--help``, and a value it cannot parse — so a caller that invokes this
@@ -573,16 +567,16 @@ def _describe() -> ExitStatus:
     """Write the description of the machine-readable report, and say so if this copy has none.
 
     Answered from the package alone, so it is answered before anything is looked for on disk:
-    someone asking what the output looks like need not have a corpus. That the target cannot turn
-    the question into a fault is now the grammar's doing rather than this frame's — the command
-    takes none. Written rather than printed, so what a reader redirects into a file is the file.
+    someone asking what the output looks like need not have a corpus. The command takes no target,
+    so nothing about one can turn the question into a fault. Written rather than printed, so what a
+    reader redirects into a file is the file.
 
     Several mechanisms and one sentence, because the argument below covers all of them: a step that
     drops the data file, one that puts something else where it goes or leaves it unreadable, one
     that re-encodes it, and one that leaves it half written. Only the first two raise ``OSError``,
-    and catching those and not the rest sent the other readers to the backstop that asks for a bug
-    report. What differs between them is the remedy, and that is why the reader's own reason is
-    carried into the sentence rather than dropped.
+    so catching those alone would send the other readers to the backstop that asks for a bug report.
+    What differs between them is the remedy, and that is why the reader's own reason is carried into
+    the sentence rather than dropped.
 
     Named one at a time rather than caught as the ``ValueError`` two of them share, because a
     fault here that is *none* of them is elenctic being wrong about something and belongs at that
@@ -592,8 +586,9 @@ def _describe() -> ExitStatus:
     The allocation failure met *reading* the file is answered here, for the reason the run's is
     worded separately from a case's: this path walks no target and grounds nothing, so the remedy
     that asks for a corpus to be bounded is about a run that did not happen. One met *writing* it is
-    answered by the frame in :func:`main` that calls this, with the same sentence — it used to fall
-    through to the corpus's, which told a reader who ran no corpus to reduce what theirs grounds.
+    answered by the frame in :func:`main` that calls this, with the same sentence, rather than
+    falling through to the corpus's and telling a reader who ran no corpus to reduce what theirs
+    grounds.
 
     An unreadable description is the environment being mis-shaped rather than elenctic being wrong
     about something, which is why it is graded as a fault the reader can fix and not as a bug to
@@ -609,8 +604,8 @@ def _describe() -> ExitStatus:
         # The reader's own reason, carried raw. It comes from outside this program — it quotes a
         # path chosen by whoever installed the package, and a terminal acts on some of what a path
         # may contain — so it is made safe by whoever shows it, which is the rule every other
-        # record follows. Sanitized here instead it was safe once and escaped twice: the renderer
-        # sanitizes what it is handed, and doubling a backslash is not an idempotent act.
+        # record follows. Sanitized here instead it would be escaped twice: the renderer sanitizes
+        # what it is handed, and doubling a backslash is not an idempotent act.
         reason = _SCHEMA_UNREADABLE.format(reason=str(fault))
         return exit_status(_announce_fault(ErrorKind.ENVIRONMENT, reason))
     except MemoryError:
@@ -625,10 +620,10 @@ def _announce_fault(kind: ErrorKind, message: str) -> RunOutcome:
 
     Four frames reach this — an allocation that failed with no case to charge it to, one that failed
     reading the packaged description, one that failed writing it, and a description this copy has
-    not got — and each used to write the same three steps out for itself. Written once, they cannot
-    come to differ: the record is built before the reader is told anything, what is printed is that
-    record through the renderer every other record goes through, and the status the caller reads is
-    a reading of the outcome rather than a number chosen beside it.
+    not got. Written once, they cannot come to differ: the record is built before the reader is told
+    anything, what is printed is that record through the renderer every other record goes through,
+    and the status the caller reads is a reading of the outcome rather than a number chosen beside
+    it.
 
     Not for the fault nobody anticipated at all, which says something deliberately different and has
     :func:`_internal_fault` of its own.
@@ -673,17 +668,18 @@ def _unowned_fault(kind: ErrorKind, message: str) -> ErrorRecord:
     Putting one where the other is expected would send a reader looking for it in their own tree.
 
     Built before the reader is told anything, rather than after, so that what is printed and what is
-    reported are the one record read twice — and now literally so, since what is printed is this
-    record put through the renderer every other record goes through. Its callers used to choose
-    their own heading beside the record and each chose a different word for it, which is how a fault
-    filed under one locus came to be announced as another.
+    reported are the one record read twice. Both callers take the heading from this record's own
+    ``kind`` and ``scope`` — :func:`_announce_fault` by rendering the whole record through
+    :func:`~elenctic.human_report.announced`, :func:`_internal_fault` by asking
+    :func:`~elenctic.human_report.heading` for the word — so neither can announce under a locus the
+    record was not filed under. A heading chosen beside the record rather than from it is how that
+    happens.
 
     ``message`` is carried **raw**, whatever it quotes, on the same terms as every other record's:
     a record is a value and making text safe to show belongs to whoever shows it. A frame that
     sanitizes on the way in hands a renderer something already escaped, and escaping is not an
-    idempotent act — the one carrying a reason from outside this program did exactly that, and a
-    document carrying the result would have shown a reader two backslashes where their path had
-    one."""
+    idempotent act — a document carrying the result shows a reader two backslashes where their path
+    had one."""
     return ErrorRecord(kind=kind, scope=Scope.CORPUS, source=None, message=message)
 
 

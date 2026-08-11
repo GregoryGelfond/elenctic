@@ -7,49 +7,38 @@ into an :data:`Expectation`; :func:`discover` walks a corpus into :class:`Case`\
 :class:`SolveOutcome` — what the solve determined, and how far the search behind it got; and
 :func:`run_case` / :func:`render` run a case end-to-end and format its diagnostic.
 
-**The three-valued verdict.** A check yields a :class:`Verdict` about the *program under
-test*: ``PASS`` (the contract holds), ``FAIL`` (the program decided wrong), or ``UNDECIDED`` —
-which covers both a solve that decided nothing and a search too partial for what this check reads.
-``UNDECIDED`` is never conflated with FAIL or UNSAT. :func:`case_verdict` folds the reports.
+**The three-valued verdict.** A check yields a :class:`Verdict` about the *program under test*:
+``PASS`` (the contract holds), ``FAIL`` (the program decided wrong), or ``UNDECIDED`` — which
+covers both a solve that decided nothing and a search too partial for what this check reads, and is
+never conflated with FAIL or UNSAT. :func:`case_verdict` folds the reports.
 
-**The error taxonomy (errors are never verdicts).** Four loud error families, distinct from the
-``Verdict`` and disjoint from one another:
+**The error taxonomy (errors are never verdicts).** Four loud families, disjoint from the
+``Verdict`` and from one another, each stating its own terms where it is defined:
 
-- :class:`ContractError` — an ill-formed ``@``-contract (``parse``). The *author* wrote a
-  bad contract.
-- :class:`DiscoveryError` — a corpus that violates a discovery-time precondition or matches no
-  convention (``discover``). The *corpus* is mis-shaped. Its subclass
-  :class:`SolverUnavailableError` reports a declared solver this environment does not have, and is
-  also an :class:`ImportError`, so either idiom catches it.
-- :class:`ProgramError` — a program elenctic cannot run: an unresolvable ``#include``, a parse
-  error, or a program that will not ground. The *program under test* is broken, so its author fixes
-  the ``.lp``. Its subclass :class:`ContainmentError` reports a case loading a file from outside the
-  corpus it belongs to, filed under a locus of its own because what is wrong there is *where* the
-  program reaches rather than how it is written.
-- :class:`HarnessError` (and its subclasses :class:`RoutingError`, :class:`SeamError`) — an internal
-  invariant elenctic itself violated: a stale route, a narrowing-seam breach. A *harness bug*, never
-  a statement about the program under test, so the runner reports it under a distinct "harness
-  error" status, never as a costumed verdict.
+- :class:`ContractError` — the *author* wrote a bad ``@``-contract.
+- :class:`DiscoveryError` — the *corpus* is mis-shaped; :class:`SolverUnavailableError` is its
+  subclass for a declared solver this environment does not have.
+- :class:`ProgramError` — the *program under test* is broken, so its author fixes the ``.lp``;
+  :class:`ContainmentError` is its subclass for a case loading a file from outside its corpus.
+- :class:`HarnessError` (with :class:`RoutingError`, :class:`SeamError`) — *elenctic* violated an
+  invariant of its own, which the runner reports under a distinct status, never as a verdict.
 
 The first three are the author's to fix; the last is elenctic's. That cut is why ``ProgramError``
 is not a ``HarnessError``: a broken program under test is not evidence of a broken harness.
 
-**The three registers.** A whole run lands in a :class:`RunOutcome`, which keeps apart the three
-kinds of thing a run produces: a :class:`CaseOutcome` per case that reached a verdict, an
-:class:`ErrorRecord` per
-reason a verdict could not be produced, and a :class:`HygieneRecord` per observation about the
-corpus's health — that one carrying the :class:`Grade` the run graded it, since how loudly an
-observation is taken is a policy the caller sets. Every discovered case has exactly one home among
-the first two, and :func:`summary` projects the counts out of them rather than tallying beside them,
-so a reader is never shown fewer cases than exist with nothing said about where the rest went.
+**The three registers.** A whole run lands in a :class:`RunOutcome`, which keeps apart a
+:class:`CaseOutcome` per case that reached a verdict, an :class:`ErrorRecord` per reason a verdict
+could not be produced, and a :class:`HygieneRecord` per observation about the corpus's health.
+Every discovered case has exactly one home among the first two, and :func:`summary` projects the
+counts out of them rather than tallying beside them, so a reader is never shown fewer cases than
+exist with nothing said about where the rest went.
 
 **Running a corpus.** :func:`run_corpus` takes an :class:`Invocation` — the settled form of a
 command line — and returns a :class:`RunOutcome`; :func:`explain_corpus` derives the run plans
 instead and returns a :class:`PlanOutcome`; :func:`exit_status` reads either against the
 :class:`ExitStatus` ladder, and :func:`as_json` renders one as the published document. Both runners
 are silent: a caller who wants to watch a long run supplies a :class:`RunObserver` or a
-:class:`PlanObserver`, told each verdict, plan and fault as it is established. ``elenctic.cli`` is
-these calls with a command line in front of them.
+:class:`PlanObserver`. ``elenctic.cli`` is these calls with a command line in front of them.
 
 The curated surface is resolved **lazily** (PEP 562): importing ``elenctic`` does not eagerly load
 every submodule, so ``import elenctic`` stays cheap (clingo loads only when a solver is actually
