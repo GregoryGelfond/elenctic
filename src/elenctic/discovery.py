@@ -16,24 +16,12 @@ precondition violation is a :class:`DiscoveryError`, a malformed contract the
 the caller could not know it, the contract line it is wrong on. Which *file* is the caller's, since
 it passed the path in. Pure over the tree, filesystem reads its only effect.
 
-The collection scan reads tolerantly (``errors="replace"``): the contract tags are ASCII, so a
-non-UTF-8 *library* is simply skipped, while a non-UTF-8 *case* is collected and then rejected with
-a friendly diagnostic — a ``ContractError`` at the offending ``source:line`` if the bad byte falls
-in a parsed ``@``-payload, otherwise a ``ProgramError`` at the resolved-program inspection.
-
-A ``@query`` is answered off the *shown projection* of each answer set, so a program that does not
-make a queried literal observable cannot answer the query at all — elenctic's answer would then
-describe the program's ``#show`` directives rather than its answer sets. Every signature a query
-consults is enumerated once, by ``query.signatures_read``; this module's job is to refuse the case
-when the program's :data:`~elenctic.program.ShownVocabulary` does not cover them. The vocabulary is
-keyed by sign-aware signature ``(name, arity)``, so a literal ``#show``n at the wrong arity (an
-authoring typo) is a *loud* precondition failure and not a silent wrong PASS.
-
-Still short of a faithful account of observability, and deliberately: a ``#show <term> : <body>.``
-directive emits its term only where the body holds, so the predicate is visible for some ground
-instances and not others. Reading that partially — which is what a faithful reading would need —
-wants a grounding, not a parse. Until then such a directive establishes nothing, which refuses a
-query it might have been able to answer and never answers one wrongly.
+The gate this module exists for is **readability**: every reading elenctic performs comes off the
+solver's output, so a case is refused unless that output agrees with the answer set on every
+signature the reading consults. :func:`_refuse_unreadable` states that rule, and the two gates over
+it — one for a ``@query``, one for a consequence claim — differ only in what their subject reads.
+The vocabulary they consult is keyed by sign-aware signature ``(name, arity)``, so a literal
+``#show``n at the wrong arity is a *loud* precondition failure and not a silent wrong PASS.
 """
 
 from dataclasses import dataclass
@@ -319,10 +307,11 @@ def _read(path: Path) -> str:
     a friendly ``DiscoveryError``, never a raw trace; which file it was is the record's to carry.
 
     The reason is taken from ``strerror`` and not from the exception's own text, which spells the
-    path into itself — so a record that already names the file printed it twice on one line, once as
-    its own claim and once inside a quoted ``[Errno 21] Is a directory: 'c/dir.lp'``. Unlike the
-    solver's, that copy carries no coordinate and so says nothing the record has not said. The errno
-    goes with it: a number a corpus author cannot act on, beside a sentence they can.
+    path into itself — so a record that already names the file would print it twice on one line,
+    once as its own claim and once inside a quoted ``[Errno 21] Is a directory: 'c/dir.lp'``.
+    Unlike the solver's, that copy carries no coordinate and so says nothing the record has not
+    said. The errno goes with it: a number a corpus author cannot act on, beside a sentence they
+    can.
 
     ``strerror`` is documented as sometimes absent, so the exception's text is the fallback — a
     duplicated path being better than a reason that is the word ``None``."""
@@ -398,10 +387,9 @@ def check_solver_available(solver: Solver) -> None:
     there is no answer to report about it, and an import failure raised from inside a solver facade
     names none of what the reader needs.
 
-    It takes no file to name. It used to, and the file was spelled into the refusal — where it said
-    nothing the caller did not already hold, since a caller asks this question about a case it has
-    in hand. What the reader needs it to say is which *solver*, and where the fault is recorded is
-    the record's to carry.
+    It takes no file to name: a caller asks this question about a case it has in hand, so spelling
+    the file into the refusal would say nothing the caller does not already hold. What the reader
+    needs is which *solver*, and where the fault is recorded is the record's to carry.
 
     Checked **per case, at run time** rather than during the corpus walk. An absent optional backend
     then costs only the cases that declare it — the rest of the corpus still runs and still reports,
@@ -471,25 +459,18 @@ def _check_queries_are_answerable(expectation: Sat, shown: ShownVocabulary, wher
 
     A query is answered off what the solver puts in the output, so elenctic's answer is the
     Gelfond–Kahl answer when that output is the answer set restricted to the signatures the query
-    consults (:func:`~elenctic.query.signatures_read`) — which needs the restriction to lose none of
-    them **and** to add nothing to them. Each half fails in its own way and neither implies the
-    other, so each is asked separately:
-
-    - a signature the program does not declare observable is missing from every answer set elenctic
-      can see, so it cannot be told from one no answer set contains;
-    - a signature a ``#show <term> : <body>.`` directive displays reaches the output on the
-      directive's terms rather than the answer set's, and can arrive when no answer set contains it
-      at all.
-
-    Either way the answer that would be computed is a fact about the program's ``#show`` directives
-    rather than about its answer sets, so it is refused rather than reported — in either direction,
-    which covers a wrong PASS on a false claim and a FAIL on a true one. That is why the rule is
+    consults (:func:`~elenctic.query.signatures_read`); :func:`_refuse_unreadable` states what that
+    takes. A signature failing it is missing from every answer set elenctic can see, so it cannot be
+    told from one no answer set contains, and the answer that would be computed is then a fact about
+    the program's ``#show`` directives rather than about its answer sets. Refused in either
+    direction, which covers a wrong PASS on a false claim and a FAIL on a true one: the rule is
     about the answer and not about the verdict.
 
     What a query reads is *two-sided*: a ground query's three-valued answer tells ``no`` from
     ``unknown`` only by seeing the contrary, so :func:`~elenctic.query.signatures_read` returns both
-    signs. That is this gate's whole difference from the consequence one below — the rule applied to
-    what is read is the same rule.
+    signs. That is this gate's whole difference from
+    :func:`_check_consequence_claims_are_readable` — the rule applied to what is read is the same
+    rule.
     """
     for query in expectation.queries:
         _refuse_unreadable("this @query", signatures_read(query.value), shown, where, query.line)
@@ -509,7 +490,8 @@ def _check_consequence_claims_are_readable(
 
     What a consequence claim reads is *single-sided*: it asserts membership and never absence, so
     each literal's own signature is consulted and its contrary is not. That is this gate's whole
-    difference from the query one above — the rule applied to what is read is the same rule.
+    difference from :func:`_check_queries_are_answerable` — the rule applied to what is read is the
+    same rule.
     """
     for tag, claim in expectation.consequence_claims:
         reads = frozenset(signature_of(literal) for literal in claim.value)
@@ -523,16 +505,15 @@ def _refuse_unreadable(
     ``reads`` readable — the output agreeing with the answer set on that signature, losing none of
     it and adding nothing to it.
 
-    **One condition, and it used to be two.** The second asked whether a ``#show <term> : <body>.``
-    directive displays the signature, because such a directive could put in the output a term no
-    answer set contains. It no longer can: :func:`~elenctic.solvers._projection_of` keeps only
-    symbols the model contains, at the one seam every reading comes through, so a phantom is dropped
-    before any reading sees it. What is left of the display form is that it *under*-represents — it
-    emits its term only where its body holds — and that is a fault exactly where the signature is
-    undeclared, which the remaining condition already refuses. Measured, on the model and on the
-    cautious/brave consequences alike: a signature both declared and displayed is exact, and an
-    unrestricted program is exact whatever it displays. Asking the old second question as well
-    refused two shapes whose answers are computable.
+    **One condition: the signature is declared observable.** Adding nothing is already established
+    at the one seam every reading comes through — :func:`~elenctic.solvers._projection_of` keeps
+    only symbols the model contains, so a ``#show <term> : <body>.`` directive cannot put a term no
+    answer set contains in front of a reading. What is left of the display form is that it
+    *under*-represents — it emits its term only where its body holds — and that is a fault exactly
+    where the signature is undeclared, which the one condition already refuses. Measured, on the
+    model and on the cautious/brave consequences alike: a signature both declared and displayed is
+    exact, and an unrestricted program is exact whatever it displays. Asking about the display form
+    as well would refuse two shapes whose answers are computable.
 
     So ``displayed`` decides nothing and selects the *message* instead — and that distinction is the
     one a reader must make, because the remedies differ and the wrong one is destructive: declaring

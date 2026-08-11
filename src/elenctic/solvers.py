@@ -5,38 +5,25 @@ parser or build and inspect its symbols, which is as pure as building a tuple. O
 constructs a :class:`~clingo.Control`, grounds on it, and asks it about answer sets.
 
 A facade runs one configured solve and returns a :class:`~elenctic.result.SolveOutcome`: the arm the
-solve settled, paired with how its search ended. The arm is :class:`~elenctic.result.Inconclusive`
-if the solve settled nothing — the budget was hit before it decided, or the solver gave up (both
-``UNDECIDED``, never FAIL/UNSAT); :class:`~elenctic.result.Inconsistent` if the whole-result
-``unsatisfiable`` bit is set (decided once, never inferred from an empty field); else the
-:class:`~elenctic.result.Consistent` shape the mode produces.
+solve settled, paired with how its search ended (:func:`_outcome` states the three arms).
 
-A search cut short still reports the satisfiability it settled, and every arm reports the search
-behind it. Whether that search covered what a *reading* needs is a question about what is read, and
-a run carries several checks that do not all range over the same thing — so it is answered where the
-reading is (``checks.py``), and this module reports only the
-:class:`~elenctic.result.Conclusion` it observed.
+Two contracts this module keeps with the rest of the system:
 
-**The lowering contract (the accessor seam's second premise).** Whenever ``solve(mode)`` yields a
-``Consistent``, it is *exactly* ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)``.
-A satisfiable solve does not always yield one: a search may settle satisfiability and still produce
-nothing the mode's shape can honestly be made of, which is reported as a solve that settled nothing.
-The match in :func:`_consistent_shape` is that Mode→shape arrow, and the gating
-lowering-postcondition test ties it to ``shape_for``/``populates`` so the construction here and the
-type oracle in ``run`` do not drift.
+- **It does not decide whether a search was enough.** Every arm reports the
+  :class:`~elenctic.result.Conclusion` observed, and whether that conclusion covers what a
+  *reading* needs is answered where the reading is (``checks.py``) — one run carries several
+  checks and they do not all range over the same thing.
+- **The lowering contract.** Whenever ``solve(mode)`` yields a ``Consistent``, it is *exactly*
+  ``run.shape_for(mode)`` carrying the fields ``run.populates(mode)``. A satisfiable solve does not
+  always yield one, and :func:`_consistent_shape` says when.
 
-A single ``_Collector`` dispatches on ``model.type``: ``StableModel`` rows become observables (with
-cost); a final ``CautiousConsequences`` / ``BraveConsequences`` model carries ⋂/⋃. Whether a run
-projects is decided once, by ``run.should_project``, and both facades do as they are told — on
-clingo projection onto shown atoms is information-preserving (``assign ≡ ∅``) and is taken wherever
-offered; on clingcon it collapses the CSP multiplicity ``@count``/``@assign`` observe and is taken
-only when no rider reads the full census; on either it is declined when the program's own
-``#project`` directive would narrow past the shown atoms.
+Whether a run projects is likewise decided once, by ``run.should_project``; both facades do as they
+are told, and each states what projection costs on its backend.
 
-Known v1 limitation: a ``#maximize`` objective is reported by clingo in negated
-minimize-internal form, so :func:`optimum_of`'s cost is natural for ``#minimize`` (the
-minimize-dominated v1 corpus) but negated for ``#maximize``; sign-normalisation is deferred until a
-maximize-using corpus arrives (it needs per-priority-level sign tracking).
+Known v1 limitation: a ``#maximize`` objective is reported by clingo in negated minimize-internal
+form, so :func:`optimum_of`'s cost is natural for ``#minimize`` but negated for ``#maximize``.
+Normalising the sign needs per-priority-level sign tracking, and is deferred until a maximize-using
+corpus arrives to hold it.
 """
 
 from collections.abc import Callable, Iterator
@@ -298,10 +285,10 @@ def _outcome_unless_satisfiable(completed: bool, result: SolveResult) -> SolveOu
     and nothing later takes that back — which is why the satisfiable answer above is kept. Reporting
     *no* answer set is the opposite kind of claim: it asserts the whole space was covered, and only
     a search that ran to its own end can assert that. A cancelled solve does come back carrying
-    unsatisfiable and exhausted together — two occurrences in 1,400 zero-budget solves of a program
-    with 2^30 answer sets, in the plain single-model configuration as well as the enumerating one —
-    and taken at its word it says the program has no answer set. That reading upholds
-    ``@expect unsat`` over a program nothing was learned about."""
+    unsatisfiable and exhausted together — measured, on a program with 2^30 answer sets, in the
+    plain single-model configuration as well as the enumerating one — and taken at its word it says
+    the program has no answer set. That reading upholds ``@expect unsat`` over a program nothing was
+    learned about."""
     if result.satisfiable:
         return None
     if _cut_short(completed, result):
@@ -322,19 +309,16 @@ def _conclusion(completed: bool, result: SolveResult) -> Conclusion:
     """How a search ended.
 
     A cut from outside wins: a search ended from outside it did not end on its own terms, whatever
-    else it reports about itself. That ordering is the whole of the rule that a cut-short search is
-    believed about what it found and never about what it finished — exhaustion is a claim to have
-    covered the space, and a cancelled solve does make that claim falsely, which is measurable on a
-    program whose answer sets are beyond counting. Nothing in the result distinguishes a search that
-    closed the space just before the cancellation landed from one that closed nothing and said
-    otherwise, so neither is read as coverage.
+    else it reports about itself. Exhaustion is a claim to have covered the space, and a cancelled
+    solve does make that claim falsely (:func:`_outcome_unless_satisfiable`). Nothing in the result
+    distinguishes a search that closed the space just before the cancellation landed from one that
+    closed nothing and said otherwise, so neither is read as coverage.
 
-    Refusing the ambiguous case is close to free, and the direction it errs in is the safe one.
-    Sweeping the budget across the completion window of a 65,536-answer-set program, 480 solves
-    produced 80 exhausted results, and every one of them was uninterrupted and completed — so the
-    ambiguous state never arose, and no exhausted result carried a census shorter than the true
-    model count. When it does arise it costs a reading, where believing it would cost a verdict:
-    a collection read as whole when it is partial is how a false claim passes.
+    The ordering is close to free, and it errs in the safe direction. Swept across the completion
+    window of a 65,536-answer-set program, every exhausted result was also uninterrupted and
+    completed, so the ambiguous state never arose there and no reading was refused for it. Where it
+    does arise it costs a reading, and believing it would cost a verdict: a collection read as whole
+    when it is partial is how a false claim passes.
 
     What ``exhausted`` certifies is that the space was covered *under the configuration the run was
     given*, so it says nothing about whether that configuration was the right one: an enumeration
@@ -624,12 +608,12 @@ def run_clingo(
     can withhold it.
 
     Whether to project is the caller's, exactly as it is for the theory backend: this frame states
-    no rule of its own. It used to, and the rule it stated — that clingo's enumeration modes always
-    project, since deduplicating by shown atoms equals deduplicating by observable when the
-    assignment is empty — is sound only while the projection *is* onto the shown atoms. A
-    ``#project`` directive redefines it to something narrower, and a second statement of a decision
-    made elsewhere is a decision the caller cannot revise. A projecting clingo run still yields the
-    full shape (``projects_to_shown`` is always ``False`` for a non-theory solver)."""
+    no rule of its own. Projecting unconditionally would be tempting — deduplicating by shown atoms
+    equals deduplicating by observable when the assignment is empty — but that holds only while the
+    projection *is* onto the shown atoms, and a ``#project`` directive redefines it to something
+    narrower. A second statement of a decision made elsewhere is a decision the caller cannot
+    revise. A projecting clingo run still yields the full shape (``projects_to_shown`` is always
+    ``False`` for a non-theory solver)."""
     # The capture spans the solve as well as the ground: clingo reports through the same channel
     # either way, and a region closed at the ground would leave the solve's diagnostics loose on the
     # process's own standard error.
@@ -752,7 +736,7 @@ def solve(
     consumer meets it. They are adjacent, differently typed, and both optional: passed positionally
     with ``budget`` omitted, a boundary lands in ``project``, where it is truthy — so the run
     silently projects and states no containment rule at all. A type checker rejects that; nothing at
-    run time did."""
+    run time does."""
     try:
         facade = _FACADES[solver]
     except KeyError:

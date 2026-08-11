@@ -6,11 +6,7 @@ knows about; a corpus is the unit anyone actually runs, and this is where the tw
 
 :func:`run_corpus` and :func:`explain_corpus` each take an :class:`~elenctic.outcome.Invocation` and
 return everything they produced — verdicts or plans, the reasons some case produced neither, and
-what was observed about the corpus's health. Both are **total over their argument**: every
-invocation that can be written is one they can carry out, because the modes that produce no run
-cannot be expressed as an ``Invocation`` at all. Faults the run anticipates are recorded rather than
-raised, which is what the error register is for; what still escapes is what no register anticipated,
-and backstopping that belongs to whoever is running this rather than to the run.
+what was observed about the corpus's health.
 
 This is what ``elenctic.cli`` is built out of. The console entry parses a command line into an
 invocation, calls in here, renders what comes back and reads a status off it — so the program is a
@@ -184,33 +180,24 @@ def _tell[O, T](
 ) -> None:
     """Make one announcement, and let nothing it does stop the run.
 
-    **The announcement is selected in here, not at the call site**, which makes the guarantee true
-    of the *lookup* as well as of the call. Reaching for an observer's method can fail on its own —
-    an implementation checked structurally rather than by inheritance supplies every member or none,
-    and one exposing an announcement as a computed attribute fails where it is read. Resolved by the
-    caller and handed in already bound, those faults would happen outside this frame and take the
-    whole run with them.
+    **The announcement is selected in here, not at the call site**, so the guarantee covers the
+    *lookup* as well as the call: an observer checked structurally rather than by inheritance may
+    expose an announcement as a computed attribute, which fails where it is read, and a method
+    resolved by the caller would fail outside this frame and take the run with it.
 
-    **Announcing is a courtesy; establishing is the work.** A caller hands in an observer to watch
-    what happens, not to take part in it, so a fault in the watching cannot change what was
-    established. The announcement sites are outside the per-case handlers, so without this one
-    raising observer discards every case's records — and this module's guarantee everywhere else is
-    that one bad file costs its own result and no other's.
+    **Announcing is a courtesy; establishing is the work.** The announcement sites are outside the
+    per-case handlers, so one raising observer would otherwise discard every case's records against
+    this module's guarantee that one bad file costs its own result and no other's.
 
-    Reported through a logger, this package's channel for something only a developer can act on, and
-    silent unless that developer asks for it. There is no diagnostic to write and no record to file:
-    it is not a fact about the corpus, and putting it in the registers would report it to the wrong
-    reader under the wrong locus.
-
-    **Once per run, not once per announcement.** What actually fails here is an observer whose
-    destination went away — a reader that stopped reading, an editor's socket that closed — and that
-    is one event rather than one per case, so reporting it per announcement buries the only one that
-    was news.
+    Reported through a logger — this package's channel for what only a developer can act on. It is
+    not a fact about the corpus, so it earns no diagnostic and no record: the registers would report
+    it to the wrong reader under the wrong locus. Once per run rather than once per announcement,
+    because what fails here is an observer whose destination went away, which is one event and not
+    one per case.
 
     The isolation is a service to *callers*, and this frame claims no more than that. Elenctic's own
-    console is announced to through this same seam, so a fault arriving here is not necessarily
-    somebody else's: for the command line it is usually a reader who has gone, which is answered
-    where the report is handed over rather than here.
+    console is announced to through this same seam, and for the command line a fault here is usually
+    a reader who has gone — answered where the report is handed over rather than here.
     """
     try:
         announce(told.observer)(value)
@@ -258,10 +245,8 @@ def run_corpus(invocation: Invocation, *, observer: RunObserver | None = None) -
     still escapes is what no register anticipated, which the console entry backstops.
 
     **Silent.** It writes to no stream. A caller who wants to see the run happen as it happens
-    hands in an ``observer`` and is told each thing as it is established; a caller who only wants
-    the result passes nothing and gets it back whole. Every error and every verdict announced is
-    the same object this returns, so the two readings cannot come to describe the run differently;
-    corpus hygiene is read off the returned outcome, being settled before the first case is reached.
+    hands in an ``observer`` (:class:`Observer` states what that guarantees); a caller who only
+    wants the result passes nothing and gets it back whole.
 
     Named apart from the module ``elenctic.run``, which a package attribute of the same name would
     resolve to instead.
@@ -297,8 +282,8 @@ def explain_corpus(invocation: Invocation, *, observer: PlanObserver | None = No
     A plan that cannot be built is elenctic's own fault, and surfacing one before any solving is
     the whole purpose of this mode.
 
-    Silent, and told through an ``observer``, exactly as :func:`run_corpus` is. Its observer is the
-    other one: this mode announces a plan where that one announces a verdict.
+    Total over its argument and silent, on the same terms as :func:`run_corpus`, and told through
+    an ``observer`` — the other one: this mode announces a plan where that one announces a verdict.
     """
     told = _Announcing[PlanObserver](_SILENT if observer is None else observer)
     match _discover(invocation.target, told):
@@ -348,11 +333,9 @@ def _corpus_fault(kind: ErrorKind, target: Path, fault: Exception) -> ErrorRecor
     The target is what it belongs to, with no test on the path. This frame is reached only when
     nothing could be discovered *under* the target, and the faults the walk raises rather than
     collects are about the target itself — a name that resolves to nothing, or a named file carrying
-    no contract. A path naming nothing is exactly the case a reader most needs named, since the
-    whole fault is which name was typed; asking the filesystem whether the target is a *file*
-    answers no for it, which read right only while the reason also spelled the path into itself.
-    Dropping that duplicate left the fault with nowhere to point, and the condition with nothing
-    left to decide.
+    no contract. Asking the filesystem whether the target is a *file* would answer no for a path
+    naming nothing, which is exactly the case a reader most needs named, the whole fault being which
+    name was typed.
 
     A corpus-scoped record with no source at all is still a shape — the command line files one for a
     fault that reached no target, which is why the published field is nullable — but it is not one
@@ -406,10 +389,10 @@ def _fault_record(kind: ErrorKind, source: Path, fault: Exception) -> ErrorRecor
     """One case-scoped record built from a fault: the file from the frame that has it, the reason
     and the line from the fault itself.
 
-    The three facts come from where each is known, rather than from a string that had already
-    composed two of them. A record whose message was ``str(fault)`` restated the file this record
-    carries, so the file was printed twice wherever a renderer placed it — and the line was spelled
-    into prose that a consumer would have had to parse back out."""
+    The three facts come from where each is known, rather than from a string that has already
+    composed two of them. A message of ``str(fault)`` restates the file this record carries, so a
+    renderer prints it twice wherever it places one — and spells the line into prose a consumer
+    would have to parse back out."""
     reason, line = error_detail(fault)
     return ErrorRecord(kind=kind, scope=Scope.CASE, source=source, message=reason, line=line)
 
@@ -449,9 +432,7 @@ def _plan_for(case: Case) -> CasePlan | ErrorRecord:
 
     The one place a plan is built, so the two modes cannot come to build one differently: a dry run
     derives a plan in order to show it, and a real run derives one in order to prove it can be built
-    before anything is solved, and those are the same derivation asked for two reasons. Written
-    twice, they were the same fifteen lines with one difference between them — and the difference
-    was that one kept the plan and the other threw it away.
+    before anything is solved, and those are the same derivation asked for two reasons.
 
     A plan that cannot be built is elenctic's own fault rather than the corpus's, which is why the
     reason comes back as a record filed under the harness locus rather than as a raise."""
@@ -532,11 +513,11 @@ def _run(
             # filed under the *environment* rather than under discovery, because discovery never
             # met it: the check above runs per case, here, after the corpus walk is over.
             #
-            # The family, not that subclass alone, and the locus is asked of `error_kind` rather
-            # than named here: catching the subclass left the family able to escape this register
-            # and cost the whole corpus what it owes one case, and naming the locus here made a
-            # second statement of a mapping that already has one home — where a locus is read off
-            # a class, and where the ordering that keeps these two apart is written down.
+            # The family, not that subclass alone: catching only the subclass lets the rest of the
+            # family escape this register and cost the whole corpus what it owes one case. The
+            # locus is asked of `error_kind` rather than named here, that mapping already having
+            # one home — where a locus is read off a class, and where the ordering that keeps
+            # these two apart is written down.
             errors.append(_fault_record(error_kind(exc), case.contract_source, exc))
             _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue
@@ -546,11 +527,10 @@ def _run(
             # filed apart from both and the remaining cases still run.
             #
             # The locus is asked of `error_kind`, exactly as the arm above asks it and for the
-            # same reason. `ContainmentError` is a `ProgramError`, so this arm catches one — and
-            # naming the locus here announced a containment breach as `PROGRAM` when the runner met
-            # it while the walk called the same breach `CONTAINMENT`. That is the one-rule-two-
-            # problems shape `ContainmentError` exists to prevent, written into the register that
-            # reports it.
+            # same reason. `ContainmentError` is a `ProgramError`, so this arm catches one, and
+            # naming the locus here would announce a containment breach as `PROGRAM` where the walk
+            # calls the same breach `CONTAINMENT` — the one-rule-two-problems shape
+            # `ContainmentError` exists to prevent, written into the register that reports it.
             errors.append(_fault_record(error_kind(exc), case.contract_source, exc))
             _tell(told, lambda o: o.case_unjudged, errors[-1])
             continue

@@ -228,9 +228,10 @@ _PROJECTION_SENSITIVE: Final[frozenset[Field]] = frozenset(
 def populates(mode: Mode, projects_to_shown: bool = False) -> frozenset[Field]:
     """The fields a ``Consistent`` result of ``(mode, projects_to_shown)`` makes readable (total). A
     projecting run sheds exactly its full-census token (multiplicity/assignment erased), keeping the
-    shown view and the consequence views (both derivable from the shown set). The lowering
-    postcondition for ``solvers.py`` — a ``Consistent`` of ``(mode, projects_to_shown)`` carries
-    exactly these fields — is the accessor seam's second unreachability premise."""
+    shown view and the consequence views (both derivable from the shown set). This is also the
+    lowering postcondition for ``solvers.py`` — a ``Consistent`` of ``(mode, projects_to_shown)``
+    carries exactly these fields — which together with the wiring rule is what makes the accessor
+    seam's ``SeamError`` unreachable."""
     lowering = _LOWERING[mode]
     if projects_to_shown and lowering.collapse is not None:
         return lowering.populates - {lowering.collapse.sheds}
@@ -374,12 +375,10 @@ def _sat_runs(exp: Sat, theory_in_force: bool, has_projection: bool = False) -> 
     enforced by construction rather than by hand.
 
     A repeated consequence tag is a repeated *claim*: each ``@cautious``/``@brave`` line becomes its
-    own check, decided and reported against the line it was written on. Checking them apart decides
-    the case identically — for any set ``S``, ``L₁ ⊆ S`` and ``L₂ ⊆ S`` hold exactly when
-    ``(L₁ ∪ L₂) ⊆ S`` does, a fact about ⊆ and ∪ that covers the ⋃ and Opt(P) readings as much as ⋂
-    — and all of a cell's claims land on one mode, so no extra search is done. What changes is the
-    report: a failure that turns on which claim was false now names that claim, and the arms whose
-    verdict does not depend on the claim report once per claim instead of once per cell.
+    own check, decided and reported against the line it was written on. That costs no extra search —
+    all of a cell's claims land on one mode — and it decides the case identically, by the fact about
+    ⊆ and ∪ that :class:`~elenctic.expectation.Sat` states. What it buys is the report: a failure
+    that turns on which claim was false names that claim's line.
     """
     bucket: dict[Mode, list[Check]] = {}
 
