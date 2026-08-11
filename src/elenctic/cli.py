@@ -153,7 +153,7 @@ _SCHEMA_UNREADABLE = (
 # sentence that asks the reader to reduce what their corpus grounds describes a run that did not
 # happen.
 _DESCRIPTION_OUT_OF_MEMORY = (
-    "elenctic ran out of memory reading its own output description. That is answered from the "
+    "elenctic ran out of memory producing its own output description. That is answered from the "
     "package alone, so no corpus was looked at and nothing was grounded: what ran short is the "
     "memory this process was given, or the packaged file is not the small one that ships. Nothing "
     "else is affected: running a corpus never reads this file."

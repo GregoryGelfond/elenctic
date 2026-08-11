@@ -687,6 +687,10 @@ def test_running_out_of_memory_printing_the_description_does_not_blame_a_corpus(
     assert "no corpus was looked at and nothing was grounded" in streams.err, (
         "and the reader is told which of the two kinds of allocation failure this was"
     )
+    assert "out of memory writing" not in streams.err, (
+        "nothing was written: the description could not be held, so a diagnostic naming the write "
+        "would send this reader to look at a step that never ran"
+    )
 
 
 def test_running_out_of_memory_writing_the_description_does_not_blame_a_corpus_either() -> None:
@@ -712,6 +716,10 @@ def test_running_out_of_memory_writing_the_description_does_not_blame_a_corpus_e
     )
     assert "no corpus was looked at and nothing was grounded" in streams.err, (
         "and the reader is told which of the two kinds of allocation failure this was"
+    )
+    assert "out of memory reading" not in streams.err, (
+        "the description was read: what failed is one statement later, and a diagnostic naming the "
+        "read sends this reader to inspect a packaged file that is fine"
     )
 
 
