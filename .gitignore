@@ -4,6 +4,11 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
+# Coverage runs in parallel mode, so each process writes its own `.coverage.<host>.<pid>.<random>`
+# and the combine step removes them. An interrupted run leaves a hundred of them behind, and the
+# line above matches only the combined file. Dotted rather than `.coverage*`, which would also
+# swallow a `.coveragerc` somebody meant to commit.
+.coverage.*
 htmlcov/
 .pixi/
 dist/
