@@ -1704,3 +1704,38 @@ def test_the_lint_asks_for_a_match_on_every_exception_this_package_defines() -> 
         f"named and undefined: {sorted(required - defined)}\n"
         f"the setting should read:\n{sorted(defined)}"
     )
+
+
+# Anywhere on the line, not anchored to its start. Written anchored first, and four of the six
+# spellings a Markdown document actually uses walked straight past it: an inline code span, a list
+# item, a block quote, and `from elenctic . result import X`, which Python accepts. A document
+# instructs an import wherever the words appear, so that is what is matched.
+_SUBMODULE_IMPORT = re.compile(
+    r"from\s+elenctic\s*\.\s*(\w+)\s+import\b|import\s+elenctic\s*\.\s*(\w+)"
+)
+
+
+def test_no_document_tells_a_reader_to_import_from_a_submodule() -> None:
+    # The version promise has a subject, and this is what keeps it true. `docs/library-api.md` says
+    # the supported surface is what `import elenctic` gives you, and that a name reached through a
+    # submodule is internal and may change in a patch release. A document that then shows
+    # `from elenctic.result import ConsistentWitness` has told a reader to depend on something the
+    # same document says they may not — and the reader who followed it is broken by a patch we were
+    # entitled to ship.
+    #
+    # An import *statement*, not a mention: prose naming `elenctic.solvers` while saying where a
+    # thing lives is how these documents explain the package, and is not what the promise is about.
+    #
+    # `CHANGELOG.md` is outside `_documents_of_instruction` and correctly so — a changelog must be
+    # able to say which module a thing moved out of, and this rule would forbid it.
+    instructed = [
+        (where, match.group(0).strip())
+        for where, text in _INSTRUCTIONS.items()
+        for match in _SUBMODULE_IMPORT.finditer(text)
+    ]
+    assert _INSTRUCTIONS, "no documents were swept at all, so this passes by knowing nothing"
+    assert not instructed, (
+        f"these send a reader into a submodule, which the version promise does not cover: "
+        f"{instructed}. The supported surface is `import elenctic`; if one of these names is worth "
+        f"promising, it belongs in `_EXPORTS` rather than in a document"
+    )

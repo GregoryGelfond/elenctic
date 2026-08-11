@@ -1,8 +1,15 @@
 # Changelog
 
 Notable changes to elenctic. The format follows
-[Keep a Changelog](https://keepachangelog.com/), and the project aims at
-[Semantic Versioning](https://semver.org/).
+[Keep a Changelog](https://keepachangelog.com/).
+
+**A patch bump will not break code written against the supported surface, and that surface is what
+`import elenctic` gives you.** It may still fix a defect, and a fix changes behaviour — what it will
+not do is remove a name, change a signature, or alter what a name means. Breaking changes are held
+for a minor bump and described under the release that makes them. This is a narrower promise than
+[Semantic Versioning](https://semver.org/) makes of a `0.x` release, which permits anything to
+change at any time; [Using elenctic as a library](docs/library-api.md) says what is inside the
+surface and what is not.
 
 Changes are recorded under **Unreleased** as they merge; cutting a release renames that section to
 the version and dates it. Entries describe what changed for someone using elenctic, and what it

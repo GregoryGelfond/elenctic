@@ -51,6 +51,29 @@ def test_public_api_exports_the_pipeline_and_outcome_surface() -> None:
         assert hasattr(elenctic, name), f"__all__ names {name!r} but there is no such attribute"
 
 
+def test_no_name_is_curated_from_two_homes() -> None:
+    # `_HOME` is a comprehension over `_EXPORTS`, so a name appearing in two of its tuples keeps the
+    # **last** one silently, and that is where the lazy resolver then goes looking. Nothing above
+    # notices: `__all__` is built from `_HOME`'s keys and so deduplicates, and the surface check
+    # compares sets. The consequence is precisely what the version promise forbids — `elenctic.Sat`
+    # would still import, and would be a different object than the release before.
+    #
+    # There are none today, so this costs no entry anything; it is here because a name moving home
+    # is an ordinary refactor and this is the one way to do it that nothing else catches.
+    seen: dict[str, str] = {}
+    twice = []
+    for module, names in elenctic._EXPORTS.items():
+        for name in names:
+            if name in seen:
+                twice.append((name, seen[name], module))
+            seen[name] = module
+    assert seen, "_EXPORTS is empty, so this passes by knowing nothing about the surface"
+    assert not twice, (
+        f"curated from two homes, and the later one silently wins: {twice}. A name has one home; "
+        f"moving it means removing the old entry, not adding a second"
+    )
+
+
 def _imported_under_type_checking(source: str) -> set[str]:
     """Every name the module imports inside ``if TYPE_CHECKING:``, as a consumer's type checker
     reads them.

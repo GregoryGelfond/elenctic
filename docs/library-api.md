@@ -78,5 +78,23 @@ the same `elenctic.ErrorRecord` the shipped one does, without recovering anythin
 The file is deliberately not among them: a fault states the provenance its caller could not already
 know, and the caller is the one who passed the file in.
 
+**And the surface all of that is a promise about is `import elenctic`.** The names it reaches — the
+package's own `__all__`, which is also what `dir(elenctic)` shows you — are the supported API: a
+release that changes only its patch number, 0.4.0 to 0.4.1, will not remove one, change its
+signature, or alter what it means. It may still fix a defect, and a fix changes behaviour; what it
+will not do is break code written against the surface. Breaking changes are held for a minor bump,
+and each is described in the [changelog](../CHANGELOG.md) under the release that makes it.
+
+Everything else is internal **to import**, *including* the names a submodule exports without a
+leading underscore. `elenctic.checks.count_is`, `elenctic.result.ConsistentWitness` and
+`elenctic.solvers.run_clingo` are all real and all reachable; reach for one if you need it, and do
+not expect it to still be there after an upgrade.
+
+*To import* is the operative phrase, because elenctic has a second surface and the same promise
+covers it: the command line. `elenctic run|explain|schema` and the four
+`python -m elenctic.<stage>` inspection entries described in [Running a corpus](running.md) are
+user-facing, and a patch will not break a command line that worked — the module a stage is spelled
+with is part of how you invoke it, not a name you imported.
+
 elenctic ships `py.typed`, so all of this is typed for whatever checker you run.
 
