@@ -28,6 +28,7 @@ import pkgutil
 import re
 import shlex
 import subprocess
+import symtable
 import tokenize
 import tomllib
 from pathlib import Path
@@ -1301,33 +1302,64 @@ def test_every_module_allowed_to_print_is_one_that_does() -> None:
 # comments'. What is read out of the span is the dotted path it opens with, so ``_lex``,
 # ``_finish()`` and ``Check._judge`` all answer with the names a reader would search for.
 _AS_CODE = re.compile(r"``?([^`]+)``?")
+# What an attribute docstring can stand under — the statements that give a name a value, and so the
+# only ones a string beneath can be documenting.
+_BINDS_A_VALUE = ast.Assign | ast.AnnAssign | ast.TypeAlias
 _DOTTED_PATH = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*")
 
 
 def _prose_in(path: Path) -> list[tuple[str, int, str]]:
     """Every docstring and comment in one module, labelled, each with the line a failure names.
 
-    Parsed rather than matched, because both halves have a lookalike the characters cannot tell
-    apart: a ``#`` inside a string literal is not a comment, and a string that is not the first
-    statement of a scope is not a docstring. ``tokenize`` and ``ast`` each decide their half the way
-    Python does.
+    Parsed rather than matched, because each form has a lookalike the characters cannot tell apart:
+    a ``#`` inside a string literal is not a comment, and a string handed to something — an
+    argument, a table entry, a default — is a value and not prose. ``tokenize`` and ``ast`` each
+    decide their half the way Python does.
 
-    Labelled because the check below holds each half against its own emptiness. A reader that lost
-    one of them goes on returning the other's hits, so an assertion over the union stays green while
-    half the prose is unread — and the defect that motivated all this lived in the docstring half.
+    **Three forms, because this package writes prose in three.** A scope's own docstring; an
+    *attribute* docstring, the bare string standing under an assignment, which is how
+    ``SCHEMA_VERSION``, ``type Outcome`` and the graded-record enums are documented and which
+    ``ast.get_docstring`` does not return; and a comment. Attribute docstrings sat outside this
+    reader until it was widened, and a phantom injected into one of them was carried green.
 
-    What this does *not* read is stated so it is not mistaken for covered: the package's Python.
-    ``schema/output-v2.schema.json`` ships prose of its own, in a hundred-odd backticked spans that
-    other checks here hold; so do argparse's help strings and the diagnostics, which are string
-    literals rather than docstrings. None writes a private name today.
+    A bare string under something that binds nothing documents nothing, and is not returned. The
+    difference is load-bearing rather than tidy: the emptiness check below leans on the attribute
+    form because that form's *hits* are legitimately empty, so a label handed to any loose string
+    would let a stray one stand in for the population the check is about.
+
+    Labelled because the check below holds each form against its own emptiness. A reader that lost
+    one of them goes on returning the others' hits, so an assertion over the union stays green while
+    a form's worth of prose is unread — and the defect that motivated all this lived in a docstring.
+
+    What this reads is the package's Python, and the rest is stated so it is not mistaken for
+    covered. ``schema/output-v2.schema.json`` ships prose of its own, in a hundred-odd backticked
+    spans that other checks here hold; so do argparse's help strings and the diagnostics, which are
+    string literals in value position rather than prose. None writes a private name today. Within a
+    docstring, implicitly concatenated fragments are one constant to the parser, so a name in the
+    second fragment is reported at the first fragment's line; the package writes none.
     """
     text = path.read_text(encoding="utf-8")
-    documented = [
-        ("docstring", node.body[0].lineno, doc)
-        for node in ast.walk(ast.parse(text))
-        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
-        and (doc := ast.get_docstring(node, clean=False)) is not None
-    ]
+    tree = ast.parse(text)
+    documented: list[tuple[str, int, str]] = []
+    for node in ast.walk(tree):
+        scope = isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        for field, block in ast.iter_fields(node):
+            if not isinstance(block, list):
+                continue
+            for index, statement in enumerate(block):
+                if not isinstance(statement, ast.Expr):
+                    continue
+                if not isinstance(statement.value, ast.Constant):
+                    continue
+                if not isinstance(statement.value.value, str):
+                    continue
+                if index == 0 and scope and field == "body":
+                    kind = "docstring"
+                elif index and isinstance(block[index - 1], _BINDS_A_VALUE):
+                    kind = "attribute"
+                else:
+                    continue
+                documented.append((kind, statement.lineno, statement.value.value))
     return documented + [
         ("comment", token.start[0], token.string)
         for token in tokenize.generate_tokens(io.StringIO(text).readline)
@@ -1375,28 +1407,46 @@ def _names_the_package_binds() -> set[str]:
     """Every name the package's own source binds, by any spelling it can be bound under.
 
     A binding rather than a mention, and the distinction is the whole reason this is read from the
-    AST: reading ``model.type`` off one of clingo's objects does not make ``type`` a name this
-    package defines, so an attribute counts where it is assigned and not where it is read. Every
-    other form that binds is here — ``def``, ``class``, assignment at any scope, parameter, import
-    alias, ``global``/``nonlocal``, and the module basenames — because a private name in prose can
-    point at any of them, and this needs no list precisely because it asks for all of them.
+    source rather than matched: reading ``model.type`` off one of clingo's objects does not make
+    ``type`` a name this package defines, so an attribute counts where it is assigned and not where
+    it is read.
+
+    **Two readers, because there are two authorities and neither answers for the other.**
+
+    ``symtable`` is Python's own answer to what a piece of source binds — it is the compiler's
+    symbol table, so it covers every binding form the language has, including the ones an
+    enumeration of AST arms forgets. This one did: ``def``, ``class``, assignment, parameter,
+    import alias and ``global``/``nonlocal`` were listed as *every other form that binds*, and the
+    package was already using three that were not on it — ``case shape:`` (26 sites),
+    ``except OSError as exc`` (22) and PEP 695 type parameters (6). None of them binds a private
+    name today, so nothing was wrongly reported; the claim was simply false, and the day someone
+    writes ``except OSError as _exc`` it becomes a phantom this gate invents. An authority is not a
+    longer list — it is the thing that cannot be short.
+
+    Attributes are the half ``symtable`` does not answer, and correctly so: ``self._attr = 2`` binds
+    no *symbol*, and clingo's ``model.type`` must not become a name this package defines. So the
+    AST supplies exactly the ``Attribute`` stores, which is how ``_value_`` — assigned onto a
+    foreign protocol field in ``outcome.py`` — is a name a reader searching for it can find.
+
+    The module basenames join both, because prose writes ``solvers.py`` as a name too.
     """
     bound = {path.stem for path in _package_sources()}
+
+    def symbols(table: symtable.SymbolTable) -> None:
+        for symbol in table.get_symbols():
+            if symbol.is_assigned() or symbol.is_parameter() or symbol.is_imported():
+                bound.add(symbol.get_name())
+        for nested in table.get_children():
+            symbols(nested)
+
     for path in _package_sources():
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            match node:
-                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-                    bound.add(node.name)
-                case ast.Name(ctx=ast.Store()):
-                    bound.add(node.id)
-                case ast.Attribute(ctx=ast.Store()):
-                    bound.add(node.attr)
-                case ast.arg():
-                    bound.add(node.arg)
-                case ast.alias():
-                    bound.add(node.asname or node.name.split(".")[0])
-                case ast.Global() | ast.Nonlocal():
-                    bound.update(node.names)
+        text = path.read_text(encoding="utf-8")
+        symbols(symtable.symtable(text, str(path), "exec"))
+        bound |= {
+            node.attr
+            for node in ast.walk(ast.parse(text))
+            if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store)
+        }
     return bound
 
 
@@ -1413,21 +1463,38 @@ def test_every_private_name_the_source_prose_writes_is_one_the_package_defines()
     # exemption list. A leading underscore has nowhere to resolve but here, which is what makes the
     # narrow rule answerable at all.
     bound = _names_the_package_binds()
-    written = [
-        (kind, path.name, opens + offset, name)
+    prose = [
+        (kind, path.name, opens, text)
         for path in _package_sources()
-        for kind, opens, prose in _prose_in(path)
-        for offset, name in _private_names_written_in(prose)
+        for kind, opens, text in _prose_in(path)
     ]
-    # Each half of the reader against its own emptiness, not their union. This package writes
-    # private names as code in both its docstrings and its comments, so finding none in either is a
-    # reader that has stopped reading rather than prose that has stopped naming — and the union
-    # cannot say which, because the surviving half answers for the lost one.
+    written = [
+        (kind, module, opens + offset, name)
+        for kind, module, opens, text in prose
+        for offset, name in _private_names_written_in(text)
+    ]
+
+    # Two ways this can pass while holding nothing, and they are held apart because a single
+    # assertion over the union lets either answer for the other.
+    #
+    # A form of prose the reader stopped reaching. For the attribute form this is the *only*
+    # available guard: no attribute docstring writes a private name today and none need ever, so
+    # its hit set is legitimately empty and cannot stand in for its population.
+    read = {kind for kind, *_ in prose}
+    assert read == {"attribute", "comment", "docstring"}, (
+        f"the reader returned prose of {sorted(read) or 'no form'}, where this package has written "
+        f"it in all three. Either a form is going unread — in which case a green run here says "
+        f"nothing about it — or the package has stopped writing that form, and this line is what "
+        f"has to be revised to say so"
+    )
+    # A matcher that stopped matching. Superset, not equality: an attribute docstring that comes to
+    # write a private name is correct prose, and a guard that forbids it would be holding the
+    # codebase to the shape it had when the guard was written.
     found_in = {kind for kind, *_ in written}
-    assert found_in == {"comment", "docstring"}, (
-        f"private names as code were found in {sorted(found_in) or 'neither form'}, and this "
-        f"package writes them in both — so a half of the reader above is reading nothing, and a "
-        f"green run here holds only the other half"
+    assert found_in >= {"comment", "docstring"}, (
+        f"private names as code were found in {sorted(found_in) or 'no form'}, and this package "
+        f"writes them in its docstrings and its comments alike — so the matcher is reading past "
+        f"one of them, and a green run holds only the other"
     )
 
     phantom = sorted(

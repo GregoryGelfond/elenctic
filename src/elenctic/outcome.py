@@ -444,8 +444,7 @@ type Outcome = RunOutcome | PlanOutcome
 """What an invocation produced, whichever mode it was asked for.
 
 The two share the registers that say what went wrong and what was observed, and differ only in what
-they made: verdicts, or the plans behind them. Reading a status is therefore one function over both
-rather than a ladder written twice, which is how the two modes came to disagree once already."""
+they made: verdicts, or the plans behind them."""
 
 
 def exit_status(outcome: Outcome) -> ExitStatus:
