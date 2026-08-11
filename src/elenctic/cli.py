@@ -109,8 +109,8 @@ _CORPUS_OUT_OF_MEMORY = (
     "what it grounds and enumerates. No verdict was produced."
 )
 
-# What a fault no register anticipated says about itself. Shared by the diagnostic and the record
-# for the same reason as the two above: one sentence, stated once.
+# What a fault no register anticipated says about itself. Shared by the diagnostic and the record:
+# one sentence, stated once.
 _INTERNAL_ERROR = "this is an elenctic bug, not a fault in your corpus"
 
 # Where to take it. Asking a reader to report something without saying where leaves them to search
@@ -483,10 +483,12 @@ def main(argv: Sequence[str] | None = None) -> ExitStatus:
         with stdout_to_stderr():
             outcome = run_corpus(invocation, observer=TerminalRun())
             # Written inside the region, where standard output is standard error: under this
-            # format the tally is a diagnostic like the two above it, and the document owns the
+            # format the tally is a diagnostic like the ones above it, and the document owns the
             # stream. Answered like them too — a stream that will not take a diagnostic does not
-            # get to stop the document being published, and this was the last of the three that
-            # could still reach the backstop and be reported as a bug in elenctic.
+            # get to stop the document being published. An OSError let out here would reach the
+            # backstop, which reports a bug in elenctic and hands back an outcome the fault is the
+            # whole of: so a tally nobody could write would cost the reader every verdict the run
+            # had already reached.
             tally = render_tail(outcome, invocation)
             with suppress(OSError):
                 print(tally, end="")

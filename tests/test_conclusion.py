@@ -302,8 +302,15 @@ def test_no_arm_may_be_built_without_the_search_behind_it(determination: Determi
     # come.
     with pytest.raises(TypeError):
         SolveOutcome(determination)  # type: ignore[call-arg]
-    with pytest.raises(HarnessError, match="its search ended, and this one reports None"):
-        SolveOutcome(determination, None)  # type: ignore[arg-type]
+    # What the diagnostic *says*, not only that it is raised: it has to name the value it got and
+    # what is wrong with it, or it can go on saying something untrue while this stays green. It
+    # did — the message spoke of an absence while the guard is a type test, so it answered a
+    # caller who passed the string spelling of a member by telling them they had passed nothing.
+    # The rule holds over two shapes, so it is provoked on both.
+    for wrong in (None, "exhausted"):
+        told = rf"its search ended, and this one reports {wrong!r}, which is not a Conclusion"
+        with pytest.raises(HarnessError, match=told):
+            SolveOutcome(determination, wrong)  # type: ignore[arg-type]
     assert SolveOutcome(determination, Conclusion.EXHAUSTED).conclusion is Conclusion.EXHAUSTED
 
 

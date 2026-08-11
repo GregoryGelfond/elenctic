@@ -468,16 +468,20 @@ class SolveOutcome:
     def __post_init__(self) -> None:
         if not isinstance(self.conclusion, Conclusion):
             # Checked although the annotation says it cannot happen, because this type is part of
-            # the published surface and the absence it rejects is a shape a caller may still hold —
-            # the message below says what it once meant. Left to the annotation, such a caller
-            # builds a result no reader can use, and the failure surfaces as a bare lookup miss
-            # inside a check, at verdict time, on someone's corpus: not an exception the per-case
-            # handler recognises, so it costs the run every case still to come.
+            # the published surface and a caller can hold the absence the annotation forbids. Left
+            # to the annotation, such a caller builds a result no reader can use, and the failure
+            # surfaces as a bare lookup miss inside a check, at verdict time, on someone's corpus:
+            # not an exception the per-case handler recognises, so it reaches the backstop, which
+            # costs the run every case still to come *and* publishes a document holding none of
+            # the verdicts already reached.
+            #
+            # The message says "not a `Conclusion`" rather than "absent", because absence is only
+            # one of the shapes this refuses: the guard is a type test, and a caller who passes
+            # the string spelling of a member is told what is wrong with what they passed.
             raise HarnessError(
                 "every solve reports how its search ended, and this one reports "
-                f"{self.conclusion!r}. Absence once meant a solve that settled nothing; it now "
-                "means only that a result was built without one — a fault in whoever built it, "
-                "never a verdict"
+                f"{self.conclusion!r}, which is not a Conclusion — a fault in whoever built the "
+                "result, never a verdict about the program under test"
             )
         if isinstance(self.determination, Inconsistent) and self.conclusion is not (
             Conclusion.EXHAUSTED

@@ -122,7 +122,7 @@ class Observer(Protocol):
 
 
 class RunObserver(Observer, Protocol):
-    """What a run announces: the four above, and a judgment per case that reached one."""
+    """What a run announces: everything :class:`Observer` does, and a judgment per case."""
 
     def case_judged(self, outcome: CaseOutcome) -> None:
         """A case reached a verdict, with the reports it was folded from — whichever verdict it is.
@@ -133,7 +133,7 @@ class RunObserver(Observer, Protocol):
 
 
 class PlanObserver(Observer, Protocol):
-    """What a dry run announces: the four shared ones, and the plan a case derived to.
+    """What a dry run announces: everything :class:`Observer` does, and the plan a case derived to.
 
     A dry run decides nothing, so it has no judgment to announce; separating the two observers is
     what makes announcing one from the other mode not merely wrong but unwritable.

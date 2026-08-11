@@ -579,10 +579,11 @@ def _undeclared(what: str, missing: frozenset[Signature], signatures: frozenset[
 def _displayed_not_declared(what: str, displayed: frozenset[Signature]) -> str:
     """The refusal for a query reading a signature a ``#show <term> : <body>.`` directive displays.
 
-    Named as its own refusal rather than folded into the one above, because it is a different fault
-    with a different remedy: the signature is not missing from the output, it arrives there on terms
-    elenctic cannot read as a projection. An author who wrote that directive can see the predicate
-    named in their own file, so a message telling them it is absent would be false to them."""
+    Named as its own refusal rather than folded into :func:`_undeclared`, because it is a
+    different fault with a different remedy: the signature is not undeclared, it is displayed —
+    on terms elenctic cannot read as a projection. An author who wrote that
+    directive can see the predicate named in their own file, so a message telling them it is
+    absent would be false to them."""
     several = len(displayed) > 1
     directives = (
         "`#show <term> : <body>.` directives" if several else "a `#show <term> : <body>.` directive"
