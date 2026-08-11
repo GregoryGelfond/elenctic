@@ -223,6 +223,14 @@ fail_under = 99.6
 # The arm is any `case` whose body is that call — written from what an exhaustiveness arm IS,
 # rather than from the two spellings this package happens to use (`case _:` and
 # `case unreachable:`), which is a rule that would need widening the next time one is written.
+#
+# One exhaustiveness arm is deliberately outside this, and says so where it is written: the model
+# dispatch in `solvers.py` guards *clingo's* enumeration rather than one this package owns, under a
+# dependency with no upper bound, so installing a newer clingo reaches it. It keeps the static
+# guarantee by taking a `Never` argument and gets no exclusion, because the sentence above — the
+# arm is unreachable while the taxonomy it guards is complete — is the one thing that is not true
+# of it. Nothing here has to know that: it calls something other than `assert_never`, so the
+# pattern passes it by, and the floor holds it like any other line.
 exclude_also = [
     "^\\s*case [^\\n]*:\\n\\s*assert_never\\(",
     # The import-time integrity assertions, identified by the marker they already carry. Each

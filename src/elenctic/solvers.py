@@ -30,7 +30,7 @@ from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, assert_never
+from typing import Any, Final, Never, NoReturn, assert_never
 
 from clingo import Control, Symbol
 from clingo.solving import Model, ModelType, SolveResult
@@ -106,6 +106,48 @@ def _projection_of(model: Model) -> frozenset[Symbol]:
     return frozenset(symbol for symbol in model.symbols(shown=True) if model.contains(symbol))
 
 
+def _unreadable_model_type(described: str) -> NoReturn:
+    """Refuse a model whose type this build cannot interpret, rather than counting it as nothing.
+
+    **One refusal for the two ways a newer clingo reaches this**, because they are one fault and
+    the reader's remedy is the same. A value the C library reports that clingo's own enumeration
+    lacks raises ``ValueError`` at the attribute read, before there is anything to dispatch on; a
+    value that enumeration *has* and the dispatch below does not arrives intact and falls through.
+    Either way elenctic cannot say whether the model is a consequence set or an answer set, and
+    counting it as neither would leave a census short by a model — a wrong verdict rather than a
+    failure anybody sees.
+
+    ``HarnessError`` because that is a family the runner isolates per case, so an unreadable model
+    costs that case its verdict rather than the run. It reaches the runner intact because
+    :func:`_program_faults` translates ``RuntimeError``, ``UnicodeDecodeError`` and ``OSError``
+    only, so this passes through the program-fault region untouched — which is the invariant this
+    choice rests on, and the reason it is written here rather than left to be noticed. A
+    ``ValueError`` or an ``AssertionError`` is caught by neither that region nor the runner, and
+    ends the run: every case still to come, and every verdict already reached.
+
+    The remedy names something the reader can actually do. Pinning clingo is not: the declared
+    dependency has no upper bound, so the version that broke is inside the range elenctic asks for,
+    and sending a reader to a constraint their install already satisfies is worse than saying
+    nothing.
+    """
+    raise HarnessError(
+        f"clingo reported a model type this elenctic cannot read ({described}), so it cannot say "
+        "what the model is evidence of. This clingo is newer than the one this elenctic was built "
+        "against — upgrade elenctic, or run this corpus against an older clingo"
+    )
+
+
+def _unknown_model_type(model_type: Never) -> NoReturn:
+    """The dispatch's fallthrough, typed ``Never`` so that a new member is a type error here.
+
+    That is exactly the static guarantee :func:`typing.assert_never` gives, and the runtime half is
+    why it is not ``assert_never``: every other exhaustiveness arm in this package guards a
+    taxonomy the package owns and is unreachable while that taxonomy stays complete, while this one
+    guards clingo's under a dependency with no upper bound. See :func:`_unreadable_model_type`.
+    """
+    _unreadable_model_type(repr(model_type))
+
+
 class _Collector:
     """Accumulates a solve's observations, dispatching on ``model.type``.
 
@@ -132,7 +174,16 @@ class _Collector:
         callback that asks it to stop: the bit is for an interruption from outside the search."""
         # The lists stay index-aligned because the StableModel branch is the only writer of both.
         shown = _projection_of(model)
-        match model.type:
+        try:
+            kind = model.type
+        except ValueError as unnamed:
+            # Read apart from the dispatch, because clingo builds the member here: `Model.type` is
+            # `ModelType(<C value>)`, so a value its own enumeration lacks is refused before there
+            # is anything to match on. Same skew as the fallthrough below and the same refusal —
+            # left alone it is a `ValueError`, which neither the program-fault region nor the
+            # runner catches, so one unreadable model would end the run.
+            _unreadable_model_type(str(unnamed))
+        match kind:
             case ModelType.CautiousConsequences:
                 self._cautious = shown
             case ModelType.BraveConsequences:
@@ -142,7 +193,7 @@ class _Collector:
                 self._observables.append(Observable(shown, assign))
                 self._costs.append(tuple(model.cost))
             case _:
-                assert_never(model.type)  # a future ModelType fails loud, never silently counted
+                _unknown_model_type(model.type)
         return self.models_seen < self._cap
 
     def witness(self) -> Observable:
