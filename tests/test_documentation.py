@@ -21,6 +21,7 @@ and where an edit to them lands. None is shipped inside the wheel, and these tes
 
 import ast
 import contextlib
+import dataclasses
 import importlib
 import io
 import json
@@ -35,9 +36,9 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import elenctic
-from elenctic.cli import _parse
+from elenctic.cli import _Command, _parse
 from elenctic.expectation import KNOWN_TAGS, ContractError, has_contract, parse_contract
-from elenctic.outcome import ErrorKind
+from elenctic.outcome import ErrorKind, RunOutcome
 from elenctic.registry import THEORY_EXTRA_ADVICE
 from elenctic.solvers import MODEL_CAP, TIME_BUDGET
 from support import cli_help_text
@@ -1277,6 +1278,134 @@ def _builds_a_control(tree: ast.Module) -> bool:
         )
         for node in ast.walk(tree)
     )
+
+
+def _everything_shipped_that_carries_a_sentence() -> dict[str, str]:
+    """Every file this repository ships whose bytes are text, keyed by the path a failure names.
+
+    Wider than :func:`_documents_of_instruction`, and deliberately: a number written in words goes
+    wherever it is convenient to write one — a module header, the landing page, the shipped JSON
+    schema, a comment in this suite — so a reader of the Markdown alone holds the copies least
+    likely to drift and misses the ones most likely to.
+
+    ``CHANGELOG.md`` is excluded, on the boundary these checks already draw and for its reason. A
+    changelog says what a release did. A sentence describing the release that shipped stays true
+    after a later release changes the thing it describes, so requiring it to track the code would
+    corrupt the record rather than keep it honest.
+    """
+    listed = subprocess.run(
+        ["git", "-C", str(_ROOT), "ls-files", "-z"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\0")
+    shipped: dict[str, str] = {}
+    excluded = "CHANGELOG.md"
+    # By basename, which is how :func:`_documents_of_instruction` spells the same exclusion — two
+    # spellings of one rule are two rules the day the file moves into a subdirectory. Asserted
+    # present, so that a move is a finding here and not merely a missing key somewhere downstream.
+    assert any(Path(name).name == excluded for name in listed if name), (
+        f"git lists no {excluded}, which this excludes by name. It has moved or gone, and the "
+        f"exclusion now applies to nothing"
+    )
+    for name in listed:
+        if not name or Path(name).name == excluded:
+            continue
+        with contextlib.suppress(UnicodeDecodeError, OSError):
+            shipped[name] = (_ROOT / name).read_text(encoding="utf-8")
+    assert shipped, "git lists nothing, and a sweep over no files passes every check it feeds"
+    return shipped
+
+
+def _every_concrete(module: str, base: str) -> list[str]:
+    """Every class in one module descending from ``base``, however deep, read from its source.
+
+    From the source and not from ``base.__subclasses__()``, which cannot be counted here.
+    ``@dataclass(slots=True)`` cannot add slots to a class in place, so it builds a replacement —
+    and the original goes on being registered as a subclass until it is collected. That list holds
+    each of these shapes *twice*, only one of which is the live class, and how many of the stale
+    halves remain depends on when the garbage collector last ran: measured, sixteen entries in a
+    bare interpreter and nine under the suite. A count that moves under its reader is worse than
+    one that is merely narrow.
+
+    Transitive, so the reading does not quietly rest on each shape being ``@final``.
+    """
+    bases = {
+        node.name: {parent.id for parent in node.bases if isinstance(parent, ast.Name)}
+        for node in ast.walk(_package_modules()[module])
+        if isinstance(node, ast.ClassDef)
+    }
+    descends: set[str] = set()
+    frontier = {base}
+    while frontier:
+        frontier = {n for n, p in bases.items() if p & frontier} - descends - {base}
+        descends |= frontier
+    return sorted(descends)
+
+
+def test_no_file_this_repository_ships_counts_a_thing_without_saying_how_many_there_are() -> None:
+    # A number written out in words decays by the code changing, and nothing prompts the edit. Where
+    # the number sits against what it counts, whoever is reading that spot can see both, and
+    # proximity is the whole of what holds it. Proximity holds nothing for the same number in the
+    # landing page, the shipped schema, another module's header, or a comment in this suite.
+    #
+    # **Per file, and that is the whole strength of it.** Asking only that the total appear
+    # *somewhere* is an existential, and the person adding a field discharges it at the one copy
+    # proximity was already holding: the count beside the record goes to four, six other files go on
+    # saying three, and every one of them reads as counting a part rather than as stale. So the
+    # obligation is on each file that counts the thing at all — say how many there are, and then say
+    # whatever else is true. Every file passes that today, so it costs no sentence anything.
+    #
+    # A part may still be counted, alongside the total and in the same file: one record's header
+    # speaks of the pair a dry run shares with a run, and a dial is offered by fewer than all the
+    # command words. What may not happen is a file counting more than there are, or counting some of
+    # them while never saying how many there are.
+    #
+    # Each count is asked of the thing itself rather than read off the source, because "the names a
+    # class body binds" is not the same question: a `ClassVar` is not a register, an enumeration
+    # alias is not a further command, and a field moved onto a shared base is still a field.
+    #
+    # The phrase is matched rather than the bare noun. `shapes` is written here of contracts, of
+    # queries, of projections and of the concrete answer-set carriers — four populations, with a
+    # different true count each — so it needs the qualifier to pick out the intended sense. The
+    # other two nouns have homonyms that do not collide today (`registers` is also a verb, and a
+    # `command` is also a line one types); a number word landing in front of either is the signal to
+    # give that entry a qualifier too.
+    counted = (
+        (r"(\w+) registers", [field.name for field in dataclasses.fields(RunOutcome)]),
+        (r"(\w+) commands", [command.name for command in _Command]),
+        (r"(\w+) concrete (?:Consistent )?shapes", _every_concrete("result", "Consistent")),
+    )
+    shipped = _everything_shipped_that_carries_a_sentence()
+    for pattern, members in counted:
+        assert len(members) < len(_IN_WORDS), (
+            f"{members} runs past the end of the table that spells a count out in words, so the "
+            f"reading below would fail as an index error rather than as the finding it is"
+        )
+        spelled = _IN_WORDS[len(members)]
+        counting = {}
+        for name, text in shipped.items():
+            words = {w.lower() for w in re.findall(pattern, text, re.I) if w.lower() in _IN_WORDS}
+            if words:
+                counting[name] = words
+        assert counting, (
+            f"nothing this repository ships spells out a count for {pattern!r}, so this is holding "
+            f"nothing. The sentence moved, and this entry has to follow it or go"
+        )
+        silent = {name: sorted(words) for name, words in counting.items() if spelled not in words}
+        assert not silent, (
+            f"the code has {len(members)} of these ({members}), and these files count them without "
+            f"ever saying {spelled!r}: {silent} — matched by {pattern!r}"
+        )
+        over = {
+            name: sorted(w for w in words if _IN_WORDS.index(w) > len(members))
+            for name, words in counting.items()
+        }
+        over = {name: words for name, words in over.items() if words}
+        assert not over, (
+            f"the code has {len(members)} of these ({members}), and these files claim more: "
+            f"{over} — matched by {pattern!r}"
+        )
 
 
 def test_every_module_allowed_to_print_is_one_that_does() -> None:

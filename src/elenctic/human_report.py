@@ -176,9 +176,9 @@ def _text(value: str | Path) -> str:
     reproduces one can erase the verdict above it.
 
     The document seam states the same rule for a related reason, and settles narrower questions
-    besides, which its own module states. Both exist because a *renderer added later* inherits
-    the guarantee only if there is one place to inherit it from — three call sites
-    here were reachable with hostile text and unsanitized, each having been judged individually.
+    besides, which its own module states. Both exist because a *renderer added later* inherits the
+    guarantee only if there is one place to inherit it from, rather than by having each of its call
+    sites judged one at a time — a judgment nobody repeats for the site they are adding.
     """
     return legible(str(value))
 
