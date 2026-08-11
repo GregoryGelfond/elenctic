@@ -26,11 +26,13 @@ from pathlib import Path
 import pytest
 from hatchling.build import build_sdist, build_wheel
 
+from elenctic.json_report import SCHEMA_VERSION
+
 _ROOT = Path(__file__).resolve().parent.parent
 
 # What has to be in a distribution and is not code. Named by the tail of the path, because a wheel
 # lays the package out flat while an sdist keeps the source layout under a versioned directory.
-_NOT_CODE = ("py.typed", "schema/output-v2.schema.json")
+_NOT_CODE = ("py.typed", f"schema/output-v{SCHEMA_VERSION}.schema.json")
 
 
 @pytest.fixture(scope="module")

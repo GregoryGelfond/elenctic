@@ -375,3 +375,18 @@ def test_the_rendered_document_is_one_indented_object_ending_in_one_newline() ->
     assert isinstance(json.loads(text), dict)
     # Written to be read as well as parsed: a report is something a person opens after a run.
     assert '\n  "schema_version"' in text
+
+
+def test_the_version_is_the_first_field_a_reader_meets() -> None:
+    # `docs/machine-readable-output.md` tells a consumer to read `schema_version` and refuse a
+    # number they were not written for, and says it comes first so that a reader parsing as it goes
+    # can decide before it has the rest. The field *set* is held above; order is a separate claim
+    # and was held by nothing, so the sentence in the guide rested on the order happening to be the
+    # order `as_json` builds the mapping in.
+    document = _document(_run(cases=(_case(),)))
+    assert next(iter(document)) == "schema_version"
+    # And in the bytes, which is what the promise is actually about: a reader deciding as it parses
+    # meets the version before anything else. The mapping's order and the rendered order are the
+    # same thing only because `dumps` preserves insertion order, which is a property of the encoder
+    # rather than of the document — so it is asserted rather than assumed.
+    assert dumps(document).startswith('{\n  "schema_version"')

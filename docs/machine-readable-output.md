@@ -106,6 +106,19 @@ added or removed, or when one of the closed enumerations (`verdict`, `status`, `
 an error. Every `message` is **opaque**: display it, do not parse it, and expect its wording to
 change.
 
+**And when a bump can reach you.** The document is a surface like the importable one, held to the
+same rule: `schema_version` never changes in a release that changes only its patch number, because a
+reader written against one version is code and a patch may not break code. A bump is held for a
+minor release, and the release that makes it says so. Note that *every* bump is breaking, whatever
+moved: the description above pins the version as a constant, so a validating consumer refuses an
+unfamiliar number outright rather than tolerating an added field. `schema_version` went from 1 to 2
+between 0.3.0 and 0.4.0, which is the change this release's changelog describes.
+
+So a consumer has two ways to be safe and both are cheap. Pin a minor version and the document's
+shape is fixed for every patch under it. Or read `schema_version` out of the document — it is the
+first field for that reason — and refuse a number you were not written for, which is better than
+inferring the shape from whichever fields you happen to find.
+
 Paths in the document follow the target as you named it, so a relative target yields relative paths;
 resolve them against the directory you ran from, which the document does not record.
 

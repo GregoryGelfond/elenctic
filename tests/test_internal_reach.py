@@ -297,7 +297,7 @@ def _scopes(tree: ast.Module) -> dict[int, str]:
 # `# type: ignore[arg-type]` after an internal import must not discharge the claim.
 #
 # The colon is what makes this a directive rather than a word: every one of these spellings is
-# `<tool>:` or the bare `# noqa`, whereas `# type of search this drives` is a sentence that starts
+# `<tool>:` or a bare `noqa`, whereas `# type of search this drives` is a sentence that starts
 # with one of the words. Written the looser way first, and the control caught it.
 _PRAGMA = re.compile(r"^#\s*(type|noqa|fmt|pragma|ruff|mypy|isort)\s*(:|$)")
 

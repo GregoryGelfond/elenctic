@@ -42,6 +42,7 @@ import elenctic
 # command line without running it — which is what lets a documented invocation be checked here.
 from elenctic.cli import _Command, _parse
 from elenctic.expectation import KNOWN_TAGS, ContractError, has_contract, parse_contract
+from elenctic.json_report import SCHEMA_VERSION
 from elenctic.outcome import ErrorKind, RunOutcome
 from elenctic.registry import THEORY_EXTRA_ADVICE
 from elenctic.solvers import MODEL_CAP, TIME_BUDGET
@@ -996,7 +997,9 @@ def test_the_fields_the_documents_call_closed_are_the_ones_the_schema_closes() -
     # edge nothing held is this one: the schema against the sentence that tells a consumer how to
     # read it.
     schema = json.loads(
-        (_ROOT / "src/elenctic/schema/output-v2.schema.json").read_text(encoding="utf-8")
+        (_ROOT / f"src/elenctic/schema/output-v{SCHEMA_VERSION}.schema.json").read_text(
+            encoding="utf-8"
+        )
     )
     closed, open_valued = _vocabulary_fields(schema)
     stated = set(re.findall(r"`(\w+)`", _instructed_span("closed enumerations (", ")")))
@@ -1738,4 +1741,40 @@ def test_no_document_tells_a_reader_to_import_from_a_submodule() -> None:
         f"these send a reader into a submodule, which the version promise does not cover: "
         f"{instructed}. The supported surface is `import elenctic`; if one of these names is worth "
         f"promising, it belongs in `_EXPORTS` rather than in a document"
+    )
+
+
+_STATED_SCHEMA_VERSION = re.compile(r'"schema_version":\s*(\d+)|output-v(\d+)\.schema\.json')
+
+
+def test_the_schema_version_the_documents_show_is_the_one_the_package_ships() -> None:
+    # The worked document is what a consumer copies to write their reader against, and the number in
+    # it is the one they dispatch on. Nothing held it: setting it to 3 while the package shipped 2
+    # left every one of these tests green, which is how a document comes to describe a release that
+    # never existed.
+    #
+    # Both spellings the version is written down in — the field a document carries, and the name of
+    # the schema file that describes it — so that a document naming the file is held too. **No
+    # document names the file today**, so that arm currently guards an empty set; it is here because
+    # the guide is where such a sentence would land, not because one exists. The package derives its
+    # own file name from the same constant (`json_report.schema_text`), so both arms are derived
+    # rather than kept in step by hand.
+    #
+    # A number in *prose* is deliberately not matched, and that is a limit rather than an oversight:
+    # the guide says the version "went from 1 to 2 between 0.3.0 and 0.4.0", which is history and
+    # stays true forever. Widening this to prose — the obvious next improvement — would force that
+    # sentence false at the next bump.
+    stated = [
+        (where, int(field or filename))
+        for where, text in _INSTRUCTIONS.items()
+        for field, filename in _STATED_SCHEMA_VERSION.findall(text)
+    ]
+    assert stated, (
+        "no document states a schema version at all — the worked document has lost the field a "
+        "consumer dispatches on, or this pattern is no longer the pattern"
+    )
+    adrift = [(where, shown) for where, shown in stated if shown != SCHEMA_VERSION]
+    assert not adrift, (
+        f"the package ships schema_version {SCHEMA_VERSION} and these say otherwise: {adrift}. A "
+        f"reader writing against the worked document would branch on a version that is not shipped"
     )

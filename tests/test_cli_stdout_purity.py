@@ -28,6 +28,7 @@ from typing import Any
 
 import pytest
 
+from elenctic.json_report import SCHEMA_VERSION
 from elenctic.outcome import ExitStatus
 from elenctic.streams import stdout_to_stderr
 from support import run_cli_without_standard_error, without_standard_error
@@ -317,7 +318,7 @@ def test_the_document_is_alone_on_standard_output_when_there_is_no_standard_erro
         _corpus(tmp_path, drinks=case), "--format", "json"
     )
 
-    assert _document(published, described)["schema_version"] == 2
+    assert _document(published, described)["schema_version"] == SCHEMA_VERSION
     assert status == left_with
 
 
