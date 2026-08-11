@@ -27,7 +27,7 @@ corpus arrives to hold it.
 """
 
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import AbstractContextManager, contextmanager, nullcontext, suppress
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Never, NoReturn, assert_never
@@ -444,14 +444,35 @@ def _solve_under_budget(
     control: Control, on_model: Callable[[Model], bool], budget: float
 ) -> tuple[bool, SolveResult]:
     """One async solve under ``budget`` reduced to ``(completed, result)``: ``wait(budget)`` then
-    ``cancel`` on a miss; the handle closes via the context manager. A failure raised inside
-    ``on_model`` reaches ``get()`` with its type erased, so it is restored from the guard before it
-    can be mistaken for a fault originating in the solver."""
+    ``cancel`` on a miss. A failure raised inside ``on_model`` reaches ``get()`` with its type
+    erased, so it is restored from the guard before it can be mistaken for a fault originating in
+    the solver.
+
+    **The handle is closed by hand rather than by a ``with``, and that is the whole point.**
+    ``SolveHandle.__exit__`` closes unconditionally — it never reads ``exc_type`` — and reports a
+    failure as a plain ``RuntimeError``, which is exactly what this function's caller translates
+    into a ``ProgramError``. Under a ``with``, that close runs on the way out of *every* path, so a
+    failing close **replaces whatever exception was in flight**: a callback's ``HarnessError``, or a
+    failed cancel, would be overwritten by it and the corpus author told their program cannot be
+    run. Closing explicitly is what makes the two cases separable at all.
+
+    So the rule is stated once and applied to each operation that is **elenctic's own doing** —
+    cancelling the search, and closing the handle. Neither is a statement about the program under
+    test, and :func:`_elenctics_own` is where that is said. What remains inside the region is the
+    solver working on the program, where a ``RuntimeError`` genuinely is the program's fault and is
+    left alone.
+
+    On any failure the close is still attempted, best effort, and its own failure discarded: the
+    fault already in flight is the one the reader needs, and a teardown problem on top of it is
+    noise. ``MemoryError`` is untouched throughout — clingo raises it for a bad allocation and the
+    runner already files that on its own resource rung.
+    """
     guard = _CallbackGuard(on_model)
-    with control.solve(on_model=guard, async_=True) as handle:
+    handle = control.solve(on_model=guard, async_=True)
+    try:
         completed = handle.wait(budget)
         if not completed:
-            handle.cancel()
+            _elenctics_own(handle.cancel, "cancel the solve")
         try:
             result = handle.get()
         except RuntimeError:
@@ -464,7 +485,46 @@ def _solve_under_budget(
         # miss would present an internal bug as the verdict UNDECIDED — a statement about the
         # program under test that was never made.
         guard.reraise_if_failed()
-        return completed, result
+    except BaseException:
+        with suppress(Exception):
+            handle.__exit__(None, None, None)  # type: ignore[no-untyped-call]
+        raise
+    _elenctics_own(_closing(handle), "close the solve")
+    return completed, result
+
+
+def _closing(handle: object) -> Callable[[], None]:
+    """The handle's close, as a call. ``SolveHandle`` offers no public ``close``; ``__exit__`` is
+    the only way to release one, and naming that here keeps the protocol call out of the flow above.
+    """
+
+    def close() -> None:
+        handle.__exit__(None, None, None)  # type: ignore[attr-defined]
+
+    return close
+
+
+def _elenctics_own(operation: Callable[[], object], what: str) -> None:
+    """Run an operation elenctic asks of the solver, and keep a failure in it elenctic's.
+
+    Cancelling and closing are elenctic's own doing — the hang guard cancels a search that outran
+    its budget, and every solve is closed — so a failure in either says nothing about the program
+    under test. Both surface from clingo as a plain ``RuntimeError``, which is the one type
+    :func:`_program_faults` reads as the program's fault, so without this they arrive at a corpus
+    author as *"cannot run the program"*.
+
+    ``HarnessError`` rather than anything narrower, and the reason is load-bearing: it is not a
+    ``RuntimeError``, so the surrounding fault region cannot re-translate what is raised here; and
+    the runner catches it per case, so a teardown failure costs one verdict rather than the run.
+    """
+    try:
+        operation()
+    except RuntimeError as exc:
+        raise HarnessError(
+            f"the solve ran, and then elenctic could not {what}: {exc}. That is a fault in "
+            "elenctic or in the solver it drives, never in the program under test, so this case "
+            "is left without a verdict and every other case still runs"
+        ) from exc
 
 
 # The region a caller supplies to say whose fault a solver-origin failure is. It is a factory

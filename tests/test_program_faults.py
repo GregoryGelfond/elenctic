@@ -9,12 +9,14 @@ verdict about the program's answer-set behaviour.
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
+from types import TracebackType
 from typing import cast
 
 import pytest
 from clingo import Control
-from clingo.solving import Model
+from clingo.solving import Model, SolveHandle
 
+from elenctic.outcome import ErrorKind, error_kind
 from elenctic.program import ProgramError
 from elenctic.result import HarnessError
 from elenctic.run import Mode
@@ -27,6 +29,9 @@ from elenctic.solvers import _CallbackGuard, _solve_under_budget, run_clingcon, 
 
 _UNSAFE = "q(1).\np(X) :- q(Y).\n"  # parses, but X never binds, so it will not ground
 _CHOICE = "1 {a; b} 1. #show a/0. #show b/0."
+# 2^20 answer sets: far more than a zero budget can enumerate, so the wait is missed and the
+# run takes the cancel path rather than finishing before the guard has anything to do.
+_WIDE = "{ p(1..20) }.\n#show p/1.\n"
 
 
 def _quiet(_code: object, _message: str) -> None:
@@ -172,3 +177,134 @@ def test_the_callback_guard_records_the_original_exception() -> None:
     with pytest.raises(HarnessError, match="seam breach"):
         guard(None)  # type: ignore[arg-type]
     assert isinstance(guard.failure, HarnessError)
+
+
+def _closing_fails(monkeypatch: pytest.MonkeyPatch, message: str) -> None:
+    """Make clingo's solve handle fail on close, the way a real teardown failure does.
+
+    ``SolveHandle.__exit__`` closes unconditionally — it never reads ``exc_type`` — and routes the
+    result through ``_handle_error``, which raises a plain ``RuntimeError`` for anything that is not
+    a bad allocation. Simulated rather than provoked for real, because making
+    ``clingo_solve_handle_close`` fail takes a solver-level failure no Python caller can force; the
+    real close still runs first, so the handle is released exactly as it would be.
+    """
+    real_exit = SolveHandle.__exit__
+
+    def close_fails(
+        self: SolveHandle,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
+        # The real close first, so the handle is genuinely released and this leaves no solver state
+        # behind for the tests that follow. clingo carries no annotations for this method, which is
+        # what the ignore is about — not a shape this file is unsure of.
+        real_exit(self, exc_type, exc_val, exc_tb)  # type: ignore[no-untyped-call]
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(SolveHandle, "__exit__", close_fails)
+
+
+def test_a_solve_that_answered_and_then_failed_to_close_is_not_the_programs_fault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The contradiction, not the route to it: elenctic could not close its own solve handle, and the
+    # corpus author was told their program cannot be run. `__exit__` runs on the way out of the
+    # `with`, which is *after* the `try` that guards `handle.get()`, so the close's RuntimeError
+    # sailed past every guard into `_program_faults` — whose whole job is to say the program is at
+    # fault. A reader would be sent to fix an `.lp` that is correct.
+    #
+    # The injected text deliberately avoids the word "close", so that the assertions below can only
+    # be satisfied by what *elenctic* says. Matching on the injected words instead is a test that
+    # passes on its own input, and this one did until it was provoked.
+    _closing_fails(monkeypatch, "teardown exploded")
+
+    with pytest.raises(HarnessError, match="could not close the solve") as caught:
+        run_clingo(Mode.ENUM_ALL, program=_CHOICE)
+
+    assert error_kind(caught.value) is ErrorKind.HARNESS, (
+        "the locus is elenctic's, so a reader is not sent to a program that is not at fault"
+    )
+    assert not isinstance(caught.value, ProgramError), "the two roots are disjoint"
+
+
+def test_a_close_failure_says_the_solve_had_already_answered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # What the reader is told has to distinguish the close from the solve, or "a harness fault"
+    # leaves them looking at a solve that in fact succeeded.
+    _closing_fails(monkeypatch, "teardown exploded")
+
+    with pytest.raises(HarnessError, match="could not close the solve") as caught:
+        run_clingo(Mode.ENUM_ALL, program=_CHOICE)
+
+    said = str(caught.value)
+    assert "the solve ran" in said, "the solve is exonerated in elenctic's own words"
+    assert "teardown exploded" in said, "and the solver's own words survive"
+    assert "cannot run the program" not in said, "which is what it used to say, and was not true"
+
+
+def test_a_solve_that_fails_before_it_answers_is_still_the_programs_fault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The path the fix must NOT touch, and the control on the discriminator itself: a RuntimeError
+    # raised while the solver is working is what `_program_faults` exists for, and it must still
+    # arrive as a ProgramError. A discriminator that never re-raised would trade one misattribution
+    # for its opposite.
+    #
+    # Through `get()` rather than through an ungroundable program, and the difference is the whole
+    # value of the test: a ground failure is refused in a *different* fault region and never reaches
+    # the solve at all, so it holds nothing about this code. Written that way first, and breaking
+    # the discriminator left it green.
+    def get_fails(self: SolveHandle) -> object:
+        raise RuntimeError("the solver stopped mid-search")
+
+    monkeypatch.setattr(SolveHandle, "get", get_fails)
+
+    with pytest.raises(ProgramError, match="cannot run the program"):
+        run_clingo(Mode.ENUM_ALL, program=_CHOICE)
+
+
+def test_an_ungroundable_program_is_refused_before_any_solve_begins(tmp_path: Path) -> None:
+    # The sibling of the above, kept apart from it because they are two different regions: this one
+    # is refused around `ground`, and never reaches `_solve_under_budget`.
+    case = tmp_path / "unsafe.lp"
+    case.write_text(_UNSAFE, encoding="utf-8")
+
+    with pytest.raises(ProgramError, match="cannot run the program"):
+        run_clingo(Mode.ENUM_ALL, files=(case,))
+
+
+def test_a_cancel_that_fails_is_elenctics_fault_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The sibling of the close, and the reason the rule is stated over *operations* rather than over
+    # the one that was noticed first. Cancelling is the hang guard's normal doing — it is what a
+    # missed budget triggers — so a cancel that fails is elenctic's, exactly as a close that fails
+    # is. Reported as the program's fault until this, and by the same route: clingo raises a plain
+    # RuntimeError and the fault region reads that as the program's.
+    def cancel_fails(self: SolveHandle) -> None:
+        raise RuntimeError("cancel refused")
+
+    monkeypatch.setattr(SolveHandle, "cancel", cancel_fails)
+
+    # A budget of zero is missed by construction, which is what puts the run on the cancel path.
+    with pytest.raises(HarnessError, match="could not cancel the solve") as caught:
+        run_clingo(Mode.ENUM_ALL, program=_WIDE, budget=0.0)
+
+    assert error_kind(caught.value) is ErrorKind.HARNESS
+    assert "cancel refused" in str(caught.value), "the solver's own words survive"
+
+
+def test_a_callback_fault_survives_a_close_that_also_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Two faults at once, and the first one is the one the reader needs. A callback failure is
+    # recorded and re-raised with its own type; the close then runs on the way out and, under a
+    # `with`, its RuntimeError would *replace* that HarnessError outright — leaving the corpus
+    # author accused of a broken program by a teardown they cannot see. Closing by hand is what
+    # keeps the original in flight.
+    _closing_fails(monkeypatch, "teardown exploded")
+
+    with pytest.raises(HarnessError, match="seam breach") as caught:
+        _solve_under_budget(_grounded_choice(), _exploding, 30.0)
+
+    assert not isinstance(caught.value, ProgramError), "the callback's fault, not the program's"
