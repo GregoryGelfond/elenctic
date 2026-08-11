@@ -521,15 +521,15 @@ def _refusal(command: _Command, args: argparse.Namespace) -> str | None:
     parser answers a flag it cannot read — so every refusal a reader can provoke arrives at the
     same point in the run, and none of them arrives after a run has half happened.
 
-    What is asked here is what the parser cannot ask for itself: whether this process has the stream
-    an artefact would go to, and whether a number it converted is a number this program can use. It
-    used to ask a third thing — whether two flags that each make sense alone make sense together —
-    and that question is now the grammar's, which is what a command word buys.
+    What is asked here is what the parser cannot ask for itself, and only that: whether this process
+    has the stream an artefact would go to, and whether a number it converted is a number this
+    program can use. Whether two flags that each make sense alone make sense together is not asked,
+    because a command word makes such a pair unspellable — which is what a command word buys.
     """
     # Whether this process has a standard output at all is exactly what the parser cannot ask for
     # itself, and it is asked here for the reason every other refusal is: a command line elenctic
     # cannot carry out is refused before anything is discovered, so a report is whole or absent and
-    # never half written. Met mid-run instead, both of these reached the backstop that tells a
+    # never half written. Met mid-run instead, both of these would reach the backstop that tells a
     # reader they have found a bug in this program — over a stream they closed themselves.
     if sys.stdout is None and (
         command is _Command.SCHEMA or (command is _Command.RUN and args.format == "json")
