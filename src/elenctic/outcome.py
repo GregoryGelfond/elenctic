@@ -279,7 +279,16 @@ class ErrorRecord:
 
     The message is required: an error whose reason was dropped is not a report. A line without a
     file is refused for the same kind of reason — it points at line 3 of nothing, and a renderer
-    handed one can only print the number beside a fault that belongs nowhere."""
+    handed one can only print the number beside a fault that belongs nowhere.
+
+    **``message`` is the one string here that may run to more than one line**, because a solver
+    answers an ordinary syntax error over two. Every other string a record carries occupies exactly
+    one. That is a fact a renderer needs and cannot get from the type, so it is stated here rather
+    than in whichever renderer met it first: a runner of your own that interpolates this into a line
+    it is composing gets the rest of that line pushed onto a line the corpus decided the start of.
+    ``elenctic.legible`` makes text safe to show and answers nothing about how many lines it takes;
+    what elenctic's own terminal renderer does is re-emit the breaks under a mark of its own, so an
+    added line is the report's structure rather than the corpus's."""
 
     kind: ErrorKind
     scope: Scope

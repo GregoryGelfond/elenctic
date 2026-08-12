@@ -107,5 +107,12 @@ def test_two_diagnostics_are_framed_as_clingo_wrote_them(tmp_path: Path) -> None
     streams = run_cli(tmp_path)
     assert "'X' is unsafe" in streams.err, "the first diagnostic"
     assert "'Z' is unsafe" in streams.err, "and the second"
-    assert "unsafe\n\n" in streams.err, "one blank line apart, which is how clingo wrote them"
+    # The blank line between them carries the quoting mark, trailing space and all: every line a
+    # diagnostic spills onto is the mark followed by the line, with no exception for an empty one.
+    # The mark is then a constant-width prefix, so a reader taking it back off removes the same four
+    # characters from every line without first asking what kind of line this is.
+    #
+    # That makes this assertion fragile under any capture that strips trailing whitespace, and the
+    # fragility is the test's rather than the product's: `capsys` hands back what was written.
+    assert "unsafe\n  | \n" in streams.err, "one blank line apart, which is how clingo wrote them"
     assert "unsafe; " not in streams.err, "and not run together with a separator elenctic added"

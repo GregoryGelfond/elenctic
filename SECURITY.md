@@ -45,15 +45,28 @@ boundary itself must be a resolved path before any comparison is made.
 **Corpus text rewriting the report.** Everything elenctic prints about a case is influenced by the
 case: its path, its `@note` prose, the atoms in its answer sets, and the solver's diagnostics about
 it. A terminal treats some of that text as instructions rather than as characters — an escape
-sequence can clear the screen or move the cursor, and a carriage return can overwrite the line just
-printed, which is how a diagnostic forges a verdict in the report it appears in. All
-corpus-controlled text passes through a sanitizer before it is shown: printable characters, spaces
-and newlines survive, everything else becomes a visible escape, and backslashes are doubled so the
-encoding is unambiguous in both directions.
+sequence can clear the screen or move the cursor, a carriage return can overwrite the line just
+printed, and a line break starts a line of its own, which is how a diagnostic forges a verdict in
+the report it appears in. All corpus-controlled text passes through a sanitizer before it is shown:
+printable characters survive — the ASCII space among them — everything else becomes a visible
+escape, and backslashes are doubled so the encoding is unambiguous in both directions. What comes
+back is one line.
 
-Newlines are deliberately kept, and the reasoning is stated rather than assumed: a solver diagnostic
-is legitimately multi-line, and a newline can add a line but cannot overwrite, conceal, or move the
-cursor. A reader who cannot trust line *counts* can still trust every line's contents.
+**One sink is deliberately outside that rule**: the traceback printed when elenctic violates one of
+its own invariants. It goes out raw, under a line saying it is elenctic's fault and not yours,
+because a traceback whose file-and-line coordinates were escaped is one no editor can follow — and
+following it is the whole of what it is for.
+
+Line breaks were once kept, on the reasoning that adding a line is harmless beside overwriting one.
+That was wrong, and the correction is recorded here rather than quietly made: a report's structure
+**is** its line boundaries, so text that can add a line can write a row, and a file name carrying
+one printed a `[PASS]` directly above the `[FAIL]` its own case had earned.
+
+A solver's own diagnostic does run to several lines, legitimately — and it is also where the solver
+writes the corpus's file name, so the one string that may span lines carries the one value that can
+forge one. Neither is sorted from the other by which field it came from. The report re-emits those
+breaks itself and marks every line below the first with `|`, a mark it writes nowhere else, so an
+added line is the report's own structure and never the corpus's.
 
 **The machine-readable document being broken by what it carries.** The same seam covers the JSON
 report, for a related reason — text a parser would act on can break the document it appears in. It

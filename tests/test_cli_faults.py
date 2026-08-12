@@ -212,6 +212,95 @@ def test_a_path_the_corpus_chose_is_sanitized_before_a_reader_sees_it(
     assert "ev\\x1b[2Kil.lp" in said, "and the name is still legible enough to find the file by"
 
 
+# A complete row, spelled as the report spells one: two spaces, a bracketed verdict, the tag, the
+# coordinate, the diagnostic. Carried in on a line break it is a verdict no check reached — which is
+# the whole of the damage a newline does, and the reason one is no longer let through.
+_FORGED_ROW = "  [PASS] @expect sat (line 1): a model exists"
+
+# What a line the solver's own diagnostic spilled onto is marked with. Written out here rather than
+# imported, so this asserts what a reader sees and not whatever the constant is set to.
+_QUOTED = "  | "
+
+
+def test_a_corpus_cannot_author_a_line_of_the_report_by_naming_a_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A newline is a legal byte in a POSIX filename, and the report's structure IS its line
+    # boundaries — so a name holding one writes a row. Measured before this closed: a [PASS] for the
+    # case's own line printed directly above the [FAIL] that line had earned, the two contradicting
+    # each other, and neither marked as to who wrote it.
+    #
+    # The case has to reach a VERDICT, so that the frame under test is the one that renders a case
+    # header — not the one that announces a fault, which is the next test's. The first draft handed
+    # this a @query the program did not declare observable, so the case never got past discovery and
+    # the forged line came out of the other frame entirely: green after the fix, and measuring the
+    # wrong thing. Read off standard output alone for the same reason, since that is where a
+    # rendered case goes and a fault announcement does not.
+    (tmp_path / f"evil\n{_FORGED_ROW}.lp").write_text(
+        "% @expect sat\n% @count 2\np(1).\n#show p/1.\n", encoding="utf-8"
+    )
+
+    assert main(["run", str(tmp_path)]) == ExitStatus.NOT_PASSED
+
+    shown = capsys.readouterr().out
+    assert not any(line.startswith(_FORGED_ROW) for line in shown.splitlines()), (
+        "a line of the report begins with a row the corpus wrote"
+    )
+    assert "evil\\x0a" in shown, "and the name is still legible enough to find the file by"
+
+
+def test_a_diagnostic_that_runs_to_several_lines_is_quoted_rather_than_left_as_rows(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Nothing hostile: an ordinary syntax error, which this clingo answers in two lines. The second
+    # landed at column 0 — where the case header, every fault heading and the tally live — so the
+    # commonest fault a user meets already printed a line belonging to no structure at all. Provoked
+    # from a real solve rather than a record made multi-line here, which would be this guard
+    # asserting over its own input.
+    (tmp_path / "syn.lp").write_text("% @expect sat\np(1) :- :- q.\n", encoding="utf-8")
+
+    assert main(["run", str(tmp_path)]) == ExitStatus.USER_FAULT
+
+    lines = capsys.readouterr().err.splitlines()
+    assert len(lines) > 1, "this clingo answers a syntax error over more than one line"
+    assert lines[0].startswith("PROGRAM ERROR — "), "the first line keeps the shape a reader greps"
+    assert all(line.startswith(_QUOTED) for line in lines[1:]), (
+        "a line the diagnostic spilled onto reads as a line of the report"
+    )
+
+
+def test_a_name_the_corpus_chose_cannot_author_a_line_from_inside_a_diagnostic(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The same rule over its second form, and the form that decides the design: clingo writes the
+    # file's name INTO its own diagnostic, so the one field where a line break is legitimate content
+    # carries the one value that can forge a line. Sanitizing by field cannot reach this — the
+    # message is multi-line for a good reason and the newline inside it is the corpus's. Only a mark
+    # elenctic writes on every line it re-emits does.
+    (tmp_path / f"evil\n{_FORGED_ROW}.lp").write_text(
+        "% @expect sat\np(1) :- :- q.\n", encoding="utf-8"
+    )
+
+    assert main(["run", str(tmp_path)]) == ExitStatus.USER_FAULT
+
+    lines = capsys.readouterr().err.splitlines()
+    # The reachability guard first, and the positive control with it. Without them both remaining
+    # assertions hold when nothing happened: `not any(...)` is satisfied by a report the forged text
+    # never reached, and `all(...)` over `lines[1:]` is vacuously true of a one-line announcement.
+    # So a clingo that stopped writing the name into its diagnostic, or a fault reported before the
+    # file is opened, would leave this green and measuring nothing.
+    assert len(lines) > 1, "this clingo answers over more than one line, and writes the name in"
+    assert any(_FORGED_ROW in line for line in lines[1:]), (
+        "the corpus's row did reach the report — the thing under test is where, not whether"
+    )
+    assert not any(line.startswith(_FORGED_ROW) for line in lines), (
+        "a line of the report begins with a row the corpus wrote, from inside the diagnostic"
+    )
+    assert all(line.startswith(_QUOTED) for line in lines[1:]), (
+        "and every line the diagnostic spilled onto is marked as its own, not the report's"
+    )
+
+
 def test_no_string_the_corpus_chose_reaches_a_reader_as_a_terminal_escape(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

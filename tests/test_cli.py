@@ -7,15 +7,20 @@ from itertools import product
 from pathlib import Path
 
 import pytest
+from hypothesis import given, strategies as st
 
 from elenctic import corpus
 from elenctic.cli import main
 from elenctic.human_report import (
     TerminalPlan,
     TerminalRun,
-    # `_summary_line` is past `human_report.__all__`: its arithmetic is the subject, and reaching
-    # it through a rendered report would mean grepping the line back out of the prose around it.
+    # `_quoted` is past `human_report.__all__`: the marking rule is the subject, and reaching it
+    # through a rendered report would mean reading the message back out of the prose around it.
+    _quoted,
+    # `_summary_line` is past it as well: its arithmetic is the subject, and reaching that through
+    # a rendered report would mean grepping the line back out of the prose around it.
     _summary_line,
+    announced,
     heading,
     render_tail,
 )
@@ -590,6 +595,105 @@ def test_the_dry_run_says_the_same_thing_about_a_fault_indented_under_its_case(
 
     expected = _SAID_ABOUT[kind]
     assert capsys.readouterr().err == (f"    {expected}" if expected else "")
+
+
+# A diagnostic the solver wrote over four lines, one of them spelled as a row of the report. A
+# solver's diagnostic is the one string reaching a reader where a line break is legitimate content —
+# and it is also the string clingo writes the corpus's own file name into, so the field that may
+# span lines carries the value that can forge one.
+#
+# The BLANK line is load-bearing and was missing at first. It is the common shape rather than an
+# edge — clingo separates two diagnostics with one — and it is the only input that reaches the
+# coupling between the mark and `textwrap.indent`, whose default predicate skips a line that is
+# whitespace-only. The dry run indents correctly today because the mark carries a glyph; swap the
+# mark for the whitespace the design rejected and nothing else in the suite would notice.
+_SPILLS = "the reason it produced none:\n\n  [FAIL] a row it did not earn\nand a third line"
+
+
+@pytest.mark.parametrize(
+    ("scope", "source", "opening"),
+    [
+        (Scope.CASE, Path("case.lp"), "PROGRAM ERROR — case.lp: "),
+        # The other arm, and the reason this is parametrized: `announced` states the rule once and
+        # makes the call twice, keyed on whether the fault names a file. A corpus-level one names
+        # none — and only the arm that does was covered when this was first written, which is how a
+        # rule stated over two forms comes to be held on one of them.
+        (Scope.CORPUS, None, "program error: "),
+    ],
+)
+def test_a_message_that_spans_lines_is_quoted_from_its_second_line_on(
+    scope: Scope, source: Path | None, opening: str
+) -> None:
+    # The rule, where the two tests over a real clingo diagnostic in `test_cli_faults` hold that it
+    # is reachable. A visible mark rather than an indent: this report writes lines at columns 0, 2,
+    # 4, 8 and 9, so any indent is a claim over the whole of that grammar — and text choosing its
+    # own leading spaces picks the offset that lands on one. elenctic writes the mark nowhere else,
+    # so a line re-emitted from a diagnostic is never read as one of the report's own.
+    #
+    # The first line stays where a single-line message puts it: the ordinary case is unmoved, and
+    # `grep "PROGRAM ERROR"` over a CI log still shows what went wrong.
+    record = ErrorRecord(kind=ErrorKind.PROGRAM, scope=scope, source=source, message=_SPILLS)
+
+    # The second line is the mark with nothing after it, trailing space and all: the mark is a
+    # constant-width prefix, so a reader stripping it back off removes the same four characters from
+    # every line without having to ask which kind of line this is.
+    assert announced(record) == (
+        f"{opening}the reason it produced none:\n"
+        "  | \n"
+        "  |   [FAIL] a row it did not earn\n"
+        "  | and a third line"
+    )
+
+
+def test_the_dry_run_indents_a_whole_announcement_under_its_case_and_not_just_its_first_line(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A property of the renderer rather than of a path that reaches it: the only fault a dry run can
+    # meet today is a plan that would not build, whose message is elenctic's own single line. The
+    # test above this one is parametrized over loci this mode cannot produce either, and for the
+    # same reason — a renderer that is right only about what currently arrives is right by accident,
+    # and this project has twice shipped a frame that was.
+    record = ErrorRecord(
+        kind=ErrorKind.PROGRAM, scope=Scope.CASE, source=Path("case.lp"), message=_SPILLS
+    )
+
+    TerminalPlan().case_unjudged(record)
+
+    said = capsys.readouterr().err
+    assert said == (
+        "    PROGRAM ERROR — case.lp: the reason it produced none:\n"
+        "      | \n"
+        "      |   [FAIL] a row it did not earn\n"
+        "      | and a third line\n"
+    )
+    # Stated a second time without naming the mark, because the equality above does not hold the
+    # coupling it looks like it holds: `textwrap.indent` skips a line that is whitespace-only, so a
+    # mark of plain spaces would leave the blank quoted line un-indented at the mark's own width —
+    # and whoever changed the mark would paste the new bytes in and see this test pass. This
+    # assertion goes red for that change whatever the mark is spelled as, which makes the glyph a
+    # requirement rather than a preference. Measured: with a four-space mark, one line of this
+    # output is whitespace-only and this fails; with the mark as it is, none is.
+    assert not any(not line.strip() for line in said.splitlines()), (
+        "a blank line inside a quoted diagnostic is still one the report emitted, so it carries "
+        "the mark and is indented with the rest — which holds only because the mark has a glyph"
+    )
+
+
+@given(st.text())
+def test_no_line_a_diagnostic_produces_is_left_unmarked(message: str) -> None:
+    # The design's invariant over the whole space rather than over three examples.
+    #
+    # `splitlines` rather than `split("\n")`, which would be `_quoted`'s own expression copied into
+    # the assertion and so could not fail while that function was self-consistent. The two differ
+    # exactly where `legible` is what stops them differing: a U+2028 surviving the sanitizer would
+    # end a line for `splitlines` and that line would carry no mark. So this holds the composition
+    # of the two modules, which is where the guarantee actually lives, rather than either alone.
+    # Sliced rather than unpacked, because an empty message renders to no lines at all and the
+    # unpacking this was first written with raised on it. `ErrorRecord` refuses an empty message, so
+    # nothing in a run reaches here that way — but the property is about this function, and the
+    # first thing hypothesis handed it was the string the enumerated examples had all skipped.
+    spilled = _quoted(message).splitlines()[1:]
+    assert all(line.startswith("  | ") for line in spilled)
 
 
 def test_the_deadline_is_said_once_however_many_cases_it_cost(

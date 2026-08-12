@@ -97,6 +97,11 @@ longer states one. What a `message` may still contain is the *solver's* own `fil
 quoted as the solver wrote it, because that says where in the *program* the fault is and nothing
 else does.
 
+**A `message` is always one line**, whatever the solver wrote. A diagnostic that ran to several
+arrives with each break escaped as `\x0a`, on the same footing as every other character a reader's
+tooling would act on rather than display. The human report re-emits those breaks under a mark of
+its own; a document has no layout to re-emit them into, so it carries them as text.
+
 ## What you may rely on across versions
 
 **Three tiers of change, so you know what you may rely on.** `schema_version` changes when a field is

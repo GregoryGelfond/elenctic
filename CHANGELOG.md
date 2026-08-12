@@ -26,6 +26,7 @@ Every one of them is marked **What can break:** where it is described.
 - A `@cautious`/`@brave` claim over a literal the program does not declare observable is now refused, where it used to be FAILed
 - A `@query` whose answer the program does not determine is now refused rather than answered
 - Escaped text is now spelled the way Python spells it, and is reversible
+- A line break in corpus text is escaped, and a solver's own diagnostic is quoted instead
 - A `where { … }` clause is refused wherever it is mis-placed, not only under a witness tag
 - `@count 0` and `@count optimal 0` under `@expect unsat` are checked and reported
 - A file's contract is read by a real tokenizer, so five things that were nearly-contracts now are not — or now are
@@ -164,6 +165,30 @@ Every one of them is marked **What can break:** where it is described.
   tag's claim is text a corpus author wrote, and a `#show`n string term carries whatever is between
   its quotes, so a dry run over a hostile corpus wrote raw control characters to the terminal — the
   one frame of four that the guarantee stated per module had never been applied to.
+
+- **A line break in corpus text is escaped, and a solver's own diagnostic is quoted instead.**
+  `elenctic.legible` let `\n` through, on the reasoning that adding a line is harmless beside
+  overwriting one. It is not: a report's structure **is** its line boundaries, so text that can add
+  a line can write a row. A newline is a legal byte in a file name, and a file named with one
+  printed a `[PASS]` directly above the `[FAIL]` its own case had just earned — two rows claiming
+  the same contract line and contradicting each other. Every corpus-controlled string now comes
+  back as one line, a break spelled `\x0a` like every other control character.
+
+  **A solver's diagnostic still runs to several lines.** The human report re-emits the breaks
+  itself and marks every line below the first with `  | `, a mark it writes nowhere else — so an
+  added line is the report's own structure and never the corpus's. An indent could not promise
+  that: text choosing its own leading spaces chooses which column it lands in.
+  Nor could sorting fields into may-span and may-not, which is what settled the design — clingo
+  writes the file's name *into* its diagnostic, so the one string that may span lines carries the
+  one value that can forge one. An ordinary syntax error reads as a quoted block now, where its
+  second line used to land on column 0 beside the case headers and the tally.
+
+  **What can break:** anything matching on a rendered multi-line diagnostic; any consumer of the
+  machine-readable document reading `message`, where a line break is now the `\x0a` escape,
+  recovered exactly as every other escape in that document already is; and a runner of your own that
+  renders an `ErrorRecord` itself — `message` is the one string a record carries that may run to
+  several lines, which its own documentation now says, and `elenctic.legible` answers what a string
+  may contain and not how many lines it may take.
 
 - **A `where { … }` clause is refused wherever it is mis-placed, not only under a witness tag.**
   The guard said it was unconditional and required the tag above it to be `@model` or `@optimal`, so

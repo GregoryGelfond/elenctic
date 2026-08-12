@@ -28,6 +28,11 @@ it. The document seam states the same rule for a related reason — text a parse
 break the document it appears in — and each renderer owns its own seam, so a field or a line added
 to either inherits the guarantee from the one place its own module has to add it.
 
+**How many lines a value may occupy is this module's question and not the sanitizer's**, because it
+is a question about layout and the sanitizer has none: what it hands back is always one line. Only a
+solver's own diagnostic is legitimately several, and :func:`_quoted` is where that is answered, once
+— so an added line is this report's structure rather than the corpus's.
+
 This is not part of the curated surface. A consumer embedding elenctic already has the records,
 :func:`~elenctic.harness.render` for one case's diagnostic, and
 :func:`~elenctic.json_report.as_json` for the whole run; what is here is *this program's* narration
@@ -37,7 +42,8 @@ of a run to a terminal, which is the console entry's business and not a library'
 import sys
 from contextlib import suppress
 from pathlib import Path
-from typing import assert_never
+from textwrap import indent
+from typing import Final, assert_never
 
 from elenctic.corpus import Observer
 from elenctic.discovery import Case
@@ -94,9 +100,9 @@ class TerminalRun(_Terminal):
 
     def case_unjudged(self, record: ErrorRecord) -> None:
         """One case that produced no verdict — said here unless the report says it once at the
-        end instead, which is the arm :func:`_unjudged_line` decides."""
-        if (line := _unjudged_line(record)) is not None:
-            print(line, file=sys.stderr)
+        end instead, which is the arm :func:`_unjudged_notice` decides."""
+        if (notice := _unjudged_notice(record)) is not None:
+            print(notice, file=sys.stderr)
 
     def case_judged(self, outcome: CaseOutcome) -> None:
         """One case that reached a verdict — rendered only where the verdict is not PASS."""
@@ -135,7 +141,10 @@ class TerminalPlan(_Terminal):
         """A case this run could not judge, indented under the case the narration has already
         named."""
         # Indented under the case the narration has already named, and it names the file again
-        # because it goes to the other stream: a reader who has only that one is owed it.
+        # because it goes to the other stream: a reader who has only that one is owed it. Every
+        # line of it, not merely the first: no announcement reaching this mode runs to more than one
+        # line today, which is a fact about what a dry run can meet and not a property of the
+        # renderer — the same distinction the paragraph below draws about whose fault it names.
         #
         # The same sentence as a real run's, rather than one of its own. A dry run solves nothing,
         # so the only fault it can meet today is a plan that could not be built — but that is a fact
@@ -143,11 +152,11 @@ class TerminalPlan(_Terminal):
         # answered "elenctic's own fault" to whatever it was handed would one day tell an author
         # their corpus is a harness bug. Filing a fault as the wrong owner is a defect this project
         # has shipped twice.
-        if (line := _unjudged_line(record)) is not None:
-            print(f"    {line}", file=sys.stderr)
+        if (notice := _unjudged_notice(record)) is not None:
+            print(indent(notice, "    "), file=sys.stderr)
 
 
-def _unjudged_line(record: ErrorRecord) -> str | None:
+def _unjudged_notice(record: ErrorRecord) -> str | None:
     """What a reader is told about one case that produced no verdict — or ``None`` where the report
     says it once at the end instead.
 
@@ -167,7 +176,12 @@ def _unjudged_line(record: ErrorRecord) -> str | None:
 
 
 def _text(value: str | Path) -> str:
-    """Anything the corpus had a hand in, made safe to show.
+    """Anything the corpus had a hand in that must occupy exactly one line, made safe to show.
+
+    **A value where a line break is legitimate content goes to :func:`_quoted` instead** — routed
+    through here it comes back with the break escaped, which is safe and is a diagnostic collapsed
+    onto one line. That is the whole of the choice between the two, and it is at the signature
+    because the maintainer who has to make it is adding a field, not reading a body.
 
     One seam for every such string rather than a judgment per call site, because which of them a
     corpus can reach is a question whose answer changes: a message is elenctic's own prose until the
@@ -181,6 +195,62 @@ def _text(value: str | Path) -> str:
     sites judged one at a time — a judgment nobody repeats for the site they are adding.
     """
     return legible(str(value))
+
+
+# What marks a line a diagnostic spilled onto. Visible rather than an indent: this report writes
+# lines at columns 0, 2, 4, 8 and 9, so an indent is a claim over the whole of that grammar, and
+# text choosing its own leading spaces picks which column it lands in. elenctic writes this mark
+# nowhere else, so a line re-emitted from a diagnostic can never be read as one of the report's own
+# — which is the direction that matters. NOT the converse: a path may itself begin with the mark,
+# and a case header then reads as quoted text. That costs the header its authority and cannot lend
+# the corpus any, which is why the mark is the right shape and an indent is not.
+#
+# Where `harness._CONTINUATION` marks its continuation with whitespace, this one cannot: that one
+# carries elenctic's own words and this one carries the corpus's.
+#
+# The glyph is load-bearing a second time, where the mark is composed with `textwrap.indent`: that
+# skips a line which is whitespace-only, so a mark of plain spaces would leave a blank quoted line
+# un-indented while the lines around it moved. `test_the_dry_run_indents_a_whole_announcement...`
+# holds this without naming the mark, so the requirement survives the mark being respelled.
+#
+# The trailing space is on every marked line, a blank one included. A rule with no exception is part
+# of it; the load-bearing part is that the mark is then a CONSTANT-WIDTH prefix, so a reader taking
+# it back off removes the same four characters from every line without first asking what kind of
+# line this is. That is the same property the escape widths are chosen for below.
+_QUOTE_MARK: Final = "  | "
+
+
+def _quoted(message: str) -> str:
+    r"""A diagnostic that may run to several lines, as lines this report can carry.
+
+    **What comes back may be several lines, so it is only ever the tail of the line being
+    composed.** Anything appended after it lands on a marked line, where the mark says the words are
+    the corpus's and they would be elenctic's — which is the one way to spell a lie with this. Both
+    callers are in :func:`announced`, both in final position.
+
+    A solver's own diagnostic is the one string reaching a reader where a line break is legitimate
+    content — this clingo answers an ordinary syntax error over two lines — so escaping the break
+    with the rest would cost the friendliest thing elenctic prints, on the commonest fault a user
+    meets. It is also the string clingo writes the corpus's own file name into, and a name may hold
+    a line break. So the field that may span lines carries the value that can forge one, and no
+    rule sorting fields into may-span and may-not can separate them: what makes an added line safe
+    is that elenctic marks it, not that the field it came from was entitled to add one.
+
+    Split before sanitizing, on ``\n`` alone — where clingo ends a line, which is the authority
+    ``expectation`` counts lines by — because :func:`~elenctic.display.legible` escapes a break and
+    would leave nothing to split on. The first line stays where a single-line message puts it: the
+    ordinary case is byte-for-byte unmoved, and a reader grepping a log for a heading still meets
+    what went wrong on the line they matched.
+
+    **One cost, taken knowingly.** Splitting the raw message means a break *inside* the file name
+    clingo quoted becomes a real split here, while the same name rendered beside it as the fault's
+    ``source`` was escaped onto one line. So a single announcement can show one filename two ways on
+    adjacent lines. It is the honest rendering of both facts — the name is one value, the diagnostic
+    is several lines — and the alternative is to know which substrings of a solver's sentence are
+    paths, which nothing here can.
+    """
+    first, *spilled = message.split("\n")
+    return "\n".join([_text(first), *(f"{_QUOTE_MARK}{_text(line)}" for line in spilled)])
 
 
 def heading(kind: ErrorKind, scope: Scope) -> str:
@@ -215,7 +285,8 @@ def heading(kind: ErrorKind, scope: Scope) -> str:
 
 
 def announced(record: ErrorRecord) -> str:
-    """One record as one line: where it is, and what is wrong there.
+    """One record as one line, or as several where its message runs to several: where it is, and
+    what is wrong there, the coordinate always on the first.
 
     The one renderer for a record, whichever frame met the fault and whatever it was about, and the
     *only* one: this module announces records as a run goes — a corpus nothing could be read from, a
@@ -232,13 +303,15 @@ def announced(record: ErrorRecord) -> str:
     Both halves are sanitized, and neither is elenctic's own text: the message quotes the solver or
     an exception, and the path is a filename the corpus chose. Text a reader's terminal would act on
     rather than display can move a cursor over a line already printed, which is how a diagnostic
-    forges a verdict in the report it appears in. The line number is elenctic's own count and is
-    rendered as the integer it is."""
+    forges a verdict in the report it appears in. The two are sanitized differently, and that is the
+    one place in this module where they are: a path is a value on this line, while the message may
+    legitimately run to several and is quoted over them by :func:`_quoted`. The line number is
+    elenctic's own count and is rendered as the integer it is."""
     opening = heading(record.kind, record.scope)
     if record.source is None:
-        return f"{opening} {_text(record.message)}"
+        return f"{opening} {_quoted(record.message)}"
     at = _text(record.source) if record.line is None else f"{_text(record.source)}:{record.line}"
-    return f"{opening} {at}: {_text(record.message)}"
+    return f"{opening} {at}: {_quoted(record.message)}"
 
 
 def render_tail(outcome: Outcome, invocation: Invocation) -> str:

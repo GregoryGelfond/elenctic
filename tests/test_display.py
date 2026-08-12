@@ -9,7 +9,21 @@ line can make a failing run read as a passing one.
 
 import codecs
 
+from hypothesis import given, strategies as st
+
 from elenctic.display import legible
+
+
+@given(st.text())
+def test_no_text_at_all_comes_back_as_more_than_one_line(text: str) -> None:
+    # The postcondition over the whole space rather than over the specimens below, which is what a
+    # stated invariant is owed and what hypothesis is already a dependency here for.
+    #
+    # `splitlines` rather than a search for "\n". They are not the same question: `splitlines` ends
+    # a line on \v \f \x1c \x1d \x1e \x85 U+2028 and U+2029 as well, and the postcondition is about
+    # every one of them -- `textwrap.indent`, which one caller composes this with, splits the same
+    # way. Asserting only the newline would leave the rest to be asked separately.
+    assert len(legible(text).splitlines()) <= 1
 
 
 def test_ordinary_text_is_unchanged() -> None:
@@ -37,13 +51,36 @@ def test_the_separators_that_split_a_line_are_escaped() -> None:
         assert separator not in legible(f"a{separator}b")
 
 
-def test_a_newline_survives() -> None:
-    # Deliberately kept. A solver diagnostic is legitimately multi-line, and the friendly-error bar
-    # is worth more than closing the one thing a newline still permits: adding a line. It cannot
-    # rewrite or conceal one, which is what the escapes above are for.
-    assert legible("error: file could not be opened:\n  missing.lp") == (
-        "error: file could not be opened:\n  missing.lp"
+def test_the_ascii_space_is_the_only_separator_that_survives() -> None:
+    # The boundary `str.isprintable` sits on, and the whole of the predicate. The ASCII space is
+    # printable by that method's own definition; no other separator is. The predicate used to carry
+    # `or character == " "` beside it, which over every codepoint there is changes no answer -- so
+    # what read as the rule being widened was the rule being said twice, and the second saying gave
+    # a reason that is not a fact.
+    assert legible("a b") == "a b"
+    for separator in (" ", " ", "　"):  # Zs, every one of them but U+0020
+        assert separator not in legible(f"a{separator}b")
+
+
+def test_a_newline_is_escaped_like_every_other_separator() -> None:
+    # It was once let through, on the reasoning that adding a line is harmless beside overwriting
+    # one -- "a reader who cannot trust line counts can still trust every line's contents". That is
+    # false: the report's structure IS its line boundaries, so text that can add a line can write a
+    # row. Measured, a file name carrying one forges a [PASS] beside the [FAIL] the case earned.
+    # No new escape shape for it: `\x0a` is the same alphabet as every other control character.
+    assert legible("x\n  [PASS] @expect sat (line 1): a model exists") == (
+        "x\\x0a  [PASS] @expect sat (line 1): a model exists"
     )
+
+
+def test_no_text_a_corpus_chose_comes_back_holding_a_line_break() -> None:
+    # The postcondition, stated over the boundary's every position rather than over one specimen of
+    # it: a caller interpolating this into a formatted line needs to know it stays one line, and
+    # could not be told so while newlines passed through. Where a line break is CONTENT -- a
+    # solver's own multi-line diagnostic -- it is the renderer that re-emits it, under a mark of
+    # elenctic's own; that is a question about layout, and this function has no layout.
+    for text in ("a\nb", "\n", "a\n", "\nb", "a\n\nb"):
+        assert "\n" not in legible(text)
 
 
 def test_what_was_escaped_is_still_readable() -> None:
