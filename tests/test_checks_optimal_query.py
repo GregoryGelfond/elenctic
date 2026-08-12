@@ -250,7 +250,7 @@ def test_query_binding_unknown_off_a_cautious_only_shape_raises_seam_error() -> 
         ),
         line=1,
     )
-    with pytest.raises(SeamError, match="brave read off ConsistentCautious"):
+    with pytest.raises(SeamError, match=r"brave.*ConsistentCautious"):
         asked(decided(ConsistentCautious(literals("reachable(s)"))))
 
 

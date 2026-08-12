@@ -5,9 +5,11 @@ the case's runs, solves each and applies its checks, and touches no solver direc
 boundary staying in ``solvers.py``. :func:`case_verdict` folds the per-check reports to one case
 verdict, and :func:`render` writes the human diagnostic. Each states its own contract below.
 
-A **misrouted run-plan** is a :class:`~elenctic.result.HarnessError` (``RoutingError``) raised by
-``runs_for`` at plan construction — a harness bug, never a verdict — and ``run_case`` lets it
-propagate to whatever runs the corpus, which reports it under a distinct "harness error" status. The
+A **misrouted run-plan** is a :class:`~elenctic.result.HarnessError` (``RoutingError``) — raised by
+``runs_for`` when a check reads what its run cannot populate, and by :func:`run_plan` when the plan
+it is handed was not derived from this case's own facts. A harness bug, never a verdict, and
+``run_case`` lets it propagate to whatever runs the corpus, which reports it under a distinct
+"harness error" status. The
 plan is pure and buildable up front, so a caller wanting every wiring error at once can call
 ``runs_for`` for all cases *before* any solving.
 
@@ -25,7 +27,7 @@ from elenctic.discovery import Case
 from elenctic.display import legible
 from elenctic.registry import provides_theory
 from elenctic.result import Verdict
-from elenctic.run import Run, runs_for
+from elenctic.run import RoutingError, Run, runs_for, should_project
 from elenctic.solvers import TIME_BUDGET, solve
 
 __all__ = ["case_verdict", "render", "run_case", "run_plan"]
@@ -52,8 +54,10 @@ def run_case(case: Case, budget: float = TIME_BUDGET) -> tuple[CheckReport, ...]
       midway.
     - ``MemoryError`` — the machine ran out. Nothing about the encoding is wrong, and the frame that
       can bound what a case consumes is the one that started it.
-    - :class:`~elenctic.result.HarnessError` — including ``RoutingError`` from ``runs_for``, raised
-      at plan construction before any solving. An elenctic bug, never a statement about the program.
+    - :class:`~elenctic.result.HarnessError` — including ``RoutingError``, raised before any
+      solving: by ``runs_for`` when a check reads what its run cannot populate, and by
+      :func:`run_plan` when a plan was not derived from this case's facts. Never a statement about
+      the program.
 
     The first three cost that case its verdict and no other's; the last is evidence about every
     case in the run. ``elenctic.corpus`` catches all four per case and files each as an
@@ -79,10 +83,34 @@ def run_plan(
     second time and discard the validated plan, so what got carried out would be a plan nothing had
     proved. Here the proof travels with the value.
 
-    It raises what :func:`run_case` raises, minus the one that comes from deriving: a plan handed in
-    has already been built, so ``RoutingError`` belongs to whoever built it."""
+    It raises what :func:`run_case` raises, and ``RoutingError`` for a plan that was not derived
+    from this case — which still belongs to whoever built it, and is now *detected* here rather
+    than only at construction.
+
+    **The plan is checked against the case before any of it is solved**, which is why ``runs`` is
+    taken once into a tuple rather than iterated lazily: a generator spent by the check would leave
+    nothing to run. That ordering is this function's whole reason for existing apart from
+    :func:`run_case` — a wiring fault surfaces before any solving — and the rule it now also asks is
+    that each run was derived for the solver this case declares. :func:`runs_for` cannot ask it: it
+    is handed an expectation and never learns the solver, so the assumption arrives as a defaulted
+    argument and an omission is invisible there. Here both facts are present."""
+    planned = tuple(runs)
+    theory = provides_theory(case.solver)
+    for run in planned:
+        if run.project is not should_project(theory, run.mode, run.checks, case.has_projection):
+            projects = "projects its census" if run.project else "does not project its census"
+            raise RoutingError(
+                f"this plan {projects}, which is not what {case.contract_source.name} derives: "
+                f"its solver is {case.solver!r} and its program "
+                f"{'declares' if case.has_projection else 'declares no'} #project. Both facts "
+                f"reach runs_for as defaulted arguments, so a plan built without them projects by "
+                f"a rule the case does not follow — which loses the theory assignment, or narrows "
+                f"the census below what the contract reads. Derive it with runs_for(expectation, "
+                f"provides_theory(case.solver), has_projection=case.has_projection), or call "
+                f"run_case, which does that for you"
+            )
     reports: list[CheckReport] = []
-    for run in runs:
+    for run in planned:
         outcome = solve(
             case.solver,
             run.mode,

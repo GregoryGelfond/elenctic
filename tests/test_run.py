@@ -16,15 +16,19 @@ unknown binding rides ``ENUM_ALL``; and ``@cost`` rides ``OPTIMAL_ENUM`` with an
 """
 
 from collections import Counter
+from pathlib import Path
 from typing import assert_never
 
 import pytest
 from clingo import Control, Function, Symbol
 from hypothesis import given, strategies as st
 
-from elenctic import checks
+from elenctic import checks, harness
+from elenctic.discovery import Case, discover
 from elenctic.expectation import Claimed, Expectation, Sat, Unsat, WitnessClaim, parse
+from elenctic.harness import run_plan
 from elenctic.query import Answer, BindingQuery, GroundQuery, Query, QueryLiteral, Var
+from elenctic.registry import provides_theory
 from elenctic.result import (
     Collection,
     Consistent,
@@ -33,6 +37,7 @@ from elenctic.result import (
     ConsistentWitness,
     Field,
     HarnessError,
+    Verdict,
     collection_of,
 )
 from elenctic.run import (
@@ -664,3 +669,75 @@ def test_a_lowering_row_cannot_shed_a_field_it_never_populated() -> None:
             shape=ConsistentWitness,
             collapse=_Collapse(sheds=Field.FULL_CENSUS, shape=ConsistentShownCensus),
         )
+
+
+def _clingcon_case(tmp_path: Path) -> Case:
+    """A discovered case whose declared solver provides a theory, and whose contract reads it."""
+    (tmp_path / "c.lp").write_text(
+        "% @elenctic solver clingcon\n% @expect sat\n% @assign { x=1 }\n&sum { x } = 1.\n",
+        encoding="utf-8",
+    )
+    return next(iter(discover(tmp_path)))
+
+
+def test_a_plan_derived_for_the_wrong_solver_is_refused_before_any_solve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The trap this closes: `runs_for` takes the theory assumption as a defaulted parameter, and a
+    # consumer who omits it derives a plan for plain clingo and hands it to a clingcon case. Until
+    # this, that reached the accessor seam three layers down and was reported in the vocabulary of
+    # an internal invariant. `run_plan` is where both facts are — the case's solver, and what the
+    # runs were derived under — so it is where the rule can be asked.
+    #
+    # Refused BEFORE any solve, which is the half a `pytest.raises` alone would not hold: a check
+    # that fired after the first solve would still raise, and would still have run the wrong solve.
+    pytest.importorskip("clingcon")
+    case = _clingcon_case(tmp_path)
+    solved: list[object] = []
+
+    def solve_is_forbidden(*args: object, **kwargs: object) -> object:
+        solved.append(args)
+        raise AssertionError("a solve was attempted despite an incoherent plan")
+
+    monkeypatch.setattr(harness, "solve", solve_is_forbidden)
+
+    derived_for_plain_clingo = runs_for(case.expectation)  # the omission a consumer makes
+    with pytest.raises(RoutingError, match="clingcon") as caught:
+        run_plan(case, derived_for_plain_clingo)
+
+    assert not solved, "the plan is refused before the first solve, not after it"
+    said = str(caught.value)
+    assert "c.lp" in said, "the case is named, so a reader knows which one"
+    assert "runs_for" in said, "and what to call to derive it correctly"
+
+
+def test_a_plan_derived_for_the_declared_solver_still_runs(tmp_path: Path) -> None:
+    # The control the guard above is worthless without: a check that refused every plan would
+    # satisfy it. This is the same case, derived the way the pipeline derives it, and it passes.
+    pytest.importorskip("clingcon")
+    case = _clingcon_case(tmp_path)
+    correct = runs_for(case.expectation, provides_theory(case.solver))
+    reports = run_plan(case, correct)
+    assert [report.verdict for report in reports] == [Verdict.PASS, Verdict.PASS]
+
+
+def test_a_plan_that_ignored_the_programs_projection_declaration_is_refused(
+    tmp_path: Path,
+) -> None:
+    # The second arm, and the reason this guard asks about the projection *decision* rather than the
+    # theory *declaration*: `has_projection` is defaulted exactly as `theory_in_force` is, one
+    # keyword to the right, and omitting it derives a run that projects where the program's own
+    # `#project` says the census must not be narrowed. A guard written over the theory argument
+    # alone passed this — the rule stated over two forms, checked on one.
+    (tmp_path / "p.lp").write_text(
+        "% @expect sat\n% @count 2\n{a}. {b}.\n#show a/0.\n#project a/0.\n", encoding="utf-8"
+    )
+    case = next(iter(discover(tmp_path)))
+    assert case.has_projection, "the fixture must declare #project, or this holds nothing"
+    theory = provides_theory(case.solver)
+
+    with pytest.raises(RoutingError, match="#project"):
+        run_plan(case, runs_for(case.expectation, theory))  # has_projection omitted
+
+    correct = runs_for(case.expectation, theory, has_projection=case.has_projection)
+    assert [report.verdict for report in run_plan(case, correct)] == [Verdict.PASS, Verdict.PASS]

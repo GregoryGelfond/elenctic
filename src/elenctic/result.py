@@ -518,10 +518,25 @@ class SeamError(HarnessError):
 
 
 def _seam_violation(field: Field, shape: Consistent) -> NoReturn:
-    """The one centralised narrowing assertion: every accessor's unreachable case funnels here."""
+    """The one centralised narrowing assertion: every accessor's unreachable case funnels here.
+
+    Written for whoever meets it rather than for whoever wrote it. This is reachable by a library
+    caller — a plan assembled by hand, or ``solve`` called directly — so the sentence says what was
+    asked for, what the solve actually carries, and what to do, instead of naming the invariant in
+    the vocabulary of the module that holds it.
+
+    **It names both premises and claims neither**, because which one broke is not knowable here:
+    :class:`SeamError` is unreachable on the wiring rule *and* on the lowering postcondition, and a
+    message asserting one would be a false remedy half the time it was read.
+    """
     raise SeamError(
-        f"narrowing seam: {field.value} read off {type(shape).__name__}, which does not populate "
-        "it — the reads ⊆ populates wiring rule was bypassed (an elenctic bug, not a test outcome)"
+        f"a check asked for the {field.value} of a solve, but this run produced a "
+        f"{type(shape).__name__}, which does not carry it. Either the check was paired with a run "
+        f"whose mode cannot answer it, or the run was solved in a narrower shape than it was "
+        f"planned for. If you assembled the plan yourself, derive it with runs_for(...) and carry "
+        f"it out with run_plan, which refuses a plan this case does not derive; otherwise this is "
+        f"a fault in elenctic rather than anything about the program under test, and is worth "
+        f"reporting"
     )
 
 

@@ -251,10 +251,16 @@ def shape_for(mode: Mode, projects_to_shown: bool = False) -> type[Consistent]:
 
 
 class RoutingError(HarnessError):
-    """A check was paired with a run whose mode does not populate the fields it reads — the
-    ``reads ⊆ populates`` wiring rule was violated at plan construction. A harness-internal bug (a
-    stale route, or a mode added without updating ``populates``), never a contract or a verdict; the
-    runner reports it as a harness error, not a program-under-test failure."""
+    """The plan is not one this case's facts derive — a harness-internal bug, never a contract or a
+    verdict, reported as a harness error rather than a program-under-test failure.
+
+    **Two rules, both about plan construction, and each caught where it can be.** A check paired
+    with a run whose mode does not populate the fields it reads violates ``reads ⊆ populates``, and
+    :meth:`Run.__post_init__` refuses it as the run is built. A plan whose projection decision is
+    not the one this case derives is refused by :func:`~elenctic.harness.run_plan`, which is the
+    first frame holding both the plan and the case — :func:`runs_for` is handed an expectation and
+    never learns the solver or whether the program declares ``#project``, so it takes both as
+    defaulted arguments and cannot notice an omission."""
 
 
 @dataclass(frozen=True, slots=True, eq=False)

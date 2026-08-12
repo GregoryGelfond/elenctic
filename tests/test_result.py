@@ -317,7 +317,7 @@ def test_shown_census_accessor_is_total_over_both_enumeration_shapes_and_agrees(
 def test_observables_of_narrows_to_the_full_shape_only() -> None:
     # The full census (with multiplicity/assignment) is readable only off the full shape; reading it
     # off the projected shown-only shape is a SeamError by construction.
-    with pytest.raises(SeamError, match="full census read off ConsistentShownCensus"):
+    with pytest.raises(SeamError, match=r"full census.*ConsistentShownCensus"):
         observables_of(ConsistentShownCensus(frozenset({frozenset({Function("a")})})))
 
 
@@ -333,7 +333,5 @@ def test_projected_optimal_shape_carries_optimum_and_withholds_the_full_class() 
     shape = ConsistentShownOptimalCensus(frozenset({frozenset({Function("a")})}), Optimum((1,)))
     assert optimum_of(shape).cost == (1,)
     assert shown_optimal_census_of(shape) == frozenset({frozenset({Function("a")})})
-    with pytest.raises(
-        SeamError, match="full optimal census read off ConsistentShownOptimalCensus"
-    ):
+    with pytest.raises(SeamError, match=r"full optimal census.*ConsistentShownOptimalCensus"):
         optimal_observables_of(shape)  # the full optimal class is withheld
