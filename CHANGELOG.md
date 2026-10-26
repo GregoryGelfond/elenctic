@@ -10,6 +10,14 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+### Fixed
+
+- **The container instructions assumed a container engine was already running.** On macOS and
+  Windows the `docker` and `podman` commands need a Linux virtual machine to run in, and a
+  Homebrew `docker` alone fails with `failed to connect to the docker API`. The README now says so
+  and names the free options, and says that such a machine sees only the folders shared into it,
+  so a corpus outside them arrives in the container empty.
+
 ## [0.3.1] - 2026-10-26
 
 Nothing in the package changed; this release is how elenctic is installed. It exists so that the
