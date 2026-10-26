@@ -386,19 +386,44 @@ clingcon = "5.2.1.*"   # only for the theory fragment
 
 [pypi-dependencies]
 elenctic = { git = "https://github.com/GregoryGelfond/elenctic.git" }
-# pin a release for reproducibility, e.g. { git = "...", tag = "v0.3.0" }
+# pin a release for reproducibility, e.g. { git = "...", tag = "v0.3.1" }
 ```
 
 Then `pixi run elenctic <path>` runs a corpus of contracts.
 
 ### With pip
 
-clingo ships 3.14 wheels; clingcon may build from source on 3.14.
+clingo and clingcon both ship 3.14 wheels.
 
 ```console
 $ pip install "git+https://github.com/GregoryGelfond/elenctic.git"                    # answer-set fragment
 $ pip install "elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic.git" # + clingcon
 ```
+
+### Alongside a Python or clingo you cannot change
+
+Both routes below leave the machine's own Python and solvers untouched, and both bring clingcon.
+
+With [uv](https://docs.astral.sh/uv/), elenctic runs in a throwaway environment of its own:
+
+```console
+$ uvx --python 3.14 --from "elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic.git@v0.3.1" elenctic encodings/
+```
+
+With Docker or Podman, build the image straight from a release (no registry is involved), then
+run it on the current directory:
+
+```console
+$ docker build -t elenctic https://github.com/GregoryGelfond/elenctic.git#v0.3.1
+$ docker run --rm -v "$PWD":/work:ro elenctic encodings/
+```
+
+For Podman, write `podman` for `docker`; on an SELinux host, mount with `:ro,Z`. Everything after
+the image name is passed to `elenctic` as is. The image holds Python, elenctic and its solvers
+(clingo 5.8.2, clingcon 5.2.1) and nothing else, and runs unprivileged over a read-only mount, since
+elenctic only reads its corpus. Mount a directory that contains the whole corpus: a case may only
+`#include` files from inside its corpus (see Discovery), and inside the container nothing outside
+the mount exists.
 
 ### Working on elenctic
 
