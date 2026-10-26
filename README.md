@@ -425,6 +425,14 @@ elenctic only reads its corpus. Mount a directory that contains the whole corpus
 `#include` files from inside its corpus (see Discovery), and inside the container nothing outside
 the mount exists.
 
+The `docker` or `podman` command is only a client: it needs an engine to talk to. On Linux the
+engine comes with the package. On macOS and Windows it runs in a small Linux virtual machine —
+[Colima](https://github.com/abiosoft/colima) or Podman's own `podman machine`, which are free, or
+Docker Desktop, whose licence asks larger companies for a subscription. Without one, `docker build`
+fails with `failed to connect to the docker API`. Such a machine sees only the folders shared into
+it — under Colima, only your home folder unless configured otherwise — so a corpus kept elsewhere
+is mounted as an empty directory, and elenctic reports its target as not found.
+
 ### Working on elenctic
 
 ```console
