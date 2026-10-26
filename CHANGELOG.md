@@ -10,6 +10,30 @@ means for them — a reader deciding whether to upgrade should not have to read 
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-26
+
+Nothing in the package changed; this release is how elenctic is installed. It exists so that the
+container image below can be built from a release, which no earlier tag could.
+
+### Added
+
+- **A container image, for a machine whose Python or clingo you cannot change.** The repository now
+  carries a `Dockerfile` that Docker and Podman both build, straight from a release tag with no
+  registry involved. The image holds Python 3.14, elenctic, and clingo 5.8.2 and clingcon 5.2.1 —
+  pinned, so an image built from a tag solves as it did when tagged — and nothing else: no pip, no
+  source tree, no build tools. It runs unprivileged, and since elenctic only reads its corpus, the
+  corpus can be mounted read-only. Everything after the image name is passed to `elenctic`, so
+  `docker run --rm -v "$PWD":/work:ro elenctic encodings/` is `elenctic encodings/`. The README's
+  Installation section has the commands; CI builds the image natively on x86-64 and arm64 Linux
+  and runs a corpus with it, exactly as a user would.
+- **A uv route to the same end, with no container at all.** `uvx` runs elenctic in a throwaway
+  environment of its own; the README gives the one line.
+
+### Fixed
+
+- **The README said clingcon may have to build from source on Python 3.14.** It no longer does:
+  clingcon ships 3.14 wheels.
+
 ## [0.3.0] - 2026-08-04
 
 The minor bump is deliberate, and this is the release with the most to re-check in it so far.
@@ -643,7 +667,8 @@ This release also makes every in-source comment self-contained for external
 contributors, single-sources the version from `elenctic.__version__`, and runs CI on
 Linux and macOS.
 
-[Unreleased]: https://github.com/GregoryGelfond/elenctic/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/GregoryGelfond/elenctic/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.3.1
 [0.3.0]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.3.0
 [0.2.0]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.2.0
 [0.1.3]: https://github.com/GregoryGelfond/elenctic/releases/tag/v0.1.3

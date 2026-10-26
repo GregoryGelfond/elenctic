@@ -34,8 +34,10 @@ def test_the_release_a_reader_is_told_to_pin_is_this_release() -> None:
     # The one line in the README that goes stale by the project doing nothing wrong: cutting a
     # release moves the version, and the example keeps naming whichever release was current when it
     # was written — which still reads as current, and is the version a reader will actually pin.
-    # Asserted as a set, so a second example added later cannot go stale quietly either.
+    # Asserted as a set, so a second example added later cannot go stale quietly either. The uv and
+    # container lines name a release in git's own spellings (`@tag` and `#tag`), and are read too.
     pinned = set(re.findall(r'tag = "(v[^"]+)"', _README))
+    pinned |= set(re.findall(r"elenctic\.git[@#](v[0-9][^\s\"]*)", _README))
     assert pinned == {f"v{elenctic.__version__}"}, (
         "the README's pin example must name this release; the version is single-sourced from "
         "elenctic.__version__, and cutting a release moves both"

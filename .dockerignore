@@ -1,0 +1,6 @@
+.git/
+.github/
+.pixi/
+tests/
+**/__pycache__/
+dist/

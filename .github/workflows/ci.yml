@@ -22,3 +22,17 @@ jobs:
         with:
           cache: true
       - run: pixi run check  # ruff + ruff-format + mypy --strict + pytest
+
+  image:
+    # The Dockerfile is built where its users run it: natively on both Linux architectures, since
+    # arm64 is what Docker and Podman run on Apple Silicon. The built image then runs a corpus over
+    # a read-only mount, exactly as the README tells a user to.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -t elenctic .
+      - run: docker run --rm -v "$PWD/tests/krbook":/work:ro elenctic encodings/
