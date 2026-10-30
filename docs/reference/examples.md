@@ -130,7 +130,7 @@ Exit code 0.
 
 ```
 $ elenctic -v docs/examples/theory-atoms.lp
-docs/examples/theory-atoms.lp:1:1-1: error: the program has theory atoms, which this checker does not interpret: clingo would ground them and ignore their constraints
+docs/examples/theory-atoms.lp:3:8-17: error: the program has theory atoms, which clingo would ground and ignore; declare `% @elenctic solver clingcon` to check them with clingcon
 0/1 passed, 1 error
 ```
 

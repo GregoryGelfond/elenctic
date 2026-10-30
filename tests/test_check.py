@@ -270,10 +270,13 @@ def test_a_binding_query_that_reads_its_contrary_needs_it_shown_too() -> None:
 def test_a_theory_atom_is_not_checked_as_though_it_were_interpreted() -> None:
     text = "#theory t { c { }; &k/0 : c, any }.\n{p}. &k { 1 }.\n% @expect sat\n"
     (message,) = faults(text)
-    assert message.startswith("1: the program has theory atoms, which this checker does not")
+    assert message.startswith(
+        "2: the program has theory atoms, which clingo would ground and ignore"
+    )
+    assert "`% @elenctic solver clingcon`" in message
     found = check(Program(text, "t.lp"))
     assert isinstance(found, Fault)
-    assert found.diagnostics[0].span == Span("t.lp", Position(1, 1), Position(1, 1))
+    assert found.diagnostics[0].span == Span("t.lp", Position(2, 6), Position(2, 15))
 
 
 def test_an_objective_that_grounds_away_is_no_objective() -> None:

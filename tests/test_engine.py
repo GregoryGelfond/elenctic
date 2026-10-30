@@ -176,6 +176,25 @@ def test_an_unsafe_rule_is_a_fault_of_the_program() -> None:
     assert "unsafe" in found.diagnostics[0].message
 
 
+def test_a_program_is_read_from_a_path_given_as_text_or_as_a_path(tmp_path: Path) -> None:
+    (tmp_path / "main.lp").write_text("p.\n", encoding="utf-8")
+    from_path = Program.read(tmp_path / "main.lp")
+    assert Program.read(str(tmp_path / "main.lp")) == from_path
+    assert from_path.path == tmp_path / "main.lp"
+    assert from_path.source == str(tmp_path / "main.lp")
+
+
+def test_a_theory_atom_with_no_theory_defined_is_said_to_have_none() -> None:
+    fault = ground(Program("p.\n&sum { x } >= 1 :- p.\n", "t.lp"))
+    assert isinstance(fault, Fault)
+    (diagnostic,) = fault.diagnostics
+    assert diagnostic.span.start.line == 2
+    assert diagnostic.message == (
+        "the theory atom `&sum/0` has no `#theory` definition, so it cannot be grounded; "
+        "define the theory, or declare `% @elenctic solver clingcon` for clingcon's"
+    )
+
+
 def test_a_program_read_from_a_file_resolves_its_includes_beside_it(tmp_path: Path) -> None:
     (tmp_path / "inc.lp").write_text("p.\n")
     (tmp_path / "main.lp").write_text('#include "inc.lp".\n')

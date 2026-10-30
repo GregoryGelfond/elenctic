@@ -1,18 +1,29 @@
 """The one place that owns a clingo `Control`: it grounds a program and runs searches over it."""
 
+import re
 import threading
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from functools import lru_cache, reduce
 from operator import attrgetter
+from os import PathLike
 from pathlib import Path
 from time import monotonic
 from typing import Any, Final, Self, override
 
 from clingo import Control, SolveHandle, Symbol, SymbolType
 from clingo import Model as ClingoModel
-from clingo.ast import AST, ASTType, ProgramBuilder, UnaryOperator, parse_files, parse_string
+from clingo.ast import (
+    AST,
+    ASTSequence,
+    ASTType,
+    Location,
+    ProgramBuilder,
+    UnaryOperator,
+    parse_files,
+    parse_string,
+)
 from clingo.backend import Observer
 from clingo.configuration import Configuration
 
@@ -37,7 +48,7 @@ from elenctic.determination import (
     Truncation,
 )
 from elenctic.literals import AnswerSet, Assumption, Literal, Scenario, Signature
-from elenctic.spans import UNLOCATED, Diagnostic, Severity, diagnose
+from elenctic.spans import UNLOCATED, Diagnostic, Position, Severity, Span, diagnose
 
 _SLICE: Final = 0.02
 _REMEMBERED: Final = 2**16
@@ -52,8 +63,9 @@ class Program:
     path: Path | None = None
 
     @classmethod
-    def read(cls, path: Path) -> Self:
-        return cls(path.read_text(encoding="utf-8"), str(path), path)
+    def read(cls, path: str | PathLike[str]) -> Self:
+        file = Path(path)
+        return cls(file.read_text(encoding="utf-8"), str(file), file)
 
 
 class Locus(StrEnum):
@@ -273,11 +285,14 @@ class Shown:
 
 @dataclass(frozen=True, slots=True)
 class Facts:
-    """What the grounded program says about itself, which a contract is checked against."""
+    """What the grounded program says about itself, which a contract is checked against.
+
+    `theory` is where the first statement with a theory atom is, if the program has any.
+    """
 
     shown: Shown = Shown()
     optimizes: bool = False
-    theory: bool = False
+    theory: Span | None = None
 
 
 def _signature(term: AST) -> Signature | None:
@@ -319,7 +334,7 @@ class Grounded:
 
     def __init__(self, control: Control, facts: Facts = Facts()) -> None:  # noqa: B008
         self._control = control
-        self.facts = replace(facts, theory=next(iter(control.theory_atoms), None) is not None)
+        self.facts = facts
         # Read before any search: clingo later drops atoms that assumptions have made false.
         self._literals: Mapping[Symbol, int] = {
             atom.symbol: atom.literal for atom in control.symbolic_atoms
@@ -456,11 +471,46 @@ class Grounded:
         return self._search(scenario, plan, limits.models, cut, _optimized)
 
 
+def _children(node: AST) -> Iterator[AST]:
+    for key in node.child_keys:
+        match getattr(node, key):
+            case AST() as child:
+                yield child
+            case ASTSequence() as children:
+                yield from children
+
+
+def _theoretical(node: AST) -> bool:
+    return node.ast_type is ASTType.TheoryAtom or any(map(_theoretical, _children(node)))
+
+
+def _span(location: Location, program: Program) -> Span:
+    begin, end = location.begin, location.end
+    source = program.source if begin.filename == "<string>" else begin.filename
+    return Span(source, Position(begin.line, begin.column), Position(end.line, end.column))
+
+
+_UNDEFINED: Final = re.compile(r"no definition found for theory atom:\s+(?P<atom>\S+)")
+
+
+def _clarified(diagnostic: Diagnostic) -> Diagnostic:
+    """Say in elenctic's terms what clingo says of a theory atom that has no `#theory`."""
+    if (found := _UNDEFINED.fullmatch(diagnostic.message)) is None:
+        return diagnostic
+    message = (
+        f"the theory atom `&{found['atom']}` has no `#theory` definition, so it cannot be "
+        "grounded; define the theory, or declare `% @elenctic solver clingcon` for clingcon's"
+    )
+    return replace(diagnostic, message=message)
+
+
 def _fault(messages: list[str], error: RuntimeError, program: Program) -> Fault:
     diagnostics = tuple(
-        replace(d, span=replace(d.span, source=program.source))
-        if d.span.source == "<string>"
-        else d
+        _clarified(
+            replace(d, span=replace(d.span, source=program.source))
+            if d.span.source == "<string>"
+            else d
+        )
         for d in diagnose("".join(messages))
     )
     return Fault(Locus.PROGRAM, diagnostics or (Diagnostic(UNLOCATED, Severity.ERROR, str(error)),))
@@ -496,18 +546,24 @@ def ground(program: Program) -> Grounded | Fault:
     objective = _Objective()
     control.register_observer(objective)
     shown: list[Shown] = []
+    theoretical: list[Span] = []
     try:
         with ProgramBuilder(control) as builder:
 
             def add(statement: AST) -> None:
                 shown.append(_shown(statement))
+                if _theoretical(statement):
+                    theoretical.append(_span(statement.location, program))
                 builder.add(statement)
 
             _parse(program, add, log)
         control.ground([("base", [])])
     except RuntimeError as error:
         return _fault(messages, error, program)
-    return Grounded(control, Facts(reduce(Shown.__or__, shown, Shown()), objective.seen))
+    return Grounded(
+        control,
+        Facts(reduce(Shown.__or__, shown, Shown()), objective.seen, next(iter(theoretical), None)),
+    )
 
 
 def solve(

@@ -39,7 +39,7 @@ from elenctic.engine import Fault, Grounded, Interrupt, Limits, Locus, Program, 
 from elenctic.literals import AnswerSet, Literal, Scenario, Signature, Symbol
 from elenctic.query import Answer, answer, bindings
 from elenctic.reader import is_case, parse_contract
-from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.spans import Diagnostic, Severity
 from elenctic.writer import braces, render
 
 NO_LIMITS = Limits()
@@ -307,10 +307,6 @@ def _judge_group(
     return [judge(claim, found) for claim in group]
 
 
-def _at(source: str) -> Span:
-    return Span(source, Position(1, 1), Position(1, 1))
-
-
 def _contraries(reading: Reading) -> frozenset[Signature]:
     """Name the predicates a `no` or `unknown` query reads as contraries off the shown atoms."""
     match reading:
@@ -326,16 +322,20 @@ def _contraries(reading: Reading) -> frozenset[Signature]:
             return frozenset()
 
 
-def _unsound(claims: Iterable[Claim], grounded: Grounded, source: str) -> list[Diagnostic]:
+def _unsound(claims: Iterable[Claim], grounded: Grounded) -> list[Diagnostic]:
     """Find what would make a verdict untrustworthy: a claim asks what the program lacks."""
-    theory = [
-        Diagnostic(
-            _at(source),
-            Severity.ERROR,
-            "the program has theory atoms, which this checker does not interpret: "
-            "clingo would ground them and ignore their constraints",
-        )
-    ] * grounded.facts.theory
+    theory = (
+        []
+        if grounded.facts.theory is None
+        else [
+            Diagnostic(
+                grounded.facts.theory,
+                Severity.ERROR,
+                "the program has theory atoms, which clingo would ground and ignore; "
+                "declare `% @elenctic solver clingcon` to check them with clingcon",
+            )
+        ]
+    )
     return theory + [
         Diagnostic(claim.span, Severity.ERROR, message)
         for claim in claims
@@ -374,7 +374,7 @@ def check(
     grounded = ground(program)
     if isinstance(grounded, Fault):
         return grounded
-    if unsound := _unsound(contract.claims, grounded, program.source):
+    if unsound := _unsound(contract.claims, grounded):
         return Fault(Locus.REQUEST, tuple(unsound))
     judged = {
         claim: finding
