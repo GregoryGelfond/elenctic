@@ -29,6 +29,7 @@ from elenctic.determination import (
     Mode,
     Models,
     Refutation,
+    These,
     Truncation,
     WorldView,
     world_view,
@@ -148,8 +149,13 @@ def _consistent(reading: Reading, found: Consistent[Models]) -> tuple[Verdict, s
 
 
 def _inconsistent(reading: Reading, refutation: Refutation) -> tuple[Verdict, str]:
-    blamed = ", ".join(sorted(str(a.literal) for a in refutation.core))
-    why = f"no answer set satisfies the assumptions ({blamed})" if blamed else "AS(P) = ∅"
+    why = (
+        "no answer set satisfies the assumptions ("
+        + ", ".join(sorted(str(a.literal) for a in refutation.core))
+        + ")"
+        if isinstance(refutation, These)
+        else "AS(P) = ∅"
+    )
     return _agree(reading in (Satisfiable(expected=False), Census(0))), why
 
 

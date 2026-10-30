@@ -11,9 +11,15 @@ from elenctic.determination import (
     Exhausted,
     Inconclusive,
     Inconsistent,
+    Incumbent,
     Mode,
-    Refutation,
+    Model,
+    NoAssumptions,
+    NotThese,
+    Optimum,
+    These,
     Truncation,
+    optimal_view,
     world_view,
 )
 from elenctic.engine import Fault, Interrupt, Limits, Locus, Program, ground, solve
@@ -52,7 +58,7 @@ def test_a_model_carries_what_it_shows_apart_from_what_it_holds() -> None:
 
 
 def test_a_program_with_no_stable_model_is_inconsistent_with_nothing_to_blame() -> None:
-    assert solve(Program("p. :- p.")) == Inconsistent(Refutation(frozenset()))
+    assert solve(Program("p. :- p.")) == Inconsistent(NoAssumptions())
 
 
 def test_a_scenario_that_holds_restricts_the_models() -> None:
@@ -73,13 +79,13 @@ def test_an_unsatisfiable_scenario_is_refuted_by_the_assumptions_that_clash() ->
     clash = frozenset({Assumption(P), Assumption(Q)})
     found = solve(Program("{p;q}. :- p, q."), clash)
     assert isinstance(found, Inconsistent)
-    assert found.refutation.core == clash
+    assert found.refutation == These(clash)
 
 
 def test_assuming_an_atom_no_rule_derives_is_refuted_by_it_alone() -> None:
     absent = Assumption(Literal("absent"))
     found = solve(Program("{p}."), frozenset({Assumption(P), absent}))
-    assert found == Inconsistent(Refutation(frozenset({absent})))
+    assert found == Inconsistent(These(frozenset({absent})))
 
 
 def test_assuming_such_an_atom_false_is_no_restriction() -> None:
@@ -89,7 +95,7 @@ def test_assuming_such_an_atom_false_is_no_restriction() -> None:
 def test_assuming_a_fact_false_is_refuted() -> None:
     fact_denied = Assumption(P, holds=False)
     found = solve(Program("p."), frozenset({fact_denied}))
-    assert found == Inconsistent(Refutation(frozenset({fact_denied})))
+    assert found == Inconsistent(These(frozenset({fact_denied})))
 
 
 def test_a_strongly_negated_literal_can_be_assumed() -> None:
@@ -182,7 +188,7 @@ def test_consequences_are_read_among_the_shown_atoms() -> None:
 def test_consequences_of_an_inconsistent_program_are_inconsistent() -> None:
     grounded = ground(Program("p. :- p."))
     assert not isinstance(grounded, Fault)
-    assert grounded.consequences(Mode.CAUTIOUS) == Inconsistent(Refutation(frozenset()))
+    assert grounded.consequences(Mode.CAUTIOUS) == Inconsistent(NoAssumptions())
 
 
 def test_a_truncated_consequence_search_claims_nothing() -> None:
@@ -247,3 +253,126 @@ def test_a_show_of_numbers_and_strings_selects_no_literal() -> None:
     found = solve(Program('{p}. q. #show 42 : p. #show "s" : p. #show q : p. #show q/0.'))
     assert isinstance(found, Consistent)
     assert {m.shown for m in found.evidence.all} == {frozenset({Literal("q")})}
+
+
+def test_a_refutation_is_minimal_not_merely_sufficient() -> None:
+    scenario = frozenset({Assumption(P), Assumption(Q), Assumption(Literal("r"))})
+    found = solve(Program("{p;q;r}. :- p, q."), scenario)
+    assert found == Inconsistent(These(frozenset({Assumption(P), Assumption(Q)})))
+
+
+def test_assumptions_are_not_to_blame_when_the_program_has_no_model_of_its_own() -> None:
+    assert solve(Program("p. :- p."), frozenset({Assumption(Q)})) == Inconsistent(NotThese())
+
+
+def test_a_refutation_cut_short_by_the_budget_is_not_called_minimal() -> None:
+    grounded = ground(Program("{p;q;r}. :- p, q."))
+    assert not isinstance(grounded, Fault)
+    core = frozenset({Assumption(P), Assumption(Q), Assumption(Literal("r"))})
+    cut = grounded._refutation(core, core, lambda: Truncation.BUDGET)  # noqa: SLF001
+    assert cut == These(core, minimal=False)
+
+
+scenarios = st.frozensets(
+    st.builds(
+        Assumption,
+        st.sampled_from([Literal(name) for name in "abcdef"]),
+        st.booleans(),
+    ),
+    max_size=5,
+)
+
+
+@settings(max_examples=60, deadline=None)
+@given(programs, scenarios)
+def test_every_refutation_clashes_and_every_proper_part_of_it_is_satisfiable(
+    text: str, scenario: frozenset[Assumption]
+) -> None:
+    grounded = ground(Program(text))
+    assert not isinstance(grounded, Fault)
+    found = grounded.solve(scenario)
+    if not isinstance(found, Inconsistent) or not isinstance(found.refutation, These):
+        return
+    core = found.refutation.core
+    assert core <= scenario
+    assert found.refutation.minimal
+    assert isinstance(grounded.solve(core), Inconsistent)
+    assert all(isinstance(grounded.solve(core - {a}), Consistent) for a in core)
+
+
+def test_the_optimum_is_the_cost_of_the_optimal_models_and_those_are_all_found() -> None:
+    grounded = ground(Program("{p;q}. :- not p, not q. #minimize { 1,p : p; 1,q : q }."))
+    assert not isinstance(grounded, Fault)
+    found = grounded.optimize()
+    assert isinstance(found, Consistent)
+    assert found.conclusion is Exhausted.EXHAUSTED
+    assert isinstance(found.evidence, Optimum)
+    assert found.evidence.cost == (1,)
+    assert {m.atoms for m in found.evidence.models.all} == {frozenset({P}), frozenset({Q})}
+
+
+def test_a_maximized_level_is_reported_as_the_minimized_sum_clingo_reports() -> None:
+    grounded = ground(Program("{p;q}. #maximize { 1,p : p; 1,q : q }."))
+    assert not isinstance(grounded, Fault)
+    found = grounded.optimize()
+    assert isinstance(found, Consistent)
+    assert isinstance(found.evidence, Optimum)
+    assert found.evidence.cost == (-2,)
+
+
+def test_levels_are_ordered_highest_priority_first() -> None:
+    grounded = ground(Program("{p;q}. #minimize { 1@2 : p }. #minimize { 1@1 : q }."))
+    assert not isinstance(grounded, Fault)
+    found = grounded.optimize(frozenset({Assumption(Q)}))
+    assert isinstance(found, Consistent)
+    assert isinstance(found.evidence, Optimum)
+    assert found.evidence.cost == (0, 1)
+
+
+def test_with_no_objective_every_model_is_optimal() -> None:
+    grounded = ground(Program("{p;q}."))
+    assert not isinstance(grounded, Fault)
+    found = grounded.optimize()
+    assert isinstance(found, Consistent)
+    assert isinstance(found.evidence, Optimum)
+    assert (found.evidence.cost, len(found.evidence.models.all)) == ((), 4)
+
+
+def test_the_model_cap_of_an_optimization_counts_optimal_models_only() -> None:
+    grounded = ground(Program("{p;q}. :- not p, not q. #minimize { 1,p : p; 1,q : q }."))
+    assert not isinstance(grounded, Fault)
+    found = grounded.optimize(limits=Limits(models=1))
+    assert isinstance(found, Consistent)
+    assert found.conclusion is Truncation.TARGET
+    assert isinstance(found.evidence, Optimum)
+    assert len(found.evidence.models.all) == 1
+
+
+def test_an_optimization_of_an_inconsistent_program_is_inconsistent() -> None:
+    grounded = ground(Program("p. :- p. #minimize { 1 : p }."))
+    assert not isinstance(grounded, Fault)
+    assert grounded.optimize() == Inconsistent(NoAssumptions())
+
+
+def test_an_optimization_under_a_scenario_optimizes_among_the_models_it_admits() -> None:
+    grounded = ground(Program("{p;q}. #minimize { 1@2 : p }. #minimize { 1@1 : q }."))
+    assert not isinstance(grounded, Fault)
+    found = grounded.optimize(frozenset({Assumption(P)}))
+    assert isinstance(found, Consistent)
+    assert isinstance(found.evidence, Optimum)
+    assert found.evidence.cost == (1, 0)
+
+
+def test_an_interrupted_optimization_is_inconclusive() -> None:
+    grounded = ground(Program("{p}. #minimize { 1 : p }."))
+    assert not isinstance(grounded, Fault)
+    stop = Interrupt()
+    stop.pull()
+    assert grounded.optimize(interrupt=stop) == Inconclusive(Truncation.INTERRUPTED)
+
+
+def test_the_unproven_best_so_far_is_an_incumbent_and_closes_no_optimal_view() -> None:
+    found = Consistent(Incumbent(Model(frozenset(), frozenset())), Truncation.BUDGET)
+    assert optimal_view(found) is Truncation.BUDGET
+    with pytest.raises(ValueError, match="proven"):
+        optimal_view(Consistent(Incumbent(Model(frozenset(), frozenset())), Exhausted.EXHAUSTED))

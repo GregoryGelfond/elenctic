@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from clingo import Symbol
+
 from elenctic.literals import AnswerSet, Assumption
 
 
@@ -23,12 +25,41 @@ class Truncation(StrEnum):
 type Conclusion = Exhausted | Truncation
 
 
+class Range(StrEnum):
+    """The model set a value ranges over: every stable model, or those optimal."""
+
+    ALL = "all"
+    OPTIMAL = "optimal"
+
+
+type Cost = tuple[int, ...]
+"""The value of each objective level, highest priority first, as the minimized sum clingo reports:
+`#maximize { w }` is `#minimize { -w }`, so a maximized level is negated."""
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class Valuation:
+    """A theory variable and the integer a model gives it."""
+
+    variable: Symbol
+    value: int
+
+
+type TheoryAssignment = frozenset[Valuation]
+"""What a constraint theory assigns in a model, kept apart from the atoms, which are literals."""
+
+
 @dataclass(frozen=True, slots=True)
 class Model:
-    """A stable model, as every atom of it and as the atoms `#show` selects."""
+    """A stable model: every atom of it, the atoms `#show` selects, its theory assignment and cost.
+
+    `assignment` is empty without a theory and `cost` without an objective.
+    """
 
     atoms: AnswerSet
     shown: AnswerSet
+    assignment: TheoryAssignment = frozenset()
+    cost: Cost = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,13 +85,28 @@ class Consequences:
 
     mode: Mode
     literals: AnswerSet
+    over: Range = Range.ALL
 
 
 @dataclass(frozen=True, slots=True)
-class Refutation:
-    """Assumptions that no stable model satisfies; empty when the program has none at all."""
+class These:
+    """These assumptions, no fewer when `minimal`, admit no stable model."""
 
     core: frozenset[Assumption]
+    minimal: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class NotThese:
+    """The program has no stable model whatever is assumed, and something is assumed."""
+
+
+@dataclass(frozen=True, slots=True)
+class NoAssumptions:
+    """The program has no stable model, and nothing is assumed."""
+
+
+type Refutation = These | NotThese | NoAssumptions
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,10 +135,29 @@ type Determination[E] = Consistent[E] | Inconsistent | Inconclusive
 
 
 @dataclass(frozen=True, slots=True)
+class Optimum:
+    """A proven optimum: its cost, and the optimal models found (all, if exhausted)."""
+
+    cost: Cost
+    models: Models
+
+
+@dataclass(frozen=True, slots=True)
+class Incumbent:
+    """The best model found before the search was cut: not proven optimal."""
+
+    model: Model
+
+
+type Optimized = Optimum | Incumbent
+
+
+@dataclass(frozen=True, slots=True)
 class WorldView:
     """The answer sets of a program, all of them: only an exhausted search yields one."""
 
     members: frozenset[AnswerSet]
+    over: Range = Range.ALL
 
     def __post_init__(self) -> None:
         if not self.members:
@@ -116,3 +181,14 @@ def world_view(found: Consistent[Models], *, shown: bool = True) -> WorldView | 
             return WorldView(frozenset(m.shown if shown else m.atoms for m in found.evidence.all))
         case Truncation() as cut:
             return cut
+
+
+def optimal_view(found: Consistent[Optimized]) -> WorldView | Truncation:
+    """Close a proven optimum into the world view of its optimal models, or say what cut it."""
+    match found.evidence, found.conclusion:
+        case Optimum(_, models), Exhausted.EXHAUSTED:
+            return WorldView(frozenset(m.shown for m in models.all), Range.OPTIMAL)
+        case _, Truncation() as cut:
+            return cut
+    message = "a search that exhausted its space has proven its optimum"
+    raise ValueError(message)
