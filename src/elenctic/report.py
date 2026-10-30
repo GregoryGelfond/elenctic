@@ -44,6 +44,16 @@ def _is_unordered(value: object) -> TypeIs[frozenset[object] | set[object]]:
     return isinstance(value, frozenset | set)
 
 
+def _record(value: object) -> Json:
+    """Encode a dataclass as an object tagged with its type's name; nothing else is encodable."""
+    if not is_dataclass(value) or isinstance(value, type):
+        message = f"cannot encode {type(value).__name__}"
+        raise TypeError(message)
+    return {"kind": type(value).__name__} | {
+        field.name: encode(getattr(value, field.name)) for field in fields(value)
+    }
+
+
 def encode(value: object) -> Json:
     """Encode a result value; a dataclass becomes an object tagged with its type's name."""
     match value:
@@ -57,13 +67,8 @@ def encode(value: object) -> Json:
             return [encode(item) for item in value]
         case _ if _is_unordered(value):
             return sorted((encode(item) for item in value), key=json.dumps)
-        case _ if is_dataclass(value) and not isinstance(value, type):
-            return {"kind": type(value).__name__} | {
-                field.name: encode(getattr(value, field.name)) for field in fields(value)
-            }
         case _:
-            message = f"cannot encode {type(value).__name__}"
-            raise TypeError(message)
+            return _record(value)
 
 
 def to_json(run: Run) -> str:

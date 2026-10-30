@@ -20,13 +20,17 @@ def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symb
 def _bindings(
     raw: tuple[Symbol, ...], arity: int, where: Span
 ) -> Parsed[tuple[tuple[Symbol, ...], ...]]:
+    shaped = _shaped(raw, arity)
+    return failure(where, f"expected bindings of {arity} terms each") if shaped is None else shaped
+
+
+def _shaped(raw: tuple[Symbol, ...], arity: int) -> tuple[tuple[Symbol, ...], ...] | None:
+    """Return the terms as rows of `arity` terms, or `None` if they are not written as such."""
     if arity == 1:
         return tuple((element,) for element in raw)
     if all(_is_tuple(element) and len(element.arguments) == arity for element in raw):
         return tuple(tuple(element.arguments) for element in raw)
-    if len(raw) == arity and not any(_is_tuple(element) for element in raw):
-        return (raw,)
-    return failure(where, f"expected bindings of {arity} terms each")
+    return (raw,) if len(raw) == arity and not any(map(_is_tuple, raw)) else None
 
 
 def _is_tuple(term: Symbol) -> bool:

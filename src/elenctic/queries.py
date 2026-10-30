@@ -7,7 +7,7 @@ from elenctic.operands import failure
 from elenctic.query import All, Answer
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Parsed
-from elenctic.syntax import Item, read_literals
+from elenctic.syntax import Item, positive, read_literals
 from elenctic.tags import Block, Element
 
 
@@ -45,12 +45,12 @@ def query(block: Block, head: list[Element]) -> Parsed[Reading]:
 def _asks(
     block: Block, answer: Answer, items: tuple[Item, ...], element: Element
 ) -> Parsed[Reading]:
-    literals = [item.pattern.as_literal() for item in items if not item.negated]
-    if not items or None in literals or len(literals) != len(items):
+    grounds = positive(items)
+    if not grounds:
         return failure(
             block, "a query with variables states its bindings: `{ q(X) } = { ... }`", element
         )
-    return Asks(answer, All(tuple(lit for lit in literals if lit)))
+    return Asks(answer, All(tuple(grounds)))
 
 
 def _binds(

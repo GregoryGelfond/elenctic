@@ -39,7 +39,3 @@ def test_a_union_takes_the_rows_of_either_whatever_the_order_of_the_columns() ->
 def test_the_union_of_relations_over_different_variables_is_refused() -> None:
     with pytest.raises(ValueError, match="cannot unite"):
         relation((X,), (1,)).union(relation((Y,), (1,)))
-
-
-def test_each_row_is_the_values_its_columns_take() -> None:
-    assert relation((X, Y), (1, 2)).assignments() == [{X: Number(1), Y: Number(2)}]

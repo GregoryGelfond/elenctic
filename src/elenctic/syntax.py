@@ -9,6 +9,7 @@ from clingo.ast import AST, ASTType, ComparisonOperator, Sign
 from elenctic import tree
 from elenctic.body import failure, place, read_body, span_of
 from elenctic.determination import Valuation
+from elenctic.literals import Literal
 from elenctic.normalize import NotAPattern, evaluate, function_of, normalize
 from elenctic.patterns import Pattern
 from elenctic.spans import Diagnostic, Parsed, Span
@@ -50,6 +51,18 @@ def _item(where: Span, literal: AST) -> Parsed[Item]:
     if pattern is None or sign == Sign.DoubleNegation:
         return failure(where, "expected a literal", span)
     return Item(pattern, sign == Sign.Negation, span)
+
+
+def literals(items: Iterable[Item]) -> list[Literal] | None:
+    """Return the literals the items spell, or `None` unless every one is ground."""
+    found = [item.pattern.as_literal() for item in items]
+    return None if None in found else [lit for lit in found if lit is not None]
+
+
+def positive(items: Iterable[Item]) -> list[Literal] | None:
+    """Return the literals the items spell, or `None` unless all are ground and without `not`."""
+    kept = tuple(items)
+    return None if any(item.negated for item in kept) else literals(kept)
 
 
 def read_literals(text: str, where: Span) -> Parsed[tuple[Item, ...]]:

@@ -1,5 +1,6 @@
 """Relations: the values that variables take together, as rows under named columns."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from clingo import Symbol
@@ -7,6 +8,11 @@ from clingo import Symbol
 from elenctic.terms import Variable
 
 type Row = tuple[Symbol, ...]
+
+
+def _pick(row: Row, at: Iterable[int]) -> Row:
+    """Return the values of `row` at the positions `at`."""
+    return tuple(row[i] for i in at)
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,11 +24,15 @@ class Relation:
 
     def grouped(self, by: tuple[Variable, ...]) -> dict[Row, list[Row]]:
         """Group the rows by what they hold in the columns `by`."""
-        at = [self.columns.index(variable) for variable in by]
+        at = self.indices(by)
         groups: dict[Row, list[Row]] = {}
         for row in self.rows:
-            groups.setdefault(tuple(row[i] for i in at), []).append(row)
+            groups.setdefault(_pick(row, at), []).append(row)
         return groups
+
+    def indices(self, variables: Iterable[Variable]) -> list[int]:
+        """Return where each of `variables` is among the columns."""
+        return [self.columns.index(variable) for variable in variables]
 
     def join(self, other: Relation) -> Relation:
         """Return the rows of both that agree wherever they share a column, over all columns.
@@ -33,14 +43,13 @@ class Relation:
         shared = tuple(c for c in self.columns if c in other.columns)
         extra = tuple(c for c in other.columns if c not in self.columns)
         groups = other.grouped(shared)
-        at = [self.columns.index(variable) for variable in shared]
-        beyond = [other.columns.index(variable) for variable in extra]
+        at, beyond = self.indices(shared), other.indices(extra)
         return Relation(
             (*self.columns, *extra),
             frozenset(
-                (*row, *(match[i] for i in beyond))
+                (*row, *_pick(match, beyond))
                 for row in self.rows
-                for match in groups.get(tuple(row[i] for i in at), ())
+                for match in groups.get(_pick(row, at), ())
             ),
         )
 
@@ -49,11 +58,5 @@ class Relation:
         if set(self.columns) != set(other.columns):
             message = f"cannot unite columns {self.columns} with {other.columns}"
             raise ValueError(message)
-        at = [other.columns.index(variable) for variable in self.columns]
-        return Relation(
-            self.columns, self.rows | frozenset(tuple(row[i] for i in at) for row in other.rows)
-        )
-
-    def assignments(self) -> list[dict[Variable, Symbol]]:
-        """Return each row as the values its columns take."""
-        return [dict(zip(self.columns, row, strict=True)) for row in self.rows]
+        at = other.indices(self.columns)
+        return Relation(self.columns, self.rows | frozenset(_pick(row, at) for row in other.rows))

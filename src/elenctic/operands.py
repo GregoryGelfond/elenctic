@@ -3,7 +3,7 @@
 from elenctic.determination import Assignment, Range
 from elenctic.literals import AnswerSet, Assumption, Scenario
 from elenctic.spans import Diagnostic, Parsed, Severity
-from elenctic.syntax import read_literals, read_valuations
+from elenctic.syntax import literals, positive, read_literals, read_valuations
 from elenctic.tags import Block, Element
 
 
@@ -17,22 +17,25 @@ def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[A
     items = read_literals(element.text, where) if element.text.strip() else ()
     if isinstance(items, Diagnostic):
         return items
-    grounds = [None if item.negated else item.pattern.as_literal() for item in items]
-    if None in grounds:
+    grounds = positive(items)
+    if grounds is None:
         return failure(block, "expected ground literals, without `not`", element)
     if nonempty and not grounds:
         return failure(block, "expected at least one literal", element)
-    return frozenset(lit for lit in grounds if lit is not None)
+    return frozenset(grounds)
 
 
 def assumptions(block: Block, element: Element) -> Parsed[Scenario]:
     items = read_literals(element.text, block.span(element.start, element.end))
     if isinstance(items, Diagnostic):
         return items
-    assumed = [(item.pattern.as_literal(), not item.negated) for item in items]
-    if any(literal is None for literal, _ in assumed):
+    grounds = literals(items)
+    if grounds is None:
         return failure(block, "an assumption is a ground literal", element)
-    return frozenset(Assumption(literal, holds) for literal, holds in assumed if literal)
+    return frozenset(
+        Assumption(literal, holds=not item.negated)
+        for literal, item in zip(grounds, items, strict=True)
+    )
 
 
 def model_set(head: list[Element]) -> tuple[Range, list[Element]]:

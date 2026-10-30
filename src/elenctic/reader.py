@@ -3,8 +3,9 @@
 from collections.abc import Callable
 from typing import Final
 
-from elenctic.contract import Claim, Contract, Reading, Solver
+from elenctic.contract import Claim, Contract, Reading
 from elenctic.determination import Range
+from elenctic.directives import declared
 from elenctic.literals import Scenario
 from elenctic.operands import after, assumptions, failure
 from elenctic.queries import query
@@ -53,35 +54,18 @@ def _claim(block: Block) -> Parsed[Claim] | None:
     return reading if isinstance(reading, Diagnostic) else Claim(reading, scenario, block.whole)
 
 
-def _solver(block: Block) -> Parsed[Solver]:
-    """Read `@elenctic solver NAME`, the one directive."""
-    words = [e.text for e in elements(block.payload) or [] if not e.braced]
-    known = ", ".join(Solver)
-    match words:
-        case ["solver", name] if name in Solver:
-            return Solver(name)
-        case ["solver", _]:
-            return failure(block, f"unknown solver; known: {known}")
-        case ["solver"]:
-            return failure(block, f"`@elenctic solver` needs a solver name; known: {known}")
-        case _:
-            return failure(block, "unknown `@elenctic` directive; known: `solver`")
-
-
-def _declared(blocks: list[Block]) -> tuple[Solver, list[Diagnostic]]:
-    """Find the solver a contract declares (clingo if none) and what is wrong with the declaring."""
-    read = [(block, _solver(block)) for block in blocks if block.tag == "elenctic"]
-    problems = [r for _, r in read if isinstance(r, Diagnostic)]
-    solvers = [(block, r) for block, r in read if isinstance(r, Solver)]
-    extra = [failure(block, "at most one `@elenctic solver`") for block, _ in solvers[1:]]
-    return (solvers[0][1] if solvers else Solver.CLINGO), problems + extra
+def _claims(each: list[Block]) -> tuple[list[Claim], list[Diagnostic]]:
+    """Read each block: the claims that read, and the diagnostics of those that do not."""
+    parsed = [_claim(block) for block in each]
+    return (
+        [c for c in parsed if isinstance(c, Claim)],
+        [c for c in parsed if isinstance(c, Diagnostic)],
+    )
 
 
 def parse_contract(text: str, source: str = "<string>") -> Contract:
     """Read each tag of `text`: a claim for every one that reads, a diagnostic for the rest."""
     each = blocks(text, source)
-    parsed = [(block, _claim(block)) for block in each]
-    claims = [c for _, c in parsed if isinstance(c, Claim)]
-    problems = [c for _, c in parsed if isinstance(c, Diagnostic)]
-    solver, misdeclared = _declared(each)
+    claims, problems = _claims(each)
+    solver, misdeclared = declared(each)
     return Contract(tuple(claims), (*problems, *misdeclared, *wellformed(claims, source)), solver)
