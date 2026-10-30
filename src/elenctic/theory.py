@@ -1,14 +1,14 @@
 """The constraint theory a search runs with: none, or clingcon, an optional dependency."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from importlib import import_module
-from typing import Any, Self, override
+from collections.abc import Callable, Iterable
+from typing import Protocol, Self, override
 
 from clingo import Control, Model
 from clingo.ast import AST
 
 from elenctic.determination import Assignment, Valuation
+from elenctic.literals import Symbol
 
 
 class Theory(ABC):
@@ -51,19 +51,30 @@ class Plain(Theory):
         return frozenset()
 
 
+class _Constraints(Protocol):
+    """The part of `clingcon.ClingconTheory` that elenctic drives."""
+
+    def register(self, control: Control, /) -> None: ...
+    def rewrite_ast(self, statement: AST, add: Callable[[AST], None], /) -> None: ...
+    def prepare(self, control: Control, /) -> None: ...
+    def on_model(self, model: Model, /) -> None: ...
+    def assignment(self, thread_id: int, /) -> Iterable[tuple[Symbol, int | float | Symbol]]: ...
+
+
 class Clingcon(Theory):
     """Integer constraints through clingcon, whose assignment of each variable a model carries."""
 
-    def __init__(self, theory: Any) -> None:  # noqa: ANN401
+    def __init__(self, theory: _Constraints) -> None:
         self._theory = theory
 
     @classmethod
     def load(cls) -> Self | None:
         """Make the theory, or `None` when clingcon is not installed."""
         try:
-            return cls(import_module("clingcon").ClingconTheory())
+            from clingcon import ClingconTheory  # noqa: PLC0415
         except ImportError:
             return None
+        return cls(ClingconTheory())  # type: ignore[no-untyped-call]
 
     @override
     def register(self, control: Control) -> None:
@@ -81,5 +92,7 @@ class Clingcon(Theory):
     def assignment(self, model: Model) -> Assignment:
         self._theory.on_model(model)
         return frozenset(
-            Valuation(name, value) for name, value in self._theory.assignment(model.thread_id)
+            Valuation(name, value)
+            for name, value in self._theory.assignment(model.thread_id)
+            if isinstance(value, int)
         )

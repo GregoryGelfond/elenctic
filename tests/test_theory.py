@@ -1,9 +1,9 @@
+import sys
 from pathlib import Path
-from typing import NoReturn
 
 import pytest
+from clingo.ast import AST, parse_string
 
-from elenctic import theory
 from elenctic.check import check
 from elenctic.cli import main
 from elenctic.contract import Solver
@@ -19,16 +19,15 @@ ABSENT = (
 
 @pytest.fixture
 def without_clingcon(monkeypatch: pytest.MonkeyPatch) -> None:
-    def missing(name: str) -> NoReturn:
-        raise ModuleNotFoundError(name)
-
-    monkeypatch.setattr(theory, "import_module", missing)
+    monkeypatch.setitem(sys.modules, "clingcon", None)
 
 
 def test_no_theory_adds_a_statement_as_written_and_assigns_nothing() -> None:
-    added: list[str] = []
-    Plain().rewrite("statement", added.append)  # type: ignore[arg-type]
-    assert added == ["statement"]
+    statements: list[AST] = []
+    parse_string("p.", statements.append)
+    added: list[AST] = []
+    Plain().rewrite(statements[1], added.append)
+    assert added == statements[1:]
 
 
 def test_clingcon_is_made_when_installed() -> None:
