@@ -11,6 +11,7 @@ from aspnext.contract import (
     Witness,
     is_case,
     parse_contract,
+    render,
 )
 from aspnext.determination import Mode
 from aspnext.literals import Assumption, Literal, Pattern, Variable
@@ -132,3 +133,20 @@ def test_a_contract_needs_exactly_one_expect_and_unsat_admits_no_model_claim() -
     assert "no model" in clash[0]
     assert not messages("% @expect unsat", "% @count 0")
     assert not messages("% @expect unsat", "% @cautious { p } assuming { q }")
+
+
+def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
+    lines = [
+        "@expect sat",
+        "@count 3",
+        "@model { -p, q(1) }",
+        "@cautious { p } assuming { not r, s }",
+        '@brave { q("a,b") }',
+        "@query unknown { p(1), -q }",
+        "@query yes { p(X,b) } = { 1, 2 }",
+        "@query no { p(X,Y) } = { (a,1), (b,2) }",
+        "@expect unsat assuming { p }",
+    ]
+    contract = parse(*(f"% {line}" for line in lines))
+    assert not contract.diagnostics
+    assert [render(c) for c in contract.claims] == lines

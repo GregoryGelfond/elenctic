@@ -63,6 +63,12 @@ class Pattern:
     def contrary(self) -> Pattern:
         return Pattern(self.name, self.arguments, not self.positive)
 
+    @override
+    def __str__(self) -> str:
+        sign = "" if self.positive else "-"
+        arguments = ",".join(a.name if isinstance(a, Variable) else str(a) for a in self.arguments)
+        return f"{sign}{self.name}({arguments})" if arguments else f"{sign}{self.name}"
+
     def as_literal(self) -> Literal | None:
         """Return the literal this pattern is, if it has no variables."""
         symbols = tuple(a for a in self.arguments if isinstance(a, Symbol))

@@ -1,14 +1,14 @@
 """The contract: claims about a program, written as `% @tag` comment lines inside it."""
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Final
 
 from clingo import Symbol
 
 from aspnext.determination import Mode
-from aspnext.literals import AnswerSet, Assumption, Pattern, Scenario
+from aspnext.literals import AnswerSet, Assumption, Literal, Pattern, Scenario
 from aspnext.query import All, Answer
 from aspnext.spans import Diagnostic, Position, Severity, Span
 from aspnext.syntax import Item, Parsed, read_bindings, read_literals
@@ -376,3 +376,38 @@ def parse_contract(text: str, source: str = "<string>") -> Contract:
     claims = [c for _, c in parsed if isinstance(c, Claim)]
     problems = [c for _, c in parsed if isinstance(c, Diagnostic)]
     return Contract(tuple(claims), (*problems, *_wellformed(claims, source)))
+
+
+def braces(literals: Iterable[Literal]) -> str:
+    """Write literals as the `{ ... }` the contract syntax uses, in a fixed order."""
+    return "{ " + ", ".join(map(str, sorted(literals))) + " }"
+
+
+def _bindings(pattern: Pattern, found: frozenset[tuple[Symbol, ...]]) -> str:
+    rows = sorted(",".join(map(str, row)) for row in found)
+    return (
+        "{ " + ", ".join(rows if len(pattern.variables) == 1 else [f"({r})" for r in rows]) + " }"
+    )
+
+
+def _reading(reading: Reading) -> str:
+    match reading:
+        case Satisfiable(expected):
+            return f"@expect {'sat' if expected else 'unsat'}"
+        case Census(count):
+            return f"@count {count}"
+        case Witness(literals):
+            return f"@model {braces(literals)}"
+        case Entails(mode, literals):
+            return f"@{mode} {braces(literals)}"
+        case Asks(answer, All(parts)):
+            return f"@query {answer} {braces(p for p in parts if isinstance(p, Literal))}"
+        case Binds(answer, pattern, found):
+            return f"@query {answer} {{ {pattern} }} = {_bindings(pattern, found)}"
+
+
+def render(claim: Claim) -> str:
+    """Write a claim as the tag line that reads back to it."""
+    assumed = sorted(claim.scenario, key=lambda a: (a.literal, a.holds))
+    assuming = ", ".join(("" if a.holds else "not ") + str(a.literal) for a in assumed)
+    return _reading(claim.reading) + (f" assuming {{ {assuming} }}" if assumed else "")
