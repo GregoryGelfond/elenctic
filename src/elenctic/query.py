@@ -91,6 +91,10 @@ class Bindings:
     no: frozenset[tuple[Symbol, ...]]
     unknown: frozenset[tuple[Symbol, ...]]
 
+    def giving(self, answer: Answer) -> frozenset[tuple[Symbol, ...]]:
+        """Return the values that give `answer`."""
+        return {Answer.YES: self.yes, Answer.NO: self.no, Answer.UNKNOWN: self.unknown}[answer]
+
 
 def _closed(pattern: Pattern) -> Literal:
     literal = pattern.as_literal()

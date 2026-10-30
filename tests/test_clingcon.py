@@ -3,12 +3,13 @@ from pathlib import Path
 import pytest
 from clingo import Function
 
-from elenctic.check import Report, Verdict, check
+from elenctic.check import check
 from elenctic.cli import main
 from elenctic.contract import Solver
 from elenctic.determination import Consistent, Exhausted, Optimum, Valuation
 from elenctic.engine import ground, solve
 from elenctic.program import Fault, Program
+from elenctic.verdicts import Report, Verdict
 
 pytest.importorskip("clingcon")
 

@@ -4,10 +4,10 @@ import json
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 
-from elenctic.check import Finding, Report, Verdict
 from elenctic.literals import Literal, Symbol
 from elenctic.patterns import Pattern
 from elenctic.program import Fault
+from elenctic.verdicts import Finding, Report, Verdict
 
 SCHEMA = 1
 

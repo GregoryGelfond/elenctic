@@ -5,8 +5,9 @@ from pathlib import Path
 import pytest
 from differential import SHOW, SHOWN_POSITIVE, _case, main
 
-from elenctic.check import Report, check
+from elenctic.check import check
 from elenctic.program import Fault, Program
+from elenctic.verdicts import Report
 
 # A stand-in for elenctic 0.3: it knows no claims, passes every file and faults the first.
 LEGACY = textwrap.dedent(

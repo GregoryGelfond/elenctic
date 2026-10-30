@@ -2,9 +2,10 @@ import json
 
 import pytest
 
-from elenctic.check import Report, check
+from elenctic.check import check
 from elenctic.program import Fault, Program
 from elenctic.report import SCHEMA, Entry, Run, encode, to_json, to_text
+from elenctic.verdicts import Report
 
 PASSING = "p.\n% @expect sat\n% @cautious { p }\n"
 FAILING = "p.\n% @expect sat\n% @cautious { q }\n"

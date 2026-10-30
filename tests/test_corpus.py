@@ -2,8 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from elenctic.check import Report, Verdict, check
+from elenctic.check import check
 from elenctic.program import Program
+from elenctic.verdicts import Report, Verdict
 
 CORPUS = sorted(Path(__file__).parent.glob("corpus/*.lp"))
 

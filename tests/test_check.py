@@ -1,13 +1,15 @@
 import pytest
 
-from elenctic.check import Finding, Report, Verdict, check, judge
+from elenctic.check import check
 from elenctic.contract import Claim, Costs, Witness
 from elenctic.determination import Consistent, Inconsistent, Incumbent, Model, These, Truncation
 from elenctic.engine import ground
+from elenctic.judge import judge
 from elenctic.literals import Assumption, Literal
 from elenctic.program import Fault, Locus, Program
 from elenctic.search import UNLIMITED, Limits
 from elenctic.spans import Position, Span
+from elenctic.verdicts import Finding, Report, Verdict
 
 DRINKS = """
 1 { tea; coffee } 1.
