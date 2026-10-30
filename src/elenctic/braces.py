@@ -31,7 +31,7 @@ def scan(text: str, state: Scan) -> Scan:
     return reduce(_step, text, state)
 
 
-def closing_brace(payload: str, opened: int) -> int:
-    """Return the offset of the brace closing_brace the one at `opened`, or -1."""
+def closing_brace(payload: str, opened: int) -> int | None:
+    """Return the offset of the brace that closes the one at `opened`, or `None` if none does."""
     states = accumulate(payload[opened:], _step, initial=OUTSIDE)
-    return next((opened + i - 1 for i, state in enumerate(states) if i and state.depth == 0), -1)
+    return next((opened + i - 1 for i, state in enumerate(states) if i and state.depth == 0), None)

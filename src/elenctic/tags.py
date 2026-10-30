@@ -120,7 +120,7 @@ def elements(payload: str) -> list[Element] | None:
         if token["open"] is None:
             found.append(Element(token["word"], token.start(), braced=False))
             at = token.end()
-        elif (end := closing_brace(payload, token.start())) < 0:
+        elif (end := closing_brace(payload, token.start())) is None:
             return None
         else:
             found.append(Element(payload[token.end() : end], token.end(), braced=True))

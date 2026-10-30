@@ -124,8 +124,7 @@ def _instance(query: Query, values: Substitution) -> Query:
         case Literal():
             return query
         case Pattern():
-            grounded = query.apply(values)
-            return grounded.as_literal() or grounded
+            return _closed(query.apply(values))
         case All(parts):
             return All(tuple(_instance(part, values) for part in parts))
         case Any(parts):

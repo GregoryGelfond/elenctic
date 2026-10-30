@@ -136,6 +136,12 @@ def test_a_budget_spent_before_any_model_is_inconclusive_not_inconsistent() -> N
     assert solve(Program("{p;q}."), limits=Limits(seconds=0)) == Inconclusive(Truncation.BUDGET)
 
 
+def test_a_budget_is_spent_at_the_very_moment_it_runs_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(search, "monotonic", lambda: 100.0)
+    cut = Request(frozenset(), Limits(seconds=0)).cutter()
+    assert cut() is Truncation.BUDGET
+
+
 def test_an_interrupt_pulled_from_another_thread_ends_the_search() -> None:
     interrupt = Interrupt()
     threading.Timer(0.1, interrupt.pull).start()
