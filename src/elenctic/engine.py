@@ -484,6 +484,13 @@ def _theoretical(node: AST) -> bool:
     return node.ast_type is ASTType.TheoryAtom or any(map(_theoretical, _children(node)))
 
 
+def _theory_at(control: Control, statements: list[AST], program: Program) -> Span | None:
+    """Locate the first statement with a theory atom, if grounding left any theory atom."""
+    if next(iter(control.theory_atoms), None) is None:
+        return None
+    return _span(next(s for s in statements if _theoretical(s)).location, program)
+
+
 def _span(location: Location, program: Program) -> Span:
     begin, end = location.begin, location.end
     source = program.source if begin.filename == "<string>" else begin.filename
@@ -546,14 +553,13 @@ def ground(program: Program) -> Grounded | Fault:
     objective = _Objective()
     control.register_observer(objective)
     shown: list[Shown] = []
-    theoretical: list[Span] = []
+    statements: list[AST] = []
     try:
         with ProgramBuilder(control) as builder:
 
             def add(statement: AST) -> None:
                 shown.append(_shown(statement))
-                if _theoretical(statement):
-                    theoretical.append(_span(statement.location, program))
+                statements.append(statement)
                 builder.add(statement)
 
             _parse(program, add, log)
@@ -562,7 +568,11 @@ def ground(program: Program) -> Grounded | Fault:
         return _fault(messages, error, program)
     return Grounded(
         control,
-        Facts(reduce(Shown.__or__, shown, Shown()), objective.seen, next(iter(theoretical), None)),
+        Facts(
+            reduce(Shown.__or__, shown, Shown()),
+            objective.seen,
+            _theory_at(control, statements, program),
+        ),
     )
 
 
