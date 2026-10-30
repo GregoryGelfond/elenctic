@@ -21,6 +21,11 @@ class Pattern:
     arguments: tuple[Term, ...]
     positive: bool = True
 
+    @classmethod
+    def of(cls, literal: Literal) -> Pattern:
+        """Return the pattern with no variables that is `literal`."""
+        return cls(literal.name, literal.arguments, literal.positive)
+
     @property
     def variables(self) -> tuple[Variable, ...]:
         """The distinct named variables, in order of first occurrence."""
