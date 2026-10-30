@@ -23,7 +23,7 @@ Check it:
 aspnext drinks.lp
 ```
 
-Nothing is listed when every claim passes; the last line says how many files passed. Add `-v` to
+When every claim passes the output is `1/1 passed`. Add `-v` to
 see each claim with what was found. Change `@count 2` to `@count 3` and run again: the claim now
 fails, and the line says how many distinct answer sets were shown.
 
