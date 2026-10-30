@@ -6,6 +6,11 @@ from typing import Final, NamedTuple, override
 
 from clingo import Function, Symbol, SymbolType, parse_term
 
+__all__ = [  # `Symbol` is re-exported: the kernel meets clingo's terms only through this module
+    "ANONYMOUS", "AnswerSet", "Assumption", "Literal", "Pattern", "Scenario", "Signature",
+    "Symbol", "Variable",
+]  # fmt: skip
+
 ANONYMOUS: Final = "_"
 
 

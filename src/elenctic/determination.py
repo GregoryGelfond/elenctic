@@ -3,9 +3,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from clingo import Symbol
-
-from elenctic.literals import AnswerSet, Assumption
+from elenctic.literals import AnswerSet, Assumption, Symbol
 
 
 class Exhausted(StrEnum):

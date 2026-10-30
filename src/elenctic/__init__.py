@@ -1,7 +1,7 @@
 """Contracts and queries for answer set programs."""
 
 from elenctic.check import Finding, Report, Verdict, check, judge
-from elenctic.contract import Claim, Contract, Costs, parse_contract, render
+from elenctic.contract import Claim, Contract, Costs
 from elenctic.determination import (
     Conclusion,
     Consequences,
@@ -49,7 +49,9 @@ from elenctic.query import (
     evaluate,
     singleton_answer,
 )
+from elenctic.reader import parse_contract
 from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.writer import render
 
 __all__ = [
     "Answer",

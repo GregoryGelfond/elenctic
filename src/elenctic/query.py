@@ -3,10 +3,8 @@
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
-from clingo import Symbol
-
 from elenctic.determination import WorldView
-from elenctic.literals import AnswerSet, Literal, Pattern
+from elenctic.literals import AnswerSet, Literal, Pattern, Symbol
 
 
 class Truth(IntEnum):

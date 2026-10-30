@@ -11,18 +11,13 @@ from elenctic.contract import (
     Entails,
     Satisfiable,
     Witness,
-    _Element,
-    _elements,
-    _Scan,
-    _scan,
-    is_case,
-    parse_contract,
-    render,
 )
 from elenctic.determination import Mode, Range
 from elenctic.literals import Assumption, Literal, Pattern, Variable
 from elenctic.query import All, Answer
+from elenctic.reader import _Element, _elements, _Scan, _scan, is_case, parse_contract
 from elenctic.spans import Diagnostic, Position, Span
+from elenctic.writer import render
 
 X = Variable("X")
 P = Position

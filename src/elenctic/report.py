@@ -4,11 +4,9 @@ import json
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 
-from clingo import Symbol
-
 from elenctic.check import Finding, Report, Verdict
 from elenctic.engine import Fault
-from elenctic.literals import Literal, Pattern
+from elenctic.literals import Literal, Pattern, Symbol
 
 SCHEMA = 1
 

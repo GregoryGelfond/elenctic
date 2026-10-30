@@ -4,8 +4,6 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
-from clingo import Symbol
-
 from elenctic.contract import (
     Asks,
     Binds,
@@ -16,10 +14,6 @@ from elenctic.contract import (
     Reading,
     Satisfiable,
     Witness,
-    braces,
-    is_case,
-    parse_contract,
-    render,
 )
 from elenctic.determination import (
     Consequences,
@@ -42,9 +36,11 @@ from elenctic.determination import (
     world_view,
 )
 from elenctic.engine import Fault, Grounded, Interrupt, Limits, Locus, Program, ground
-from elenctic.literals import AnswerSet, Literal, Scenario, Signature
+from elenctic.literals import AnswerSet, Literal, Scenario, Signature, Symbol
 from elenctic.query import Answer, answer, bindings
+from elenctic.reader import is_case, parse_contract
 from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.writer import braces, render
 
 NO_LIMITS = Limits()
 
