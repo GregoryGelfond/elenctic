@@ -3,7 +3,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from elenctic.determination import WorldView
-from elenctic.literals import AnswerSet, Literal, Pattern, Variable
+from elenctic.literals import AnswerSet, Literal
+from elenctic.patterns import Pattern
 from elenctic.query import (
     All,
     Answer,
@@ -16,6 +17,7 @@ from elenctic.query import (
     evaluate,
     singleton_answer,
 )
+from elenctic.terms import Variable
 
 P, Q, R = Literal("p"), Literal("q"), Literal("r")
 X = Variable("X")

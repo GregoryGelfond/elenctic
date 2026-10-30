@@ -16,8 +16,9 @@ from clingo.ast import (
 )
 
 from elenctic.determination import Valuation
-from elenctic.literals import Pattern, Variable
+from elenctic.patterns import Pattern
 from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose
+from elenctic.terms import Variable
 
 type Parsed[T] = T | Diagnostic
 

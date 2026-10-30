@@ -6,7 +6,8 @@ from enum import Enum
 
 from elenctic.check import Finding, Report, Verdict
 from elenctic.engine import Fault
-from elenctic.literals import Literal, Pattern, Symbol
+from elenctic.literals import Literal, Symbol
+from elenctic.patterns import Pattern
 
 SCHEMA = 1
 

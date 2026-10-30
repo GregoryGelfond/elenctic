@@ -30,15 +30,15 @@ from elenctic.determination import (
     world_view,
 )
 from elenctic.engine import Facts, Fault, Grounded, Interrupt, Limits, Locus, Program, ground, solve
+from elenctic.extension import Extension
 from elenctic.literals import (
     AnswerSet,
     Assumption,
     Literal,
-    Pattern,
     Scenario,
     Signature,
-    Variable,
 )
+from elenctic.patterns import Pattern
 from elenctic.query import (
     Answer,
     Bindings,
@@ -51,6 +51,8 @@ from elenctic.query import (
 )
 from elenctic.reader import parse_contract
 from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.substitution import Substitution
+from elenctic.terms import Compound, Term, Variable
 from elenctic.writer import render
 
 __all__ = [
@@ -61,6 +63,7 @@ __all__ = [
     "Assumption",
     "Bindings",
     "Claim",
+    "Compound",
     "Conclusion",
     "Consequences",
     "Consistent",
@@ -70,6 +73,7 @@ __all__ = [
     "Determination",
     "Diagnostic",
     "Exhausted",
+    "Extension",
     "Facts",
     "Fault",
     "Finding",
@@ -100,6 +104,8 @@ __all__ = [
     "Signature",
     "Solver",
     "Span",
+    "Substitution",
+    "Term",
     "These",
     "Truncation",
     "Truth",

@@ -15,10 +15,12 @@ from elenctic.contract import (
     Witness,
 )
 from elenctic.determination import Mode, Range, Valuation
-from elenctic.literals import Assumption, Literal, Pattern, Variable
+from elenctic.literals import Assumption, Literal
+from elenctic.patterns import Pattern
 from elenctic.query import All, Answer
 from elenctic.reader import _Element, _elements, _Scan, _scan, is_case, parse_contract
 from elenctic.spans import Diagnostic, Position, Span
+from elenctic.terms import Variable
 from elenctic.writer import render
 
 X = Variable("X")

@@ -3,7 +3,10 @@ from clingo import Function, Number, String, parse_term
 from hypothesis import given
 from hypothesis import strategies as st
 
-from elenctic.literals import Literal, Pattern, Variable
+from elenctic.extension import Extension
+from elenctic.literals import Literal
+from elenctic.patterns import Pattern
+from elenctic.terms import Variable
 
 X, Y = Variable("X"), Variable("Y")
 
@@ -81,7 +84,7 @@ def test_the_contrary_of_a_pattern_flips_its_sign() -> None:
 def test_the_bindings_of_a_pattern_in_a_set_of_literals_are_those_of_its_matches() -> None:
     atoms = {lit("p(1,a)"), lit("p(2,a)"), lit("p(3,b)"), lit("q(9,a)")}
     pattern = Pattern("p", (X, parse_term("a")))
-    assert pattern.bindings_in(atoms) == {(Number(1),), (Number(2),)}
+    assert pattern.bindings_in(Extension(atoms)) == {(Number(1),), (Number(2),)}
 
 
 @pytest.mark.parametrize("text", ["p", "-p", 'p(1,"a=b")', "-p(q(2),x)"])

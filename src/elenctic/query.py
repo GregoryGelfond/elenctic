@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from enum import IntEnum, StrEnum
 
 from elenctic.determination import WorldView
-from elenctic.literals import AnswerSet, Literal, Pattern, Symbol
+from elenctic.extension import Extension
+from elenctic.literals import AnswerSet, Literal, Symbol
+from elenctic.patterns import Pattern
 
 
 class Truth(IntEnum):
@@ -81,7 +83,8 @@ class Bindings:
 
 def bindings(pattern: Pattern, view: WorldView) -> Bindings:
     """Partition the instances of `pattern` some answer set entertains by their answer."""
-    yes = pattern.bindings_in(view.cautious)
-    no = pattern.contrary.bindings_in(view.cautious)
-    entertained = pattern.bindings_in(view.brave) | pattern.contrary.bindings_in(view.brave)
+    cautious, brave = Extension(view.cautious), Extension(view.brave)
+    yes = pattern.bindings_in(cautious)
+    no = pattern.contrary.bindings_in(cautious)
+    entertained = pattern.bindings_in(brave) | pattern.contrary.bindings_in(brave)
     return Bindings(yes, no, entertained - yes - no)

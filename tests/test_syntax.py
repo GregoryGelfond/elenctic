@@ -2,9 +2,10 @@ import pytest
 from clingo import Number, String, parse_term
 
 from elenctic.determination import Valuation
-from elenctic.literals import Pattern, Variable
+from elenctic.patterns import Pattern
 from elenctic.spans import Diagnostic, Position, Span
 from elenctic.syntax import Item, read_bindings, read_literals, read_valuations
+from elenctic.terms import Variable
 
 WHERE = Span("c.lp", Position(7, 12), Position(7, 40))
 X = Variable("X")

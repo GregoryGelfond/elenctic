@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from elenctic.determination import Assignment, Cost, Mode, Model, Range
-from elenctic.literals import AnswerSet, Pattern, Scenario, Symbol
+from elenctic.literals import AnswerSet, Scenario, Symbol
+from elenctic.patterns import Pattern
 from elenctic.query import All, Answer
 from elenctic.spans import Diagnostic, Span
 

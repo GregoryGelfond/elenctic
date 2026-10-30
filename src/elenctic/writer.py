@@ -15,7 +15,8 @@ from elenctic.contract import (
     Witness,
 )
 from elenctic.determination import Assignment, Range
-from elenctic.literals import Literal, Pattern, Symbol
+from elenctic.literals import Literal, Symbol
+from elenctic.patterns import Pattern
 from elenctic.query import All
 
 
