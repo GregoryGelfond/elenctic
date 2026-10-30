@@ -270,6 +270,9 @@ def test_a_theory_atom_is_not_checked_as_though_it_were_interpreted() -> None:
     text = "#theory t { c { }; &k/0 : c, any }.\n{p}. &k { 1 }.\n% @expect sat\n"
     (message,) = faults(text)
     assert message.startswith("1: the program has theory atoms, which this checker does not")
+    found = check(Program(text, "t.lp"))
+    assert isinstance(found, Fault)
+    assert found.diagnostics[0].span == Span("t.lp", Position(1, 1), Position(1, 1))
 
 
 def test_an_objective_that_grounds_away_is_no_objective() -> None:

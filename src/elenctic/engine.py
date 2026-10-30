@@ -103,6 +103,11 @@ class _Run[T]:
     conclusion: Exhausted | Truncation
     core: frozenset[Assumption]
 
+    @property
+    def refuted(self) -> bool:
+        """Whether the whole space was searched and held nothing."""
+        return self.conclusion is Exhausted.EXHAUSTED and not self.found
+
 
 def _literals(symbols: Iterable[Symbol]) -> AnswerSet:
     """Keep the classical literals of `symbols`; `#show` may also select numbers or strings."""
@@ -248,11 +253,6 @@ class Facts:
     optimizes: bool = False
     theory: bool = False
 
-    def __or__(self, other: Facts) -> Facts:
-        return Facts(
-            self.shown | other.shown, self.optimizes or other.optimizes, self.theory or other.theory
-        )
-
 
 def _signature(term: AST) -> Signature | None:
     """Read the predicate a `#show` term names; `None` for a term that is not a literal."""
@@ -266,11 +266,6 @@ def _signature(term: AST) -> Signature | None:
             return inner and Signature(inner.name, inner.arity, positive=not inner.positive)
         case _:
             return None
-
-
-def _facts(statement: AST) -> Facts:
-    """Read what a statement says it shows."""
-    return Facts(_shown(statement))
 
 
 def _shown(statement: AST) -> Shown:
@@ -338,9 +333,9 @@ class Grounded:
         section.enum_mode, section.opt_mode = plan.modes
         with self._control.solve(assumptions=list(assumed), yield_=True, async_=True) as handle:
             found, conclusion = _drain(handle, cut, cap, plan.convert, plan.counted)
-            refuted = conclusion is Exhausted.EXHAUSTED and not found
-            core = frozenset(assumed[lit] for lit in handle.core()) if refuted else frozenset()
-        return _Run(tuple(found), conclusion, core)
+            run = _Run(tuple(found), conclusion, frozenset())
+            core = frozenset(assumed[lit] for lit in handle.core()) if run.refuted else frozenset()
+        return replace(run, core=core)
 
     def _contradicts(
         self, scenario: frozenset[Assumption], cut: Callable[[], Truncation | None]
@@ -380,8 +375,7 @@ class Grounded:
         self, scenario: Scenario, run: _Run[Any], cut: Callable[[], Truncation | None]
     ) -> Refutation | None:
         """Refute a run that exhausted its space and found nothing; `None` for any other."""
-        refuted = run.conclusion is Exhausted.EXHAUSTED and not run.found
-        return self._refutation(scenario, run.core, cut) if refuted else None
+        return self._refutation(scenario, run.core, cut) if run.refuted else None
 
     def _search[T, E](
         self,
@@ -474,22 +468,19 @@ def ground(program: Program) -> Grounded | Fault:
     control = Control(["--warn=none"], logger=log)
     objective = _Objective()
     control.register_observer(objective)  # type: ignore[arg-type]
-    facts: list[Facts] = []
+    shown: list[Shown] = []
     try:
         with ProgramBuilder(control) as builder:
 
             def add(statement: AST) -> None:
-                if (found := _facts(statement)) != Facts():
-                    facts.append(found)
+                shown.append(_shown(statement))
                 builder.add(statement)
 
             _parse(program, add, log)
         control.ground([("base", [])])
     except RuntimeError as error:
         return _fault(messages, error, program)
-    return Grounded(
-        control, replace(reduce(Facts.__or__, facts, Facts()), optimizes=objective.seen)
-    )
+    return Grounded(control, Facts(reduce(Shown.__or__, shown, Shown()), objective.seen))
 
 
 def solve(

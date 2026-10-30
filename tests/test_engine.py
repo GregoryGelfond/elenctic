@@ -26,7 +26,18 @@ from elenctic.determination import (
     optimal_view,
     world_view,
 )
-from elenctic.engine import Fault, Interrupt, Limits, Locus, Program, _optimized, ground, solve
+from elenctic.engine import (
+    Fault,
+    Interrupt,
+    Limits,
+    Locus,
+    Program,
+    Shown,
+    _optimized,
+    _Run,
+    ground,
+    solve,
+)
 from elenctic.literals import Assumption, Literal, Signature
 
 P, Q = Literal("p"), Literal("q")
@@ -396,7 +407,8 @@ def test_the_exhausted_optimum_closes_a_view_of_the_optimal_answer_sets() -> Non
 
 def test_no_model_proven_optimal_leaves_the_last_one_as_the_incumbent() -> None:
     first, last = Model(frozenset({P}), frozenset({P})), Model(frozenset(), frozenset())
-    assert _optimized([(first, False), (last, False)]) == Incumbent(last)
+    middle = Model(frozenset({Q}), frozenset({Q}))
+    assert _optimized([(first, False), (middle, False), (last, False)]) == Incumbent(last)
     assert _optimized([(first, False), (last, True)]) == Optimum(last.cost, Models(last))
 
 
@@ -453,3 +465,27 @@ def test_the_optimum_is_the_least_cost_among_all_models_and_its_models_are_those
     assert {m.atoms for m in best.evidence.models.all} == {
         atoms for atoms, cost in costs.items() if cost == least
     }
+
+
+def test_a_run_is_refuted_only_when_it_exhausted_the_space_and_found_nothing() -> None:
+    model = Model(frozenset(), frozenset())
+    exhausted, cut = Exhausted.EXHAUSTED, Truncation.BUDGET
+    assert _Run((), exhausted, frozenset()).refuted
+    assert not _Run((model,), exhausted, frozenset()).refuted
+    assert not _Run((), cut, frozenset()).refuted
+
+
+def test_a_show_of_a_term_restricts_what_is_shown_to_the_signature_it_names() -> None:
+    grounded = ground(Program("p. q. #show q : p.\n"))
+    assert not isinstance(grounded, Fault)
+    covers = grounded.facts.shown.covers
+    assert covers(Signature("q", 0))
+    assert not covers(Signature("p", 0))
+
+
+def test_shown_selections_combine_into_one_that_is_wild_if_any_is() -> None:
+    wild = Shown(restricted=True, wild=True)
+    plain = Shown(frozenset({Signature("q", 1)}), restricted=True)
+    assert (wild | plain).wild
+    assert (plain | wild).wild
+    assert not (plain | plain).wild

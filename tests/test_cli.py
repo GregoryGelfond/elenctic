@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -89,3 +90,12 @@ def test_help_names_every_command_and_no_command_is_a_usage_error(
     with pytest.raises(SystemExit) as usage:
         main([])
     assert usage.value.code == 2
+
+
+def test_with_no_argument_vector_the_process_arguments_are_read(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = write(tmp_path, "drinks.lp", DRINKS + "% @expect sat\n")
+    monkeypatch.setattr(sys, "argv", ["elenctic", str(path)])
+    assert main() == 0
+    assert capsys.readouterr().out == "1/1 passed\n"

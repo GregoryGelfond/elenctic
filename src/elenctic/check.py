@@ -309,8 +309,8 @@ def _judge_group(
     return [judge(claim, found) for claim in group]
 
 
-def _at(source: str, claim: Claim | None = None) -> Span:
-    return claim.span if claim else Span(source, Position(1, 1), Position(1, 1))
+def _at(source: str) -> Span:
+    return Span(source, Position(1, 1), Position(1, 1))
 
 
 def _contraries(reading: Reading) -> frozenset[Signature]:

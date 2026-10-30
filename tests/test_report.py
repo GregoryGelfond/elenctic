@@ -62,5 +62,7 @@ def test_json_is_derived_from_the_result_types() -> None:
 
 
 def test_a_type_is_not_a_result_and_is_not_encoded() -> None:
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="cannot encode type"):
         encode(Entry)
+    with pytest.raises(TypeError, match="cannot encode object"):
+        encode(object())

@@ -11,6 +11,8 @@ from elenctic.contract import (
     Entails,
     Satisfiable,
     Witness,
+    _Element,
+    _elements,
     _Scan,
     _scan,
     is_case,
@@ -324,3 +326,8 @@ def test_more_optimal_answer_sets_than_answer_sets_is_a_contradiction() -> None:
 def test_an_expectation_is_sat_or_unsat() -> None:
     found = only_diagnostic("% @expect maybe")
     assert found.message == "expected `sat` or `unsat`"
+
+
+def test_a_payload_that_opens_with_a_brace_is_read_from_its_first_character() -> None:
+    assert _elements("{a}") == [_Element("a", 1, braced=True)]
+    assert _elements("{a") is None
