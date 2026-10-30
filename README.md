@@ -1,7 +1,7 @@
 # elenctic
 
-Check answer set programs against contracts written in their own comments.
-A library first; the command line is a thin client over it.
+Test, debug and analyse answer set programs. Contracts are written in the program's own
+comments; the library is first and the command line is a thin client over it.
 
 ```
 $ elenctic drinks.lp
@@ -33,6 +33,7 @@ report = check(Program.read("drinks.lp"), limits=Limits(seconds=10))
 `check` returns a `Report` (a verdict per claim), a `Fault` (the question could not be asked), or
 `None` (the file states no contract). Nothing is printed, nothing is global.
 
+The claims, with the real output of each, are in `docs/reference/examples.md`.
 Start with `docs/`: a tutorial, how-to guides, a reference, and an explanation of the semantics.
 
 ## Develop

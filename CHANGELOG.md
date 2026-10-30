@@ -15,4 +15,18 @@ All notable changes are recorded here. The format follows
   `@brave`, `@query` with optional `= { bindings }`, and an `assuming { … }` form on any claim.
 - `check` with the verdicts `pass`, `fail` and `undecided`.
 - Command line with `--json`, `--verbose`, `--budget` and `--models`; exit codes 0, 1 and 2.
+- Native cautious and brave consequences (`Grounded.consequences`), used by `check` when a search
+  holds only such claims.
+- Minimal unsatisfiable cores over assumptions: `Refutation` is `These | NotThese | NoAssumptions`.
+- Optimization: `Grounded.optimize` returns `Optimum` or `Incumbent`; claims `@model optimal`,
+  `@cautious optimal`, `@brave optimal`, `@optimal { L }`, `@count optimal n` and `@cost { … }`.
+- Preconditions that make a misreadable contract an error: theory atoms, an objective that grounds
+  away, a nested `@count optimal`, a derivable unshown contrary under `no`/`unknown`.
+- Subcommands: `elenctic test` (the default) and the reserved `repl`, `why`, `ask`, `explain`.
+- Examples with real output in `docs/reference/examples.md`, checked by a test.
 - Packaging for uv, pixi and conda-forge (`recipe/recipe.yaml`).
+
+### Changed
+- `@cost` over `#maximize` is accepted: costs are clingo's minimized sums, so a maximized level is
+  negated.
+- A `no`/`unknown` query faults only when its contrary is derivable and not shown.
