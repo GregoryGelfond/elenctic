@@ -37,7 +37,7 @@ def test_a_failing_claim_exits_one(tmp_path: Path, capsys: pytest.CaptureFixture
 def test_a_missing_file_exits_two(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     code, out = run(capsys, tmp_path / "absent.lp")
     assert code == 2
-    assert "absent.lp:1:1" in out
+    assert out.splitlines()[0].startswith(f"{tmp_path / 'absent.lp'}:1:1-1: error: ")
 
 
 def test_json_is_written_on_request(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -53,3 +53,8 @@ def test_a_search_that_runs_out_of_models_is_undecided_and_exits_one(
     code, out = run(capsys, path, "--models", "1")
     assert code == 1
     assert "[UNDECIDED] @cautious { biscuit }" in out
+
+
+def test_a_budget_of_zero_is_no_budget(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @count 2\n")
+    assert run(capsys, path, "--budget", 0) == (0, "1/1 passed\n")

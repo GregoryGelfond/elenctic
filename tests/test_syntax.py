@@ -40,7 +40,20 @@ def test_a_later_line_keeps_its_own_columns() -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["p(", "p. q", "X < 2", "p(1..3)", "p(f(X))", "not not p", "#true", "p(1;2)", "{ p }"],
+    [
+        "p(",
+        "p. q",
+        "X < 2",
+        "p(1..3)",
+        "p(f(X))",
+        "not not p",
+        "#true",
+        "p(1;2)",
+        "{ p }",
+        "1",
+        "~p",
+        "|p|",
+    ],
 )
 def test_what_is_not_a_literal_list_is_a_diagnostic_in_the_enclosing_source(text: str) -> None:
     found = read_literals(text, WHERE)
@@ -75,3 +88,18 @@ def test_no_bindings_is_the_empty_set() -> None:
 @pytest.mark.parametrize("text", ["(a,1,3)", "a", "(", "X"])
 def test_bindings_of_the_wrong_arity_or_shape_are_a_diagnostic(text: str) -> None:
     assert isinstance(read_bindings(text, 2, WHERE), Diagnostic)
+
+
+def test_several_variables_bound_once_read_as_one_row_of_bare_terms() -> None:
+    assert read_bindings("a, 1", 2, WHERE) == ((parse_term("a"), Number(1)),)
+
+
+def test_rows_of_the_right_arity_are_each_a_binding() -> None:
+    assert read_bindings("(1,2), (3,4)", 2, WHERE) == (
+        (Number(1), Number(2)),
+        (Number(3), Number(4)),
+    )
+
+
+def test_a_row_mixed_with_a_bare_term_is_a_diagnostic() -> None:
+    assert isinstance(read_bindings("(1,2), 3", 2, WHERE), Diagnostic)

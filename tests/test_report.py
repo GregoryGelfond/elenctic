@@ -1,8 +1,10 @@
 import json
 
+import pytest
+
 from aspnext.check import Report, check
 from aspnext.engine import Fault, Program
-from aspnext.report import SCHEMA, Entry, Run, to_json, to_text
+from aspnext.report import SCHEMA, Entry, Run, encode, to_json, to_text
 
 PASSING = "p.\n% @expect sat\n% @cautious { p }\n"
 FAILING = "p.\n% @expect sat\n% @cautious { q }\n"
@@ -52,3 +54,8 @@ def test_json_is_derived_from_the_result_types() -> None:
     assert claim["reading"] == {"kind": "Entails", "mode": "cautious", "literals": ["q"]}
     assert claim["span"]["start"] == {"kind": "Position", "line": 3, "column": 3}
     assert report["findings"][1]["verdict"] == "fail"
+
+
+def test_a_type_is_not_a_result_and_is_not_encoded() -> None:
+    with pytest.raises(TypeError):
+        encode(Entry)
