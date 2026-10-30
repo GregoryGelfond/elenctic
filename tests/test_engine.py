@@ -568,3 +568,8 @@ def test_shown_selections_combine_into_one_that_is_wild_if_any_is() -> None:
     assert (wild | plain).wild
     assert (plain | wild).wild
     assert not (plain | plain).wild
+
+
+def test_an_exhausted_search_that_found_nothing_without_a_refutation_is_refused() -> None:
+    with pytest.raises(ValueError, match="is refuted"):
+        search.decide(Run((), Exhausted.EXHAUSTED, frozenset()), None, search.models)

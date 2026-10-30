@@ -395,3 +395,9 @@ def test_only_one_solver_may_be_declared() -> None:
     (found,) = contract.diagnostics
     assert (found.message, found.span.start.line) == ("at most one `@elenctic solver`", 3)
     assert contract.solver is Solver.CLINGO
+
+
+def test_an_assumption_with_a_variable_is_refused_as_not_ground() -> None:
+    found = messages("% @expect sat", "% @brave { p } assuming { q(X) }")
+    assert len(found) == 1
+    assert "ground" in found[0]

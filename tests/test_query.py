@@ -213,3 +213,13 @@ def test_the_bindings_of_a_pattern_are_the_ones_its_literals_and_their_contrarie
     no = pattern.contrary.bindings_in(cautious)
     entertained = pattern.bindings_in(brave) | pattern.contrary.bindings_in(brave)
     assert bindings(pattern, view) == Bindings(yes, no, entertained - yes - no)
+
+
+def test_a_ground_part_of_a_conjunction_joins_the_bindings_of_the_others_without_binding() -> None:
+    both = All((Literal("p", (Number(1),)), Pattern("q", (X,))))
+    view = world(lits("p(1)", "q(1)", "q(2)", "-q(3)"))
+    assert bindings(both, view) == Bindings(
+        yes=frozenset({(Number(1),), (Number(2),)}),
+        no=frozenset({(Number(3),)}),
+        unknown=frozenset(),
+    )

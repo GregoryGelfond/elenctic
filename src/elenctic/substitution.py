@@ -27,10 +27,6 @@ class Substitution:
         """Return `term` with every bound variable replaced, resolving through the bindings."""
         return substitute_with(term, self.get)
 
-    def __or__(self, other: Substitution) -> Substitution:
-        """Combine two substitutions over different variables."""
-        return Substitution({**self.bindings, **other.bindings})
-
     @override
     def __str__(self) -> str:
         return "{" + ", ".join(f"{k.name}={v}" for k, v in sorted(self.bindings.items())) + "}"

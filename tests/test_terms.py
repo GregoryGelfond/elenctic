@@ -114,3 +114,9 @@ def test_a_term_is_written_as_the_program_would() -> None:
         "f", (X, Compound("g", (A, Y), positive=False), String("s"), Compound("", (X, Y)))
     )
     assert render(term) == 'f(X,-g(a,Y),"s",(X,Y))'
+
+
+def test_a_compound_and_a_substitution_are_written_as_the_terms_they_hold() -> None:
+    term = Compound("f", (Variable("X"), Number(2)))
+    assert (str(term), repr(term)) == ("f(X,2)", "Compound(f(X,2))")
+    assert str(Substitution({Variable("X"): term, Variable("Y"): Number(1)})) == "{X=f(X,2), Y=1}"
