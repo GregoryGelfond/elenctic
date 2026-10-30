@@ -9,6 +9,7 @@ import random
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -136,6 +137,9 @@ def main() -> int:
     differing = sorted(k for k in shared if old[k] != new[k])
     print(f"verdicts compared: {len(shared)} ({sum(line == 0 for _, line in shared)} per case)")
     print(f"disagreements: {len(differing)}")
+    tally = Counter((old[key], new[key]) for key in differing)
+    for (before, after), count in sorted(tally.items()):
+        print(f"  {count:3d} legacy={before} current={after}")
     for source, line in differing[:20]:
         print(f"  {source}:{line} legacy={old[source, line]} current={new[source, line]}")
     only = sorted(new.keys() - old.keys()), sorted(old.keys() - new.keys())
