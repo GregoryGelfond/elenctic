@@ -1,9 +1,10 @@
 import pytest
 from clingo import Number, String, parse_term
 
+from elenctic.determination import Valuation
 from elenctic.literals import Pattern, Variable
 from elenctic.spans import Diagnostic, Position, Span
-from elenctic.syntax import Item, read_bindings, read_literals
+from elenctic.syntax import Item, read_bindings, read_literals, read_valuations
 
 WHERE = Span("c.lp", Position(7, 12), Position(7, 40))
 X = Variable("X")
@@ -103,3 +104,35 @@ def test_rows_of_the_right_arity_are_each_a_binding() -> None:
 
 def test_a_row_mixed_with_a_bare_term_is_a_diagnostic() -> None:
     assert isinstance(read_bindings("(1,2), 3", 2, WHERE), Diagnostic)
+
+
+def test_valuations_read_a_term_and_the_integer_it_equals() -> None:
+    found = read_valuations("start(t1)=3, x = -2, f(a,b)=0", WHERE)
+    assert found == (
+        Valuation(parse_term("start(t1)"), 3),
+        Valuation(parse_term("x"), -2),
+        Valuation(parse_term("f(a,b)"), 0),
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "start"),
+    [
+        ("x=a", Position(7, 12)),
+        ("X=3", Position(7, 12)),
+        ("not x=3", Position(7, 12)),
+        ("x<3", Position(7, 12)),
+        ("1<x<3", Position(7, 12)),
+        ("x=1, y", Position(7, 17)),
+    ],
+)
+def test_a_valuation_that_is_not_a_term_equal_to_an_integer_is_a_diagnostic(
+    text: str, start: Position
+) -> None:
+    found = read_valuations(text, WHERE)
+    assert isinstance(found, Diagnostic)
+    assert (found.message, found.span.start) == ("expected `term = integer`", start)
+
+
+def test_a_valuation_list_that_does_not_parse_is_a_diagnostic() -> None:
+    assert isinstance(read_valuations("x=", WHERE), Diagnostic)

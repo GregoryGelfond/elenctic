@@ -9,6 +9,7 @@ from typing import Final, NamedTuple
 
 from elenctic.contract import (
     Asks,
+    Assigns,
     Binds,
     Census,
     Claim,
@@ -17,13 +18,14 @@ from elenctic.contract import (
     Entails,
     Reading,
     Satisfiable,
+    Solver,
     Witness,
 )
-from elenctic.determination import Mode, Range
+from elenctic.determination import Assignment, Mode, Range
 from elenctic.literals import AnswerSet, Assumption, Scenario
 from elenctic.query import All, Answer
 from elenctic.spans import Diagnostic, Position, Severity, Span
-from elenctic.syntax import Item, Parsed, read_bindings, read_literals
+from elenctic.syntax import Item, Parsed, read_bindings, read_literals, read_valuations
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,10 +69,10 @@ _TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+)\b(?P<gap>\s*)(?P<rest>
 _CONTINUATION: Final = re.compile(r"(?P<lead>\s*%\s*)(?P<rest>.*?)\s*")
 _INTEGER: Final = re.compile(r"-?\d+")
 _TOKEN: Final = re.compile(r"(?P<open>\{)|(?P<word>[^\s{=]+|=)")
-SUPPORTED: Final = frozenset(
-    {"expect", "count", "model", "optimal", "cautious", "brave", "cost", "query", "note"}
+KNOWN: Final = frozenset(
+    {"expect", "count", "model", "optimal", "assign", "cautious", "brave", "cost", "query"}
+    | {"elenctic", "note"}
 )
-KNOWN: Final = SUPPORTED | {"assign", "elenctic"}
 
 
 class _Scan(NamedTuple):
@@ -291,11 +293,49 @@ def _binds(
     return found if isinstance(found, Diagnostic) else Binds(answer, pattern, frozenset(found))
 
 
+def _valuations(block: _Block, element: _Element) -> Parsed[Assignment]:
+    """Read `{ term = integer, ... }`: at least one, and no term given two integers."""
+    read = read_valuations(element.text, block.span(element.start, element.end))
+    if isinstance(read, Diagnostic):
+        return read
+    if not read:
+        return _failure(block, "expected at least one `term = integer`", element)
+    if len({v.variable for v in read}) < len(set(read)):
+        return _failure(block, "a term is given two different integers", element)
+    return frozenset(read)
+
+
+def _assign(block: _Block, head: list[_Element]) -> Parsed[Reading]:
+    over, rest = _over(head)
+    if len(rest) != 1 or not rest[0].braced:
+        return _failure(block, "expected `{ term = integer, ... }`")
+    assignment = _valuations(block, rest[0])
+    return assignment if isinstance(assignment, Diagnostic) else Assigns(assignment, over)
+
+
+def _witness(over: Range | None = None) -> Callable[[_Block, list[_Element]], Parsed[Reading]]:
+    """Read `[optimal] { literals } [where { term = integer, ... }]`, as `@model` or `@optimal`."""
+
+    def read(block: _Block, head: list[_Element]) -> Parsed[Reading]:
+        split = _after(block, head, "where", "term = integer, ...")
+        if isinstance(split, Diagnostic):
+            return split
+        assignment = frozenset() if split[1] is None else _valuations(block, split[1])
+        if isinstance(assignment, Diagnostic):
+            return assignment
+        return _litset(lambda lits, chosen: Witness(lits, chosen, assignment), over=over)(
+            block, split[0]
+        )
+
+    return read
+
+
 _READERS: Final[dict[str, Callable[[_Block, list[_Element]], Parsed[Reading]]]] = {
     "expect": _expect,
     "count": _count,
-    "model": _litset(Witness),
-    "optimal": _litset(Witness, over=Range.OPTIMAL),
+    "model": _witness(),
+    "optimal": _witness(Range.OPTIMAL),
+    "assign": _assign,
     "cost": _cost,
     "cautious": _litset(lambda lits, over: Entails(Mode.CAUTIOUS, lits, over)),
     "brave": _litset(lambda lits, over: Entails(Mode.BRAVE, lits, over)),
@@ -303,31 +343,36 @@ _READERS: Final[dict[str, Callable[[_Block, list[_Element]], Parsed[Reading]]]] 
 }
 
 
-def _unreadable(block: _Block) -> Diagnostic | None:
-    if block.tag in SUPPORTED:
-        return None
-    return _failure(
-        block, f"`@{block.tag}` is " + ("not supported yet" if block.tag in KNOWN else "not a tag")
-    )
-
-
 def _split(block: _Block, elements: list[_Element]) -> Parsed[tuple[list[_Element], Scenario]]:
     """Split a tag's elements at `assuming` into its reading and its scenario."""
-    cut = next((i for i, e in enumerate(elements) if e.text == "assuming" and not e.braced), None)
+    split = _after(block, elements, "assuming", "literals")
+    if isinstance(split, Diagnostic) or split[1] is None:
+        return split if isinstance(split, Diagnostic) else (elements, frozenset())
+    scenario = _scenario(block, split[1])
+    return scenario if isinstance(scenario, Diagnostic) else (split[0], scenario)
+
+
+def _after(
+    block: _Block, elements: list[_Element], word: str, contents: str
+) -> Parsed[tuple[list[_Element], _Element | None]]:
+    """Split a trailing `word { ... }` off a tag's elements: what precedes it, and its braces."""
+    cut = next((i for i, e in enumerate(elements) if e.text == word and not e.braced), None)
     if cut is None:
-        return elements, frozenset()
+        return elements, None
     tail = elements[cut + 1 :]
     if len(tail) != 1 or not tail[0].braced:
-        return _failure(block, "expected `assuming { literals }`")
-    scenario = _scenario(block, tail[0])
-    return scenario if isinstance(scenario, Diagnostic) else (elements[:cut], scenario)
+        return _failure(block, f"expected `{word} {{ {contents} }}`")
+    return elements[:cut], tail[0]
+
+
+_DIRECTIVES: Final = frozenset({"elenctic", "note"})
 
 
 def _claim(block: _Block) -> Parsed[Claim] | None:
-    if block.tag == "note":
+    if block.tag in _DIRECTIVES:
         return None
-    if (unreadable := _unreadable(block)) is not None:
-        return unreadable
+    if block.tag not in _READERS:
+        return _failure(block, f"`@{block.tag}` is not a tag")
     if (elements := _elements(block.payload)) is None:
         return _failure(block, "a brace is never closed")
     split = _split(block, elements)
@@ -336,6 +381,30 @@ def _claim(block: _Block) -> Parsed[Claim] | None:
     head, scenario = split
     reading = _READERS[block.tag](block, head)
     return reading if isinstance(reading, Diagnostic) else Claim(reading, scenario, block.whole)
+
+
+def _solver(block: _Block) -> Parsed[Solver]:
+    """Read `@elenctic solver NAME`, the one directive."""
+    words = [e.text for e in _elements(block.payload) or [] if not e.braced]
+    known = ", ".join(Solver)
+    match words:
+        case ["solver", name] if name in Solver:
+            return Solver(name)
+        case ["solver", _]:
+            return _failure(block, f"unknown solver; known: {known}")
+        case ["solver"]:
+            return _failure(block, f"`@elenctic solver` needs a solver name; known: {known}")
+        case _:
+            return _failure(block, "unknown `@elenctic` directive; known: `solver`")
+
+
+def _declared(blocks: list[_Block]) -> tuple[Solver, list[Diagnostic]]:
+    """Find the solver a contract declares (clingo if none) and what is wrong with the declaring."""
+    read = [(block, _solver(block)) for block in blocks if block.tag == "elenctic"]
+    problems = [r for _, r in read if isinstance(r, Diagnostic)]
+    solvers = [(block, r) for block, r in read if isinstance(r, Solver)]
+    extra = [_failure(block, "at most one `@elenctic solver`") for block, _ in solvers[1:]]
+    return (solvers[0][1] if solvers else Solver.CLINGO), problems + extra
 
 
 def _expectations(claims: list[Claim], source: str) -> list[Diagnostic]:
@@ -406,7 +475,9 @@ def _wellformed(claims: list[Claim], source: str) -> list[Diagnostic]:
 
 def parse_contract(text: str, source: str = "<string>") -> Contract:
     """Read each tag of `text`: a claim for every one that reads, a diagnostic for the rest."""
-    parsed = [(block, _claim(block)) for block in _blocks(text, source)]
+    blocks = _blocks(text, source)
+    parsed = [(block, _claim(block)) for block in blocks]
     claims = [c for _, c in parsed if isinstance(c, Claim)]
     problems = [c for _, c in parsed if isinstance(c, Diagnostic)]
-    return Contract(tuple(claims), (*problems, *_wellformed(claims, source)))
+    solver, misdeclared = _declared(blocks)
+    return Contract(tuple(claims), (*problems, *misdeclared, *_wellformed(claims, source)), solver)

@@ -1,8 +1,9 @@
 """Contracts and queries for answer set programs."""
 
 from elenctic.check import Finding, Report, Verdict, check, judge
-from elenctic.contract import Claim, Contract, Costs
+from elenctic.contract import Assigns, Claim, Contract, Costs, Solver
 from elenctic.determination import (
+    Assignment,
     Conclusion,
     Consequences,
     Consistent,
@@ -21,7 +22,6 @@ from elenctic.determination import (
     Optimum,
     Range,
     Refutation,
-    TheoryAssignment,
     These,
     Truncation,
     Valuation,
@@ -56,6 +56,8 @@ from elenctic.writer import render
 __all__ = [
     "Answer",
     "AnswerSet",
+    "Assignment",
+    "Assigns",
     "Assumption",
     "Bindings",
     "Claim",
@@ -96,8 +98,8 @@ __all__ = [
     "Scenario",
     "Severity",
     "Signature",
+    "Solver",
     "Span",
-    "TheoryAssignment",
     "These",
     "Truncation",
     "Truth",

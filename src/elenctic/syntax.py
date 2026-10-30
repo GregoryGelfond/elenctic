@@ -5,8 +5,17 @@ from dataclasses import dataclass
 from typing import Final
 
 from clingo import MessageCode, Symbol, SymbolType, parse_term
-from clingo.ast import AST, ASTType, Location, Sign, UnaryOperator, parse_string
+from clingo.ast import (
+    AST,
+    ASTType,
+    ComparisonOperator,
+    Location,
+    Sign,
+    UnaryOperator,
+    parse_string,
+)
 
+from elenctic.determination import Valuation
 from elenctic.literals import Pattern, Variable
 from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose
 
@@ -88,8 +97,8 @@ def _first_error(where: Span, messages: list[str]) -> Diagnostic:
     return _failure(where, found.message, _place(where, found.span))
 
 
-def read_literals(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
-    """Read a comma-separated list of literals written at `where`."""
+def _body(text: str, where: Span) -> Parsed[tuple[AST, ...]]:
+    """Read `text` as the body of a rule, the literals of a comma-separated list."""
     statements: list[AST] = []
     errors: list[str] = []
     try:
@@ -99,14 +108,48 @@ def read_literals(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
     statements = [s for s in statements if s.ast_type is not ASTType.Program]
     if len(statements) != 1:
         return _failure(where, "expected a list of literals")
-    return _items(where, statements[0].body)
+    return tuple(statements[0].body)
 
 
-def _items(where: Span, body: Iterable[AST]) -> Parsed[tuple[Item, ...]]:
-    parsed = [_item(where, literal) for literal in body]
-    return next((p for p in parsed if isinstance(p, Diagnostic)), None) or tuple(
-        p for p in parsed if isinstance(p, Item)
+def read_literals(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
+    """Read a comma-separated list of literals written at `where`."""
+    body = _body(text, where)
+    return body if isinstance(body, Diagnostic) else _all(_item(where, each) for each in body)
+
+
+def read_valuations(text: str, where: Span) -> Parsed[tuple[Valuation, ...]]:
+    """Read a comma-separated list of `term=integer` written at `where`."""
+    body = _body(text, where)
+    return body if isinstance(body, Diagnostic) else _all(_valuation(where, each) for each in body)
+
+
+def _all[T](parsed: Iterable[Parsed[T]]) -> Parsed[tuple[T, ...]]:
+    """Gather what was read, or the first thing that failed to read."""
+    read = list(parsed)
+    return next((p for p in read if isinstance(p, Diagnostic)), None) or tuple(
+        p for p in read if not isinstance(p, Diagnostic)
     )
+
+
+def _valuation(where: Span, literal: AST) -> Parsed[Valuation]:
+    return _equation(literal) or _failure(
+        where, "expected `term = integer`", _place(where, _span(literal.location))
+    )
+
+
+def _equation(literal: AST) -> Valuation | None:
+    """Read `term = integer` from a body literal, or None when it is anything else."""
+    atom = literal.atom
+    if literal.ast_type is not ASTType.Literal or atom.ast_type is not ASTType.Comparison:
+        return None
+    if literal.sign != Sign.NoSign or len(atom.guards) != 1:
+        return None
+    guard = atom.guards[0]
+    variable, value = _argument(atom.term), _argument(guard.term)
+    equal = guard.comparison == ComparisonOperator.Equal
+    if equal and isinstance(variable, Symbol) and isinstance(value, Symbol):
+        return Valuation(variable, value.number) if value.type is SymbolType.Number else None
+    return None
 
 
 def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symbol, ...], ...]]:

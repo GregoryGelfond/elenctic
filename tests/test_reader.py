@@ -3,6 +3,7 @@ from clingo import Number, String, parse_term
 
 from elenctic.contract import (
     Asks,
+    Assigns,
     Binds,
     Census,
     Claim,
@@ -10,9 +11,10 @@ from elenctic.contract import (
     Costs,
     Entails,
     Satisfiable,
+    Solver,
     Witness,
 )
-from elenctic.determination import Mode, Range
+from elenctic.determination import Mode, Range, Valuation
 from elenctic.literals import Assumption, Literal, Pattern, Variable
 from elenctic.query import All, Answer
 from elenctic.reader import _Element, _elements, _Scan, _scan, is_case, parse_contract
@@ -116,7 +118,7 @@ def test_unknown_unsupported_and_malformed_tags_are_each_a_diagnostic_where_they
     contract = parse(
         "% @expect sat",
         "% @frobnicate { p }",
-        "% @assign { x = 1 }",
+        "% @assign { x }",
         "% @count two",
         "% @cautious { }",
         "% @cautious { X }",
@@ -153,6 +155,10 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
         "@cautious optimal { p } assuming { r }",
         "@brave optimal { q }",
         "@cost { 3 -1 0 }",
+        "@assign { x=1, y(a)=-2 }",
+        "@assign optimal { x=1 }",
+        "@model { p } where { x=1 }",
+        "@model optimal { p, q } where { f(a,1)=0, x=3 } assuming { r }",
     ]
     contract = parse(*(f"% {line}" for line in lines))
     assert not contract.diagnostics
@@ -326,3 +332,73 @@ def test_an_expectation_is_sat_or_unsat() -> None:
 def test_a_payload_that_opens_with_a_brace_is_read_from_its_first_character() -> None:
     assert _elements("{a}") == [_Element("a", 1, braced=True)]
     assert _elements("{a") is None
+
+
+X1, Y2 = Valuation(parse_term("x"), 1), Valuation(parse_term("y"), 2)
+
+
+def test_assign_reads_the_integers_some_answer_set_gives_theory_variables() -> None:
+    assert only("% @assign { x = 1, y=2 }").reading == Assigns(frozenset({X1, Y2}))
+    assert only("% @assign optimal { x=1 }").reading == Assigns(frozenset({X1}), Range.OPTIMAL)
+
+
+def test_a_witness_may_bind_the_assignment_of_the_same_answer_set_with_where() -> None:
+    p = frozenset({Literal("p")})
+    assert only("% @model { p } where { x=1 }").reading == Witness(p, assignment=frozenset({X1}))
+    assert only("% @optimal { p } where { x=1, y=2 }").reading == Witness(
+        p, Range.OPTIMAL, frozenset({X1, Y2})
+    )
+    assert only("% @model { p } where { x=1 } assuming { q }").scenario == frozenset(
+        {Assumption(Literal("q"))}
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        ("% @assign { }", "expected at least one `term = integer`"),
+        ("% @assign { x=1, x=2 }", "a term is given two different integers"),
+        ("% @assign { x }", "expected `term = integer`"),
+        ("% @assign x=1", "expected `{ term = integer, ... }`"),
+        ("% @assign optimal optimal { x=1 }", "expected `{ term = integer, ... }`"),
+        ("% @model { p } where { }", "expected at least one `term = integer`"),
+        ("% @model { p } where x=1", "expected `where { term = integer, ... }`"),
+        ("% @model { p } where { x=1 } extra", "expected `where { term = integer, ... }`"),
+        ("% @model { } where { x=1 }", "expected at least one literal"),
+        ("% @model { p } where { x=a }", "expected `term = integer`"),
+    ],
+)
+def test_a_malformed_assignment_is_a_diagnostic(line: str, message: str) -> None:
+    assert only_diagnostic(line).message == message
+
+
+def test_the_assignment_is_the_same_whether_a_term_is_repeated_with_the_same_integer() -> None:
+    assert only("% @assign { x=1, x=1 }").reading == Assigns(frozenset({X1}))
+
+
+def test_a_contract_declares_its_solver_and_defaults_to_clingo() -> None:
+    assert parse("% @expect sat").solver is Solver.CLINGO
+    declared = parse("% @expect sat", "% @elenctic solver clingcon")
+    assert (declared.solver, declared.diagnostics) == (Solver.CLINGCON, ())
+    assert len(declared.claims) == 1
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        ("% @elenctic solver cplex", "unknown solver; known: clingo, clingcon"),
+        ("% @elenctic solver", "`@elenctic solver` needs a solver name; known: clingo, clingcon"),
+        ("% @elenctic mode fast", "unknown `@elenctic` directive; known: `solver`"),
+        ("% @elenctic", "unknown `@elenctic` directive; known: `solver`"),
+    ],
+)
+def test_a_misdeclared_solver_is_a_diagnostic_at_its_line(line: str, message: str) -> None:
+    found = only_diagnostic(line)
+    assert (found.message, found.span.start.line) == (message, 2)
+
+
+def test_only_one_solver_may_be_declared() -> None:
+    contract = parse("% @expect sat", "% @elenctic solver clingo", "% @elenctic solver clingcon")
+    (found,) = contract.diagnostics
+    assert (found.message, found.span.start.line) == ("at most one `@elenctic solver`", 3)
+    assert contract.solver is Solver.CLINGO

@@ -43,7 +43,7 @@ class Valuation:
     value: int
 
 
-type TheoryAssignment = frozenset[Valuation]
+type Assignment = frozenset[Valuation]
 """What a constraint theory assigns in a model, kept apart from the atoms, which are literals."""
 
 
@@ -57,8 +57,13 @@ class Model:
 
     atoms: AnswerSet
     shown: AnswerSet
-    assignment: TheoryAssignment = frozenset()
+    assignment: Assignment = frozenset()
     cost: Cost = ()
+
+    @property
+    def identity(self) -> tuple[AnswerSet, Assignment]:
+        """What tells models apart: the atoms shown and the assignment, not the hidden atoms."""
+        return self.shown, self.assignment
 
 
 @dataclass(frozen=True, slots=True)

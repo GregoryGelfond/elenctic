@@ -6,13 +6,16 @@ from enum import StrEnum
 
 from elenctic.contract import (
     Asks,
+    Assigns,
     Binds,
     Census,
     Claim,
+    Contract,
     Costs,
     Entails,
     Reading,
     Satisfiable,
+    Solver,
     Witness,
 )
 from elenctic.determination import (
@@ -25,6 +28,7 @@ from elenctic.determination import (
     Inconsistent,
     Incumbent,
     Mode,
+    Model,
     Models,
     Optimized,
     Optimum,
@@ -35,14 +39,27 @@ from elenctic.determination import (
     WorldView,
     world_view,
 )
-from elenctic.engine import Fault, Grounded, Interrupt, Limits, Locus, Program, ground
+from elenctic.engine import Facts, Fault, Grounded, Interrupt, Limits, Locus, Program, ground
 from elenctic.literals import AnswerSet, Literal, Scenario, Signature, Symbol
 from elenctic.query import Answer, answer, bindings
 from elenctic.reader import is_case, parse_contract
-from elenctic.spans import Diagnostic, Severity
-from elenctic.writer import braces, render
+from elenctic.spans import Diagnostic, Severity, Span
+from elenctic.writer import bound, braces, render, where
 
 NO_LIMITS = Limits()
+
+_IGNORED = (
+    "the program has theory atoms, which clingo would ground and ignore; "
+    "declare `% @elenctic solver clingcon` to check them with clingcon"
+)
+_OBJECTIVE = (
+    "the program has a theory objective, which clingcon applies in every search and clingo's "
+    "cost does not see; state the objective with `#minimize` or `#maximize`"
+)
+_UNASSIGNED = (
+    "reads a theory assignment, but the contract declares no theory solver: "
+    "declare `% @elenctic solver clingcon`"
+)
 
 
 class Verdict(StrEnum):
@@ -90,12 +107,35 @@ def _sets(over: Range) -> str:
     return "optimal answer sets" if over is Range.OPTIMAL else "answer sets"
 
 
-def _count(claim: Census, shown: frozenset[AnswerSet], *, closed: bool) -> tuple[Verdict, str]:
-    seen = len(shown)
+def _count(claim: Census, models: Iterable[Model], *, closed: bool) -> tuple[Verdict, str]:
+    """Count the distinct answers: a model's identity is what it shows and what it assigns."""
+    answers = {model.identity for model in models}
+    seen = len(answers)
     verdict = _universal(
         refuted=seen > claim.count or (closed and seen < claim.count), closed=closed
     )
-    return verdict, f"{claim.count} expected, {seen} distinct shown {_sets(claim.over)}"
+    noun = "with their assignments" if any(assignment for _, assignment in answers) else ""
+    return (
+        verdict,
+        f"{claim.count} expected, {seen} distinct shown {_sets(claim.over)} {noun}".rstrip(),
+    )
+
+
+def _witnessed(
+    claim: Witness | Assigns, models: Iterable[Model], *, closed: bool
+) -> tuple[Verdict, str]:
+    seen = any(claim.upheld_by(model) for model in models)
+    return _existential(
+        found=seen, closed=closed
+    ), f"{_stated(claim)} by an answer set: {'yes' if seen else 'no'}"
+
+
+def _stated(claim: Witness | Assigns) -> str:
+    match claim:
+        case Witness(literals, _, assignment):
+            return f"{braces(literals)} shown{where(assignment)}"
+        case Assigns(assignment):
+            return f"{bound(assignment)} assigned"
 
 
 def _entailed(claim: Entails, held: AnswerSet, *, closed: bool) -> tuple[Verdict, str]:
@@ -148,22 +188,19 @@ def _worldly(reading: Asks | Binds, found: Consistent[Models]) -> tuple[Verdict,
 
 
 def _consistent(reading: Reading, found: Consistent[Models]) -> tuple[Verdict, str]:
-    shown = frozenset(model.shown for model in found.evidence.all)
+    models = found.evidence.all
     closed = found.conclusion is Exhausted.EXHAUSTED
-    if isinstance(reading, Asks | Binds):
-        return _worldly(reading, found)
     match reading:
+        case Asks() | Binds():
+            return _worldly(reading, found)
         case Satisfiable(expected):
             return _agree(expected), "an answer set exists"
         case Census():
-            return _count(reading, shown, closed=closed)
-        case Witness(literals):
-            seen = literals in shown
-            return _existential(
-                found=seen, closed=closed
-            ), f"{braces(literals)} shown by an answer set: {'yes' if seen else 'no'}"
+            return _count(reading, models, closed=closed)
+        case Witness() | Assigns():
+            return _witnessed(reading, models, closed=closed)
         case Entails():
-            return _entails(reading, shown, closed=closed)
+            return _entails(reading, frozenset(m.shown for m in models), closed=closed)
         case Costs():
             return Verdict.UNDECIDED, "no optimum was sought"
 
@@ -245,7 +282,7 @@ def _evidence(
 
 def _over(reading: Reading) -> Range:
     """Name the model set a claim is about: only the optimal-set claims say otherwise."""
-    if isinstance(reading, Census | Witness | Entails | Costs):
+    if isinstance(reading, Census | Witness | Assigns | Entails | Costs):
         return reading.over
     return Range.ALL
 
@@ -344,28 +381,35 @@ def _contraries(reading: Reading) -> frozenset[Signature]:
             return frozenset()
 
 
-def _unsound(claims: Iterable[Claim], grounded: Grounded) -> list[Diagnostic]:
+def _unsound(contract: Contract, grounded: Grounded) -> list[Diagnostic]:
     """Find what would make a verdict untrustworthy: a claim asks what the program lacks."""
-    theory = (
-        []
-        if grounded.facts.theory is None
-        else [
-            Diagnostic(
-                grounded.facts.theory,
-                Severity.ERROR,
-                "the program has theory atoms, which clingo would ground and ignore; "
-                "declare `% @elenctic solver clingcon` to check them with clingcon",
-            )
-        ]
-    )
-    return theory + [
+    at_program = [
+        Diagnostic(span, Severity.ERROR, message)
+        for span, message in _theoretical(contract.solver, grounded.facts)
+    ]
+    return at_program + [
         Diagnostic(claim.span, Severity.ERROR, message)
-        for claim in claims
-        for message in _lacks(claim.reading, grounded)
+        for claim in contract.claims
+        for message in _lacks(claim.reading, grounded, contract.solver)
     ]
 
 
-def _lacks(reading: Reading, grounded: Grounded) -> list[str]:
+def _theoretical(solver: Solver, facts: Facts) -> list[tuple[Span, str]]:
+    """Find theory atoms clingo would ignore, or a theory objective clingcon cannot switch off."""
+    if facts.theory is not None and solver is Solver.CLINGO:
+        return [(facts.theory, _IGNORED)]
+    if facts.objective is not None:
+        return [(facts.objective, _OBJECTIVE)]
+    return []
+
+
+def _assigning(reading: Reading) -> bool:
+    return isinstance(reading, Assigns) or (
+        isinstance(reading, Witness) and bool(reading.assignment)
+    )
+
+
+def _lacks(reading: Reading, grounded: Grounded, solver: Solver) -> list[str]:
     objective = [
         (
             "needs an objective, but the ground program has none: it declares no `#minimize`, "
@@ -378,7 +422,8 @@ def _lacks(reading: Reading, grounded: Grounded) -> list[str]:
         for signature in sorted(_contraries(reading))
         if signature in grounded.signatures and not grounded.facts.shown.covers(signature)
     ]
-    return objective + unshown
+    assigned = [_UNASSIGNED] * (solver is Solver.CLINGO and _assigning(reading))
+    return objective + unshown + assigned
 
 
 def check(
@@ -393,10 +438,10 @@ def check(
     contract = parse_contract(program.text, program.source)
     if contract.diagnostics:
         return Fault(Locus.REQUEST, contract.diagnostics)
-    grounded = ground(program)
+    grounded = ground(program, contract.solver)
     if isinstance(grounded, Fault):
         return grounded
-    if unsound := _unsound(contract.claims, grounded):
+    if unsound := _unsound(contract, grounded):
         return Fault(Locus.REQUEST, tuple(unsound))
     judged = {
         claim: finding

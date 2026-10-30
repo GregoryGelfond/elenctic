@@ -8,6 +8,7 @@ from hypothesis import strategies as st
 
 from elenctic import engine
 from elenctic.determination import (
+    Assignment,
     Consequences,
     Consistent,
     Cost,
@@ -458,7 +459,7 @@ def test_no_model_proven_optimal_leaves_the_last_one_as_the_incumbent() -> None:
 
 def _seen(atom: str, *, proven: bool) -> _Seen:
     symbol = Function(atom)
-    return _Seen((symbol,), (symbol,), (), proven=proven)
+    return _Seen((symbol,), (symbol,), frozenset(), (), proven=proven)
 
 
 IMPROVING = "{ p(1..6) }. #maximize { 1,X : p(X) }.\n"
@@ -476,9 +477,11 @@ def clingo_reports(text: str) -> int:
 def test_only_the_models_an_optimization_keeps_are_built(monkeypatch: pytest.MonkeyPatch) -> None:
     built: list[AnswerSet] = []
 
-    def counting(atoms: AnswerSet, shown: AnswerSet, *, cost: Cost) -> Model:
+    def counting(
+        atoms: AnswerSet, shown: AnswerSet, *, assignment: Assignment, cost: Cost
+    ) -> Model:
         built.append(atoms)
-        return Model(atoms, shown, cost=cost)
+        return Model(atoms, shown, assignment=assignment, cost=cost)
 
     monkeypatch.setattr(engine, "Model", counting)
     grounded = ground(Program(IMPROVING))
@@ -547,7 +550,7 @@ def test_the_optimum_is_the_least_cost_among_all_models_and_its_models_are_those
 
 
 def test_a_run_is_refuted_only_when_it_exhausted_the_space_and_found_nothing() -> None:
-    model = Model(frozenset(), frozenset())
+    model = _seen("p", proven=True)
     exhausted, cut = Exhausted.EXHAUSTED, Truncation.BUDGET
     assert _Run((), exhausted, frozenset()).refuted
     assert not _Run((model,), exhausted, frozenset()).refuted

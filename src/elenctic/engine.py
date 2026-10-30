@@ -10,7 +10,7 @@ from operator import attrgetter
 from os import PathLike
 from pathlib import Path
 from time import monotonic
-from typing import Any, Final, Self, override
+from typing import Final, Self, override
 
 from clingo import Control, SolveHandle, Symbol, SymbolType
 from clingo import Model as ClingoModel
@@ -27,7 +27,9 @@ from clingo.ast import (
 from clingo.backend import Observer
 from clingo.configuration import Configuration
 
+from elenctic.contract import Solver
 from elenctic.determination import (
+    Assignment,
     Consequences,
     Consistent,
     Cost,
@@ -49,9 +51,11 @@ from elenctic.determination import (
 )
 from elenctic.literals import AnswerSet, Assumption, Literal, Scenario, Signature
 from elenctic.spans import UNLOCATED, Diagnostic, Position, Severity, Span, diagnose
+from elenctic.theory import Clingcon, Plain, Theory
 
 _SLICE: Final = 0.02
 _REMEMBERED: Final = 2**16
+_EXTRA: Final = "theory"
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,10 +115,10 @@ class Interrupt:
 
 
 @dataclass(frozen=True, slots=True)
-class _Run[T]:
+class _Run:
     """What one clingo solve call found, and how it ended; `core` only when it found nothing."""
 
-    found: tuple[T, ...]
+    found: tuple[_Seen, ...]
     conclusion: Exhausted | Truncation
     core: frozenset[Assumption]
 
@@ -144,22 +148,22 @@ class _Seen:
 
     atoms: tuple[Symbol, ...]
     shown: tuple[Symbol, ...]
+    assignment: Assignment
     cost: Cost
     proven: bool
 
     @property
     def model(self) -> Model:
-        return Model(_literals(self.atoms), _literals(self.shown), cost=self.cost)
+        return Model(
+            _literals(self.atoms), _literals(self.shown), assignment=self.assignment, cost=self.cost
+        )
 
 
-def _model(model: ClingoModel) -> Model:
-    return _seen(model).model
-
-
-def _seen(model: ClingoModel) -> _Seen:
+def _seen(model: ClingoModel, theory: Theory) -> _Seen:
     return _Seen(
         tuple(model.symbols(atoms=True)),
         tuple(model.symbols(shown=True)),
+        theory.assignment(model),
         tuple(model.cost),
         proven=model.optimality_proven or not model.cost,
     )
@@ -185,21 +189,21 @@ def _await(handle: SolveHandle, cut: Callable[[], Truncation | None]) -> Truncat
     return truncation
 
 
-def _drain[T](
+def _drain(
     handle: SolveHandle,
     cut: Callable[[], Truncation | None],
     cap: int | None,
-    convert: Callable[[ClingoModel], T],
-    counted: Callable[[T], bool],
-) -> tuple[list[T], Exhausted | Truncation]:
+    read: Callable[[ClingoModel], _Seen],
+    counted: Callable[[_Seen], bool],
+) -> tuple[list[_Seen], Exhausted | Truncation]:
     """Take models until the end, the cut, or one more counted model than `cap`."""
-    found: list[T] = []
+    found: list[_Seen] = []
     seen = 0
     handle.resume()
     while (truncation := _await(handle, cut)) is None:
         if (model := handle.model()) is None:
             return found, Exhausted.EXHAUSTED if handle.get().exhausted else Truncation.TARGET
-        found.append(convert(model))
+        found.append(read(model))
         seen += counted(found[-1])
         if cap is not None and seen > cap:
             handle.cancel()
@@ -217,15 +221,14 @@ def _solve_section(ctl: Control) -> Configuration:
 
 
 @dataclass(frozen=True, slots=True)
-class _Plan[T]:
-    """How to run a solve: the (enum, opt) modes, what to keep of a model, what counts to a cap."""
+class _Plan:
+    """How to run a solve: the (enum, opt) modes, and what counts toward a cap on the models."""
 
     modes: tuple[str, str]
-    convert: Callable[[ClingoModel], T]
-    counted: Callable[[T], bool]
+    counted: Callable[[_Seen], bool]
 
 
-def _always(_: object) -> bool:
+def _always(_: _Seen) -> bool:
     return True
 
 
@@ -233,10 +236,10 @@ def _key(assumption: Assumption) -> tuple[Literal, bool]:
     return assumption.literal, assumption.holds
 
 
-def _decide[T, E](
-    run: _Run[T],
+def _decide[E](
+    run: _Run,
     refutation: Refutation | None,
-    evidence: Callable[[list[T]], E],
+    evidence: Callable[[list[_Seen]], E],
 ) -> Determination[E]:
     """Read a run as a determination: models make it consistent, an exhausted none inconsistent."""
     if run.found:
@@ -250,12 +253,13 @@ def _decide[T, E](
     raise ValueError(message)
 
 
-def _models(found: list[Model]) -> Models:
-    return Models(found[0], tuple(found[1:]))
+def _models(found: list[_Seen]) -> Models:
+    models = [seen.model for seen in found]
+    return Models(models[0], tuple(models[1:]))
 
 
 def _optimized(found: list[_Seen]) -> Optimized:
-    optimal = [seen.model for seen in found if seen.proven]
+    optimal = [seen for seen in found if seen.proven]
     if optimal:
         return Optimum(optimal[0].cost, _models(optimal))
     return Incumbent(found[-1].model)
@@ -287,12 +291,14 @@ class Shown:
 class Facts:
     """What the grounded program says about itself, which a contract is checked against.
 
-    `theory` is where the first statement with a theory atom is, if the program has any.
+    `theory` is where the first statement with a theory atom is, if the program has any, and
+    `objective` where the first with a theory objective, `&minimize` or `&maximize`, is.
     """
 
     shown: Shown = Shown()
     optimizes: bool = False
     theory: Span | None = None
+    objective: Span | None = None
 
 
 def _signature(term: AST) -> Signature | None:
@@ -326,14 +332,20 @@ def _shown(statement: AST) -> Shown:
             return Shown()
 
 
-_PLAIN: Final = _Plan[Model](("auto", "ignore"), _model, _always)
+_PLAIN: Final = _Plan(("auto", "ignore"), _always)
 
 
 class Grounded:
     """A program grounded once, to be searched under any number of scenarios."""
 
-    def __init__(self, control: Control, facts: Facts = Facts()) -> None:  # noqa: B008
+    def __init__(
+        self,
+        control: Control,
+        facts: Facts = Facts(),  # noqa: B008
+        theory: Theory = Plain(),  # noqa: B008
+    ) -> None:
         self._control = control
+        self._theory = theory
         self.facts = facts
         # Read before any search: clingo later drops atoms that assumptions have made false.
         self._literals: Mapping[Symbol, int] = {
@@ -359,13 +371,16 @@ class Grounded:
     def _impossible(self, scenario: Iterable[Assumption]) -> frozenset[Assumption]:
         return frozenset(a for a in scenario if a.holds and not self._derivable(a.literal))
 
-    def _run[T](
+    def _read(self, model: ClingoModel) -> _Seen:
+        return _seen(model, self._theory)
+
+    def _run(
         self,
         scenario: Scenario,
-        plan: _Plan[T],
+        plan: _Plan,
         cap: int | None,
         cut: Callable[[], Truncation | None],
-    ) -> _Run[T]:
+    ) -> _Run:
         assumed = self._assumed(scenario)
         if impossible := self._impossible(scenario):
             return _Run((), Exhausted.EXHAUSTED, impossible)
@@ -373,7 +388,7 @@ class Grounded:
         section.models = "0"
         section.enum_mode, section.opt_mode = plan.modes
         with self._control.solve(assumptions=list(assumed), yield_=True, async_=True) as handle:
-            found, conclusion = _drain(handle, cut, cap, plan.convert, plan.counted)
+            found, conclusion = _drain(handle, cut, cap, self._read, plan.counted)
             run = _Run(tuple(found), conclusion, frozenset())
             core = frozenset(assumed[lit] for lit in handle.core()) if run.refuted else frozenset()
         return replace(run, core=core)
@@ -413,18 +428,18 @@ class Grounded:
         return These(kept) if kept else NotThese()
 
     def _refutation_of(
-        self, scenario: Scenario, run: _Run[Any], cut: Callable[[], Truncation | None]
+        self, scenario: Scenario, run: _Run, cut: Callable[[], Truncation | None]
     ) -> Refutation | None:
         """Refute a run that exhausted its space and found nothing; `None` for any other."""
         return self._refutation(scenario, run.core, cut) if run.refuted else None
 
-    def _search[T, E](
+    def _search[E](
         self,
         scenario: Scenario,
-        plan: _Plan[T],
+        plan: _Plan,
         cap: int | None,
         cut: Callable[[], Truncation | None],
-        evidence: Callable[[list[T]], E],
+        evidence: Callable[[list[_Seen]], E],
     ) -> Determination[E]:
         run = self._run(scenario, plan, cap, cut)
         return _decide(run, self._refutation_of(scenario, run, cut), evidence)
@@ -449,10 +464,10 @@ class Grounded:
         interrupt: Interrupt | None = None,
     ) -> Determination[Consequences]:
         """Compute the cautious or brave consequences among the shown atoms, natively."""
-        plan = _Plan((mode.value, "ignore"), _model, _always)
+        plan = _Plan((mode.value, "ignore"), _always)
         cut = _cutter(limits, interrupt)
         return self._search(
-            scenario, plan, None, cut, lambda found: Consequences(mode, found[-1].shown)
+            scenario, plan, None, cut, lambda found: Consequences(mode, found[-1].model.shown)
         )
 
     def optimize(
@@ -466,7 +481,7 @@ class Grounded:
 
         `limits.models` bounds the optimal models, not the improving ones found on the way.
         """
-        plan = _Plan(("auto", "optN"), _seen, attrgetter("proven"))
+        plan = _Plan(("auto", "optN"), attrgetter("proven"))
         cut = _cutter(limits, interrupt)
         return self._search(scenario, plan, limits.models, cut, _optimized)
 
@@ -484,11 +499,26 @@ def _theoretical(node: AST) -> bool:
     return node.ast_type is ASTType.TheoryAtom or any(map(_theoretical, _children(node)))
 
 
+_OBJECTIVES: Final = frozenset({"minimize", "maximize"})
+
+
+def _objective(node: AST) -> bool:
+    """Say whether `node` holds a theory objective: clingcon applies it in every search."""
+    named = node.ast_type is ASTType.TheoryAtom and node.term.name in _OBJECTIVES
+    return named or any(map(_objective, _children(node)))
+
+
+def _first(statements: list[AST], holds: Callable[[AST], bool], program: Program) -> Span | None:
+    """Locate the first statement for which `holds`."""
+    found = next((s for s in statements if holds(s)), None)
+    return None if found is None else _span(found.location, program)
+
+
 def _theory_at(control: Control, statements: list[AST], program: Program) -> Span | None:
     """Locate the first statement with a theory atom, if grounding left any theory atom."""
     if next(iter(control.theory_atoms), None) is None:
         return None
-    return _span(next(s for s in statements if _theoretical(s)).location, program)
+    return _first(statements, _theoretical, program)
 
 
 def _span(location: Location, program: Program) -> Span:
@@ -542,14 +572,34 @@ class _Objective(Observer):
         self.seen = True
 
 
-def ground(program: Program) -> Grounded | Fault:
-    """Ground `program`, or say why it cannot be."""
+_THEORIES: Final[Mapping[Solver, Callable[[], Theory | None]]] = {
+    Solver.CLINGO: Plain,
+    Solver.CLINGCON: Clingcon.load,
+}
+
+
+def _absent(solver: Solver, program: Program) -> Fault:
+    """Say the contract names a solver that is not installed, and what installs it."""
+    here = Span(program.source, Position(1, 1), Position(1, 1))
+    message = (
+        f"the contract declares `% @elenctic solver {solver}`, which is not installed; "
+        f"install `elenctic[{_EXTRA}]`, or use the pixi `{_EXTRA}` environment"
+    )
+    return Fault(Locus.REQUEST, (Diagnostic(here, Severity.ERROR, message),))
+
+
+def ground(program: Program, solver: Solver = Solver.CLINGO) -> Grounded | Fault:
+    """Ground `program` for `solver`, or say why it cannot be."""
+    theory = _THEORIES[solver]()
+    if theory is None:
+        return _absent(solver, program)
     messages: list[str] = []
 
     def log(_code: object, message: str) -> None:
         messages.append(message)
 
     control = Control(["--warn=none"], logger=log)
+    theory.register(control)
     objective = _Objective()
     control.register_observer(objective)
     shown: list[Shown] = []
@@ -560,20 +610,20 @@ def ground(program: Program) -> Grounded | Fault:
             def add(statement: AST) -> None:
                 shown.append(_shown(statement))
                 statements.append(statement)
-                builder.add(statement)
+                theory.rewrite(statement, builder.add)
 
             _parse(program, add, log)
         control.ground([("base", [])])
+        theory.prepare(control)
     except RuntimeError as error:
         return _fault(messages, error, program)
-    return Grounded(
-        control,
-        Facts(
-            reduce(Shown.__or__, shown, Shown()),
-            objective.seen,
-            _theory_at(control, statements, program),
-        ),
+    facts = Facts(
+        reduce(Shown.__or__, shown, Shown()),
+        objective.seen,
+        _theory_at(control, statements, program),
+        _first(statements, _objective, program) if solver is Solver.CLINGCON else None,
     )
+    return Grounded(control, facts, theory)
 
 
 def solve(
@@ -582,9 +632,10 @@ def solve(
     *,
     limits: Limits = Limits(),  # noqa: B008
     interrupt: Interrupt | None = None,
+    solver: Solver = Solver.CLINGO,
 ) -> Determination[Models] | Fault:
     """Enumerate the stable models of `program` satisfying `scenario`."""
-    grounded = ground(program)
+    grounded = ground(program, solver)
     if isinstance(grounded, Fault):
         return grounded
     return grounded.solve(scenario, limits=limits, interrupt=interrupt)

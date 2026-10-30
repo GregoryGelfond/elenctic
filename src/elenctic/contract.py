@@ -1,11 +1,19 @@
 """The contract: the claims a program is held to, as a vocabulary of readings."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 
-from elenctic.determination import Cost, Mode, Range
+from elenctic.determination import Assignment, Cost, Mode, Model, Range
 from elenctic.literals import AnswerSet, Pattern, Scenario, Symbol
 from elenctic.query import All, Answer
 from elenctic.spans import Diagnostic, Span
+
+
+class Solver(StrEnum):
+    """What a contract is checked with: clingo alone, or clingo with the clingcon theory."""
+
+    CLINGO = "clingo"
+    CLINGCON = "clingcon"
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,10 +33,28 @@ class Census:
 
 @dataclass(frozen=True, slots=True)
 class Witness:
-    """`@model [optimal] { L }`, or `@optimal { L }`: some answer set shows exactly `L`."""
+    """`@model [optimal] { L } [where { A }]`, or `@optimal { L }`.
+
+    Some answer set shows exactly `L` and, given `A`, assigns at least `A`.
+    """
 
     literals: AnswerSet
     over: Range = Range.ALL
+    assignment: Assignment = frozenset()
+
+    def upheld_by(self, model: Model) -> bool:
+        return model.shown == self.literals and self.assignment <= model.assignment
+
+
+@dataclass(frozen=True, slots=True)
+class Assigns:
+    """`@assign [optimal] { A }`: some answer set has a theory assignment containing `A`."""
+
+    assignment: Assignment
+    over: Range = Range.ALL
+
+    def upheld_by(self, model: Model) -> bool:
+        return self.assignment <= model.assignment
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +94,7 @@ class Binds:
     bindings: frozenset[tuple[Symbol, ...]]
 
 
-type Reading = Satisfiable | Census | Witness | Entails | Costs | Asks | Binds
+type Reading = Satisfiable | Census | Witness | Assigns | Entails | Costs | Asks | Binds
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,3 +110,4 @@ class Claim:
 class Contract:
     claims: tuple[Claim, ...]
     diagnostics: tuple[Diagnostic, ...]
+    solver: Solver = Solver.CLINGO

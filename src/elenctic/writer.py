@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 from elenctic.contract import (
     Asks,
+    Assigns,
     Binds,
     Census,
     Claim,
@@ -13,7 +14,7 @@ from elenctic.contract import (
     Satisfiable,
     Witness,
 )
-from elenctic.determination import Range
+from elenctic.determination import Assignment, Range
 from elenctic.literals import Literal, Pattern, Symbol
 from elenctic.query import All
 
@@ -34,12 +35,25 @@ def _optimally(over: Range) -> str:
     return "optimal " if over is Range.OPTIMAL else ""
 
 
-def _of_models(reading: Census | Witness | Entails | Costs) -> str:
+def bound(assignment: Assignment) -> str:
+    """Write an assignment as the `{ term=integer, ... }` the contract syntax uses."""
+    written = sorted(f"{v.variable}={v.value}" for v in assignment)
+    return "{ " + ", ".join(written) + " }"
+
+
+def where(assignment: Assignment) -> str:
+    """Write the ` where { ... }` that follows a witness, or nothing if it assigns nothing."""
+    return f" where {bound(assignment)}" if assignment else ""
+
+
+def _of_models(reading: Census | Witness | Assigns | Entails | Costs) -> str:
     match reading:
         case Census(count, over):
             return f"@count {_optimally(over)}{count}"
-        case Witness(literals, over):
-            return f"@model {_optimally(over)}{braces(literals)}"
+        case Witness(literals, over, assignment):
+            return f"@model {_optimally(over)}{braces(literals)}{where(assignment)}"
+        case Assigns(assignment, over):
+            return f"@assign {_optimally(over)}{bound(assignment)}"
         case Entails(mode, literals, over):
             return f"@{mode} {_optimally(over)}{braces(literals)}"
         case Costs(cost):
@@ -50,7 +64,7 @@ def _reading(reading: Reading) -> str:
     match reading:
         case Satisfiable(expected):
             return f"@expect {'sat' if expected else 'unsat'}"
-        case Census() | Witness() | Entails() | Costs():
+        case Census() | Witness() | Assigns() | Entails() | Costs():
             return _of_models(reading)
         case Asks(answer, All(parts)):
             return f"@query {answer} {braces(p for p in parts if isinstance(p, Literal))}"
