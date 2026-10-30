@@ -27,6 +27,8 @@ All notable changes are recorded here. The format follows
 - Packaging for uv, pixi and conda-forge (`recipe/recipe.yaml`).
 
 ### Changed
+
+- A refutation by assumptions whose core may not be minimal (the search was cut short) now says so.
 - `@cost` over `#maximize` is accepted: costs are clingo's minimized sums, so a maximized level is
   negated.
 - A `no`/`unknown` query faults only when its contrary is derivable and not shown.
