@@ -159,8 +159,9 @@ class Grounded:
         interrupt: Interrupt | None = None,
     ) -> Determination[Models]:
         """Enumerate the stable models satisfying `scenario`, whatever the program optimizes."""
-        plan = Plan(ENUMERATION, cap=limits.models)
-        return self._search(Request(scenario, limits, interrupt), plan, models)
+        return self._search(
+            Request(scenario, limits, interrupt), Plan(ENUMERATION, cap=limits.models), models
+        )
 
     def consequences(
         self,
@@ -171,10 +172,9 @@ class Grounded:
         interrupt: Interrupt | None = None,
     ) -> Determination[Consequences]:
         """Compute the cautious or brave consequences among the shown atoms, natively."""
-        plan = Plan((mode.value, "ignore"))
         return self._search(
             Request(scenario, limits, interrupt),
-            plan,
+            Plan((mode.value, "ignore")),
             lambda found: Consequences(mode, found[-1].model.shown),
         )
 
@@ -189,5 +189,8 @@ class Grounded:
 
         `limits.models` bounds the optimal models, not the improving ones found on the way.
         """
-        plan = Plan(OPTIMIZATION, proven, limits.models)
-        return self._search(Request(scenario, limits, interrupt), plan, optimized)
+        return self._search(
+            Request(scenario, limits, interrupt),
+            Plan(OPTIMIZATION, proven, limits.models),
+            optimized,
+        )
