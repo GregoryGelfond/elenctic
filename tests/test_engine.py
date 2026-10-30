@@ -310,6 +310,28 @@ def test_a_refutation_cut_short_by_the_budget_is_not_called_minimal() -> None:
     assert cut == These(core, minimal=False)
 
 
+def test_a_refutation_among_many_assumptions_is_the_few_that_clash() -> None:
+    names = [f"a{i}" for i in range(12)]
+    scenario = frozenset(Assumption(Literal(n)) for n in names)
+    found = solve(Program("{" + ";".join(names) + "}. :- a3, a7, a10."), scenario)
+    wanted = frozenset(Assumption(Literal(n)) for n in ("a3", "a7", "a10"))
+    assert found == Inconsistent(These(wanted))
+
+
+PIGEONS = "p(1..14). h(1..13). 1 { in(P,H) : h(H) } 1 :- p(P), y. :- in(P,H), in(Q,H), P < Q."
+
+
+def test_a_refutation_whose_shrinking_the_budget_cuts_is_sufficient_and_says_so() -> None:
+    program = f"{{x;y}}. :- x, y. {PIGEONS}"
+    scenario = frozenset({Assumption(Literal("x")), Assumption(Literal("y"))})
+    found = solve(Program(program), scenario, limits=Limits(seconds=0.3))
+    assert found == Inconsistent(These(scenario, minimal=False))
+    exact = solve(
+        Program(program), frozenset({Assumption(Literal("y"))}), limits=Limits(seconds=0.3)
+    )
+    assert exact == Inconclusive(Truncation.BUDGET)
+
+
 scenarios = st.frozensets(
     st.builds(
         Assumption,
