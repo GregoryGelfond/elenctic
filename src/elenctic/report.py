@@ -6,9 +6,9 @@ from enum import Enum
 
 from clingo import Symbol
 
-from aspnext.check import Finding, Report, Verdict
-from aspnext.engine import Fault
-from aspnext.literals import Literal, Pattern
+from elenctic.check import Finding, Report, Verdict
+from elenctic.engine import Fault
+from elenctic.literals import Literal, Pattern
 
 SCHEMA = 1
 

@@ -1,6 +1,6 @@
-"""Run generated cases through elenctic 0.3 and this library; compare every claim's verdict."""
+"""Run generated cases through elenctic 0.3 and this library; compare every claim's verdict.
 
-python scripts/differential.py ELENCTIC_SRC [--cases N] [--seed S]
+python scripts/differential.py LEGACY_SRC [--cases N] [--seed S]
 """
 
 import argparse
@@ -12,8 +12,8 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
-from aspnext.check import Report, check
-from aspnext.engine import Fault, Program
+from elenctic.check import Report, check
+from elenctic.engine import Fault, Program
 
 LITERALS = ("a", "b", "c", "-a", "-b", "-c")
 RULES = (

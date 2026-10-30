@@ -5,7 +5,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from aspnext.determination import (
+from elenctic.determination import (
     Consequences,
     Consistent,
     Exhausted,
@@ -16,8 +16,8 @@ from aspnext.determination import (
     Truncation,
     world_view,
 )
-from aspnext.engine import Fault, Interrupt, Limits, Locus, Program, ground, solve
-from aspnext.literals import Assumption, Literal
+from elenctic.engine import Fault, Interrupt, Limits, Locus, Program, ground, solve
+from elenctic.literals import Assumption, Literal
 
 P, Q = Literal("p"), Literal("q")
 

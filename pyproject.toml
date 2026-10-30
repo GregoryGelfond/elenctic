@@ -1,5 +1,5 @@
 [project]
-name = "aspnext"
+name = "elenctic"
 version = "0.0.0"
 description = "Contracts and queries for answer set programs: a library first, a command line second"
 readme = "README.md"
@@ -9,7 +9,7 @@ requires-python = ">=3.14"
 dependencies = ["clingo>=5.8.2,<5.9"]
 
 [project.scripts]
-aspnext = "aspnext.cli:main"
+elenctic = "elenctic.cli:main"
 
 [dependency-groups]
 dev = ["mypy>=2.4", "ruff>=0.17", "pytest>=9", "hypothesis>=6.170"]
@@ -19,13 +19,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/aspnext"]
+packages = ["src/elenctic"]
 
 [tool.mypy]
 python_version = "3.14"
 strict = true
 mypy_path = "src"
-packages = ["aspnext"]
+packages = ["elenctic"]
 warn_unreachable = true
 warn_unused_configs = true
 enable_error_code = [
@@ -51,8 +51,8 @@ ignore = ["CPY001", "TC001", "TC002", "TC003", "D100", "D101", "D102", "D103", "
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "INP001", "FBT001"]
 "scripts/**" = ["INP001", "PLR2004", "T201", "S603", "S311"]
-"src/aspnext/check.py" = ["RUF001"]
-"src/aspnext/cli.py" = ["T201", "S603", "S311"]
+"src/elenctic/check.py" = ["RUF001"]
+"src/elenctic/cli.py" = ["T201", "S603", "S311"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -67,7 +67,7 @@ python = ">=3.14"
 clingo = ">=5.8.2,<5.9"
 
 [tool.pixi.pypi-dependencies]
-aspnext = { path = ".", editable = true }
+elenctic = { path = ".", editable = true }
 
 [tool.pixi.feature.dev.dependencies]
 mypy = ">=2.4"

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from aspnext.cli import main
+from elenctic.cli import main
 
 DRINKS = "1 { tea; coffee } 1.\nbiscuit.\n#show tea/0. #show coffee/0. #show biscuit/0.\n"
 

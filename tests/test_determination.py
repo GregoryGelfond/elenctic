@@ -1,6 +1,6 @@
 import pytest
 
-from aspnext.determination import (
+from elenctic.determination import (
     Conclusion,
     Consistent,
     Exhausted,
@@ -10,7 +10,7 @@ from aspnext.determination import (
     WorldView,
     world_view,
 )
-from aspnext.literals import Literal
+from elenctic.literals import Literal
 
 P, Q = Literal("p"), Literal("q")
 

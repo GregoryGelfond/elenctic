@@ -1,4 +1,4 @@
-from aspnext.spans import Diagnostic, Position, Severity, Span, diagnose
+from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose
 
 
 def test_a_located_error_becomes_a_diagnostic_with_its_span() -> None:

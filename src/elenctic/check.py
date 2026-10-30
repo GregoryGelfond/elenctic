@@ -6,7 +6,7 @@ from enum import StrEnum
 
 from clingo import Symbol
 
-from aspnext.contract import (
+from elenctic.contract import (
     Asks,
     Binds,
     Census,
@@ -20,7 +20,7 @@ from aspnext.contract import (
     parse_contract,
     render,
 )
-from aspnext.determination import (
+from elenctic.determination import (
     Consistent,
     Determination,
     Exhausted,
@@ -33,9 +33,9 @@ from aspnext.determination import (
     WorldView,
     world_view,
 )
-from aspnext.engine import Fault, Grounded, Interrupt, Limits, Locus, Program, ground
-from aspnext.literals import AnswerSet, Scenario
-from aspnext.query import Answer, answer, bindings
+from elenctic.engine import Fault, Grounded, Interrupt, Limits, Locus, Program, ground
+from elenctic.literals import AnswerSet, Scenario
+from elenctic.query import Answer, answer, bindings
 
 NO_LIMITS = Limits()
 

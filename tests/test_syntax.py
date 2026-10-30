@@ -1,9 +1,9 @@
 import pytest
 from clingo import Number, String, parse_term
 
-from aspnext.literals import Pattern, Variable
-from aspnext.spans import Diagnostic, Position, Span
-from aspnext.syntax import Item, read_bindings, read_literals
+from elenctic.literals import Pattern, Variable
+from elenctic.spans import Diagnostic, Position, Span
+from elenctic.syntax import Item, read_bindings, read_literals
 
 WHERE = Span("c.lp", Position(7, 12), Position(7, 40))
 X = Variable("X")

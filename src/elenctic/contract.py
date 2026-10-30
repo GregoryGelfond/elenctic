@@ -9,11 +9,11 @@ from typing import Final, NamedTuple
 
 from clingo import Symbol
 
-from aspnext.determination import Mode
-from aspnext.literals import AnswerSet, Assumption, Literal, Pattern, Scenario
-from aspnext.query import All, Answer
-from aspnext.spans import Diagnostic, Position, Severity, Span
-from aspnext.syntax import Item, Parsed, read_bindings, read_literals
+from elenctic.determination import Mode
+from elenctic.literals import AnswerSet, Assumption, Literal, Pattern, Scenario
+from elenctic.query import All, Answer
+from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.syntax import Item, Parsed, read_bindings, read_literals
 
 
 @dataclass(frozen=True, slots=True)

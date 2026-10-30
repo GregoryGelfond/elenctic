@@ -1,8 +1,8 @@
 """Contracts and queries for answer set programs."""
 
-from aspnext.check import Finding, Report, Verdict, check, judge
-from aspnext.contract import Claim, Contract, parse_contract, render
-from aspnext.determination import (
+from elenctic.check import Finding, Report, Verdict, check, judge
+from elenctic.contract import Claim, Contract, parse_contract, render
+from elenctic.determination import (
     Conclusion,
     Consequences,
     Consistent,
@@ -18,9 +18,9 @@ from aspnext.determination import (
     WorldView,
     world_view,
 )
-from aspnext.engine import Fault, Grounded, Interrupt, Limits, Locus, Program, ground, solve
-from aspnext.literals import AnswerSet, Assumption, Literal, Pattern, Scenario, Variable
-from aspnext.query import (
+from elenctic.engine import Fault, Grounded, Interrupt, Limits, Locus, Program, ground, solve
+from elenctic.literals import AnswerSet, Assumption, Literal, Pattern, Scenario, Variable
+from elenctic.query import (
     Answer,
     Bindings,
     Query,
@@ -30,7 +30,7 @@ from aspnext.query import (
     evaluate,
     singleton_answer,
 )
-from aspnext.spans import Diagnostic, Position, Severity, Span
+from elenctic.spans import Diagnostic, Position, Severity, Span
 
 __all__ = [
     "Answer",

@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from aspnext.check import Report, check
-from aspnext.engine import Fault, Program
-from aspnext.report import SCHEMA, Entry, Run, encode, to_json, to_text
+from elenctic.check import Report, check
+from elenctic.engine import Fault, Program
+from elenctic.report import SCHEMA, Entry, Run, encode, to_json, to_text
 
 PASSING = "p.\n% @expect sat\n% @cautious { p }\n"
 FAILING = "p.\n% @expect sat\n% @cautious { q }\n"

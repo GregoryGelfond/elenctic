@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rename the working codename everywhere: ./scripts/rename.sh NEWNAME
 set -euo pipefail
-old=aspnext
+old=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$(dirname "$0")/../pyproject.toml" | head -1)
 new=${1:?usage: rename.sh NEWNAME}
 [[ $new =~ ^[a-z][a-z0-9_]*$ ]] || { echo "name must be a lowercase python identifier" >&2; exit 2; }
 cd "$(dirname "$0")/.."

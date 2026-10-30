@@ -1,7 +1,7 @@
 schema_version: 1
 
 context:
-  name: aspnext
+  name: elenctic
   version: 0.0.0
   python_min: "3.14"
 
@@ -17,7 +17,7 @@ build:
   script: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
   python:
     entry_points:
-      - aspnext = aspnext.cli:main
+      - elenctic = elenctic.cli:main
 
 requirements:
   host:
@@ -31,13 +31,13 @@ requirements:
 tests:
   - python:
       imports:
-        - aspnext
+        - elenctic
       python_version: ${{ python_min }}.*
   - script:
-      - aspnext --help
+      - elenctic --help
 
 about:
-  homepage: https://github.com/GregoryGelfond/aspnext
+  homepage: https://github.com/GregoryGelfond/elenctic
   license: MIT
   license_file: LICENSE
   summary: Contracts and queries for answer set programs

@@ -1990,7 +1990,7 @@ packages:
   size: 387535
   timestamp: 1786599623274
 - pypi: ./
-  name: aspnext
+  name: elenctic
   requires_dist:
   - clingo>=5.8.2,<5.9
   requires_python: '>=3.14'

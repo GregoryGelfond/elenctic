@@ -1,18 +1,18 @@
-# aspnext
+# elenctic
 
 Check answer set programs against contracts written in their own comments.
 A library first; the command line is a thin client over it.
 
 ```
-$ aspnext drinks.lp
+$ elenctic drinks.lp
 drinks.lp — FAIL
   [FAIL] @cautious { tea } (line 12): { tea } ⊆ ⋂ AS(P) = { biscuit } (missing: { tea })
 
 0/1 passed, 1 fail
 ```
 
-`aspnext` is a working codename; see `DESIGN-2026-10-30.md` for the naming options and
-`scripts/rename.sh` to change it.
+This is the successor to elenctic 0.3; see `DESIGN-2026-10-30.md` for the design and its open
+items.
 
 ## Install
 
@@ -25,7 +25,7 @@ Python 3.14 and clingo 5.8 are required.
 ## Use
 
 ```python
-from aspnext import Limits, Program, check
+from elenctic import Limits, Program, check
 
 report = check(Program.read("drinks.lp"), limits=Limits(seconds=10))
 ```

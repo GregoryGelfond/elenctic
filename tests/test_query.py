@@ -2,9 +2,9 @@ from clingo import Number
 from hypothesis import given
 from hypothesis import strategies as st
 
-from aspnext.determination import WorldView
-from aspnext.literals import AnswerSet, Literal, Pattern, Variable
-from aspnext.query import (
+from elenctic.determination import WorldView
+from elenctic.literals import AnswerSet, Literal, Pattern, Variable
+from elenctic.query import (
     All,
     Answer,
     Any,

@@ -13,7 +13,7 @@ from clingo import Model as ClingoModel
 from clingo.ast import AST, ProgramBuilder, parse_files, parse_string
 from clingo.configuration import Configuration
 
-from aspnext.determination import (
+from elenctic.determination import (
     Consequences,
     Consistent,
     Determination,
@@ -26,8 +26,8 @@ from aspnext.determination import (
     Refutation,
     Truncation,
 )
-from aspnext.literals import Assumption, Literal, Scenario
-from aspnext.spans import UNLOCATED, Diagnostic, Severity, diagnose
+from elenctic.literals import Assumption, Literal, Scenario
+from elenctic.spans import UNLOCATED, Diagnostic, Severity, diagnose
 
 _SLICE: Final = 0.02
 

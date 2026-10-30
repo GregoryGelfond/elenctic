@@ -3,7 +3,7 @@ from clingo import Function, Number, String, parse_term
 from hypothesis import given
 from hypothesis import strategies as st
 
-from aspnext.literals import Literal, Pattern, Variable
+from elenctic.literals import Literal, Pattern, Variable
 
 X, Y = Variable("X"), Variable("Y")
 

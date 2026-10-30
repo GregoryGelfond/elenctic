@@ -28,9 +28,9 @@ following comment lines.
 
 ## API
 
-Everything in `aspnext.__all__`. Results are frozen dataclasses; spans are half-open,
+Everything in `elenctic.__all__`. Results are frozen dataclasses; spans are half-open,
 `[start, end)`, one-based.
 
 ## JSON
 
-`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`; see `aspnext.report.encode`.
+`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`; see `elenctic.report.encode`.

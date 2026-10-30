@@ -1,7 +1,7 @@
 import pytest
 from clingo import Number, String, parse_term
 
-from aspnext.contract import (
+from elenctic.contract import (
     Asks,
     Binds,
     Census,
@@ -16,10 +16,10 @@ from aspnext.contract import (
     parse_contract,
     render,
 )
-from aspnext.determination import Mode
-from aspnext.literals import Assumption, Literal, Pattern, Variable
-from aspnext.query import All, Answer
-from aspnext.spans import Diagnostic, Position, Span
+from elenctic.determination import Mode
+from elenctic.literals import Assumption, Literal, Pattern, Variable
+from elenctic.query import All, Answer
+from elenctic.spans import Diagnostic, Position, Span
 
 X = Variable("X")
 P = Position

@@ -6,17 +6,17 @@ import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from aspnext.check import check
-from aspnext.engine import Fault, Interrupt, Limits, Locus, Program
-from aspnext.report import Entry, Run, to_json, to_text
-from aspnext.spans import Diagnostic, Position, Severity, Span
+from elenctic.check import check
+from elenctic.engine import Fault, Interrupt, Limits, Locus, Program
+from elenctic.report import Entry, Run, to_json, to_text
+from elenctic.spans import Diagnostic, Position, Severity, Span
 
 DEFAULT_BUDGET = 30.0
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="aspnext", description="Check ASP programs against their contracts."
+        prog="elenctic", description="Check ASP programs against their contracts."
     )
     parser.add_argument(
         "paths", nargs="+", type=Path, help=".lp files, or directories searched for them"

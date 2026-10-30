@@ -20,7 +20,7 @@ The comment lines are the contract; the rest is an ordinary program.
 Check it:
 
 ```
-aspnext drinks.lp
+elenctic drinks.lp
 ```
 
 When every claim passes the output is `1/1 passed`. Add `-v` to

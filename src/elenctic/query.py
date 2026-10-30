@@ -5,8 +5,8 @@ from enum import IntEnum, StrEnum
 
 from clingo import Symbol
 
-from aspnext.determination import WorldView
-from aspnext.literals import AnswerSet, Literal, Pattern
+from elenctic.determination import WorldView
+from elenctic.literals import AnswerSet, Literal, Pattern
 
 
 class Truth(IntEnum):

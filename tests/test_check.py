@@ -1,8 +1,8 @@
 import pytest
 
-from aspnext.check import NO_LIMITS, Finding, Report, Verdict, check
-from aspnext.determination import Truncation
-from aspnext.engine import Fault, Limits, Locus, Program
+from elenctic.check import NO_LIMITS, Finding, Report, Verdict, check
+from elenctic.determination import Truncation
+from elenctic.engine import Fault, Limits, Locus, Program
 
 DRINKS = """
 1 { tea; coffee } 1.

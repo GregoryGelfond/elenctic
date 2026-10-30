@@ -6,8 +6,8 @@ from typing import Final
 from clingo import MessageCode, Symbol, SymbolType, parse_term
 from clingo.ast import AST, ASTType, Location, Sign, UnaryOperator, parse_string
 
-from aspnext.literals import Pattern, Variable
-from aspnext.spans import Diagnostic, Position, Severity, Span, diagnose
+from elenctic.literals import Pattern, Variable
+from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose
 
 type Parsed[T] = T | Diagnostic
 

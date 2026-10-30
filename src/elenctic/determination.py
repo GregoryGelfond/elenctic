@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from aspnext.literals import AnswerSet, Assumption
+from elenctic.literals import AnswerSet, Assumption
 
 
 class Exhausted(StrEnum):
