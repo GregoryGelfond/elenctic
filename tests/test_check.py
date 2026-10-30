@@ -1,9 +1,10 @@
 import pytest
 
 from elenctic.check import NO_LIMITS, Finding, Report, Verdict, check, judge
-from elenctic.contract import Claim, Costs
-from elenctic.determination import Consistent, Incumbent, Model, Truncation
+from elenctic.contract import Claim, Costs, Witness
+from elenctic.determination import Consistent, Inconsistent, Incumbent, Model, These, Truncation
 from elenctic.engine import Fault, Limits, Locus, Program, ground
+from elenctic.literals import Assumption, Literal
 from elenctic.spans import Position, Span
 
 DRINKS = """
@@ -300,3 +301,13 @@ def test_an_incumbent_is_never_a_pass_for_a_cost_claim() -> None:
     finding = judge(claim, found)
     assert finding.verdict is U
     assert "no optimum proven" in finding.detail
+
+
+def test_a_core_that_may_not_be_minimal_says_so() -> None:
+    claim = Claim(Witness(frozenset()), frozenset(), Span("t.lp", Position(1, 1), Position(1, 2)))
+    core = frozenset({Assumption(Literal("p"), holds=True)})
+    exact = judge(claim, Inconsistent(These(core)))
+    cut = judge(claim, Inconsistent(These(core, minimal=False)))
+    assert exact.detail == "no answer set satisfies the assumptions (p)"
+    assert cut.detail.startswith(exact.detail)
+    assert "may not be minimal" in cut.detail

@@ -8,11 +8,12 @@ from functools import reduce
 from operator import itemgetter
 from pathlib import Path
 from time import monotonic
-from typing import Any, Final, Self
+from typing import Any, Final, Self, override
 
 from clingo import Control, SolveHandle, Symbol, SymbolType
 from clingo import Model as ClingoModel
 from clingo.ast import AST, ASTType, ProgramBuilder, UnaryOperator, parse_files, parse_string
+from clingo.backend import Observer
 from clingo.configuration import Configuration
 
 from elenctic.determination import (
@@ -447,13 +448,14 @@ def _parse(program: Program, add: Callable[[AST], None], logger: Callable[..., N
         parse_files([str(program.path)], add, logger=logger)
 
 
-class _Objective:
+class _Objective(Observer):
     """Observe the grounding for an objective: one that grounds away never reaches the solver."""
 
     def __init__(self) -> None:
         self.seen = False
 
-    def minimize(self, priority: int, literals: Sequence[tuple[int, int]]) -> None:  # noqa: ARG002
+    @override
+    def minimize(self, _priority: int, _literals: Sequence[tuple[int, int]]) -> None:
         """Record that a priority level has weighted literals (the observer's callback)."""
         self.seen = True
 
@@ -467,7 +469,7 @@ def ground(program: Program) -> Grounded | Fault:
 
     control = Control(["--warn=none"], logger=log)
     objective = _Objective()
-    control.register_observer(objective)  # type: ignore[arg-type]
+    control.register_observer(objective)
     shown: list[Shown] = []
     try:
         with ProgramBuilder(control) as builder:

@@ -192,14 +192,16 @@ def _optimal(
     return _consistent(reading, Consistent(found.models, conclusion))
 
 
-def _inconsistent(reading: Reading, refutation: Refutation) -> tuple[Verdict, str]:
-    why = (
-        "no answer set satisfies the assumptions ("
-        + ", ".join(sorted(str(a.literal) for a in refutation.core))
-        + ")"
-        if isinstance(refutation, These)
-        else "AS(P) = ∅"
+def _core_text(refutation: These) -> str:
+    core = ", ".join(sorted(str(a.literal) for a in refutation.core))
+    caveat = (
+        "" if refutation.minimal else "; the search was cut short, so the core may not be minimal"
     )
+    return f"no answer set satisfies the assumptions ({core}){caveat}"
+
+
+def _inconsistent(reading: Reading, refutation: Refutation) -> tuple[Verdict, str]:
+    why = _core_text(refutation) if isinstance(refutation, These) else "AS(P) = ∅"
     return _agree(reading == Satisfiable(expected=False) or _none(reading)), why
 
 

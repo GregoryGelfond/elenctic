@@ -15,7 +15,7 @@ type Parsed[T] = T | Diagnostic
 _PREFIX: Final = ":- "
 
 
-def _silent(code: MessageCode, message: str) -> None:
+def _silent(_code: MessageCode, message: str) -> None:
     """Swallow clingo's report; the failure itself raises."""
 
 
