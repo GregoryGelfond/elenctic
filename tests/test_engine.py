@@ -1,0 +1,243 @@
+import threading
+from pathlib import Path
+
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from aspnext.determination import (
+    Consequences,
+    Consistent,
+    Exhausted,
+    Inconclusive,
+    Inconsistent,
+    Mode,
+    Refutation,
+    Truncation,
+    world_view,
+)
+from aspnext.engine import Fault, Interrupt, Limits, Locus, Program, ground, solve
+from aspnext.literals import Assumption, Literal
+
+P, Q = Literal("p"), Literal("q")
+
+
+def stable_models(text: str, **kwargs: object) -> set[frozenset[Literal]]:
+    found = solve(Program(text), **kwargs)  # type: ignore[arg-type]
+    assert isinstance(found, Consistent), found
+    assert found.conclusion is Exhausted.EXHAUSTED
+    return {m.atoms for m in found.evidence.all}
+
+
+def test_every_stable_model_is_found_and_none_twice() -> None:
+    assert stable_models("{p;q}.") == {
+        frozenset(),
+        frozenset({P}),
+        frozenset({Q}),
+        frozenset({P, Q}),
+    }
+
+
+def test_an_objective_does_not_narrow_the_stable_models() -> None:
+    assert len(stable_models("{p}. #minimize { 1 : p }.")) == 2
+
+
+def test_a_model_carries_what_it_shows_apart_from_what_it_holds() -> None:
+    found = solve(Program("p. q. #show p/0."))
+    assert isinstance(found, Consistent)
+    assert (found.evidence.first.atoms, found.evidence.first.shown) == (
+        frozenset({P, Q}),
+        frozenset({P}),
+    )
+
+
+def test_a_program_with_no_stable_model_is_inconsistent_with_nothing_to_blame() -> None:
+    assert solve(Program("p. :- p.")) == Inconsistent(Refutation(frozenset()))
+
+
+def test_a_scenario_that_holds_restricts_the_models() -> None:
+    assert stable_models("{p;q}.", scenario=frozenset({Assumption(P)})) == {
+        frozenset({P}),
+        frozenset({P, Q}),
+    }
+
+
+def test_a_scenario_that_fails_restricts_the_models() -> None:
+    assert stable_models("{p;q}.", scenario=frozenset({Assumption(P, holds=False)})) == {
+        frozenset(),
+        frozenset({Q}),
+    }
+
+
+def test_an_unsatisfiable_scenario_is_refuted_by_the_assumptions_that_clash() -> None:
+    clash = frozenset({Assumption(P), Assumption(Q)})
+    found = solve(Program("{p;q}. :- p, q."), clash)
+    assert isinstance(found, Inconsistent)
+    assert found.refutation.core == clash
+
+
+def test_assuming_an_atom_no_rule_derives_is_refuted_by_it_alone() -> None:
+    absent = Assumption(Literal("absent"))
+    found = solve(Program("{p}."), frozenset({Assumption(P), absent}))
+    assert found == Inconsistent(Refutation(frozenset({absent})))
+
+
+def test_assuming_such_an_atom_false_is_no_restriction() -> None:
+    assert stable_models("{p}.", scenario=frozenset({Assumption(Literal("absent"), holds=False)}))
+
+
+def test_assuming_a_fact_false_is_refuted() -> None:
+    fact_denied = Assumption(P, holds=False)
+    found = solve(Program("p."), frozenset({fact_denied}))
+    assert found == Inconsistent(Refutation(frozenset({fact_denied})))
+
+
+def test_a_strongly_negated_literal_can_be_assumed() -> None:
+    models = stable_models("{-p}.", scenario=frozenset({Assumption(P.contrary)}))
+    assert models == {frozenset({P.contrary})}
+
+
+def test_the_model_cap_truncates_without_claiming_to_have_finished() -> None:
+    found = solve(Program("{p(1..5)}."), limits=Limits(models=3))
+    assert isinstance(found, Consistent)
+    assert found.conclusion is Truncation.TARGET
+    assert len(found.evidence.all) == 3
+
+
+def test_a_cap_equal_to_the_number_of_models_is_still_exhausted() -> None:
+    found = solve(Program("{p;q}."), limits=Limits(models=4))
+    assert isinstance(found, Consistent)
+    assert (found.conclusion, len(found.evidence.all)) == (Exhausted.EXHAUSTED, 4)
+
+
+def test_a_search_cut_by_the_budget_keeps_the_models_it_found() -> None:
+    found = solve(Program("{p(1..40)}."), limits=Limits(seconds=0.2))
+    assert isinstance(found, Consistent)
+    assert found.conclusion is Truncation.BUDGET
+
+
+def test_a_budget_spent_before_any_model_is_inconclusive_not_inconsistent() -> None:
+    assert solve(Program("{p;q}."), limits=Limits(seconds=0)) == Inconclusive(Truncation.BUDGET)
+
+
+def test_an_interrupt_pulled_from_another_thread_ends_the_search() -> None:
+    interrupt = Interrupt()
+    threading.Timer(0.1, interrupt.pull).start()
+    found = solve(Program("{p(1..40)}."), interrupt=interrupt)
+    assert isinstance(found, Consistent)
+    assert found.conclusion is Truncation.INTERRUPTED
+
+
+def test_an_interrupt_already_pulled_stops_before_the_search() -> None:
+    interrupt = Interrupt()
+    interrupt.pull()
+    assert solve(Program("p."), interrupt=interrupt) == Inconclusive(Truncation.INTERRUPTED)
+
+
+def test_a_limit_is_not_negative() -> None:
+    with pytest.raises(ValueError, match="negative"):
+        Limits(seconds=-1)
+
+
+def test_a_syntax_error_is_a_fault_of_the_program_placed_in_it() -> None:
+    found = solve(Program("p(1.\nq.", source="a.lp"))
+    assert isinstance(found, Fault)
+    assert found.locus is Locus.PROGRAM
+    assert str(found.diagnostics[0].span) == "a.lp:1:4-5"
+
+
+def test_an_unsafe_rule_is_a_fault_of_the_program() -> None:
+    found = solve(Program("p(X) :- q(Y).", source="a.lp"))
+    assert isinstance(found, Fault)
+    assert "unsafe" in found.diagnostics[0].message
+
+
+def test_a_program_read_from_a_file_resolves_its_includes_beside_it(tmp_path: Path) -> None:
+    (tmp_path / "inc.lp").write_text("p.\n")
+    (tmp_path / "main.lp").write_text('#include "inc.lp".\n')
+    found = solve(Program.read(tmp_path / "main.lp"))
+    assert isinstance(found, Consistent)
+    assert found.evidence.first.atoms == {P}
+
+
+def test_the_cautious_consequences_are_what_every_model_shares() -> None:
+    grounded = ground(Program("{q}. p."))
+    assert not isinstance(grounded, Fault)
+    assert grounded.consequences(Mode.CAUTIOUS) == Consistent(
+        Consequences(Mode.CAUTIOUS, frozenset({P})), Exhausted.EXHAUSTED
+    )
+    assert grounded.consequences(Mode.BRAVE) == Consistent(
+        Consequences(Mode.BRAVE, frozenset({P, Q})), Exhausted.EXHAUSTED
+    )
+
+
+def test_consequences_are_read_among_the_shown_atoms() -> None:
+    grounded = ground(Program("{q}. p. #show p/0."))
+    assert not isinstance(grounded, Fault)
+    assert grounded.consequences(Mode.BRAVE) == Consistent(
+        Consequences(Mode.BRAVE, frozenset({P})), Exhausted.EXHAUSTED
+    )
+
+
+def test_consequences_of_an_inconsistent_program_are_inconsistent() -> None:
+    grounded = ground(Program("p. :- p."))
+    assert not isinstance(grounded, Fault)
+    assert grounded.consequences(Mode.CAUTIOUS) == Inconsistent(Refutation(frozenset()))
+
+
+def test_a_truncated_consequence_search_claims_nothing() -> None:
+    grounded = ground(Program("{p(1..40)}."))
+    assert not isinstance(grounded, Fault)
+    assert grounded.consequences(Mode.BRAVE, limits=Limits(seconds=0)) == Inconclusive(
+        Truncation.BUDGET
+    )
+
+
+def test_one_grounding_serves_many_scenarios() -> None:
+    grounded = ground(Program("{p;q}."))
+    assert not isinstance(grounded, Fault)
+    with_p = grounded.solve(frozenset({Assumption(P)}))
+    without_p = grounded.solve(frozenset({Assumption(P, holds=False)}))
+    assert isinstance(with_p, Consistent)
+    assert isinstance(without_p, Consistent)
+    assert all(P in m.atoms for m in with_p.evidence.all)
+    assert all(P not in m.atoms for m in without_p.evidence.all)
+
+
+programs = st.lists(
+    st.sampled_from(
+        [
+            "{a}.",
+            "{b}.",
+            "c :- a.",
+            "d :- not a.",
+            ":- a, b.",
+            "e :- c, d.",
+            "{f} :- b.",
+            "-g :- a.",
+        ]
+    ),
+    min_size=1,
+    max_size=6,
+).map(" ".join)
+
+
+@settings(max_examples=40, deadline=None)
+@given(programs, st.sampled_from(Mode))
+def test_the_native_consequences_equal_those_derived_from_the_enumerated_models(
+    text: str, mode: Mode
+) -> None:
+    grounded = ground(Program(text))
+    assert not isinstance(grounded, Fault)
+    enumerated = grounded.solve()
+    native = grounded.consequences(mode)
+    match enumerated:
+        case Consistent(models, Exhausted.EXHAUSTED):
+            view = world_view(Consistent(models, Exhausted.EXHAUSTED))
+            assert not isinstance(view, Truncation)
+            expected = view.cautious if mode is Mode.CAUTIOUS else view.brave
+            assert native == Consistent(Consequences(mode, expected), Exhausted.EXHAUSTED)
+        case Inconsistent():
+            assert native == enumerated
+        case _:
+            pytest.fail("a small program must be decided")
