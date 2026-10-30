@@ -82,3 +82,14 @@ def test_the_bindings_of_a_pattern_in_a_set_of_literals_are_those_of_its_matches
     atoms = {lit("p(1,a)"), lit("p(2,a)"), lit("p(3,b)"), lit("q(9,a)")}
     pattern = Pattern("p", (X, parse_term("a")))
     assert pattern.bindings_in(atoms) == {(Number(1),), (Number(2),)}
+
+
+@pytest.mark.parametrize("text", ["p", "-p", 'p(1,"a=b")', "-p(q(2),x)"])
+def test_a_literal_is_read_back_from_its_text(text: str) -> None:
+    assert str(Literal.parse(text)) == text
+
+
+@pytest.mark.parametrize("text", ["1", '"s"', "p(", "(1,2)"])
+def test_text_that_is_not_a_literal_is_a_value_error(text: str) -> None:
+    with pytest.raises(ValueError, match=r"."):
+        Literal.parse(text)

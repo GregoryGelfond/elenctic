@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final, override
 
-from clingo import Function, Symbol, SymbolType
+from clingo import Function, Symbol, SymbolType, parse_term
 
 ANONYMOUS: Final = "_"
 
@@ -19,10 +19,18 @@ class Literal:
 
     @classmethod
     def of(cls, symbol: Symbol) -> Literal:
-        if symbol.type is not SymbolType.Function:
+        if symbol.type is not SymbolType.Function or not symbol.name:
             message = f"not a literal: {symbol}"
             raise ValueError(message)
         return cls(symbol.name, tuple(symbol.arguments), symbol.positive)
+
+    @classmethod
+    def parse(cls, text: str) -> Literal:
+        """Read `p(1,"a")` or `-p`; raises `ValueError` for anything else, as does `of`."""
+        try:
+            return cls.of(parse_term(text))
+        except RuntimeError as error:
+            raise ValueError(str(error)) from error
 
     @property
     def symbol(self) -> Symbol:
