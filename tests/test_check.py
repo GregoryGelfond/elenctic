@@ -2,7 +2,7 @@ import pytest
 
 from elenctic.check import NO_LIMITS, Finding, Report, Verdict, check, judge
 from elenctic.contract import Claim, Costs
-from elenctic.determination import Truncation
+from elenctic.determination import Consistent, Incumbent, Model, Truncation
 from elenctic.engine import Fault, Limits, Locus, Program, ground
 from elenctic.spans import Position, Span
 
@@ -292,3 +292,11 @@ def test_a_cost_claim_judged_without_an_optimization_is_never_a_pass() -> None:
     assert not isinstance(grounded, Fault)
     finding = judge(claim, grounded.solve())
     assert (finding.verdict, finding.detail) == (U, "no optimum was sought")
+
+
+def test_an_incumbent_is_never_a_pass_for_a_cost_claim() -> None:
+    claim = Claim(Costs((0,)), frozenset(), Span("t.lp", Position(1, 1), Position(1, 2)))
+    found = Consistent(Incumbent(Model(frozenset(), frozenset(), cost=(0,))), Truncation.BUDGET)
+    finding = judge(claim, found)
+    assert finding.verdict is U
+    assert "no optimum proven" in finding.detail
