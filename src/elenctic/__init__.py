@@ -53,6 +53,7 @@ from elenctic.reader import parse_contract
 from elenctic.spans import Diagnostic, Position, Severity, Span
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable
+from elenctic.unify import Unifier, mgu
 from elenctic.writer import render
 
 __all__ = [
@@ -109,6 +110,7 @@ __all__ = [
     "These",
     "Truncation",
     "Truth",
+    "Unifier",
     "Valuation",
     "Variable",
     "Verdict",
@@ -119,6 +121,7 @@ __all__ = [
     "evaluate",
     "ground",
     "judge",
+    "mgu",
     "optimal_view",
     "parse_contract",
     "render",
