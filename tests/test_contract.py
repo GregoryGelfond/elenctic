@@ -174,49 +174,56 @@ def test_a_string_may_hold_escaped_quotes_commas_and_braces() -> None:
 
 def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> None:
     found = only_diagnostic("% @cautious { p,", "%   q(X) }")
-    assert (found.span.start, found.span.end) == (Position(2, 13), Position(3, 10))
+    assert (found.span.start, found.span.end) == (P(2, 14), P(3, 10))
 
 
 @pytest.mark.parametrize(
     ("line", "message", "start", "end"),
     [
-        ("% @count x", "expected a non-negative integer", P(2, 3), P(2, 10)),
-        ("% @cautious p", "expected `{ literals }`", P(2, 3), P(2, 13)),
-        ("% @cautious { not p }", "expected ground literals, without `not`", P(2, 13), P(2, 20)),
-        ("% @cautious { }", "expected at least one literal", P(2, 13), P(2, 14)),
-        ("% @query maybe { p }", "expected `yes`, `no` or `unknown`", P(2, 9), P(2, 14)),
+        ("% @count x", "expected a non-negative integer", P(2, 3), P(2, 11)),
+        ("%   @count   x  ", "expected a non-negative integer", P(2, 5), P(2, 15)),
+        ("% @cautious p", "expected `{ literals }`", P(2, 3), P(2, 14)),
+        ("% @cautious { not p }", "expected ground literals, without `not`", P(2, 14), P(2, 21)),
+        ("% @cautious { }", "expected at least one literal", P(2, 14), P(2, 15)),
+        ("% @query maybe { p }", "expected `yes`, `no` or `unknown`", P(2, 10), P(2, 15)),
+        (
+            "% @query yes { p(X) }",
+            "a query with variables states its bindings: `{ q(X) } = { ... }`",
+            P(2, 15),
+            P(2, 21),
+        ),
         (
             "% @query yes { p(X) } 1",
             "expected `answer { query }`, or `answer { q(X) } = { bindings }`",
             P(2, 3),
-            P(2, 23),
+            P(2, 24),
         ),
         (
             "% @query yes { p(X), q(Y) } = { 1 }",
             "expected one positive pattern before `=`",
-            P(2, 14),
-            P(2, 26),
+            P(2, 15),
+            P(2, 27),
         ),
         (
             "% @query yes { not p(X) } = { 1 }",
             "expected one positive pattern before `=`",
-            P(2, 14),
-            P(2, 24),
+            P(2, 15),
+            P(2, 25),
         ),
         (
             "% @query yes { p(1) } = { 1 }",
             "a pattern with no variables is a ground query",
-            P(2, 14),
-            P(2, 20),
+            P(2, 15),
+            P(2, 21),
         ),
-        ("% @cautious { p } assuming p", "expected `assuming { literals }`", P(2, 3), P(2, 28)),
+        ("% @cautious { p } assuming p", "expected `assuming { literals }`", P(2, 3), P(2, 29)),
         (
             "% @cautious { p } assuming { q } extra",
             "expected `assuming { literals }`",
             P(2, 3),
-            P(2, 38),
+            P(2, 39),
         ),
-        ("% @cautious { p", "a brace is never closed", P(2, 3), P(2, 15)),
+        ("% @cautious { p", "a brace is never closed", P(2, 3), P(2, 16)),
     ],
 )
 def test_a_bad_tag_is_one_diagnostic_at_the_text_that_is_wrong(

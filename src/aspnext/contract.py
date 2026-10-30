@@ -119,8 +119,8 @@ class _Block:
         )
 
 
-_TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+)\b(?P<rest>.*)")
-_CONTINUATION: Final = re.compile(r"(?P<lead>\s*%\s*)(?P<rest>.*)")
+_TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+)\b(?P<gap>\s*)(?P<rest>.*?)\s*")
+_CONTINUATION: Final = re.compile(r"(?P<lead>\s*%\s*)(?P<rest>.*?)\s*")
 _TOKEN: Final = re.compile(r"(?P<open>\{)|(?P<word>[^\s{=]+|=)")
 SUPPORTED: Final = frozenset({"expect", "count", "model", "cautious", "brave", "query", "note"})
 KNOWN: Final = SUPPORTED | {"optimal", "cost", "assign", "elenctic"}
@@ -148,21 +148,19 @@ def _scan(text: str, state: _Scan = _Scan()) -> _Scan:  # noqa: B008
     return reduce(_step, text, state)
 
 
-def _continued(lines: list[str], at: int) -> re.Match[str] | None:
-    return _CONTINUATION.fullmatch(lines[at]) if at < len(lines) else None
-
-
 def _block(lines: list[str], index: int, head: re.Match[str], source: str) -> tuple[_Block, int]:
     """Read the tag matched by `head` on `lines[index]` and the comment lines its brace spans."""
     column = len(head["lead"]) + 1
-    first = _Piece(head["rest"].strip(), Position(index + 1, column + len(head["tag"]) + 1))
+    first = _Piece(
+        head["rest"], Position(index + 1, column + len(head["tag"]) + len(head["gap"]) + 1)
+    )
     pieces = [first]
     state = _scan(first.text)
     after = index + 1
     while (
         state.depth > 0 and after < len(lines) and (more := _CONTINUATION.fullmatch(lines[after]))
     ):
-        piece = _Piece(more["rest"].strip(), Position(after + 1, len(more["lead"]) + 1))
+        piece = _Piece(more["rest"], Position(after + 1, len(more["lead"]) + 1))
         pieces.append(piece)
         state = _scan(piece.text, state)
         after += 1
