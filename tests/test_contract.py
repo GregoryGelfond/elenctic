@@ -1,3 +1,4 @@
+import pytest
 from clingo import Number, String, parse_term
 
 from aspnext.contract import (
@@ -16,9 +17,10 @@ from aspnext.contract import (
 from aspnext.determination import Mode
 from aspnext.literals import Assumption, Literal, Pattern, Variable
 from aspnext.query import All, Answer
-from aspnext.spans import Position, Span
+from aspnext.spans import Diagnostic, Position, Span
 
 X = Variable("X")
+P = Position
 
 
 def parse(*lines: str) -> Contract:
@@ -158,3 +160,75 @@ def test_a_count_of_zero_contradicts_expecting_sat() -> None:
         "`@count 0` is `@expect unsat`, not `@expect sat`"
     ]
     assert not parse("% @expect unsat", "% @count 0").diagnostics
+
+
+def only_diagnostic(*lines: str) -> Diagnostic:
+    (found,) = parse("% @expect sat", *lines).diagnostics
+    return found
+
+
+def test_a_string_may_hold_escaped_quotes_commas_and_braces() -> None:
+    claim = only(r'% @brave { q("a\"}b,c") }')
+    assert claim.reading == Entails(Mode.BRAVE, frozenset({Literal("q", (String('a"}b,c'),))}))
+
+
+def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> None:
+    found = only_diagnostic("% @cautious { p,", "%   q(X) }")
+    assert (found.span.start, found.span.end) == (Position(2, 13), Position(3, 10))
+
+
+@pytest.mark.parametrize(
+    ("line", "message", "start", "end"),
+    [
+        ("% @count x", "expected a non-negative integer", P(2, 3), P(2, 10)),
+        ("% @cautious p", "expected `{ literals }`", P(2, 3), P(2, 13)),
+        ("% @cautious { not p }", "expected ground literals, without `not`", P(2, 13), P(2, 20)),
+        ("% @cautious { }", "expected at least one literal", P(2, 13), P(2, 14)),
+        ("% @query maybe { p }", "expected `yes`, `no` or `unknown`", P(2, 9), P(2, 14)),
+        (
+            "% @query yes { p(X) } 1",
+            "expected `answer { query }`, or `answer { q(X) } = { bindings }`",
+            P(2, 3),
+            P(2, 23),
+        ),
+        (
+            "% @query yes { p(X), q(Y) } = { 1 }",
+            "expected one positive pattern before `=`",
+            P(2, 14),
+            P(2, 26),
+        ),
+        (
+            "% @query yes { not p(X) } = { 1 }",
+            "expected one positive pattern before `=`",
+            P(2, 14),
+            P(2, 24),
+        ),
+        (
+            "% @query yes { p(1) } = { 1 }",
+            "a pattern with no variables is a ground query",
+            P(2, 14),
+            P(2, 20),
+        ),
+        ("% @cautious { p } assuming p", "expected `assuming { literals }`", P(2, 3), P(2, 28)),
+        (
+            "% @cautious { p } assuming { q } extra",
+            "expected `assuming { literals }`",
+            P(2, 3),
+            P(2, 38),
+        ),
+        ("% @cautious { p", "a brace is never closed", P(2, 3), P(2, 15)),
+    ],
+)
+def test_a_bad_tag_is_one_diagnostic_at_the_text_that_is_wrong(
+    line: str, message: str, start: Position, end: Position
+) -> None:
+    found = only_diagnostic(line)
+    assert (found.message, found.span.start, found.span.end) == (message, start, end)
+
+
+def test_a_missing_expect_is_reported_at_the_start_of_the_source() -> None:
+    (found,) = parse("% @count 1").diagnostics
+    assert found.span == Span("c.lp", Position(1, 1), Position(1, 1))
+    assert [d.message for d in parse("% @expect sat", "% @expect sat").diagnostics] == [
+        "more than one `@expect`"
+    ]

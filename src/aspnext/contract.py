@@ -3,7 +3,9 @@
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Final
+from functools import reduce
+from itertools import accumulate
+from typing import Final, NamedTuple
 
 from clingo import Symbol
 
@@ -119,37 +121,50 @@ class _Block:
 
 _TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+)\b(?P<rest>.*)")
 _CONTINUATION: Final = re.compile(r"(?P<lead>\s*%\s*)(?P<rest>.*)")
-_WORD: Final = re.compile(r"[^\s{=]+")
+_TOKEN: Final = re.compile(r"(?P<open>\{)|(?P<word>[^\s{=]+|=)")
 SUPPORTED: Final = frozenset({"expect", "count", "model", "cautious", "brave", "query", "note"})
 KNOWN: Final = SUPPORTED | {"optimal", "cost", "assign", "elenctic"}
 
 
-def _scan(text: str, depth: int, *, quoted: bool) -> tuple[int, bool]:
-    """Carry brace depth and string state across `text`; braces in strings do not count."""
-    escaped = False
-    for char in text:
-        if quoted:
-            quoted, escaped = not (char == '"' and not escaped), char == "\\" and not escaped
-        elif char == '"':
-            quoted = True
-        else:
-            depth += (char == "{") - (char == "}")
-    return depth, quoted
+class _Scan(NamedTuple):
+    """Where a scan of tag text stands: brace depth, and whether inside a string."""
+
+    depth: int = 0
+    quoted: bool = False
+    escaped: bool = False
 
 
-def _block(lines: list[str], index: int, source: str) -> tuple[_Block, int]:
-    """Read the tag on `lines[index]` and any comment lines its open brace continues over."""
-    head = _TAG.fullmatch(lines[index])
-    assert head is not None  # noqa: S101
+def _step(state: _Scan, char: str) -> _Scan:
+    """Advance over one character; braces within a string do not count."""
+    depth, quoted, escaped = state
+    if quoted:
+        return _Scan(depth, not (char == '"' and not escaped), char == "\\" and not escaped)
+    if char == '"':
+        return _Scan(depth, quoted=True)
+    return _Scan(depth + (char == "{") - (char == "}"))
+
+
+def _scan(text: str, state: _Scan = _Scan()) -> _Scan:  # noqa: B008
+    return reduce(_step, text, state)
+
+
+def _continued(lines: list[str], at: int) -> re.Match[str] | None:
+    return _CONTINUATION.fullmatch(lines[at]) if at < len(lines) else None
+
+
+def _block(lines: list[str], index: int, head: re.Match[str], source: str) -> tuple[_Block, int]:
+    """Read the tag matched by `head` on `lines[index]` and the comment lines its brace spans."""
     column = len(head["lead"]) + 1
     first = _Piece(head["rest"].strip(), Position(index + 1, column + len(head["tag"]) + 1))
     pieces = [first]
-    depth, quoted = _scan(first.text, 0, quoted=False)
+    state = _scan(first.text)
     after = index + 1
-    while depth > 0 and after < len(lines) and (more := _CONTINUATION.fullmatch(lines[after])):
+    while (
+        state.depth > 0 and after < len(lines) and (more := _CONTINUATION.fullmatch(lines[after]))
+    ):
         piece = _Piece(more["rest"].strip(), Position(after + 1, len(more["lead"]) + 1))
         pieces.append(piece)
-        depth, quoted = _scan(piece.text, depth, quoted=quoted)
+        state = _scan(piece.text, state)
         after += 1
     return _Block(source, head["tag"], Position(index + 1, column), tuple(pieces)), after
 
@@ -159,8 +174,8 @@ def _blocks(text: str, source: str) -> list[_Block]:
     blocks: list[_Block] = []
     index = 0
     while index < len(lines):
-        if _TAG.fullmatch(lines[index]):
-            block, index = _block(lines, index, source)
+        if head := _TAG.fullmatch(lines[index]):
+            block, index = _block(lines, index, head, source)
             blocks.append(block)
         else:
             index += 1
@@ -189,34 +204,23 @@ class _Element:
 
 def _close(payload: str, opened: int) -> int:
     """Return the offset of the brace closing the one at `opened`, or -1."""
-    depth = 0
-    quoted = False
-    for offset in range(opened, len(payload)):
-        depth, quoted = _scan(payload[offset], depth, quoted=quoted)
-        if depth == 0 and not quoted:
-            return offset
-    return -1
+    states = accumulate(payload[opened:], _step, initial=_Scan())
+    return next((opened + i - 1 for i, state in enumerate(states) if i and state.depth == 0), -1)
 
 
 def _elements(payload: str) -> list[_Element] | None:
     """Split a payload into words and brace groups; `None` if a brace is never closed."""
     found: list[_Element] = []
     at = 0
-    while at < len(payload):
-        char = payload[at]
-        if char.isspace():
-            at += 1
-        elif char == "{":
-            closing = _close(payload, at)
-            if closing < 0:
-                return None
-            found.append(_Element(payload[at + 1 : closing], at + 1, braced=True))
-            at = closing + 1
+    while token := _TOKEN.search(payload, at):
+        if token["open"] is None:
+            found.append(_Element(token["word"], token.start(), braced=False))
+            at = token.end()
+        elif (closing := _close(payload, token.start())) < 0:
+            return None
         else:
-            word = _WORD.match(payload, at) or re.compile("=").match(payload, at)
-            assert word is not None  # noqa: S101
-            found.append(_Element(word[0], at, braced=False))
-            at = word.end()
+            found.append(_Element(payload[token.end() : closing], token.end(), braced=True))
+            at = closing + 1
     return found
 
 
