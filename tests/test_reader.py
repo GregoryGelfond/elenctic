@@ -240,7 +240,7 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
         ("% @query yes { p. q }", "expected a list of literals", P(2, 15), P(2, 21)),
         (
             "% @query yes { p(1..2) }",
-            "expected a literal with ground or variable arguments",
+            "`(1..2)` is not a pattern: an interval stands for several terms",
             P(2, 16),
             P(2, 23),
         ),
@@ -263,7 +263,7 @@ def test_a_missing_expect_is_reported_at_the_start_of_the_source() -> None:
 
 def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None:
     found = only_diagnostic("% @brave { p,", "%      q(1..2),", "%   r }")
-    assert found.message == "expected a literal with ground or variable arguments"
+    assert found.message == "`(1..2)` is not a pattern: an interval stands for several terms"
     assert (found.span.start, found.span.end) == (P(3, 8), P(3, 15))
 
 

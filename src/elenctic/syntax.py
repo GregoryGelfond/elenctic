@@ -11,14 +11,13 @@ from clingo.ast import (
     ComparisonOperator,
     Location,
     Sign,
-    UnaryOperator,
     parse_string,
 )
 
 from elenctic.determination import Valuation
+from elenctic.normalize import NotAPattern, function_of, normalize
 from elenctic.patterns import Pattern
 from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose
-from elenctic.terms import Variable
 
 type Parsed[T] = T | Diagnostic
 
@@ -56,40 +55,36 @@ def _failure(where: Span, message: str, span: Span | None = None) -> Diagnostic:
     return Diagnostic(span or where, Severity.ERROR, message)
 
 
-def _argument(term: AST) -> Symbol | Variable | None:
-    if term.ast_type is ASTType.Variable:
-        return Variable(term.name)
+def _symbol(term: AST) -> Symbol | None:
+    """Return the ground term `term` is, or `None` if it is anything else."""
     try:
         return parse_term(str(term), _silent)
     except RuntimeError:
         return None
 
 
-def _pattern(atom: AST) -> Pattern | None:
-    symbol = atom.symbol
-    positive = symbol.ast_type is not ASTType.UnaryOperation
-    function = symbol if positive else symbol.argument
-    if function.ast_type is not ASTType.Function or not (
-        positive or symbol.operator_type == UnaryOperator.Minus
-    ):
+def _pattern(atom: AST) -> Pattern | NotAPattern | None:
+    """Read an atom as a pattern, `None` if it is no atom with arguments to read."""
+    found = function_of(atom.symbol)
+    if found is None:
         return None
-    arguments = [_argument(term) for term in function.arguments]
-    return (
-        None
-        if any(a is None for a in arguments)
-        else Pattern(function.name, tuple(a for a in arguments if a is not None), positive)
-    )
+    function, positive = found
+    arguments = [normalize(argument) for argument in function.arguments]
+    refused = next((a for a in arguments if isinstance(a, NotAPattern)), None)
+    if refused is not None:
+        return refused
+    terms = tuple(a for a in arguments if not isinstance(a, NotAPattern))
+    return Pattern(function.name, terms, positive=positive)
 
 
 def _item(where: Span, literal: AST) -> Parsed[Item]:
     span = _place(where, _span(literal.location))
-    pattern = (
-        _pattern(literal.atom)
-        if literal.ast_type is ASTType.Literal and literal.atom.ast_type is ASTType.SymbolicAtom
-        else None
-    )
+    simple = literal.ast_type is ASTType.Literal and literal.atom.ast_type is ASTType.SymbolicAtom
+    pattern = _pattern(literal.atom) if simple else None
+    if isinstance(pattern, NotAPattern):
+        return _failure(where, str(pattern), span)
     if pattern is None or literal.sign == Sign.DoubleNegation:
-        return _failure(where, "expected a literal with ground or variable arguments", span)
+        return _failure(where, "expected a literal", span)
     return Item(pattern, literal.sign == Sign.Negation, span)
 
 
@@ -146,7 +141,7 @@ def _equation(literal: AST) -> Valuation | None:
     if literal.sign != Sign.NoSign or len(atom.guards) != 1:
         return None
     guard = atom.guards[0]
-    variable, value = _argument(atom.term), _argument(guard.term)
+    variable, value = _symbol(atom.term), _symbol(guard.term)
     equal = guard.comparison == ComparisonOperator.Equal
     if equal and isinstance(variable, Symbol) and isinstance(value, Symbol):
         return Valuation(variable, value.number) if value.type is SymbolType.Number else None

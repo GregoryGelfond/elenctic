@@ -5,7 +5,7 @@ from elenctic.determination import Valuation
 from elenctic.patterns import Pattern
 from elenctic.spans import Diagnostic, Position, Span
 from elenctic.syntax import Item, read_bindings, read_literals, read_valuations
-from elenctic.terms import Variable
+from elenctic.terms import Compound, Variable
 
 WHERE = Span("c.lp", Position(7, 12), Position(7, 40))
 X = Variable("X")
@@ -29,6 +29,42 @@ def test_a_ground_function_term_is_one_argument() -> None:
     assert item.pattern.arguments == (parse_term("d(1,2)"),)
 
 
+def test_a_term_with_a_variable_beneath_a_function_is_part_of_a_pattern() -> None:
+    (item,) = items("-p(f(g(X),1+1),(Y,a),_)")
+    assert item.pattern == Pattern(
+        "p",
+        (
+            Compound("f", (Compound("g", (X,)), Number(2))),
+            Compound("", (Variable("Y"), parse_term("a"))),
+            Variable("_"),
+        ),
+        positive=False,
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("p(1..3)", "`(1..3)` is not a pattern: an interval stands for several terms"),
+        ("p(a, (b;c))", "`(b;c)` is not a pattern: a pool stands for several terms"),
+        (
+            "p(f(@g(X)))",
+            "`@g(X)` is not a pattern: a call to an external function is not made",
+        ),
+        (
+            "p(X+1)",
+            "`(X+1)` is not a pattern: arithmetic over a variable or undefined has no value",
+        ),
+    ],
+)
+def test_a_term_that_is_no_pattern_is_refused_with_the_reason_not_read_as_a_mismatch(
+    text: str, message: str
+) -> None:
+    found = read_literals(text, WHERE)
+    assert isinstance(found, Diagnostic)
+    assert found.message == message
+
+
 def test_each_item_knows_its_place_in_the_enclosing_source() -> None:
     first, second = items("p, q")
     assert first.span == Span("c.lp", Position(7, 12), Position(7, 13))
@@ -47,7 +83,6 @@ def test_a_later_line_keeps_its_own_columns() -> None:
         "p. q",
         "X < 2",
         "p(1..3)",
-        "p(f(X))",
         "not not p",
         "#true",
         "p(1;2)",
