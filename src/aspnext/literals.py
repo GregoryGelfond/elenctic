@@ -63,6 +63,15 @@ class Pattern:
     def contrary(self) -> Pattern:
         return Pattern(self.name, self.arguments, not self.positive)
 
+    def as_literal(self) -> Literal | None:
+        """Return the literal this pattern is, if it has no variables."""
+        symbols = tuple(a for a in self.arguments if isinstance(a, Symbol))
+        return (
+            Literal(self.name, symbols, self.positive)
+            if len(symbols) == len(self.arguments)
+            else None
+        )
+
     def match(self, literal: Literal) -> tuple[Symbol, ...] | None:
         """Return the values of `variables` that make this pattern the literal, if any."""
         if (literal.name, len(literal.arguments), literal.positive) != (
