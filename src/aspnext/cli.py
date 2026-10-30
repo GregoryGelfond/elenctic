@@ -47,7 +47,9 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt) -> Entry | None:
         program = Program.read(path)
     except OSError as error:
         problem = Diagnostic(
-            Span(str(path), Position(1, 1), Position(1, 1)), Severity.ERROR, error.strerror
+            Span(str(path), Position(1, 1), Position(1, 1)),
+            Severity.ERROR,
+            error.strerror or str(error),
         )
         return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
     result = check(program, limits=limits, interrupt=interrupt)
