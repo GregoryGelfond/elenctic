@@ -309,3 +309,13 @@ def test_no_optimal_answer_sets_follows_the_same_rule_as_no_answer_sets() -> Non
     assert not messages("% @expect unsat", "% @count optimal 0")
     assert "no model" in messages("% @expect unsat", "% @cost { 1 }")[0]
     assert "not `@expect sat`" in messages("% @expect sat", "% @count optimal 0")[0]
+
+
+def test_more_optimal_answer_sets_than_answer_sets_is_a_contradiction() -> None:
+    (message,) = messages("% @expect sat", "% @count 1", "% @count optimal 2")
+    assert message == (
+        "`@count optimal 2` exceeds `@count 1`: the optimal answer sets are among the answer sets"
+    )
+    assert not messages("% @expect sat", "% @count 2", "% @count optimal 2")
+    assert not messages("% @expect sat", "% @count optimal 5")
+    assert not messages("% @expect sat", "% @count 1", "% @count optimal 2 assuming { p }")

@@ -347,7 +347,10 @@ def _unsound(claims: Iterable[Claim], grounded: Grounded, source: str) -> list[D
 
 def _lacks(reading: Reading, grounded: Grounded) -> list[str]:
     objective = [
-        "needs an objective (`#minimize`, `#maximize` or `:~`), but the program has none"
+        (
+            "needs an objective, but the ground program has none: it declares no `#minimize`, "
+            "`#maximize` or `:~`, or its elements ground away"
+        )
     ] * (_over(reading) is Range.OPTIMAL and not grounded.facts.optimizes)
     unshown = [
         f"reads the contrary `{signature}` off the shown atoms, "

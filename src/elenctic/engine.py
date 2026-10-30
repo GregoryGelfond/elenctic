@@ -1,7 +1,7 @@
 """The one place that owns a clingo `Control`: it grounds a program and runs searches over it."""
 
 import threading
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from functools import reduce
@@ -267,8 +267,8 @@ def _signature(term: AST) -> Signature | None:
 
 
 def _facts(statement: AST) -> Facts:
-    """Read what a statement says: what it shows, and whether it is an objective."""
-    return Facts(_shown(statement), optimizes=statement.ast_type is ASTType.Minimize)
+    """Read what a statement says it shows."""
+    return Facts(_shown(statement))
 
 
 def _shown(statement: AST) -> Shown:
@@ -451,6 +451,17 @@ def _parse(program: Program, add: Callable[[AST], None], logger: Callable[..., N
         parse_files([str(program.path)], add, logger=logger)
 
 
+class _Objective:
+    """Observe the grounding for an objective: one that grounds away never reaches the solver."""
+
+    def __init__(self) -> None:
+        self.seen = False
+
+    def minimize(self, priority: int, literals: Sequence[tuple[int, int]]) -> None:  # noqa: ARG002
+        """Record that a priority level has weighted literals (the observer's callback)."""
+        self.seen = True
+
+
 def ground(program: Program) -> Grounded | Fault:
     """Ground `program`, or say why it cannot be."""
     messages: list[str] = []
@@ -459,6 +470,8 @@ def ground(program: Program) -> Grounded | Fault:
         messages.append(message)
 
     control = Control(["--warn=none"], logger=log)
+    objective = _Objective()
+    control.register_observer(objective)  # type: ignore[arg-type]
     facts: list[Facts] = []
     try:
         with ProgramBuilder(control) as builder:
@@ -472,7 +485,9 @@ def ground(program: Program) -> Grounded | Fault:
         control.ground([("base", [])])
     except RuntimeError as error:
         return _fault(messages, error, program)
-    return Grounded(control, reduce(Facts.__or__, facts, Facts()))
+    return Grounded(
+        control, replace(reduce(Facts.__or__, facts, Facts()), optimizes=objective.seen)
+    )
 
 
 def solve(

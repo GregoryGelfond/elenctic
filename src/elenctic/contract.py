@@ -438,8 +438,29 @@ def _exclusions(claims: list[Claim]) -> list[Diagnostic]:
     return clash + empty
 
 
+def _nested(claims: list[Claim]) -> list[Diagnostic]:
+    """Find an `@count optimal n` above the `@count m` of its scenario: Opt(P) ⊆ AS(P)."""
+    counts = {
+        (c.scenario, c.reading.over): c.reading.count
+        for c in claims
+        if isinstance(c.reading, Census)
+    }
+    return [
+        Diagnostic(
+            c.span,
+            Severity.ERROR,
+            f"`@count optimal {c.reading.count}` exceeds `@count {counts[c.scenario, Range.ALL]}`: "
+            "the optimal answer sets are among the answer sets",
+        )
+        for c in claims
+        if isinstance(c.reading, Census)
+        and c.reading.over is Range.OPTIMAL
+        and c.reading.count > counts.get((c.scenario, Range.ALL), c.reading.count)
+    ]
+
+
 def _wellformed(claims: list[Claim], source: str) -> list[Diagnostic]:
-    return [*_expectations(claims, source), *_exclusions(claims)]
+    return [*_expectations(claims, source), *_exclusions(claims), *_nested(claims)]
 
 
 def parse_contract(text: str, source: str = "<string>") -> Contract:

@@ -268,3 +268,9 @@ def test_a_theory_atom_is_not_checked_as_though_it_were_interpreted() -> None:
     text = "#theory t { c { }; &k/0 : c, any }.\n{p}. &k { 1 }.\n% @expect sat\n"
     (message,) = faults(text)
     assert message.startswith("1: the program has theory atoms, which this checker does not")
+
+
+def test_an_objective_that_grounds_away_is_no_objective() -> None:
+    (message,) = faults("#minimize { 1,a : a }.\n% @expect sat\n% @cost { 0 }\n")
+    assert "its elements ground away" in message
+    assert verdicts("{a}. #minimize { 1,a : a }.\n% @expect sat\n% @cost { 0 }\n") == [P, P]
