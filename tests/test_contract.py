@@ -10,6 +10,8 @@ from aspnext.contract import (
     Entails,
     Satisfiable,
     Witness,
+    _Scan,
+    _scan,
     is_case,
     parse_contract,
     render,
@@ -224,6 +226,12 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
             P(2, 39),
         ),
         ("% @cautious { p", "a brace is never closed", P(2, 3), P(2, 16)),
+        (
+            "% @query yes { p(1..2) }",
+            "expected a literal with ground or variable arguments",
+            P(2, 16),
+            P(2, 23),
+        ),
     ],
 )
 def test_a_bad_tag_is_one_diagnostic_at_the_text_that_is_wrong(
@@ -245,3 +253,20 @@ def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None
     found = only_diagnostic("% @brave { p,", "%      q(1..2),", "%   r }")
     assert found.message == "expected a literal with ground or variable arguments"
     assert (found.span.start, found.span.end) == (P(3, 8), P(3, 15))
+
+
+@pytest.mark.parametrize(
+    ("text", "state"),
+    [
+        ("{ { }", _Scan(1)),
+        ('{ "}', _Scan(1, quoted=True)),
+        ('{ "a"', _Scan(1)),
+        (r'"a\\"', _Scan(0)),
+        (r'"a\\"}', _Scan(-1)),
+        (r'"a\"', _Scan(0, quoted=True)),
+        ('"a\\', _Scan(0, quoted=True, escaped=True)),
+        (r'"a\"}b,c"', _Scan(0)),
+    ],
+)
+def test_a_brace_scan_tracks_depth_quotes_and_escapes(text: str, state: _Scan) -> None:
+    assert _scan(text) == state

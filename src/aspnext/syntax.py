@@ -58,10 +58,8 @@ def _pattern(atom: AST) -> Pattern | None:
     symbol = atom.symbol
     positive = symbol.ast_type is not ASTType.UnaryOperation
     function = symbol if positive else symbol.argument
-    if (
-        function.ast_type is not ASTType.Function
-        or function.external
-        or not (positive or symbol.operator_type == UnaryOperator.Minus)
+    if function.ast_type is not ASTType.Function or not (
+        positive or symbol.operator_type == UnaryOperator.Minus
     ):
         return None
     arguments = [_argument(term) for term in function.arguments]
