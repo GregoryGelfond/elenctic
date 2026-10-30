@@ -209,6 +209,15 @@ def test_native_consequences_decide_a_search_the_model_cap_would_cut() -> None:
     assert verdicts(text, limits=Limits(models=3)) == [P, P, P, F]
 
 
+def test_the_optimal_consequences_are_not_decided_by_those_of_all_answer_sets() -> None:
+    text = (
+        "1 { a; b } 1. { z }. #minimize { 1,z : z }. #show a/0. #show b/0.\n"
+        "% @expect sat\n% @cautious optimal { a }\n% @brave optimal { a }\n"
+    )
+    assert verdicts(text, limits=Limits(models=1)) == [P, U, P]
+    assert verdicts(text, limits=Limits(models=2)) == [P, F, P]
+
+
 def test_consequences_beside_a_census_are_still_decided_when_the_model_cap_cuts_it() -> None:
     text = (
         "{p(1..40)}. q.\n% @expect sat\n% @count 5\n"

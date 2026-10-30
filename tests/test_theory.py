@@ -8,6 +8,7 @@ from elenctic.check import check
 from elenctic.cli import main
 from elenctic.contract import Solver
 from elenctic.engine import Fault, Program, ground
+from elenctic.spans import Position, Span
 from elenctic.theory import Clingcon, Plain
 
 CLINGCON = "% @elenctic solver clingcon\n"
@@ -46,7 +47,7 @@ def test_a_program_that_asks_for_clingcon_without_it_is_a_fault_of_the_request()
     assert isinstance(fault, Fault)
     (diagnostic,) = fault.diagnostics
     assert diagnostic.message == ABSENT
-    assert (diagnostic.span.source, diagnostic.span.start.line) == ("t.lp", 1)
+    assert diagnostic.span == Span("t.lp", Position(1, 1), Position(1, 1))
     found = check(Program(CLINGCON + "p.\n% @expect sat\n", "t.lp"))
     assert isinstance(found, Fault)
     assert found.diagnostics[0].message == ABSENT

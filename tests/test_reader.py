@@ -360,6 +360,8 @@ def test_a_witness_may_bind_the_assignment_of_the_same_answer_set_with_where() -
         ("% @assign { x=1, x=2 }", "a term is given two different integers"),
         ("% @assign { x }", "expected `term = integer`"),
         ("% @assign x=1", "expected `{ term = integer, ... }`"),
+        ("% @assign", "expected `{ term = integer, ... }`"),
+        ("% @assign { x=1 } { y=2 }", "expected `{ term = integer, ... }`"),
         ("% @assign optimal optimal { x=1 }", "expected `{ term = integer, ... }`"),
         ("% @model { p } where { }", "expected at least one `term = integer`"),
         ("% @model { p } where x=1", "expected `where { term = integer, ... }`"),
