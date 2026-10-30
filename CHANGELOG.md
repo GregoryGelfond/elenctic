@@ -25,6 +25,11 @@ All notable changes are recorded here. The format follows
 - Subcommands: `elenctic test` (the default) and the reserved `repl`, `why`, `ask`, `explain`.
 - Examples with real output in `docs/reference/examples.md`, checked by a test.
 - Packaging for uv, pixi and conda-forge (`recipe/recipe.yaml`).
+- clingcon: `% @elenctic solver clingcon` in a contract, claims `@assign [optimal] { x=1, … }` and
+  `@model … where { x=1, … }`, the library types `Solver`, `Assignment`, `Valuation` and
+  `Model.assignment`. An answer under clingcon is a shown set with its assignment, and `@count`
+  counts those. Optional: `elenctic[theory]`, or the pixi `theory` environment; a contract that
+  declares clingcon without it is an error (exit 2).
 
 ### Changed
 
@@ -32,3 +37,13 @@ All notable changes are recorded here. The format follows
 - `@cost` over `#maximize` is accepted: costs are clingo's minimized sums, so a maximized level is
   negated.
 - A `no`/`unknown` query faults only when its contrary is derivable and not shown.
+- A theory atom with no `#theory` declaration is reported with elenctic's own message and location
+  rather than clingo's.
+- The theory-atom error points at the first theory atom, not at line 1.
+
+### Fixed
+- `Program.read` accepts any path-like (`str | PathLike`).
+- A search is about 2.3 times faster: a model is read into literals only once it is kept, and each
+  clingo symbol is converted once.
+- Native `@cautious`/`@brave` under a model cap are decided from the solver, not the cut search.
+- A minimal core is tested on a non-trivial case and under a budget cut (`minimal=False`).
