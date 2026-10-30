@@ -51,7 +51,12 @@ def test_json_is_derived_from_the_result_types() -> None:
     report = only["result"]
     assert report["kind"] == "Report"
     claim = report["findings"][1]["claim"]
-    assert claim["reading"] == {"kind": "Entails", "mode": "cautious", "literals": ["q"]}
+    assert claim["reading"] == {
+        "kind": "Entails",
+        "mode": "cautious",
+        "literals": ["q"],
+        "over": "all",
+    }
     assert claim["span"]["start"] == {"kind": "Position", "line": 3, "column": 3}
     assert report["findings"][1]["verdict"] == "fail"
 

@@ -7,6 +7,7 @@ from elenctic.contract import (
     Census,
     Claim,
     Contract,
+    Costs,
     Entails,
     Satisfiable,
     Witness,
@@ -16,7 +17,7 @@ from elenctic.contract import (
     parse_contract,
     render,
 )
-from elenctic.determination import Mode
+from elenctic.determination import Mode, Range
 from elenctic.literals import Assumption, Literal, Pattern, Variable
 from elenctic.query import All, Answer
 from elenctic.spans import Diagnostic, Position, Span
@@ -118,7 +119,7 @@ def test_unknown_unsupported_and_malformed_tags_are_each_a_diagnostic_where_they
     contract = parse(
         "% @expect sat",
         "% @frobnicate { p }",
-        "% @optimal { p }",
+        "% @assign { x = 1 }",
         "% @count two",
         "% @cautious { }",
         "% @cautious { X }",
@@ -150,6 +151,11 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
         "@query yes { p(X,b) } = { 1, 2 }",
         "@query no { p(X,Y) } = { (a,1), (b,2) }",
         "@expect unsat assuming { p }",
+        "@count optimal 2",
+        "@model optimal { p, -q }",
+        "@cautious optimal { p } assuming { r }",
+        "@brave optimal { q }",
+        "@cost { 3 -1 0 }",
     ]
     contract = parse(*(f"% {line}" for line in lines))
     assert not contract.diagnostics
@@ -271,3 +277,35 @@ def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None
 )
 def test_a_brace_scan_tracks_depth_quotes_and_escapes(text: str, state: _Scan) -> None:
     assert _scan(text) == state
+
+
+def test_optimal_is_a_model_set_a_claim_may_name_and_the_tag_is_sugar_for_it() -> None:
+    p = frozenset({Literal("p")})
+    assert only("% @optimal { p }").reading == Witness(p, Range.OPTIMAL)
+    assert only("% @model optimal { p }").reading == Witness(p, Range.OPTIMAL)
+    assert only("% @cautious optimal { p }").reading == Entails(Mode.CAUTIOUS, p, Range.OPTIMAL)
+    assert only("% @brave optimal { p }").reading == Entails(Mode.BRAVE, p, Range.OPTIMAL)
+    assert only("% @count optimal 3").reading == Census(3, Range.OPTIMAL)
+    assert only("% @cost { 2 -1 }").reading == Costs((2, -1))
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        ("% @cost { }", "expected `{ c1 c2 ... }`, an integer for each level"),
+        ("% @cost { 1 x }", "expected `{ c1 c2 ... }`, an integer for each level"),
+        ("% @cost 3", "expected `{ c1 c2 ... }`, an integer for each level"),
+        ("% @optimal optimal { p }", "expected `{ literals }`"),
+        ("% @model optimal", "expected `{ literals }`"),
+        ("% @count optimal", "expected a non-negative integer"),
+        ("% @count optimal { 1 }", "expected a non-negative integer"),
+    ],
+)
+def test_a_malformed_optimal_or_cost_claim_is_a_diagnostic(line: str, message: str) -> None:
+    assert only_diagnostic(line).message == message
+
+
+def test_no_optimal_answer_sets_follows_the_same_rule_as_no_answer_sets() -> None:
+    assert not messages("% @expect unsat", "% @count optimal 0")
+    assert "no model" in messages("% @expect unsat", "% @cost { 1 }")[0]
+    assert "not `@expect sat`" in messages("% @expect sat", "% @count optimal 0")[0]

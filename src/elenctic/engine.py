@@ -4,6 +4,7 @@ import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from functools import reduce
 from operator import itemgetter
 from pathlib import Path
 from time import monotonic
@@ -11,7 +12,7 @@ from typing import Any, Final, Self
 
 from clingo import Control, SolveHandle, Symbol, SymbolType
 from clingo import Model as ClingoModel
-from clingo.ast import AST, ProgramBuilder, parse_files, parse_string
+from clingo.ast import AST, ASTType, ProgramBuilder, UnaryOperator, parse_files, parse_string
 from clingo.configuration import Configuration
 
 from elenctic.determination import (
@@ -33,7 +34,7 @@ from elenctic.determination import (
     These,
     Truncation,
 )
-from elenctic.literals import AnswerSet, Assumption, Literal, Scenario
+from elenctic.literals import AnswerSet, Assumption, Literal, Scenario, Signature
 from elenctic.spans import UNLOCATED, Diagnostic, Severity, diagnose
 
 _SLICE: Final = 0.02
@@ -217,18 +218,94 @@ def _optimized(found: list[tuple[Model, bool]]) -> Optimized:
     return Incumbent(found[-1][0])
 
 
+@dataclass(frozen=True, slots=True)
+class Shown:
+    """The predicates `#show` selects; with no `#show` statement every atom is shown.
+
+    A `#show` of a term with a variable selects what the grounder decides, so it is `wild`.
+    """
+
+    signatures: frozenset[Signature] = frozenset()
+    restricted: bool = False
+    wild: bool = False
+
+    def covers(self, signature: Signature) -> bool:
+        return not self.restricted or self.wild or signature in self.signatures
+
+    def __or__(self, other: Shown) -> Shown:
+        return Shown(
+            self.signatures | other.signatures,
+            self.restricted or other.restricted,
+            self.wild or other.wild,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Facts:
+    """What the grounded program says about itself, which a contract is checked against."""
+
+    shown: Shown = Shown()
+    optimizes: bool = False
+    theory: bool = False
+
+    def __or__(self, other: Facts) -> Facts:
+        return Facts(
+            self.shown | other.shown, self.optimizes or other.optimizes, self.theory or other.theory
+        )
+
+
+def _signature(term: AST) -> Signature | None:
+    """Read the predicate a `#show` term names; `None` for a term that is not a literal."""
+    match term.ast_type:
+        case ASTType.Function:
+            return Signature(term.name, len(term.arguments))
+        case ASTType.UnaryOperation if term.operator_type == UnaryOperator.Minus:
+            inner = _signature(term.argument)
+            return inner and Signature(inner.name, inner.arity, positive=not inner.positive)
+        case _:
+            return None
+
+
+def _facts(statement: AST) -> Facts:
+    """Read what a statement says: what it shows, and whether it is an objective."""
+    return Facts(_shown(statement), optimizes=statement.ast_type is ASTType.Minimize)
+
+
+def _shown(statement: AST) -> Shown:
+    """Read what a statement selects to show; a statement that is no `#show` selects nothing."""
+    match statement.ast_type:
+        case ASTType.ShowSignature:
+            signature = Signature(statement.name, statement.arity, bool(statement.positive))
+            return Shown(frozenset({signature}), restricted=True)
+        case ASTType.ShowTerm:
+            term = _signature(statement.term)
+            return Shown(
+                frozenset({term} if term else ()),
+                restricted=True,
+                wild=statement.term.ast_type is ASTType.Variable,
+            )
+        case _:
+            return Shown()
+
+
 _PLAIN: Final = _Plan[Model](("auto", "ignore"), _model, _always)
 
 
 class Grounded:
     """A program grounded once, to be searched under any number of scenarios."""
 
-    def __init__(self, control: Control) -> None:
+    def __init__(self, control: Control, facts: Facts = Facts()) -> None:  # noqa: B008
         self._control = control
+        self.facts = replace(facts, theory=next(iter(control.theory_atoms), None) is not None)
         # Read before any search: clingo later drops atoms that assumptions have made false.
         self._literals: Mapping[Symbol, int] = {
             atom.symbol: atom.literal for atom in control.symbolic_atoms
         }
+        self.signatures: frozenset[Signature] = frozenset(
+            Signature(symbol.name, len(symbol.arguments), symbol.positive)
+            for symbol in self._literals
+            if symbol.type is SymbolType.Function
+        )
 
     def _derivable(self, literal: Literal) -> bool:
         return bool(self._literals.get(literal.symbol))
@@ -382,13 +459,20 @@ def ground(program: Program) -> Grounded | Fault:
         messages.append(message)
 
     control = Control(["--warn=none"], logger=log)
+    facts: list[Facts] = []
     try:
         with ProgramBuilder(control) as builder:
-            _parse(program, builder.add, log)
+
+            def add(statement: AST) -> None:
+                if (found := _facts(statement)) != Facts():
+                    facts.append(found)
+                builder.add(statement)
+
+            _parse(program, add, log)
         control.ground([("base", [])])
     except RuntimeError as error:
         return _fault(messages, error, program)
-    return Grounded(control)
+    return Grounded(control, reduce(Facts.__or__, facts, Facts()))
 
 
 def solve(

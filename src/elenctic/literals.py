@@ -2,11 +2,23 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Final, override
+from typing import Final, NamedTuple, override
 
 from clingo import Function, Symbol, SymbolType, parse_term
 
 ANONYMOUS: Final = "_"
+
+
+class Signature(NamedTuple):
+    """A predicate with its arity and sign: `p/1`, or `-p/1` when not `positive`."""
+
+    name: str
+    arity: int
+    positive: bool = True
+
+    @override
+    def __str__(self) -> str:
+        return f"{'' if self.positive else '-'}{self.name}/{self.arity}"
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -40,6 +52,10 @@ class Literal:
     def contrary(self) -> Literal:
         return Literal(self.name, self.arguments, not self.positive)
 
+    @property
+    def signature(self) -> Signature:
+        return Signature(self.name, len(self.arguments), self.positive)
+
     @override
     def __str__(self) -> str:
         return str(self.symbol)
@@ -70,6 +86,10 @@ class Pattern:
     @property
     def contrary(self) -> Pattern:
         return Pattern(self.name, self.arguments, not self.positive)
+
+    @property
+    def signature(self) -> Signature:
+        return Signature(self.name, len(self.arguments), self.positive)
 
     @override
     def __str__(self) -> str:

@@ -49,10 +49,10 @@ def test_json_is_written_on_request(tmp_path: Path, capsys: pytest.CaptureFixtur
 def test_a_search_that_runs_out_of_models_is_undecided_and_exits_one(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @cautious { biscuit }\n")
+    path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @count 2\n")
     code, out = run(capsys, path, "--models", "1")
     assert code == 1
-    assert "[UNDECIDED] @cautious { biscuit }" in out
+    assert "[UNDECIDED] @count 2" in out
 
 
 def test_a_budget_of_zero_is_no_budget(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

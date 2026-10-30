@@ -139,3 +139,132 @@ def test_a_finding_prints_the_claim_it_judged(claim: str) -> None:
     (_, finding) = run(f"p.\n% @expect sat\n{claim}\n").findings
     assert isinstance(finding, Finding)
     assert finding.claim_text == claim.removeprefix("% ")
+
+
+KNAPSACK = """
+{ a; b; c }.
+:- a, b.
+#maximize { 3,a : a; 2,b : b; 2,c : c }.
+#show a/0. #show b/0. #show c/0.
+"""
+
+
+def test_a_claim_about_the_optimal_models_reads_those_and_only_those() -> None:
+    text = KNAPSACK + (
+        "% @expect sat\n"
+        "% @count optimal 1\n"
+        "% @model optimal { a, c }\n"
+        "% @optimal { a, c }\n"
+        "% @cautious optimal { a, c }\n"
+        "% @brave optimal { a, c }\n"
+        "% @cost { -5 }\n"
+    )
+    assert verdicts(text) == [P] * 7
+
+
+def test_a_claim_that_holds_of_a_model_but_not_an_optimal_one_fails_when_about_the_optimal() -> (
+    None
+):
+    text = KNAPSACK + "% @expect sat\n% @model optimal { b }\n% @model { b }\n% @count 6\n"
+    assert verdicts(text) == [P, F, P, P]
+
+
+def test_the_wrong_cost_fails_and_says_what_the_optimum_is() -> None:
+    (finding,) = run(KNAPSACK + "% @expect sat\n% @cost { 5 }\n").findings[1:]
+    assert finding.verdict is F
+    assert finding.detail == "(5) expected, optimum is (-5)"
+
+
+def test_a_maximized_cost_is_stated_as_the_minimized_sum() -> None:
+    assert verdicts(KNAPSACK + "% @expect sat\n% @cost { -5 }\n") == [P, P]
+
+
+def test_an_optimal_claim_over_an_inconsistent_program_fails_but_zero_optima_hold() -> None:
+    text = "p. :- p. #minimize { 1 : p }.\n% @expect unsat\n% @count optimal 0\n"
+    assert verdicts(text) == [P, P]
+
+
+def test_a_tie_for_the_optimum_is_a_census_of_the_ties() -> None:
+    text = "{ p; q }. :- not p, not q. #minimize { 1,p : p; 1,q : q }.\n"
+    assert verdicts(text + "% @expect sat\n% @count optimal 3\n") == [P, F]
+    assert verdicts(text + "% @expect sat\n% @count optimal 2\n") == [P, P]
+
+
+def test_the_optimum_is_claimed_without_the_ties_all_found() -> None:
+    text = (
+        "{ p; q }. :- not p, not q. #minimize { 1,p : p; 1,q : q }.\n"
+        "% @expect sat\n% @cost { 1 }\n% @count optimal 2\n"
+    )
+    assert verdicts(text, limits=Limits(models=1)) == [P, P, U]
+
+
+def test_native_consequences_decide_a_search_the_model_cap_would_cut() -> None:
+    text = (
+        "{p(1..40)}. q.\n"
+        "% @expect sat\n% @cautious { q }\n% @brave { p(7) }\n% @cautious { p(1) }\n"
+    )
+    assert verdicts(text, limits=Limits(models=3)) == [P, P, P, F]
+
+
+def test_consequence_claims_agree_with_those_read_from_the_enumeration() -> None:
+    claims = (
+        "% @expect sat\n% @cautious { biscuit }\n% @brave { tea, coffee }\n% @cautious { tea }\n"
+    )
+    native = verdicts(DRINKS + claims)
+    enumerated = verdicts(DRINKS + claims + "% @count 2\n")
+    assert native == enumerated[:-1] == [P, P, P, F]
+
+
+def test_a_refutation_names_a_minimal_set_of_assumptions() -> None:
+    text = "{ p; q; r }. :- p, q.\n% @expect sat\n% @model { p } assuming { p, q, r }\n"
+    (finding,) = run(text).findings[1:]
+    assert finding.detail == "no answer set satisfies the assumptions (p, q)"
+
+
+def faults(text: str) -> list[str]:
+    found = check(Program(text, "t.lp"))
+    assert isinstance(found, Fault), found
+    assert found.locus is Locus.REQUEST
+    return [f"{d.span.start.line}: {d.message}" for d in found.diagnostics]
+
+
+def test_an_optimal_claim_needs_an_objective_in_the_program() -> None:
+    (message,) = faults("{p}.\n% @expect sat\n% @cost { 0 }\n")
+    assert message.startswith("3: needs an objective")
+    assert len(faults("{p}.\n% @expect sat\n% @optimal { p }\n% @count optimal 1\n")) == 2
+
+
+def test_a_no_query_needs_the_contrary_shown_when_the_program_can_derive_it() -> None:
+    program = "{p}. {-p}. :- p, -p. #show p/0.\n% @expect sat\n"
+    (message,) = faults(program + "% @query no { p }\n")
+    assert message == (
+        "3: reads the contrary `-p/0` off the shown atoms, but the program can derive it "
+        "and does not `#show` it"
+    )
+    assert faults(program + "% @query unknown { p }\n")
+    assert verdicts(program + "% @query yes { p }\n") == [P, F]
+
+
+def test_a_contrary_the_program_cannot_derive_needs_no_show() -> None:
+    assert verdicts("{p}. #show p/0.\n% @expect sat\n% @query unknown { p }\n") == [P, P]
+
+
+def test_a_shown_contrary_or_a_program_that_shows_everything_is_fine() -> None:
+    shown = "{p}. {-p}. #show p/0. #show -p/0.\n% @expect sat\n% @query no { p }\n"
+    assert verdicts(shown) == [P, F]
+    everything = "{p}. {-p}.\n% @expect sat\n% @query unknown { p }\n"
+    assert verdicts(everything) == [P, P]
+
+
+def test_a_binding_query_that_reads_its_contrary_needs_it_shown_too() -> None:
+    program = "{p(1)}. {-p(1)}. :- p(1), -p(1). #show p/1.\n% @expect sat\n"
+    assert faults(program + "% @query unknown { p(X) } = { 1 }\n")
+    assert faults(program + "% @query no { p(X) } = { 1 }\n")
+    assert verdicts(program + "% @query no { p(X) } = { }\n") == [P, P]
+    assert verdicts(program + "% @query yes { p(X) } = { }\n") == [P, P]
+
+
+def test_a_theory_atom_is_not_checked_as_though_it_were_interpreted() -> None:
+    text = "#theory t { c { }; &k/0 : c, any }.\n{p}. &k { 1 }.\n% @expect sat\n"
+    (message,) = faults(text)
+    assert message.startswith("1: the program has theory atoms, which this checker does not")

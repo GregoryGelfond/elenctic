@@ -9,7 +9,7 @@ from typing import Final, NamedTuple
 
 from clingo import Symbol
 
-from elenctic.determination import Mode
+from elenctic.determination import Cost, Mode, Range
 from elenctic.literals import AnswerSet, Assumption, Literal, Pattern, Scenario
 from elenctic.query import All, Answer
 from elenctic.spans import Diagnostic, Position, Severity, Span
@@ -25,24 +25,38 @@ class Satisfiable:
 
 @dataclass(frozen=True, slots=True)
 class Census:
-    """`@count n`: exactly `n` distinct shown answer sets."""
+    """`@count [optimal] n`: exactly `n` distinct shown answer sets."""
 
     count: int
+    over: Range = Range.ALL
 
 
 @dataclass(frozen=True, slots=True)
 class Witness:
-    """`@model { L }`: some answer set shows exactly `L`."""
+    """`@model [optimal] { L }`, or `@optimal { L }`: some answer set shows exactly `L`."""
 
     literals: AnswerSet
+    over: Range = Range.ALL
 
 
 @dataclass(frozen=True, slots=True)
 class Entails:
-    """`@cautious { L }` / `@brave { L }`: `L` is within the cautious / brave consequences."""
+    """`@cautious [optimal] { L }` / `@brave [optimal] { L }`: `L` is within the consequences."""
 
     mode: Mode
     literals: AnswerSet
+    over: Range = Range.ALL
+
+
+@dataclass(frozen=True, slots=True)
+class Costs:
+    """`@cost { c1 c2 ... }`: the optimum is `c`, as the minimized sum of each level."""
+
+    cost: Cost
+
+    @property
+    def over(self) -> Range:
+        return Range.OPTIMAL
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +76,7 @@ class Binds:
     bindings: frozenset[tuple[Symbol, ...]]
 
 
-type Reading = Satisfiable | Census | Witness | Entails | Asks | Binds
+type Reading = Satisfiable | Census | Witness | Entails | Costs | Asks | Binds
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,9 +133,12 @@ class _Block:
 
 _TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+)\b(?P<gap>\s*)(?P<rest>.*?)\s*")
 _CONTINUATION: Final = re.compile(r"(?P<lead>\s*%\s*)(?P<rest>.*?)\s*")
+_INTEGER: Final = re.compile(r"-?\d+")
 _TOKEN: Final = re.compile(r"(?P<open>\{)|(?P<word>[^\s{=]+|=)")
-SUPPORTED: Final = frozenset({"expect", "count", "model", "cautious", "brave", "query", "note"})
-KNOWN: Final = SUPPORTED | {"optimal", "cost", "assign", "elenctic"}
+SUPPORTED: Final = frozenset(
+    {"expect", "count", "model", "optimal", "cautious", "brave", "cost", "query", "note"}
+)
+KNOWN: Final = SUPPORTED | {"assign", "elenctic"}
 
 
 class _Scan(NamedTuple):
@@ -265,20 +282,38 @@ def _expect(block: _Block, head: list[_Element]) -> Parsed[Reading]:
             return _failure(block, "expected `sat` or `unsat`")
 
 
+def _over(head: list[_Element]) -> tuple[Range, list[_Element]]:
+    """Split a leading `optimal` off a payload: the model set the claim is about, and the rest."""
+    if head and not head[0].braced and head[0].text == Range.OPTIMAL:
+        return Range.OPTIMAL, head[1:]
+    return Range.ALL, head
+
+
 def _count(block: _Block, head: list[_Element]) -> Parsed[Reading]:
-    if len(head) == 1 and not head[0].braced and head[0].text.isdecimal():
-        return Census(int(head[0].text))
+    over, rest = _over(head)
+    if len(rest) == 1 and not rest[0].braced and rest[0].text.isdecimal():
+        return Census(int(rest[0].text), over)
     return _failure(block, "expected a non-negative integer")
 
 
+def _cost(block: _Block, head: list[_Element]) -> Parsed[Reading]:
+    levels = head[0].text.split() if len(head) == 1 and head[0].braced else []
+    if levels and all(_INTEGER.fullmatch(level) for level in levels):
+        return Costs(tuple(map(int, levels)))
+    return _failure(block, "expected `{ c1 c2 ... }`, an integer for each level")
+
+
 def _litset(
-    make: Callable[[AnswerSet], Reading],
+    make: Callable[[AnswerSet, Range], Reading], *, over: Range | None = None
 ) -> Callable[[_Block, list[_Element]], Parsed[Reading]]:
+    """Read `[optimal] { literals }`; with `over` fixed, as for `@optimal`, no `optimal` word."""
+
     def read(block: _Block, head: list[_Element]) -> Parsed[Reading]:
-        if len(head) != 1 or not head[0].braced:
+        chosen, rest = (over, head) if over is not None else _over(head)
+        if len(rest) != 1 or not rest[0].braced:
             return _failure(block, "expected `{ literals }`")
-        literals = _ground(block, head[0])
-        return literals if isinstance(literals, Diagnostic) else make(literals)
+        literals = _ground(block, rest[0])
+        return literals if isinstance(literals, Diagnostic) else make(literals, chosen)
 
     return read
 
@@ -328,8 +363,10 @@ _READERS: Final[dict[str, Callable[[_Block, list[_Element]], Parsed[Reading]]]] 
     "expect": _expect,
     "count": _count,
     "model": _litset(Witness),
-    "cautious": _litset(lambda lits: Entails(Mode.CAUTIOUS, lits)),
-    "brave": _litset(lambda lits: Entails(Mode.BRAVE, lits)),
+    "optimal": _litset(Witness, over=Range.OPTIMAL),
+    "cost": _cost,
+    "cautious": _litset(lambda lits, over: Entails(Mode.CAUTIOUS, lits, over)),
+    "brave": _litset(lambda lits, over: Entails(Mode.BRAVE, lits, over)),
     "query": _query,
 }
 
@@ -378,6 +415,11 @@ def _expectations(claims: list[Claim], source: str) -> list[Diagnostic]:
     ]
 
 
+def _none(reading: Reading) -> bool:
+    """Say whether the claim is that there are no answer sets: `@count 0`, of either set."""
+    return isinstance(reading, Census) and reading.count == 0
+
+
 def _exclusions(claims: list[Claim]) -> list[Diagnostic]:
     """Find claims that contradict the `@expect` of their own scenario."""
     expected = {(c.scenario, c.reading) for c in claims if isinstance(c.reading, Satisfiable)}
@@ -386,12 +428,12 @@ def _exclusions(claims: list[Claim]) -> list[Diagnostic]:
     clash = [
         Diagnostic(c.span, Severity.ERROR, "`@expect unsat` admits no model claim")
         for c in claims
-        if c.scenario in unsat and not isinstance(c.reading, Satisfiable) and c.reading != Census(0)
+        if c.scenario in unsat and not isinstance(c.reading, Satisfiable) and not _none(c.reading)
     ]
     empty = [
         Diagnostic(c.span, Severity.ERROR, "`@count 0` is `@expect unsat`, not `@expect sat`")
         for c in claims
-        if c.scenario in sat and c.reading == Census(0)
+        if c.scenario in sat and _none(c.reading)
     ]
     return clash + empty
 
@@ -420,16 +462,28 @@ def _bindings(pattern: Pattern, found: frozenset[tuple[Symbol, ...]]) -> str:
     )
 
 
+def _optimally(over: Range) -> str:
+    return "optimal " if over is Range.OPTIMAL else ""
+
+
+def _of_models(reading: Census | Witness | Entails | Costs) -> str:
+    match reading:
+        case Census(count, over):
+            return f"@count {_optimally(over)}{count}"
+        case Witness(literals, over):
+            return f"@model {_optimally(over)}{braces(literals)}"
+        case Entails(mode, literals, over):
+            return f"@{mode} {_optimally(over)}{braces(literals)}"
+        case Costs(cost):
+            return "@cost { " + " ".join(map(str, cost)) + " }"
+
+
 def _reading(reading: Reading) -> str:
     match reading:
         case Satisfiable(expected):
             return f"@expect {'sat' if expected else 'unsat'}"
-        case Census(count):
-            return f"@count {count}"
-        case Witness(literals):
-            return f"@model {braces(literals)}"
-        case Entails(mode, literals):
-            return f"@{mode} {braces(literals)}"
+        case Census() | Witness() | Entails() | Costs():
+            return _of_models(reading)
         case Asks(answer, All(parts)):
             return f"@query {answer} {braces(p for p in parts if isinstance(p, Literal))}"
         case Binds(answer, pattern, found):
