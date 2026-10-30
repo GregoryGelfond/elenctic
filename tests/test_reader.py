@@ -18,8 +18,9 @@ from elenctic.determination import Mode, Range, Valuation
 from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
 from elenctic.query import All, Answer
-from elenctic.reader import _Element, _elements, _Scan, _scan, is_case, parse_contract
+from elenctic.reader import parse_contract
 from elenctic.spans import Diagnostic, Position, Span
+from elenctic.tags import is_case
 from elenctic.terms import Compound, Variable
 from elenctic.writer import render
 
@@ -277,23 +278,6 @@ def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None
     assert (found.span.start, found.span.end) == (P(3, 8), P(3, 15))
 
 
-@pytest.mark.parametrize(
-    ("text", "state"),
-    [
-        ("{ { }", _Scan(1)),
-        ('{ "}', _Scan(1, quoted=True)),
-        ('{ "a"', _Scan(1)),
-        (r'"a\\"', _Scan(0)),
-        (r'"a\\"}', _Scan(-1)),
-        (r'"a\"', _Scan(0, quoted=True)),
-        ('"a\\', _Scan(0, quoted=True, escaped=True)),
-        (r'"a\"}b,c"', _Scan(0)),
-    ],
-)
-def test_a_brace_scan_tracks_depth_quotes_and_escapes(text: str, state: _Scan) -> None:
-    assert _scan(text) == state
-
-
 def test_optimal_is_a_model_set_a_claim_may_name_and_the_tag_is_sugar_for_it() -> None:
     p = frozenset({Literal("p")})
     assert only("% @optimal { p }").reading == Witness(p, Range.OPTIMAL)
@@ -339,11 +323,6 @@ def test_more_optimal_answer_sets_than_answer_sets_is_a_contradiction() -> None:
 def test_an_expectation_is_sat_or_unsat() -> None:
     found = only_diagnostic("% @expect maybe")
     assert found.message == "expected `sat` or `unsat`"
-
-
-def test_a_payload_that_opens_with_a_brace_is_read_from_its_first_character() -> None:
-    assert _elements("{a}") == [_Element("a", 1, braced=True)]
-    assert _elements("{a") is None
 
 
 X1, Y2 = Valuation(parse_term("x"), 1), Valuation(parse_term("y"), 2)

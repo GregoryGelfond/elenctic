@@ -45,8 +45,9 @@ from elenctic.grounded import Grounded
 from elenctic.literals import AnswerSet, Scenario, Symbol
 from elenctic.program import Fault, Locus, Program
 from elenctic.query import Answer, answer, bindings
-from elenctic.reader import is_case, parse_contract
+from elenctic.reader import parse_contract
 from elenctic.search import UNLIMITED, Interrupt, Limits
+from elenctic.tags import is_case
 from elenctic.writer import bound, braces, render, where
 
 
