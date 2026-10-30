@@ -53,7 +53,8 @@ type TheoryAssignment = frozenset[Valuation]
 class Model:
     """A stable model: every atom of it, the atoms `#show` selects, its theory assignment and cost.
 
-    `assignment` is empty without a theory and `cost` without an objective.
+    `assignment` is empty without a theory. `cost` is empty unless the search optimized: clingo
+    reports no cost when it ignores the objective, so a plain enumeration carries none.
     """
 
     atoms: AnswerSet

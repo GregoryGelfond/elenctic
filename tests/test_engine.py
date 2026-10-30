@@ -2,6 +2,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from clingo import Control
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -407,4 +408,48 @@ def test_a_show_of_a_term_names_the_signature_whether_constant_negated_or_applie
         Signature("p", 0, positive=False),
         Signature("s", 0),
         Signature("r", 1),
+    }
+
+
+objectives = st.sampled_from(
+    [
+        "#minimize { 1,a : a; 2,b : b }.",
+        "#maximize { 2,a : a; 1,b : b; 1,f : f }.",
+        "#minimize { 1@2,a : a }. #maximize { 1@1,b : b; 1,c : c }.",
+        ":~ c. [3@1]",
+    ]
+)
+
+
+def cost_of(text: str, atoms: frozenset[Literal]) -> tuple[int, ...]:
+    """Cost clingo reports for the one stable model that is exactly `atoms`."""
+    control = Control(["--opt-mode=opt", "--warn=none"])
+    control.add("base", [], text)
+    control.ground([("base", [])])
+    held = {Literal.of(atom.symbol) for atom in control.symbolic_atoms} & atoms
+    fixed = [(atom.symbol, Literal.of(atom.symbol) in held) for atom in control.symbolic_atoms]
+    costs: list[tuple[int, ...]] = []
+    control.solve(assumptions=fixed, on_model=lambda m: costs.append(tuple(m.cost)))
+    return costs[-1]
+
+
+@settings(max_examples=60, deadline=None)
+@given(programs, objectives, scenarios)
+def test_the_optimum_is_the_least_cost_among_all_models_and_its_models_are_those_at_it(
+    text: str, objective: str, scenario: frozenset[Assumption]
+) -> None:
+    grounded = ground(Program(f"{text} {objective}"))
+    assert not isinstance(grounded, Fault)
+    every = grounded.solve(scenario)
+    best = grounded.optimize(scenario)
+    if not isinstance(every, Consistent):
+        assert best == every
+        return
+    assert isinstance(best, Consistent)
+    assert isinstance(best.evidence, Optimum)
+    costs = {m.atoms: cost_of(f"{text} {objective}", m.atoms) for m in every.evidence.all}
+    least = min(costs.values())
+    assert best.evidence.cost == least
+    assert {m.atoms for m in best.evidence.models.all} == {
+        atoms for atoms, cost in costs.items() if cost == least
     }
