@@ -5,9 +5,7 @@ __pycache__/
 .pytest_cache/
 .hypothesis/
 .coverage
-.metrics/
 dist/
 *.egg-info/
 .pixi/
-target/
 uv.lock
