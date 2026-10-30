@@ -1,14 +1,14 @@
 """The one place that owns a clingo `Control`: it grounds a program and runs searches over it."""
 
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from time import monotonic
 from typing import Final, Self
 
-from clingo import Control, SolveHandle, Symbol
+from clingo import Control, SolveHandle, Symbol, SymbolType
 from clingo import Model as ClingoModel
 from clingo.ast import AST, ProgramBuilder, parse_files, parse_string
 from clingo.configuration import Configuration
@@ -26,7 +26,7 @@ from elenctic.determination import (
     Refutation,
     Truncation,
 )
-from elenctic.literals import Assumption, Literal, Scenario
+from elenctic.literals import AnswerSet, Assumption, Literal, Scenario
 from elenctic.spans import UNLOCATED, Diagnostic, Severity, diagnose
 
 _SLICE: Final = 0.02
@@ -94,11 +94,13 @@ class _Search:
     core: frozenset[Assumption]
 
 
+def _literals(symbols: Iterable[Symbol]) -> AnswerSet:
+    """Keep the classical literals of `symbols`; `#show` may also select numbers or strings."""
+    return frozenset(Literal.of(s) for s in symbols if s.type is SymbolType.Function and s.name)
+
+
 def _model(model: ClingoModel) -> Model:
-    return Model(
-        frozenset(map(Literal.of, model.symbols(atoms=True))),
-        frozenset(map(Literal.of, model.symbols(shown=True))),
-    )
+    return Model(_literals(model.symbols(atoms=True)), _literals(model.symbols(shown=True)))
 
 
 def _cutter(limits: Limits, interrupt: Interrupt | None) -> Callable[[], Truncation | None]:

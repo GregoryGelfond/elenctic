@@ -241,3 +241,9 @@ def test_the_native_consequences_equal_those_derived_from_the_enumerated_models(
             assert native == enumerated
         case _:
             pytest.fail("a small program must be decided")
+
+
+def test_a_show_of_numbers_and_strings_selects_no_literal() -> None:
+    found = solve(Program('{p}. q. #show 42 : p. #show "s" : p. #show q : p. #show q/0.'))
+    assert isinstance(found, Consistent)
+    assert {m.shown for m in found.evidence.all} == {frozenset({Literal("q")})}
