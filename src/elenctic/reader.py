@@ -26,6 +26,7 @@ from elenctic.literals import AnswerSet, Assumption, Scenario
 from elenctic.query import All, Answer
 from elenctic.spans import Diagnostic, Position, Severity, Span
 from elenctic.syntax import Item, Parsed, read_bindings, read_literals, read_valuations
+from elenctic.wellformed import wellformed
 
 
 @dataclass(frozen=True, slots=True)
@@ -407,72 +408,6 @@ def _declared(blocks: list[_Block]) -> tuple[Solver, list[Diagnostic]]:
     return (solvers[0][1] if solvers else Solver.CLINGO), problems + extra
 
 
-def _expectations(claims: list[Claim], source: str) -> list[Diagnostic]:
-    expects = [c for c in claims if isinstance(c.reading, Satisfiable) and not c.scenario]
-    start = Span(source, Position(1, 1), Position(1, 1))
-    absent = [Diagnostic(start, Severity.ERROR, "missing `@expect`")] if not expects else []
-    return absent + [
-        Diagnostic(c.span, Severity.ERROR, "more than one `@expect`") for c in expects[1:]
-    ]
-
-
-def _none(reading: Reading) -> bool:
-    """Say whether the claim is that there are no answer sets: `@count 0`, of either set."""
-    return isinstance(reading, Census) and reading.count == 0
-
-
-def _expecting(claims: list[Claim], *, satisfiable: bool) -> frozenset[Scenario]:
-    """Name the scenarios in which the contract says `@expect sat` (or `unsat`)."""
-    return frozenset(c.scenario for c in claims if c.reading == Satisfiable(satisfiable))
-
-
-def _contradiction(
-    claim: Claim, unsat: frozenset[Scenario], sat: frozenset[Scenario]
-) -> str | None:
-    """Say how a claim contradicts the `@expect` of its own scenario, if it does."""
-    reading = claim.reading
-    if claim.scenario in unsat and not isinstance(reading, Satisfiable) and not _none(reading):
-        return "`@expect unsat` admits no model claim"
-    if claim.scenario in sat and _none(reading):
-        return "`@count 0` is `@expect unsat`, not `@expect sat`"
-    return None
-
-
-def _exclusions(claims: list[Claim]) -> list[Diagnostic]:
-    """Find claims that contradict the `@expect` of their own scenario."""
-    unsat, sat = _expecting(claims, satisfiable=False), _expecting(claims, satisfiable=True)
-    return [
-        Diagnostic(c.span, Severity.ERROR, message)
-        for c in claims
-        if (message := _contradiction(c, unsat, sat))
-    ]
-
-
-def _nested(claims: list[Claim]) -> list[Diagnostic]:
-    """Find an `@count optimal n` above the `@count m` of its scenario: Opt(P) ⊆ AS(P)."""
-    counts = {
-        (c.scenario, c.reading.over): c.reading.count
-        for c in claims
-        if isinstance(c.reading, Census)
-    }
-    return [
-        Diagnostic(
-            c.span,
-            Severity.ERROR,
-            f"`@count optimal {c.reading.count}` exceeds `@count {counts[c.scenario, Range.ALL]}`: "
-            "the optimal answer sets are among the answer sets",
-        )
-        for c in claims
-        if isinstance(c.reading, Census)
-        and c.reading.over is Range.OPTIMAL
-        and c.reading.count > counts.get((c.scenario, Range.ALL), c.reading.count)
-    ]
-
-
-def _wellformed(claims: list[Claim], source: str) -> list[Diagnostic]:
-    return [*_expectations(claims, source), *_exclusions(claims), *_nested(claims)]
-
-
 def parse_contract(text: str, source: str = "<string>") -> Contract:
     """Read each tag of `text`: a claim for every one that reads, a diagnostic for the rest."""
     blocks = _blocks(text, source)
@@ -480,4 +415,4 @@ def parse_contract(text: str, source: str = "<string>") -> Contract:
     claims = [c for _, c in parsed if isinstance(c, Claim)]
     problems = [c for _, c in parsed if isinstance(c, Diagnostic)]
     solver, misdeclared = _declared(blocks)
-    return Contract(tuple(claims), (*problems, *misdeclared, *_wellformed(claims, source)), solver)
+    return Contract(tuple(claims), (*problems, *misdeclared, *wellformed(claims, source)), solver)

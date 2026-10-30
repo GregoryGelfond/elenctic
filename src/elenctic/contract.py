@@ -111,3 +111,15 @@ class Contract:
     claims: tuple[Claim, ...]
     diagnostics: tuple[Diagnostic, ...]
     solver: Solver = Solver.CLINGO
+
+
+def over(reading: Reading) -> Range:
+    """Name the model set a claim is about: only the optimal-set claims say otherwise."""
+    if isinstance(reading, Census | Witness | Assigns | Entails | Costs):
+        return reading.over
+    return Range.ALL
+
+
+def denies_answer_sets(reading: Reading) -> bool:
+    """Say whether the claim is that there are no answer sets: `@count 0`, of either set."""
+    return isinstance(reading, Census) and reading.count == 0
