@@ -6,7 +6,7 @@ from clingo import Control, Function
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from elenctic import engine
+from elenctic import search
 from elenctic.determination import (
     Assignment,
     Consequences,
@@ -29,26 +29,17 @@ from elenctic.determination import (
     optimal_view,
     world_view,
 )
-from elenctic.engine import (
-    Fault,
-    Interrupt,
-    Limits,
-    Locus,
-    Program,
-    Shown,
-    _optimized,
-    _Run,
-    _Seen,
-    ground,
-    solve,
-)
-from elenctic.literals import AnswerSet, Assumption, Literal, Signature
+from elenctic.engine import ground, solve
+from elenctic.facts import Shown
+from elenctic.literals import AnswerSet, Assumption, Literal, Scenario, Signature
+from elenctic.program import Fault, Locus, Program
+from elenctic.search import Interrupt, Limits, Request, Run, Seen, optimized
 
 P, Q = Literal("p"), Literal("q")
 
 
-def stable_models(text: str, **kwargs: object) -> set[frozenset[Literal]]:
-    found = solve(Program(text), **kwargs)  # type: ignore[arg-type]
+def stable_models(text: str, scenario: Scenario = frozenset()) -> set[frozenset[Literal]]:
+    found = solve(Program(text), scenario)
     assert isinstance(found, Consistent), found
     assert found.conclusion is Exhausted.EXHAUSTED
     return {m.atoms for m in found.evidence.all}
@@ -81,14 +72,14 @@ def test_a_program_with_no_stable_model_is_inconsistent_with_nothing_to_blame() 
 
 
 def test_a_scenario_that_holds_restricts_the_models() -> None:
-    assert stable_models("{p;q}.", scenario=frozenset({Assumption(P)})) == {
+    assert stable_models("{p;q}.", frozenset({Assumption(P)})) == {
         frozenset({P}),
         frozenset({P, Q}),
     }
 
 
 def test_a_scenario_that_fails_restricts_the_models() -> None:
-    assert stable_models("{p;q}.", scenario=frozenset({Assumption(P, holds=False)})) == {
+    assert stable_models("{p;q}.", frozenset({Assumption(P, holds=False)})) == {
         frozenset(),
         frozenset({Q}),
     }
@@ -108,7 +99,7 @@ def test_assuming_an_atom_no_rule_derives_is_refuted_by_it_alone() -> None:
 
 
 def test_assuming_such_an_atom_false_is_no_restriction() -> None:
-    assert stable_models("{p}.", scenario=frozenset({Assumption(Literal("absent"), holds=False)}))
+    assert stable_models("{p}.", frozenset({Assumption(Literal("absent"), holds=False)}))
 
 
 def test_assuming_a_fact_false_is_refuted() -> None:
@@ -118,7 +109,7 @@ def test_assuming_a_fact_false_is_refuted() -> None:
 
 
 def test_a_strongly_negated_literal_can_be_assumed() -> None:
-    models = stable_models("{-p}.", scenario=frozenset({Assumption(P.contrary)}))
+    models = stable_models("{-p}.", frozenset({Assumption(P.contrary)}))
     assert models == {frozenset({P.contrary})}
 
 
@@ -307,7 +298,7 @@ def test_a_refutation_cut_short_by_the_budget_is_not_called_minimal() -> None:
     grounded = ground(Program("{p;q;r}. :- p, q."))
     assert not isinstance(grounded, Fault)
     core = frozenset({Assumption(P), Assumption(Q), Assumption(Literal("r"))})
-    cut = grounded._refutation(core, core, lambda: Truncation.BUDGET)  # noqa: SLF001
+    cut = grounded.refute(core, Request(core, Limits(seconds=0)))
     assert cut == These(core, minimal=False)
 
 
@@ -452,14 +443,14 @@ def test_the_exhausted_optimum_closes_a_view_of_the_optimal_answer_sets() -> Non
 
 def test_no_model_proven_optimal_leaves_the_last_one_as_the_incumbent() -> None:
     first, middle, last = (_seen(atom, proven=False) for atom in "pqr")
-    assert _optimized([first, middle, last]) == Incumbent(last.model)
+    assert optimized([first, middle, last]) == Incumbent(last.model)
     proven = _seen("r", proven=True)
-    assert _optimized([first, proven]) == Optimum(proven.cost, Models(proven.model))
+    assert optimized([first, proven]) == Optimum(proven.cost, Models(proven.model))
 
 
-def _seen(atom: str, *, proven: bool) -> _Seen:
+def _seen(atom: str, *, proven: bool) -> Seen:
     symbol = Function(atom)
-    return _Seen((symbol,), (symbol,), frozenset(), (), proven=proven)
+    return Seen((symbol,), (symbol,), frozenset(), (), proven=proven)
 
 
 IMPROVING = "{ p(1..6) }. #maximize { 1,X : p(X) }.\n"
@@ -483,7 +474,7 @@ def test_only_the_models_an_optimization_keeps_are_built(monkeypatch: pytest.Mon
         built.append(atoms)
         return Model(atoms, shown, assignment=assignment, cost=cost)
 
-    monkeypatch.setattr(engine, "Model", counting)
+    monkeypatch.setattr(search, "Model", counting)
     grounded = ground(Program(IMPROVING))
     assert not isinstance(grounded, Fault)
     found = grounded.optimize()
@@ -552,9 +543,9 @@ def test_the_optimum_is_the_least_cost_among_all_models_and_its_models_are_those
 def test_a_run_is_refuted_only_when_it_exhausted_the_space_and_found_nothing() -> None:
     model = _seen("p", proven=True)
     exhausted, cut = Exhausted.EXHAUSTED, Truncation.BUDGET
-    assert _Run((), exhausted, frozenset()).refuted
-    assert not _Run((model,), exhausted, frozenset()).refuted
-    assert not _Run((), cut, frozenset()).refuted
+    assert Run((), exhausted, frozenset()).refuted
+    assert not Run((model,), exhausted, frozenset()).refuted
+    assert not Run((), cut, frozenset()).refuted
 
 
 def test_a_show_of_a_term_restricts_what_is_shown_to_the_signature_it_names() -> None:

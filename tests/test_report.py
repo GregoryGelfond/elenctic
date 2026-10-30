@@ -3,7 +3,7 @@ import json
 import pytest
 
 from elenctic.check import Report, check
-from elenctic.engine import Fault, Program
+from elenctic.program import Fault, Program
 from elenctic.report import SCHEMA, Entry, Run, encode, to_json, to_text
 
 PASSING = "p.\n% @expect sat\n% @cautious { p }\n"

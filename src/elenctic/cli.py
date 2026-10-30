@@ -7,8 +7,9 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from elenctic.check import check
-from elenctic.engine import Fault, Interrupt, Limits, Locus, Program
+from elenctic.program import Fault, Locus, Program
 from elenctic.report import Entry, Run, to_json, to_text
+from elenctic.search import Interrupt, Limits
 from elenctic.spans import Diagnostic, Position, Severity, Span
 
 DEFAULT_BUDGET = 30.0

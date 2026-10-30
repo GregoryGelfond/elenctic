@@ -14,7 +14,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from elenctic.check import Report, check
-from elenctic.engine import Fault, Program
+from elenctic.program import Fault, Program
 
 LITERALS = ("a", "b", "c", "-a", "-b", "-c")
 RULES = (

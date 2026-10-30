@@ -2,7 +2,8 @@
 
 from elenctic.contract import Asks, Assigns, Binds, Contract, Reading, Solver, Witness, over
 from elenctic.determination import Range
-from elenctic.engine import Facts, Grounded
+from elenctic.facts import Facts
+from elenctic.grounded import Grounded
 from elenctic.literals import Literal, Signature
 from elenctic.query import Answer
 from elenctic.spans import Diagnostic, Severity, Span

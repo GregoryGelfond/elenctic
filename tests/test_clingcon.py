@@ -7,7 +7,8 @@ from elenctic.check import Report, Verdict, check
 from elenctic.cli import main
 from elenctic.contract import Solver
 from elenctic.determination import Consistent, Exhausted, Optimum, Valuation
-from elenctic.engine import Fault, Program, ground, solve
+from elenctic.engine import ground, solve
+from elenctic.program import Fault, Program
 
 pytest.importorskip("clingcon")
 

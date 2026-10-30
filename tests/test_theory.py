@@ -7,7 +7,8 @@ from clingo.ast import AST, parse_string
 from elenctic.check import check
 from elenctic.cli import main
 from elenctic.contract import Solver
-from elenctic.engine import Fault, Program, ground
+from elenctic.engine import ground
+from elenctic.program import Fault, Program
 from elenctic.spans import Position, Span
 from elenctic.theory import Clingcon, Plain
 

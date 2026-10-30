@@ -1,10 +1,12 @@
 import pytest
 
-from elenctic.check import NO_LIMITS, Finding, Report, Verdict, check, judge
+from elenctic.check import Finding, Report, Verdict, check, judge
 from elenctic.contract import Claim, Costs, Witness
 from elenctic.determination import Consistent, Inconsistent, Incumbent, Model, These, Truncation
-from elenctic.engine import Fault, Limits, Locus, Program, ground
+from elenctic.engine import ground
 from elenctic.literals import Assumption, Literal
+from elenctic.program import Fault, Locus, Program
+from elenctic.search import UNLIMITED, Limits
 from elenctic.spans import Position, Span
 
 DRINKS = """
@@ -14,13 +16,13 @@ biscuit.
 """
 
 
-def run(text: str, *, limits: Limits = NO_LIMITS) -> Report:
+def run(text: str, *, limits: Limits = UNLIMITED) -> Report:
     found = check(Program(text, "t.lp"), limits=limits)
     assert isinstance(found, Report), found
     return found
 
 
-def verdicts(text: str, *, limits: Limits = NO_LIMITS) -> list[Verdict]:
+def verdicts(text: str, *, limits: Limits = UNLIMITED) -> list[Verdict]:
     return [f.verdict for f in run(text, limits=limits).findings]
 
 

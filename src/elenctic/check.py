@@ -39,14 +39,15 @@ from elenctic.determination import (
     WorldView,
     world_view,
 )
-from elenctic.engine import Fault, Grounded, Interrupt, Limits, Locus, Program, ground
+from elenctic.engine import ground
 from elenctic.gates import unsound
+from elenctic.grounded import Grounded
 from elenctic.literals import AnswerSet, Scenario, Symbol
+from elenctic.program import Fault, Locus, Program
 from elenctic.query import Answer, answer, bindings
 from elenctic.reader import is_case, parse_contract
+from elenctic.search import UNLIMITED, Interrupt, Limits
 from elenctic.writer import bound, braces, render, where
-
-NO_LIMITS = Limits()
 
 
 class Verdict(StrEnum):
@@ -345,7 +346,7 @@ def _natively(
 def check(
     program: Program,
     *,
-    limits: Limits = NO_LIMITS,
+    limits: Limits = UNLIMITED,
     interrupt: Interrupt | None = None,
 ) -> Report | Fault | None:
     """Check the contract written in `program`; `None` if it carries none."""

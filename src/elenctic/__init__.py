@@ -29,8 +29,10 @@ from elenctic.determination import (
     optimal_view,
     world_view,
 )
-from elenctic.engine import Facts, Fault, Grounded, Interrupt, Limits, Locus, Program, ground, solve
+from elenctic.engine import ground, solve
 from elenctic.extension import Extension
+from elenctic.facts import Facts
+from elenctic.grounded import Grounded
 from elenctic.literals import (
     AnswerSet,
     Assumption,
@@ -39,6 +41,7 @@ from elenctic.literals import (
     Signature,
 )
 from elenctic.patterns import Pattern
+from elenctic.program import Fault, Locus, Program
 from elenctic.query import (
     Answer,
     Bindings,
@@ -50,6 +53,7 @@ from elenctic.query import (
     singleton_answer,
 )
 from elenctic.reader import parse_contract
+from elenctic.search import Interrupt, Limits, Request
 from elenctic.spans import Diagnostic, Position, Severity, Span
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable
@@ -100,6 +104,7 @@ __all__ = [
     "Range",
     "Refutation",
     "Report",
+    "Request",
     "Scenario",
     "Severity",
     "Signature",
