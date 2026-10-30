@@ -8,6 +8,9 @@ license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = ["clingo>=5.8.2,<5.9"]
 
+[project.optional-dependencies]
+theory = ["clingcon>=5.2.1,<5.3"]
+
 [project.scripts]
 elenctic = "elenctic.cli:main"
 
@@ -76,8 +79,12 @@ ruff = ">=0.17"
 pytest = ">=9"
 hypothesis = ">=6.170"
 
+[tool.pixi.feature.theory.dependencies]
+clingcon = ">=5.2.1,<5.3"
+
 [tool.pixi.environments]
 default = { features = ["dev"], solve-group = "default" }
+theory = { features = ["dev", "theory"], solve-group = "theory" }
 
 [tool.pixi.feature.dev.tasks]
 check = "ruff format --check src tests scripts && ruff check --no-fix src tests scripts && mypy && pytest -q"
