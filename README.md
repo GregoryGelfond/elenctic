@@ -17,10 +17,12 @@ items.
 ## Install
 
 ```
-uv tool install .          # or: pixi install
+uv tool install .            # or: pixi install
+uv tool install '.[theory]'  # with clingcon; pixi: pixi install -e theory
 ```
 
-Python 3.14 and clingo 5.8 are required.
+Python 3.14 and clingo 5.8 are required; clingcon 5.2 only for contracts that declare
+`% @elenctic solver clingcon`, which are otherwise reported as an error.
 
 ## Use
 
@@ -39,6 +41,7 @@ Start with `docs/`: a tutorial, how-to guides, a reference, and an explanation o
 ## Develop
 
 ```
+uv sync --extra theory   # or: pixi install -e theory
 ./check.sh        # format, lint, strict types, tests
 ```
 

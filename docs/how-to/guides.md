@@ -37,6 +37,13 @@ Add `@cost { c }` for the optimum's cost and `@count optimal n`, `@model optimal
 level is negated in a cost. The program must optimize something, or the file is an error.
 See [`optimum.lp`](../reference/examples.md).
 
+## Check a program with integer constraints
+
+Install `elenctic[theory]` (or use the pixi `theory` environment), write
+`% @elenctic solver clingcon`, then `@assign { x=1 }` and `@model { L } where { x=1 }`. Under
+clingcon an answer is a shown set with its assignment, so `@count` counts both. See
+[`clingcon.lp`](../reference/examples.md).
+
 ## Ask what is true in every answer set without enumerating them
 
 `@cautious { L }` and `@brave { L }` are computed by the solver; a contract holding only these

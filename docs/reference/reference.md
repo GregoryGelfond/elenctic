@@ -27,18 +27,23 @@ following comment lines. Every contract begins with `@expect`.
 | Claim | Holds when |
 |---|---|
 | `@expect sat` / `@expect unsat` | the program has / has no answer set |
-| `@count n` | exactly `n` distinct shown answer sets |
+| `@count n` | exactly `n` distinct shown answer sets; under clingcon, distinct (shown atoms, assignment) pairs |
 | `@model { L }` | some answer set shows exactly `L` |
+| `@model { L } where { x=1, … }` | some answer set shows exactly `L` and assigns each variable that integer (clingcon) |
+| `@assign { x=1, … }` | some answer set assigns each variable that integer (clingcon) |
 | `@cautious { L }` | `L` is in every answer set (⋂ AS(P)); computed by the solver |
 | `@brave { L }` | `L` is in some answer set (∪ AS(P)); computed by the solver |
 | `@query A { L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`) |
 | `@query A { p(X, b) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these |
 | `@model optimal { L }`, `@cautious optimal { L }`, `@brave optimal { L }` | the same, over the optimal answer sets Opt(P); `@optimal { L }` is `@model optimal { L }` |
+| `@assign optimal { x=1, … }` | the same, over the optimal answer sets |
 | `@count optimal n` | exactly `n` distinct shown optimal answer sets |
 | `@cost { c1 c2 … }` | the optimum's cost, highest priority first, is exactly this (see below) |
 | any of the above `assuming { l, not l }` | the claim is judged under those assumptions |
 
-`@note` is ignored. `@assign` and `@elenctic` are reported as not supported yet.
+`@note` is ignored. `% @elenctic solver clingcon` (or `clingo`, the default) names the solver the
+contract is checked with; it needs `elenctic[theory]`, and is a fault (exit 2) when clingcon is
+not installed. A variable is a term of the program (`x`, `digit(s)`), an integer its value.
 
 ### Costs
 
@@ -49,7 +54,11 @@ negated: `@cost { -5 }` claims that the optimum of a `#maximize` is 5.
 
 A contract that would be misread is not judged; the file is reported as an error (exit 2):
 
-- the program has theory atoms (clingo would ground them and ignore their constraints);
+- the program has theory atoms and the contract does not declare `% @elenctic solver clingcon`
+  (clingo would ground them and ignore their constraints);
+- a theory objective (`&minimize`), which clingcon applies in every search and clingo's cost does
+  not see;
+- `@assign` or `where` under clingo, which has no assignment to read;
 - an `optimal` or `@cost` claim over a program whose objective grounds away;
 - `@count optimal N` greater than an explicit `@count M`;
 - a `no` or `unknown` query that reads a contrary `-p` off the shown atoms when the program can
@@ -71,6 +80,7 @@ Everything in `elenctic.__all__`. Results are frozen dataclasses; spans are half
 | Is there an answer set? Which? | `solve(program, scenario)` | `Determination[Models]` |
 | What is cautious or brave? | `Grounded.consequences(mode, scenario)` | `Determination[Consequences]` |
 | What is optimal, at what cost? | `Grounded.optimize(scenario)` | `Determination[Optimized]` |
+| Over which solver? | `solve(program, solver=Solver.CLINGCON)`, `ground(program, solver)` | the same; a `Model` carries its `assignment` |
 | Why is there none? | the `Inconsistent` result's `refutation` | `These`, `NotThese` or `NoAssumptions` |
 
 ## JSON
