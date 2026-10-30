@@ -287,6 +287,11 @@ def _entailing(
     ]
 
 
+def _capped(found: Found) -> bool:
+    """Say whether a search stopped for want of nothing but the model cap it was given."""
+    return isinstance(found, Consistent) and found.conclusion is Truncation.TARGET
+
+
 def _judge_group(
     grounded: Grounded,
     key: tuple[Scenario, Range],
@@ -295,16 +300,33 @@ def _judge_group(
     interrupt: Interrupt | None,
 ) -> list[Finding]:
     scenario, over = key
-    found: Found
+
+    def native(mode: Mode) -> Determination[Consequences]:
+        return grounded.consequences(mode, scenario, limits=limits, interrupt=interrupt)
+
     if over is Range.OPTIMAL:
-        found = grounded.optimize(scenario, limits=_limits(group, limits), interrupt=interrupt)
-    elif _closes(group):
-        return _entailing(
-            group, lambda m: grounded.consequences(m, scenario, limits=limits, interrupt=interrupt)
+        found: Found = grounded.optimize(
+            scenario, limits=_limits(group, limits), interrupt=interrupt
         )
+    elif _closes(group):
+        return _entailing(group, native)
     else:
         found = grounded.solve(scenario, limits=_limits(group, limits), interrupt=interrupt)
-    return [judge(claim, found) for claim in group]
+    findings = [judge(claim, found) for claim in group]
+    if over is Range.ALL and _capped(found):
+        return _natively(group, findings, native)
+    return findings
+
+
+def _natively(
+    group: list[Claim],
+    findings: list[Finding],
+    native: Callable[[Mode], Determination[Consequences]],
+) -> list[Finding]:
+    """Replace the verdicts on consequence claims by native ones, which the model cap cannot cut."""
+    entailing = [c for c in group if isinstance(c.reading, Entails)]
+    decided = dict(zip(entailing, _entailing(entailing, native), strict=True)) if entailing else {}
+    return [decided.get(claim, finding) for claim, finding in zip(group, findings, strict=True)]
 
 
 def _contraries(reading: Reading) -> frozenset[Signature]:

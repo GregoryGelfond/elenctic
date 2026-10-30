@@ -209,6 +209,15 @@ def test_native_consequences_decide_a_search_the_model_cap_would_cut() -> None:
     assert verdicts(text, limits=Limits(models=3)) == [P, P, P, F]
 
 
+def test_consequences_beside_a_census_are_still_decided_when_the_model_cap_cuts_it() -> None:
+    text = (
+        "{p(1..40)}. q.\n% @expect sat\n% @count 5\n"
+        "% @cautious { q }\n% @cautious { p(1) }\n% @brave { p(7) }\n"
+    )
+    assert verdicts(text, limits=Limits(models=3)) == [P, U, P, F, P]
+    assert verdicts(text, limits=Limits(seconds=0)) == [U] * 5
+
+
 def test_consequence_claims_agree_with_those_read_from_the_enumeration() -> None:
     claims = (
         "% @expect sat\n% @cautious { biscuit }\n% @brave { tea, coffee }\n% @cautious { tea }\n"
