@@ -226,6 +226,7 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
             P(2, 39),
         ),
         ("% @cautious { p", "a brace is never closed", P(2, 3), P(2, 16)),
+        ("% @query yes { p. q }", "expected a list of literals", P(2, 15), P(2, 21)),
         (
             "% @query yes { p(1..2) }",
             "expected a literal with ground or variable arguments",
