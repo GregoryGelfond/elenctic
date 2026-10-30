@@ -3,9 +3,10 @@
 from dataclasses import dataclass
 from typing import Final, override
 
-from clingo import MessageCode, parse_term
+from clingo import MessageCode, Symbol, parse_term
 from clingo.ast import AST, ASTType, UnaryOperator
 
+from elenctic import tree
 from elenctic.terms import Term, Variable, build
 from elenctic.traversal import fold
 
@@ -30,17 +31,28 @@ def _silent(_code: MessageCode, _message: str) -> None:
     """Swallow clingo's report; the failure itself raises."""
 
 
+def evaluate(text: str) -> Symbol | None:
+    """Return the one ground term `text` stands for, or `None` if it stands for none."""
+    try:
+        return parse_term(text, _silent)
+    except RuntimeError:
+        return None
+
+
 def function_of(term: AST) -> tuple[AST, bool] | None:
     """Return the ordinary function `term` is, or negates, and whether it does not negate it."""
-    negated = term.ast_type is ASTType.UnaryOperation and term.operator_type == UnaryOperator.Minus
-    function = term.argument if negated else term
-    plain = function.ast_type is ASTType.Function and not function.external
+    negated = (
+        tree.kind(term) is ASTType.UnaryOperation
+        and tree.number(term, "operator_type") == UnaryOperator.Minus
+    )
+    function = tree.child(term, "argument") if negated else term
+    plain = tree.kind(function) is ASTType.Function and not tree.flag(function, "external")
     return (function, not negated) if plain else None
 
 
 def _arguments(term: AST) -> tuple[AST, ...]:
     found = function_of(term)
-    return () if found is None else tuple(found[0].arguments)
+    return () if found is None else tree.children(found[0], "arguments")
 
 
 _REFUSALS: Final = {
@@ -52,17 +64,19 @@ _REFUSALS: Final = {
 
 def _ground(term: AST) -> Term | NotAPattern:
     """Return the one ground term that arithmetic or a constant stands for, or why it has none."""
-    try:
-        return parse_term(str(term), _silent)
-    except RuntimeError:
+    value = evaluate(str(term))
+    if value is None:
         return NotAPattern(str(term), "arithmetic over a variable or undefined has no value")
+    return value
 
 
 def _evaluated(term: AST) -> Term | NotAPattern:
     """Return the one term that `term`, a leaf of the pattern, stands for, or why it has none."""
-    if (reason := _REFUSALS.get(term.ast_type)) is not None:
+    if (reason := _REFUSALS.get(tree.kind(term))) is not None:
         return NotAPattern(str(term), reason)
-    return Variable(term.name) if term.ast_type is ASTType.Variable else _ground(term)
+    if tree.kind(term) is ASTType.Variable:
+        return Variable(tree.name(term))
+    return _ground(term)
 
 
 def _assembled(term: AST, parts: list[Term | NotAPattern]) -> Term | NotAPattern:
@@ -72,7 +86,7 @@ def _assembled(term: AST, parts: list[Term | NotAPattern]) -> Term | NotAPattern
         return refused or _evaluated(term)
     function, positive = found
     terms = [part for part in parts if not isinstance(part, NotAPattern)]
-    return build(function.name, terms, positive=positive)
+    return build(tree.name(function), terms, positive=positive)
 
 
 def normalize(term: AST) -> Term | NotAPattern:

@@ -5,8 +5,9 @@ from typing import Final
 from elenctic.contract import Asks, Binds, Reading
 from elenctic.operands import failure
 from elenctic.query import All, Answer
-from elenctic.spans import Diagnostic
-from elenctic.syntax import Item, Parsed, read_bindings, read_literals
+from elenctic.rows import read_bindings
+from elenctic.spans import Diagnostic, Parsed
+from elenctic.syntax import Item, read_literals
 from elenctic.tags import Block, Element
 
 

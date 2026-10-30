@@ -3,8 +3,9 @@ from clingo import Number, String, parse_term
 
 from elenctic.determination import Valuation
 from elenctic.patterns import Pattern
+from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Position, Span
-from elenctic.syntax import Item, read_bindings, read_literals, read_valuations
+from elenctic.syntax import Item, read_literals, read_valuations
 from elenctic.terms import Compound, Variable
 
 WHERE = Span("c.lp", Position(7, 12), Position(7, 40))

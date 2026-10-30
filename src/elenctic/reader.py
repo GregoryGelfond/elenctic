@@ -9,8 +9,7 @@ from elenctic.literals import Scenario
 from elenctic.operands import after, assumptions, failure
 from elenctic.queries import query
 from elenctic.readings import assign, brave, cautious, cost, count, expect, witness
-from elenctic.spans import Diagnostic
-from elenctic.syntax import Parsed
+from elenctic.spans import Diagnostic, Parsed
 from elenctic.tags import Block, Element, blocks, elements
 from elenctic.wellformed import wellformed
 

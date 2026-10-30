@@ -2,8 +2,8 @@
 
 from elenctic.determination import Assignment, Range
 from elenctic.literals import AnswerSet, Assumption, Scenario
-from elenctic.spans import Diagnostic, Severity
-from elenctic.syntax import Parsed, read_literals, read_valuations
+from elenctic.spans import Diagnostic, Parsed, Severity
+from elenctic.syntax import read_literals, read_valuations
 from elenctic.tags import Block, Element
 
 

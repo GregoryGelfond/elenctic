@@ -55,6 +55,9 @@ class Diagnostic:
     message: str
 
 
+type Parsed[T] = T | Diagnostic
+
+
 UNLOCATED: Final = Span("", Position(1, 1), Position(1, 1))
 
 _HEADER: Final = re.compile(

@@ -8,8 +8,7 @@ from elenctic.contract import Assigns, Census, Costs, Entails, Reading, Satisfia
 from elenctic.determination import Mode, Range
 from elenctic.literals import AnswerSet
 from elenctic.operands import after, failure, ground, model_set, valuations
-from elenctic.spans import Diagnostic
-from elenctic.syntax import Parsed
+from elenctic.spans import Diagnostic, Parsed
 from elenctic.tags import Block, Element
 
 _INTEGER: Final = re.compile(r"-?\d+")
