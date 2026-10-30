@@ -15,5 +15,4 @@ All notable changes are recorded here. The format follows
   `@brave`, `@query` with optional `= { bindings }`, and an `assuming { … }` form on any claim.
 - `check` with the verdicts `pass`, `fail` and `undecided`.
 - Command line with `--json`, `--verbose`, `--budget` and `--models`; exit codes 0, 1 and 2.
-- LSP diagnostics from a result (`aspnext.lsp`).
 - Packaging for uv, pixi and conda-forge (`recipe/recipe.yaml`).
