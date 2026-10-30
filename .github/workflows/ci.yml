@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --python 3.14
+      - run: uv sync --python 3.14 --extra theory
       - run: uv run ruff format --check src tests scripts
       - run: uv run ruff check --no-fix src tests scripts
       - run: uv run mypy
@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: prefix-dev/setup-pixi@v0.8.10
-      - run: pixi run check
+      - run: pixi run -e theory check
   recipe:
     runs-on: ubuntu-latest
     steps:
