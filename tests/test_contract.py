@@ -239,3 +239,9 @@ def test_a_missing_expect_is_reported_at_the_start_of_the_source() -> None:
     assert [d.message for d in parse("% @expect sat", "% @expect sat").diagnostics] == [
         "more than one `@expect`"
     ]
+
+
+def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None:
+    found = only_diagnostic("% @brave { p,", "%      q(1..2),", "%   r }")
+    assert found.message == "expected a literal with ground or variable arguments"
+    assert (found.span.start, found.span.end) == (P(3, 8), P(3, 15))

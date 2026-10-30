@@ -97,16 +97,14 @@ class _Block:
 
     @property
     def payload(self) -> str:
-        return " ".join(piece.text for piece in self.pieces)
+        """The tag's text, laid out as in the source: each line indented to its own column."""
+        return "\n".join(" " * (piece.start.column - 1) + piece.text for piece in self.pieces)
 
     def position(self, offset: int) -> Position:
         """Map an offset into `payload` back to a position in the source."""
-        starts = [0]
-        for piece in self.pieces:
-            starts.append(starts[-1] + len(piece.text) + 1)
-        index = max(i for i, start in enumerate(starts[:-1]) if start <= offset)
-        piece = self.pieces[index]
-        return Position(piece.start.line, piece.start.column + offset - starts[index])
+        before = self.payload[:offset]
+        column = offset - (before.rfind("\n") + 1) + 1
+        return Position(self.pieces[0].start.line + before.count("\n"), column)
 
     def span(self, start: int, end: int) -> Span:
         return Span(self.source, self.position(start), self.position(end))
