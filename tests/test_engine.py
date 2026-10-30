@@ -14,16 +14,19 @@ from elenctic.determination import (
     Incumbent,
     Mode,
     Model,
+    Models,
     NoAssumptions,
     NotThese,
     Optimum,
+    Range,
     These,
     Truncation,
+    WorldView,
     optimal_view,
     world_view,
 )
-from elenctic.engine import Fault, Interrupt, Limits, Locus, Program, ground, solve
-from elenctic.literals import Assumption, Literal
+from elenctic.engine import Fault, Interrupt, Limits, Locus, Program, _optimized, ground, solve
+from elenctic.literals import Assumption, Literal, Signature
 
 P, Q = Literal("p"), Literal("q")
 
@@ -376,3 +379,32 @@ def test_the_unproven_best_so_far_is_an_incumbent_and_closes_no_optimal_view() -
     assert optimal_view(found) is Truncation.BUDGET
     with pytest.raises(ValueError, match="proven"):
         optimal_view(Consistent(Incumbent(Model(frozenset(), frozenset())), Exhausted.EXHAUSTED))
+
+
+KNAPSACK = "{ a; b }. :- a, b. #maximize { 3,a : a; 2,b : b }.\n"
+
+
+def test_the_exhausted_optimum_closes_a_view_of_the_optimal_answer_sets() -> None:
+    grounded = ground(Program(KNAPSACK))
+    assert not isinstance(grounded, Fault)
+    found = grounded.optimize()
+    assert isinstance(found, Consistent)
+    view = optimal_view(found)
+    assert view == WorldView(frozenset({frozenset({Literal("a")})}), Range.OPTIMAL)
+
+
+def test_no_model_proven_optimal_leaves_the_last_one_as_the_incumbent() -> None:
+    first, last = Model(frozenset({P}), frozenset({P})), Model(frozenset(), frozenset())
+    assert _optimized([(first, False), (last, False)]) == Incumbent(last)
+    assert _optimized([(first, False), (last, True)]) == Optimum(last.cost, Models(last))
+
+
+def test_a_show_of_a_term_names_the_signature_whether_constant_negated_or_applied() -> None:
+    grounded = ground(Program("{ -p; q; r(1) }. #show -p : q. #show s : q. #show r(1) : q.\n"))
+    assert not isinstance(grounded, Fault)
+    shown = grounded.facts.shown
+    assert shown.signatures == {
+        Signature("p", 0, positive=False),
+        Signature("s", 0),
+        Signature("r", 1),
+    }

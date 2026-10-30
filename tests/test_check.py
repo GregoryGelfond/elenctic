@@ -1,8 +1,10 @@
 import pytest
 
-from elenctic.check import NO_LIMITS, Finding, Report, Verdict, check
+from elenctic.check import NO_LIMITS, Finding, Report, Verdict, check, judge
+from elenctic.contract import Claim, Costs
 from elenctic.determination import Truncation
-from elenctic.engine import Fault, Limits, Locus, Program
+from elenctic.engine import Fault, Limits, Locus, Program, ground
+from elenctic.spans import Position, Span
 
 DRINKS = """
 1 { tea; coffee } 1.
@@ -274,3 +276,16 @@ def test_an_objective_that_grounds_away_is_no_objective() -> None:
     (message,) = faults("#minimize { 1,a : a }.\n% @expect sat\n% @cost { 0 }\n")
     assert "its elements ground away" in message
     assert verdicts("{a}. #minimize { 1,a : a }.\n% @expect sat\n% @cost { 0 }\n") == [P, P]
+
+
+def test_a_query_over_a_search_that_did_not_finish_is_undecided() -> None:
+    text = "{p(1..40)}.\n% @expect sat\n% @query yes { p(1) }\n"
+    assert verdicts(text, limits=Limits(models=2)) == [P, U]
+
+
+def test_a_cost_claim_judged_without_an_optimization_is_never_a_pass() -> None:
+    claim = Claim(Costs((0,)), frozenset(), Span("t.lp", Position(1, 1), Position(1, 2)))
+    grounded = ground(Program("{p}."))
+    assert not isinstance(grounded, Fault)
+    finding = judge(claim, grounded.solve())
+    assert (finding.verdict, finding.detail) == (U, "no optimum was sought")

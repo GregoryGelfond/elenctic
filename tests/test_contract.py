@@ -319,3 +319,8 @@ def test_more_optimal_answer_sets_than_answer_sets_is_a_contradiction() -> None:
     assert not messages("% @expect sat", "% @count 2", "% @count optimal 2")
     assert not messages("% @expect sat", "% @count optimal 5")
     assert not messages("% @expect sat", "% @count 1", "% @count optimal 2 assuming { p }")
+
+
+def test_an_expectation_is_sat_or_unsat() -> None:
+    found = only_diagnostic("% @expect maybe")
+    assert found.message == "expected `sat` or `unsat`"

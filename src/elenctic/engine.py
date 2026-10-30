@@ -259,6 +259,8 @@ def _signature(term: AST) -> Signature | None:
     match term.ast_type:
         case ASTType.Function:
             return Signature(term.name, len(term.arguments))
+        case ASTType.SymbolicTerm if term.symbol.type is SymbolType.Function:
+            return Signature(term.symbol.name, len(term.symbol.arguments), term.symbol.positive)
         case ASTType.UnaryOperation if term.operator_type == UnaryOperator.Minus:
             inner = _signature(term.argument)
             return inner and Signature(inner.name, inner.arity, positive=not inner.positive)
