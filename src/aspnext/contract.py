@@ -334,46 +334,70 @@ _READERS: Final[dict[str, Callable[[_Block, list[_Element]], Parsed[Reading]]]] 
 }
 
 
+def _unreadable(block: _Block) -> Diagnostic | None:
+    if block.tag in SUPPORTED:
+        return None
+    return _failure(
+        block, f"`@{block.tag}` is " + ("not supported yet" if block.tag in KNOWN else "not a tag")
+    )
+
+
+def _split(block: _Block, elements: list[_Element]) -> Parsed[tuple[list[_Element], Scenario]]:
+    """Split a tag's elements at `assuming` into its reading and its scenario."""
+    cut = next((i for i, e in enumerate(elements) if e.text == "assuming" and not e.braced), None)
+    if cut is None:
+        return elements, frozenset()
+    tail = elements[cut + 1 :]
+    if len(tail) != 1 or not tail[0].braced:
+        return _failure(block, "expected `assuming { literals }`")
+    scenario = _scenario(block, tail[0])
+    return scenario if isinstance(scenario, Diagnostic) else (elements[:cut], scenario)
+
+
 def _claim(block: _Block) -> Parsed[Claim] | None:
     if block.tag == "note":
         return None
-    if block.tag not in SUPPORTED:
-        known = block.tag in KNOWN
-        return _failure(
-            block, f"`@{block.tag}` is " + ("not supported yet" if known else "not a tag")
-        )
-    elements = _elements(block.payload)
-    if elements is None:
+    if (unreadable := _unreadable(block)) is not None:
+        return unreadable
+    if (elements := _elements(block.payload)) is None:
         return _failure(block, "a brace is never closed")
-    cut = next((i for i, e in enumerate(elements) if e.text == "assuming" and not e.braced), None)
-    head, tail = (elements, []) if cut is None else (elements[:cut], elements[cut + 1 :])
-    if cut is not None and (len(tail) != 1 or not tail[0].braced):
-        return _failure(block, "expected `assuming { literals }`")
-    scenario = frozenset() if cut is None else _scenario(block, tail[0])
-    if isinstance(scenario, Diagnostic):
-        return scenario
+    split = _split(block, elements)
+    if isinstance(split, Diagnostic):
+        return split
+    head, scenario = split
     reading = _READERS[block.tag](block, head)
     return reading if isinstance(reading, Diagnostic) else Claim(reading, scenario, block.whole)
 
 
-def _wellformed(claims: list[Claim], source: str) -> list[Diagnostic]:
+def _expectations(claims: list[Claim], source: str) -> list[Diagnostic]:
     expects = [c for c in claims if isinstance(c.reading, Satisfiable) and not c.scenario]
     start = Span(source, Position(1, 1), Position(1, 1))
     absent = [Diagnostic(start, Severity.ERROR, "missing `@expect`")] if not expects else []
-    extra = [Diagnostic(c.span, Severity.ERROR, "more than one `@expect`") for c in expects[1:]]
-    unsat = {c.scenario for c in claims if c.reading == Satisfiable(expected=False)}
+    return absent + [
+        Diagnostic(c.span, Severity.ERROR, "more than one `@expect`") for c in expects[1:]
+    ]
+
+
+def _exclusions(claims: list[Claim]) -> list[Diagnostic]:
+    """Find claims that contradict the `@expect` of their own scenario."""
+    expected = {(c.scenario, c.reading) for c in claims if isinstance(c.reading, Satisfiable)}
+    unsat = {scenario for scenario, reading in expected if reading == Satisfiable(expected=False)}
+    sat = {scenario for scenario, reading in expected if reading == Satisfiable(expected=True)}
     clash = [
         Diagnostic(c.span, Severity.ERROR, "`@expect unsat` admits no model claim")
         for c in claims
         if c.scenario in unsat and not isinstance(c.reading, Satisfiable) and c.reading != Census(0)
     ]
-    sat = {c.scenario for c in claims if c.reading == Satisfiable(expected=True)}
     empty = [
         Diagnostic(c.span, Severity.ERROR, "`@count 0` is `@expect unsat`, not `@expect sat`")
         for c in claims
         if c.scenario in sat and c.reading == Census(0)
     ]
-    return [*absent, *extra, *clash, *empty]
+    return clash + empty
+
+
+def _wellformed(claims: list[Claim], source: str) -> list[Diagnostic]:
+    return [*_expectations(claims, source), *_exclusions(claims)]
 
 
 def parse_contract(text: str, source: str = "<string>") -> Contract:
