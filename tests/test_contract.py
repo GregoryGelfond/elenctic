@@ -150,3 +150,11 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
     contract = parse(*(f"% {line}" for line in lines))
     assert not contract.diagnostics
     assert [render(c) for c in contract.claims] == lines
+
+
+def test_a_count_of_zero_contradicts_expecting_sat() -> None:
+    contract = parse("% @expect sat", "% @count 0")
+    assert [d.message for d in contract.diagnostics] == [
+        "`@count 0` is `@expect unsat`, not `@expect sat`"
+    ]
+    assert not parse("% @expect unsat", "% @count 0").diagnostics

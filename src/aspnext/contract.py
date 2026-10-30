@@ -367,7 +367,13 @@ def _wellformed(claims: list[Claim], source: str) -> list[Diagnostic]:
         for c in claims
         if c.scenario in unsat and not isinstance(c.reading, Satisfiable) and c.reading != Census(0)
     ]
-    return [*absent, *extra, *clash]
+    sat = {c.scenario for c in claims if c.reading == Satisfiable(expected=True)}
+    empty = [
+        Diagnostic(c.span, Severity.ERROR, "`@count 0` is `@expect unsat`, not `@expect sat`")
+        for c in claims
+        if c.scenario in sat and c.reading == Census(0)
+    ]
+    return [*absent, *extra, *clash, *empty]
 
 
 def parse_contract(text: str, source: str = "<string>") -> Contract:
