@@ -4,8 +4,8 @@ import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from functools import reduce
-from operator import itemgetter
+from functools import lru_cache, reduce
+from operator import attrgetter
 from pathlib import Path
 from time import monotonic
 from typing import Any, Final, Self, override
@@ -19,6 +19,7 @@ from clingo.configuration import Configuration
 from elenctic.determination import (
     Consequences,
     Consistent,
+    Cost,
     Determination,
     Exhausted,
     Inconclusive,
@@ -39,6 +40,7 @@ from elenctic.literals import AnswerSet, Assumption, Literal, Scenario, Signatur
 from elenctic.spans import UNLOCATED, Diagnostic, Severity, diagnose
 
 _SLICE: Final = 0.02
+_REMEMBERED: Final = 2**16
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,22 +112,45 @@ class _Run[T]:
         return self.conclusion is Exhausted.EXHAUSTED and not self.found
 
 
+@lru_cache(maxsize=_REMEMBERED)
+def _literal(symbol: Symbol) -> Literal | None:
+    """Read `symbol` as a classical literal; `#show` may also select numbers or strings."""
+    return Literal.of(symbol) if symbol.type is SymbolType.Function and symbol.name else None
+
+
 def _literals(symbols: Iterable[Symbol]) -> AnswerSet:
-    """Keep the classical literals of `symbols`; `#show` may also select numbers or strings."""
-    return frozenset(Literal.of(s) for s in symbols if s.type is SymbolType.Function and s.name)
+    """Keep the classical literals of `symbols`, each atom read once however often it recurs."""
+    return frozenset(literal for s in symbols if (literal := _literal(s)) is not None)
+
+
+@dataclass(frozen=True, slots=True)
+class _Seen:
+    """A model as clingo reported it, and whether it is proven optimal (as all are, unoptimized).
+
+    It is read into a `Model` only once it is known to be kept, which most improving models are not.
+    """
+
+    atoms: tuple[Symbol, ...]
+    shown: tuple[Symbol, ...]
+    cost: Cost
+    proven: bool
+
+    @property
+    def model(self) -> Model:
+        return Model(_literals(self.atoms), _literals(self.shown), cost=self.cost)
 
 
 def _model(model: ClingoModel) -> Model:
-    return Model(
-        _literals(model.symbols(atoms=True)),
-        _literals(model.symbols(shown=True)),
-        cost=tuple(model.cost),
+    return _seen(model).model
+
+
+def _seen(model: ClingoModel) -> _Seen:
+    return _Seen(
+        tuple(model.symbols(atoms=True)),
+        tuple(model.symbols(shown=True)),
+        tuple(model.cost),
+        proven=model.optimality_proven or not model.cost,
     )
-
-
-def _step(model: ClingoModel) -> tuple[Model, bool]:
-    """Pair a model with whether it is proven optimal, as every model is without an objective."""
-    return _model(model), model.optimality_proven or not model.cost
 
 
 def _cutter(limits: Limits, interrupt: Interrupt | None) -> Callable[[], Truncation | None]:
@@ -217,11 +242,11 @@ def _models(found: list[Model]) -> Models:
     return Models(found[0], tuple(found[1:]))
 
 
-def _optimized(found: list[tuple[Model, bool]]) -> Optimized:
-    optimal = [model for model, proven in found if proven]
+def _optimized(found: list[_Seen]) -> Optimized:
+    optimal = [seen.model for seen in found if seen.proven]
     if optimal:
         return Optimum(optimal[0].cost, _models(optimal))
-    return Incumbent(found[-1][0])
+    return Incumbent(found[-1].model)
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,7 +451,7 @@ class Grounded:
 
         `limits.models` bounds the optimal models, not the improving ones found on the way.
         """
-        plan = _Plan(("auto", "optN"), _step, itemgetter(1))
+        plan = _Plan(("auto", "optN"), _seen, attrgetter("proven"))
         cut = _cutter(limits, interrupt)
         return self._search(scenario, plan, limits.models, cut, _optimized)
 

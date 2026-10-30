@@ -2,13 +2,15 @@ import threading
 from pathlib import Path
 
 import pytest
-from clingo import Control
+from clingo import Control, Function
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from elenctic import engine
 from elenctic.determination import (
     Consequences,
     Consistent,
+    Cost,
     Exhausted,
     Inconclusive,
     Inconsistent,
@@ -35,10 +37,11 @@ from elenctic.engine import (
     Shown,
     _optimized,
     _Run,
+    _Seen,
     ground,
     solve,
 )
-from elenctic.literals import Assumption, Literal, Signature
+from elenctic.literals import AnswerSet, Assumption, Literal, Signature
 
 P, Q = Literal("p"), Literal("q")
 
@@ -406,10 +409,45 @@ def test_the_exhausted_optimum_closes_a_view_of_the_optimal_answer_sets() -> Non
 
 
 def test_no_model_proven_optimal_leaves_the_last_one_as_the_incumbent() -> None:
-    first, last = Model(frozenset({P}), frozenset({P})), Model(frozenset(), frozenset())
-    middle = Model(frozenset({Q}), frozenset({Q}))
-    assert _optimized([(first, False), (middle, False), (last, False)]) == Incumbent(last)
-    assert _optimized([(first, False), (last, True)]) == Optimum(last.cost, Models(last))
+    first, middle, last = (_seen(atom, proven=False) for atom in "pqr")
+    assert _optimized([first, middle, last]) == Incumbent(last.model)
+    proven = _seen("r", proven=True)
+    assert _optimized([first, proven]) == Optimum(proven.cost, Models(proven.model))
+
+
+def _seen(atom: str, *, proven: bool) -> _Seen:
+    symbol = Function(atom)
+    return _Seen((symbol,), (symbol,), (), proven=proven)
+
+
+IMPROVING = "{ p(1..6) }. #maximize { 1,X : p(X) }.\n"
+
+
+def clingo_reports(text: str) -> int:
+    control = Control(["0", "--opt-mode=optN", "--warn=none"])
+    control.add("base", [], text)
+    control.ground([("base", [])])
+    reported: list[int] = []
+    control.solve(on_model=lambda _: reported.append(1))
+    return len(reported)
+
+
+def test_only_the_models_an_optimization_keeps_are_built(monkeypatch: pytest.MonkeyPatch) -> None:
+    built: list[AnswerSet] = []
+
+    def counting(atoms: AnswerSet, shown: AnswerSet, *, cost: Cost) -> Model:
+        built.append(atoms)
+        return Model(atoms, shown, cost=cost)
+
+    monkeypatch.setattr(engine, "Model", counting)
+    grounded = ground(Program(IMPROVING))
+    assert not isinstance(grounded, Fault)
+    found = grounded.optimize()
+    assert isinstance(found, Consistent)
+    assert isinstance(found.evidence, Optimum)
+    kept = len(found.evidence.models.all)
+    assert clingo_reports(IMPROVING) > kept
+    assert len(built) == kept
 
 
 def test_a_show_of_a_term_names_the_signature_whether_constant_negated_or_applied() -> None:
