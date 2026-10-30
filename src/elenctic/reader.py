@@ -179,12 +179,12 @@ def _ground(block: _Block, element: _Element, *, nonempty: bool = True) -> Parse
     items = read_literals(element.text, where) if element.text.strip() else ()
     if isinstance(items, Diagnostic):
         return items
-    literals = [item.pattern.as_literal() for item in items if not item.negated]
-    if None in literals or len(literals) != len(items):
+    grounds = [None if item.negated else item.pattern.as_literal() for item in items]
+    if None in grounds:
         return _failure(block, "expected ground literals, without `not`", element)
-    if nonempty and not literals:
+    if nonempty and not grounds:
         return _failure(block, "expected at least one literal", element)
-    return frozenset(lit for lit in literals if lit is not None)
+    return frozenset(lit for lit in grounds if lit is not None)
 
 
 def _scenario(block: _Block, element: _Element) -> Parsed[Scenario]:
@@ -352,22 +352,31 @@ def _none(reading: Reading) -> bool:
     return isinstance(reading, Census) and reading.count == 0
 
 
+def _expecting(claims: list[Claim], *, satisfiable: bool) -> frozenset[Scenario]:
+    """Name the scenarios in which the contract says `@expect sat` (or `unsat`)."""
+    return frozenset(c.scenario for c in claims if c.reading == Satisfiable(satisfiable))
+
+
+def _contradiction(
+    claim: Claim, unsat: frozenset[Scenario], sat: frozenset[Scenario]
+) -> str | None:
+    """Say how a claim contradicts the `@expect` of its own scenario, if it does."""
+    reading = claim.reading
+    if claim.scenario in unsat and not isinstance(reading, Satisfiable) and not _none(reading):
+        return "`@expect unsat` admits no model claim"
+    if claim.scenario in sat and _none(reading):
+        return "`@count 0` is `@expect unsat`, not `@expect sat`"
+    return None
+
+
 def _exclusions(claims: list[Claim]) -> list[Diagnostic]:
     """Find claims that contradict the `@expect` of their own scenario."""
-    expected = {(c.scenario, c.reading) for c in claims if isinstance(c.reading, Satisfiable)}
-    unsat = {scenario for scenario, reading in expected if reading == Satisfiable(expected=False)}
-    sat = {scenario for scenario, reading in expected if reading == Satisfiable(expected=True)}
-    clash = [
-        Diagnostic(c.span, Severity.ERROR, "`@expect unsat` admits no model claim")
+    unsat, sat = _expecting(claims, satisfiable=False), _expecting(claims, satisfiable=True)
+    return [
+        Diagnostic(c.span, Severity.ERROR, message)
         for c in claims
-        if c.scenario in unsat and not isinstance(c.reading, Satisfiable) and not _none(c.reading)
+        if (message := _contradiction(c, unsat, sat))
     ]
-    empty = [
-        Diagnostic(c.span, Severity.ERROR, "`@count 0` is `@expect unsat`, not `@expect sat`")
-        for c in claims
-        if c.scenario in sat and _none(c.reading)
-    ]
-    return clash + empty
 
 
 def _nested(claims: list[Claim]) -> list[Diagnostic]:

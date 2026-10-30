@@ -1,5 +1,6 @@
 """The surface syntax of literal lists and binding sets, read by clingo's own parser."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final
 
@@ -98,7 +99,11 @@ def read_literals(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
     statements = [s for s in statements if s.ast_type is not ASTType.Program]
     if len(statements) != 1:
         return _failure(where, "expected a list of literals")
-    parsed = [_item(where, literal) for literal in statements[0].body]
+    return _items(where, statements[0].body)
+
+
+def _items(where: Span, body: Iterable[AST]) -> Parsed[tuple[Item, ...]]:
+    parsed = [_item(where, literal) for literal in body]
     return next((p for p in parsed if isinstance(p, Diagnostic)), None) or tuple(
         p for p in parsed if isinstance(p, Item)
     )
@@ -112,7 +117,12 @@ def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symb
         term = parse_term(f"({text})", _silent)
     except RuntimeError:
         return _failure(where, "expected a set of terms")
-    raw = tuple(term.arguments) if _is_tuple(term) else (term,)
+    return _bindings(tuple(term.arguments) if _is_tuple(term) else (term,), arity, where)
+
+
+def _bindings(
+    raw: tuple[Symbol, ...], arity: int, where: Span
+) -> Parsed[tuple[tuple[Symbol, ...], ...]]:
     if arity == 1:
         return tuple((element,) for element in raw)
     if all(_is_tuple(element) and len(element.arguments) == arity for element in raw):
