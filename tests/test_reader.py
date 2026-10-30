@@ -20,7 +20,7 @@ from elenctic.patterns import Pattern
 from elenctic.query import All, Answer
 from elenctic.reader import _Element, _elements, _Scan, _scan, is_case, parse_contract
 from elenctic.spans import Diagnostic, Position, Span
-from elenctic.terms import Variable
+from elenctic.terms import Compound, Variable
 from elenctic.writer import render
 
 X = Variable("X")
@@ -75,6 +75,14 @@ def test_a_binding_query_states_the_bindings_it_expects() -> None:
     assert claim.reading == Binds(
         Answer.YES, Pattern("p", (X, parse_term("b"))), frozenset({(Number(1),), (Number(2),)})
     )
+
+
+def test_a_binding_query_may_nest_its_variables_and_keeps_their_order_of_first_occurrence() -> None:
+    claim = only("% @query yes { p(f(Y, g(X)), X) } = { (1, 2) }")
+    assert isinstance(claim.reading, Binds)
+    assert claim.reading.pattern.variables == (Variable("Y"), X)
+    assert claim.reading.pattern.arguments[0] == Compound("f", (Variable("Y"), Compound("g", (X,))))
+    assert claim.reading.bindings == {(Number(1), Number(2))}
 
 
 def test_a_query_whose_argument_is_an_equation_in_a_string_is_still_a_ground_query() -> None:
@@ -151,6 +159,8 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
         "@query unknown { p(1), -q }",
         "@query yes { p(X,b) } = { 1, 2 }",
         "@query no { p(X,Y) } = { (a,1), (b,2) }",
+        "@query yes { p(f(X),b) } = { 1, 2 }",
+        "@query no { p(f(g(X,1),a),(Y,-h(X))) } = { (1,2) }",
         "@expect unsat assuming { p }",
         "@count optimal 2",
         "@model optimal { p, -q }",

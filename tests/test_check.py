@@ -332,3 +332,51 @@ def test_a_core_that_may_not_be_minimal_says_so() -> None:
     assert exact.detail == "no answer set satisfies the assumptions (p)"
     assert cut.detail.startswith(exact.detail)
     assert "may not be minimal" in cut.detail
+
+
+NESTED_PROGRAM = (
+    "p(f(1),a). p(f(2),b). -p(f(3),a). {p(f(4),a)}. p(g(5),a). q((1,x)). q((2,y)). {q((3,z))}.\n"
+    "#show p/2. #show -p/2. #show q/1.\n% @expect sat\n"
+)
+
+
+def test_a_binding_query_may_nest_its_variables_beneath_a_function() -> None:
+    claims = (
+        "% @query yes { p(f(X), a) } = { 1 }\n"
+        "% @query no { p(f(X), a) } = { 3 }\n"
+        "% @query unknown { p(f(X), a) } = { 4 }\n"
+    )
+    assert verdicts(NESTED_PROGRAM + claims) == [P, P, P, P]
+
+
+def test_a_nested_binding_query_that_is_wrong_fails_and_says_what_was_found() -> None:
+    (finding,) = run(NESTED_PROGRAM + "% @query yes { p(f(X), a) } = { 2 }\n").findings[1:]
+    assert finding.verdict is F
+    assert "yes bindings expected { (2) }, found { (1) }" in finding.detail
+
+
+def test_a_binding_query_may_name_a_tuple_and_its_ground_part() -> None:
+    claims = "% @query yes { q((X, x)) } = { 1 }\n% @query yes { q((X, Y)) } = { (1, x), (2, y) }\n"
+    assert verdicts(NESTED_PROGRAM + claims) == [P, P, P]
+
+
+def test_arithmetic_in_a_query_is_evaluated_before_it_is_matched() -> None:
+    assert verdicts(NESTED_PROGRAM + "% @query yes { p(f(1+1), X) } = { b }\n") == [P, P]
+
+
+def test_a_term_that_stands_for_no_one_term_is_a_fault_not_a_query_with_no_match() -> None:
+    (message,) = faults(NESTED_PROGRAM + "% @query yes { p(f(1..2), a) } = { }\n")
+    assert message.endswith("is not a pattern: an interval stands for several terms")
+    (message,) = faults(NESTED_PROGRAM + "% @query yes { p(f(X+1), a) } = { }\n")
+    assert "is not a pattern" in message
+
+
+def test_a_nested_binding_query_that_reads_its_contrary_needs_it_shown_too() -> None:
+    program = "{p(f(1))}. {-p(f(1))}. :- p(f(1)), -p(f(1)). #show p/1.\n% @expect sat\n"
+    assert faults(program + "% @query unknown { p(f(X)) } = { 1 }\n")
+
+
+def test_a_ground_query_may_nest_functions_to_any_depth() -> None:
+    nested = "f(" * 200 + "a" + ")" * 200
+    program = f"p({nested}). #show p/1.\n% @expect sat\n% @query yes {{ p({nested}) }}\n"
+    assert verdicts(program) == [P, P]
