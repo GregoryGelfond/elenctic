@@ -58,3 +58,34 @@ def test_a_search_that_runs_out_of_models_is_undecided_and_exits_one(
 def test_a_budget_of_zero_is_no_budget(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @count 2\n")
     assert run(capsys, path, "--budget", 0) == (0, "1/1 passed\n")
+
+
+def test_bare_paths_are_the_test_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @count 2\n")
+    assert run(capsys, "test", path) == run(capsys, path)
+    assert run(capsys, "--json", path) == run(capsys, "test", "--json", path)
+
+
+@pytest.mark.parametrize("command", ["repl", "why", "ask", "explain"])
+def test_a_reserved_command_says_so_and_exits_two(
+    command: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main([command, "x.lp"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"elenctic: `{command}` is reserved and not yet built\n"
+
+
+def test_help_names_every_command_and_no_command_is_a_usage_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        main(["--help"])
+    assert stopped.value.code == 0
+    help_text = capsys.readouterr().out
+    assert all(name in help_text for name in ("test", "repl", "why", "ask", "explain"))
+    with pytest.raises(SystemExit) as usage:
+        main([])
+    assert usage.value.code == 2
