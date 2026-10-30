@@ -57,3 +57,27 @@ ignore = ["CPY001", "TC001", "TC002", "TC003", "D100", "D101", "D102", "D103", "
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[tool.pixi.dependencies]
+python = ">=3.14"
+clingo = ">=5.8.2,<5.9"
+
+[tool.pixi.pypi-dependencies]
+aspnext = { path = ".", editable = true }
+
+[tool.pixi.feature.dev.dependencies]
+mypy = ">=2.4"
+ruff = ">=0.17"
+pytest = ">=9"
+hypothesis = ">=6.170"
+
+[tool.pixi.environments]
+default = { features = ["dev"], solve-group = "default" }
+
+[tool.pixi.feature.dev.tasks]
+check = "ruff format --check src tests scripts && ruff check --no-fix src tests scripts && mypy && pytest -q"
+test = "pytest -q"

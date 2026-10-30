@@ -1,0 +1,43 @@
+schema_version: 1
+
+context:
+  name: aspnext
+  version: 0.0.0
+  python_min: "3.14"
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  script: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  python:
+    entry_points:
+      - aspnext = aspnext.cli:main
+
+requirements:
+  host:
+    - python ${{ python_min }}.*
+    - hatchling
+    - pip
+  run:
+    - python >=${{ python_min }}
+    - clingo >=5.8.2,<5.9
+
+tests:
+  - python:
+      imports:
+        - aspnext
+      python_version: ${{ python_min }}.*
+  - script:
+      - aspnext --help
+
+about:
+  homepage: https://github.com/GregoryGelfond/aspnext
+  license: MIT
+  license_file: LICENSE
+  summary: Contracts and queries for answer set programs
