@@ -1,4 +1,4 @@
-"""Run generated cases through elenctic and aspnext and compare the verdict on every claim.
+"""Run generated cases through elenctic 0.3 and this library; compare every claim's verdict."""
 
 python scripts/differential.py ELENCTIC_SRC [--cases N] [--seed S]
 """
@@ -50,7 +50,7 @@ def _case(rng: random.Random) -> str:
 type Table = dict[tuple[str, int], str]
 
 
-def _elenctic(src: str, corpus: Path) -> Table:
+def _legacy(src: str, corpus: Path) -> Table:
     code = "import sys; from elenctic.cli import main; sys.exit(main(sys.argv[1:]))"
     out = subprocess.run(
         [sys.executable, "-c", code, str(corpus), "--format", "json"],
@@ -67,7 +67,7 @@ def _elenctic(src: str, corpus: Path) -> Table:
     }
 
 
-def _aspnext(corpus: Path) -> Table:
+def _current(corpus: Path) -> Table:
     found: Table = {}
     for path in sorted(corpus.rglob("*.lp")):
         result = check(Program.read(path))
@@ -83,7 +83,7 @@ def _aspnext(corpus: Path) -> Table:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("elenctic_src")
+    parser.add_argument("legacy_src")
     parser.add_argument("--cases", type=int, default=200)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--keep", type=Path, help="write the cases here, and keep them")
@@ -95,15 +95,15 @@ def main() -> int:
             case = Path(directory, f"c{index:04d}", f"c{index:04d}.lp")
             case.parent.mkdir(parents=True, exist_ok=True)
             case.write_text(_case(rng))
-        old, new = _elenctic(arguments.elenctic_src, Path(directory)), _aspnext(Path(directory))
+        old, new = _legacy(arguments.legacy_src, Path(directory)), _current(Path(directory))
     shared = old.keys() & new.keys()
     differing = sorted(k for k in shared if old[k] != new[k])
     print(f"verdicts compared: {len(shared)} ({sum(line == 0 for _, line in shared)} per case)")
     print(f"disagreements: {len(differing)}")
     for source, line in differing[:20]:
-        print(f"  {source}:{line} elenctic={old[source, line]} aspnext={new[source, line]}")
+        print(f"  {source}:{line} legacy={old[source, line]} current={new[source, line]}")
     only = sorted(new.keys() - old.keys()), sorted(old.keys() - new.keys())
-    print(f"claims only aspnext reports: {len(only[0])}; only elenctic: {len(only[1])}")
+    print(f"claims only the current library reports: {len(only[0])}; only legacy: {len(only[1])}")
     return int(bool(differing))
 
 
