@@ -83,7 +83,7 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt) -> Entry | None:
 def _test(arguments: argparse.Namespace) -> int:
     limits = Limits(seconds=arguments.budget or None, models=arguments.models)
     interrupt = Interrupt()
-    signal.signal(signal.SIGINT, lambda *_: interrupt.pull())
+    signal.signal(signal.SIGINT, lambda _signal, _frame: interrupt.pull())
     entries = [_entry(path, limits, interrupt) for path in _sources(arguments.paths)]
     run = Run(tuple(entry for entry in entries if entry is not None))
     print(to_json(run) if arguments.json else to_text(run, verbose=arguments.verbose))

@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Final
 
 from elenctic.contract import Assigns, Census, Costs, Entails, Reading, Satisfiable, Witness
-from elenctic.determination import Mode, Range
+from elenctic.determination import Mode, Range, Valuation
 from elenctic.literals import AnswerSet
 from elenctic.operands import after, failure, ground, model_set, valuations
 from elenctic.spans import Diagnostic, Parsed
@@ -68,7 +68,7 @@ def witness(over: Range | None = None) -> Callable[[Block, list[Element]], Parse
         split = after(block, head, "where", "term = integer, ...")
         if isinstance(split, Diagnostic):
             return split
-        assignment = frozenset() if split[1] is None else valuations(block, split[1])
+        assignment = frozenset[Valuation]() if split[1] is None else valuations(block, split[1])
         if isinstance(assignment, Diagnostic):
             return assignment
         return litset(lambda lits, chosen: Witness(lits, chosen, assignment), over=over)(

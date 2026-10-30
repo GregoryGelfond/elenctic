@@ -101,7 +101,11 @@ class Grounded:
         with self._control.solve(assumptions=list(assumed), yield_=True, async_=True) as handle:
             found, conclusion = drain(handle, plan, cut, self._read)
             run = Run(tuple(found), conclusion, frozenset())
-            core = frozenset(assumed[lit] for lit in handle.core()) if run.refuted else frozenset()
+            core = (
+                frozenset(assumed[lit] for lit in handle.core())
+                if run.refuted
+                else frozenset[Assumption]()
+            )
         return replace(run, core=core)
 
     def _contradicts(

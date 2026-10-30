@@ -3,6 +3,7 @@
 import json
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
+from typing import TypeIs
 
 from elenctic.literals import Literal, Symbol
 from elenctic.patterns import Pattern
@@ -35,6 +36,14 @@ class Run:
         return int(any(r.verdict is not Verdict.PASS for r in results if isinstance(r, Report)))
 
 
+def _is_ordered(value: object) -> TypeIs[tuple[object, ...] | list[object]]:
+    return isinstance(value, tuple | list)
+
+
+def _is_unordered(value: object) -> TypeIs[frozenset[object] | set[object]]:
+    return isinstance(value, frozenset | set)
+
+
 def encode(value: object) -> Json:
     """Encode a result value; a dataclass becomes an object tagged with its type's name."""
     match value:
@@ -44,16 +53,17 @@ def encode(value: object) -> Json:
             return value
         case Symbol() | Literal() | Pattern():
             return str(value)
-        case tuple() | list():
+        case _ if _is_ordered(value):
             return [encode(item) for item in value]
-        case frozenset() | set():
+        case _ if _is_unordered(value):
             return sorted((encode(item) for item in value), key=json.dumps)
         case _ if is_dataclass(value) and not isinstance(value, type):
             return {"kind": type(value).__name__} | {
                 field.name: encode(getattr(value, field.name)) for field in fields(value)
             }
-    message = f"cannot encode {type(value).__name__}"
-    raise TypeError(message)
+        case _:
+            message = f"cannot encode {type(value).__name__}"
+            raise TypeError(message)
 
 
 def to_json(run: Run) -> str:

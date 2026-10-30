@@ -71,10 +71,12 @@ class Clingcon(Theory):
     def load(cls) -> Self | None:
         """Make the theory, or `None` when clingcon is not installed."""
         try:
+            # Imported here: clingcon is an optional extra, and its absence is an answer.
             from clingcon import ClingconTheory  # noqa: PLC0415
         except ImportError:
             return None
-        return cls(ClingconTheory())  # type: ignore[no-untyped-call]
+        make: Callable[[], _Constraints] = ClingconTheory
+        return cls(make())
 
     @override
     def register(self, control: Control) -> None:

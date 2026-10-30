@@ -84,9 +84,8 @@ def entailed(claim: Entails, held: AnswerSet, *, closed: bool) -> tuple[Verdict,
     return verdict, detail + (f" (missing: {braces(missing)})" if missing else "")
 
 
-def _entails(claim: Entails, shown: frozenset[AnswerSet], *, closed: bool) -> tuple[Verdict, str]:
-    cautious = claim.mode is Mode.CAUTIOUS
-    held = frozenset.intersection(*shown) if cautious else frozenset().union(*shown)
+def _entails(claim: Entails, view: WorldView, *, closed: bool) -> tuple[Verdict, str]:
+    held = view.cautious if claim.mode is Mode.CAUTIOUS else view.brave
     return entailed(claim, held, closed=closed)
 
 
@@ -125,6 +124,6 @@ def from_models(reading: Reading, found: Consistent[Models]) -> tuple[Verdict, s
         case Witness() | Assigns():
             return _witnessed(reading, models, closed=closed)
         case Entails():
-            return _entails(reading, frozenset(m.shown for m in models), closed=closed)
+            return _entails(reading, WorldView(frozenset(m.shown for m in models)), closed=closed)
         case Costs():
             return Verdict.UNDECIDED, "no optimum was sought"

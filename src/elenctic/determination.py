@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from elenctic.literals import AnswerSet, Assumption, Symbol
+from elenctic.literals import AnswerSet, Assumption, Literal, Symbol
 
 
 class Exhausted(StrEnum):
@@ -175,7 +175,7 @@ class WorldView:
 
     @property
     def brave(self) -> AnswerSet:
-        return frozenset().union(*self.members)
+        return frozenset[Literal]().union(*self.members)
 
 
 def world_view(found: Consistent[Models], *, shown: bool = True) -> WorldView | Truncation:
@@ -194,5 +194,6 @@ def optimal_view(found: Consistent[Optimized]) -> WorldView | Truncation:
             return WorldView(frozenset(m.shown for m in models.all), Range.OPTIMAL)
         case _, Truncation() as cut:
             return cut
-    message = "a search that exhausted its space has proven its optimum"
-    raise ValueError(message)
+        case _:
+            message = "a search that exhausted its space has proven its optimum"
+            raise ValueError(message)

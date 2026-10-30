@@ -38,6 +38,7 @@ def match(patterns: Sequence[Term], symbols: Sequence[Symbol]) -> dict[Variable,
                 )
             case Compound():
                 return None
-            case _ if pattern != symbol:
-                return None
+            case _:
+                if pattern != symbol:
+                    return None
     return bound

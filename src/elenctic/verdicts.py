@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from enum import StrEnum, auto
-from typing import Self
 
 from elenctic.contract import Claim
 from elenctic.writer import render
@@ -13,10 +12,10 @@ class Verdict(StrEnum):
     FAIL = auto()
     UNDECIDED = auto()
 
-    @classmethod
-    def when(cls, *, holds: bool) -> Self:
+    @staticmethod
+    def when(*, holds: bool) -> Verdict:
         """Settle a claim that is decided by what is found: it passes if it holds, else fails."""
-        return cls.PASS if holds else cls.FAIL
+        return Verdict.PASS if holds else Verdict.FAIL
 
 
 @dataclass(frozen=True, slots=True)

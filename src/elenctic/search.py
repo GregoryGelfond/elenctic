@@ -202,8 +202,9 @@ def decide[E](
             return Inconsistent(refutation)
         case Truncation() as truncation:
             return Inconclusive(truncation)
-    message = "an exhausted search that found nothing is refuted"
-    raise ValueError(message)
+        case _:
+            message = "an exhausted search that found nothing is refuted"
+            raise ValueError(message)
 
 
 def models(found: list[Seen]) -> Models:
