@@ -1,10 +1,12 @@
 """Reading clingo's syntax trees with their types known: the one place its loose attributes end."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import TypeGuard
 
 from clingo import Symbol
 from clingo.ast import AST, ASTSequence, ASTType, Location
+
+from elenctic.traversal import fold
 
 
 def _field[T](node: AST, key: str, expected: type[T]) -> T:
@@ -76,3 +78,12 @@ def _nodes(sequence: ASTSequence) -> Iterator[AST]:
     for item in sequence:
         if is_node(item):
             yield item
+
+
+def holds_somewhere(root: AST, holds: Callable[[AST], bool]) -> bool:
+    """Say whether `holds` of `root` or of a node beneath it, however deep the tree."""
+    return fold(
+        root,
+        lambda node: tuple(subtrees(node)),
+        lambda node, below: holds(node) or any(below),
+    )

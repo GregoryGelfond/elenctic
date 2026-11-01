@@ -4,7 +4,10 @@
 
 `elenctic --budget 5 --models 1000 file.lp` stops each search after five seconds or a thousand
 answer sets. A claim that needed more than was read is `undecided`, never `pass`.
-In the library: `Limits(seconds=5, models=1000)`.
+`all` lifts a limit: `--budget all`, `--models all`. Without `--models` the command line reads at most
+100,000 answer sets per search; a claim that needed more is `undecided`, never `pass`. Zero and negative
+values are refused. In the library: `Limits(seconds=5, models=1000)`; a limit left out is
+`Limit.UNBOUNDED`, since a library call states its own limits.
 
 ## Check a claim under assumptions
 

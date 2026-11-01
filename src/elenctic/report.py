@@ -2,9 +2,10 @@
 
 import json
 from dataclasses import dataclass, fields, is_dataclass
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import TypeIs
 
+from elenctic.display import legible
 from elenctic.literals import Literal, Symbol
 from elenctic.patterns import Pattern
 from elenctic.program import Fault
@@ -13,6 +14,19 @@ from elenctic.verdicts import Finding, Report, Verdict
 SCHEMA = 1
 
 type Json = bool | int | str | list[Json] | dict[str, Json] | None
+
+
+class Exit(IntEnum):
+    """The status a run exits with; CI reads it, so the values are fixed."""
+
+    CLAIMS_HOLD = 0
+    """Every claim passed."""
+    CLAIM_UNMET = 1
+    """Some claim failed or was undecided."""
+    FAULT = 2
+    """Some source could not be checked, or the command was refused."""
+    INTERNAL_ERROR = 3
+    """elenctic itself failed: an exception that no check anticipated."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,12 +42,13 @@ class Run:
     entries: tuple[Entry, ...]
 
     @property
-    def exit_code(self) -> int:
-        """Two if any source could not be checked, else one unless every claim passed."""
+    def exit_code(self) -> Exit:
+        """A fault if any source could not be checked, else a failure unless every claim passed."""
         results = [entry.result for entry in self.entries]
         if any(isinstance(result, Fault) for result in results):
-            return 2
-        return int(any(r.verdict is not Verdict.PASS for r in results if isinstance(r, Report)))
+            return Exit.FAULT
+        unmet = any(r.verdict is not Verdict.PASS for r in results if isinstance(r, Report))
+        return Exit.CLAIM_UNMET if unmet else Exit.CLAIMS_HOLD
 
 
 def _is_ordered(value: object) -> TypeIs[tuple[object, ...] | list[object]]:
@@ -106,6 +121,9 @@ def _summary(run: Run) -> str:
 
 
 def to_text(run: Run, *, verbose: bool = False) -> str:
-    """Write a run as text: each source that did not pass, with its claims that did not."""
+    """Write a run as text: each source that did not pass, with its claims that did not.
+
+    Everything the programs contribute is made legible, so no program can steer the terminal.
+    """
     lines = [line for entry in run.entries for line in _entry(entry, verbose=verbose)]
-    return "\n".join([*lines, _summary(run)])
+    return legible("\n".join([*lines, _summary(run)]))

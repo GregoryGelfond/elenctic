@@ -41,8 +41,11 @@ Start with `docs/`: a tutorial, how-to guides, a reference, and an explanation o
 ## Develop
 
 ```
-uv sync --extra theory   # or: pixi install -e theory
-./check.sh        # format, lint, strict types, tests
+pixi install -e theory
+pixi run -e theory check   # format, lint, strict types, import contracts, tests
 ```
+
+`pixi run check` is the one gate; `./check.sh` runs it. `uv.lock` is tracked so that
+`uv sync --locked` reproduces the same dependencies, which CI checks.
 
 MIT licensed.

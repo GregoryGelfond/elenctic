@@ -9,7 +9,9 @@ from elenctic.contract import Solver
 from elenctic.determination import Consistent, Exhausted, Optimum, Valuation
 from elenctic.engine import ground, solve
 from elenctic.program import Fault, Program
+from elenctic.report import Exit
 from elenctic.verdicts import Report, Verdict
+from nesting import nested
 
 pytest.importorskip("clingcon")
 
@@ -154,5 +156,11 @@ def test_a_clingcon_contract_runs_from_the_command_line(
 ) -> None:
     case = tmp_path / "sum.lp"
     case.write_text(CLINGCON + SUM + "% @expect sat\n% @count 4\n% @assign { x=1, y=2 }\n")
-    assert main([str(tmp_path)]) == 0
+    assert main([str(tmp_path)]) == Exit.CLAIMS_HOLD
     assert capsys.readouterr().out == "1/1 passed\n"
+
+
+def test_a_deeply_nested_theory_term_is_checked_not_a_recursion_error() -> None:
+    deep = nested()
+    text = CLINGCON + f"&dom {{ 0..3 }} = {deep}. &sum {{ {deep} }} >= 0.\n% @expect sat\n"
+    assert verdicts(text) == [P]

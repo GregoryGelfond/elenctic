@@ -10,14 +10,24 @@ like a command is written `./why`.
 |---|---|
 | `--json` | write the run as JSON |
 | `-v`, `--verbose` | list the claims that passed |
-| `--budget SECONDS` | time allowed per search; `0` is none (default 30) |
-| `--models N` | most answer sets read per search |
+| `--budget SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default 30) |
+| `--models N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default 100,000) |
 
-`repl`, `why`, `ask` and `explain` are reserved: each writes a note on stderr and exits 2.
+Zero and negative values of `--budget` and `--models` are a usage error (`FAULT`, 2). In the library the same
+choice is `Limits(seconds=…, models=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has a default cap.
+
+`repl`, `why`, `ask` and `explain` are reserved: each writes a note on stderr and exits `FAULT` (2).
 
 ## Exit codes
 
-0 every claim passed; 1 some claim failed or was undecided; 2 some file could not be checked.
+The status is `elenctic.report.Exit`, an `IntEnum`; the values are fixed.
+
+| Name | Value | Meaning |
+|---|---|---|
+| `CLAIMS_HOLD` | 0 | every claim passed |
+| `CLAIM_UNMET` | 1 | some claim failed or was undecided |
+| `FAULT` | 2 | some file could not be checked, or the command was refused |
+| `INTERNAL_ERROR` | 3 | elenctic itself failed; one line on stderr, no traceback |
 
 ## Contract syntax
 
@@ -42,7 +52,7 @@ following comment lines. Every contract begins with `@expect`.
 | any of the above `assuming { l, not l }` | the claim is judged under those assumptions |
 
 `@note` is ignored. `% @elenctic solver clingcon` (or `clingo`, the default) names the solver the
-contract is checked with; it needs `elenctic[theory]`, and is a fault (exit 2) when clingcon is
+contract is checked with; it needs `elenctic[theory]`, and is a fault (`FAULT`, 2) when clingcon is
 not installed. A variable is a term of the program (`x`, `digit(s)`), an integer its value.
 
 ### Costs
@@ -52,7 +62,7 @@ negated: `@cost { -5 }` claims that the optimum of a `#maximize` is 5.
 
 ### Preconditions
 
-A contract that would be misread is not judged; the file is reported as an error (exit 2):
+A contract that would be misread is not judged; the file is reported as an error (`FAULT`, 2):
 
 - the program has theory atoms and the contract does not declare `% @elenctic solver clingcon`
   (clingo would ground them and ignore their constraints);

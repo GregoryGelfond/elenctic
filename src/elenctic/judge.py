@@ -21,9 +21,13 @@ from elenctic.determination import (
 from elenctic.verdicts import Finding, Verdict
 
 
-def _consequent(reading: Reading, found: Consequences) -> tuple[Verdict, str]:
-    """Judge from native consequences, which exist only for a search that closed its space."""
+def _consequent(
+    reading: Reading, found: Consequences, conclusion: Exhausted | Truncation
+) -> tuple[Verdict, str]:
+    """Judge from native consequences, which settle a claim about them only once exhausted."""
     if isinstance(reading, Entails):
+        if conclusion is not Exhausted.EXHAUSTED:
+            return Verdict.UNDECIDED, f"search ended: {conclusion}"
         return entailed(reading, found.literals, closed=True)
     return Verdict.when(holds=reading == Satisfiable(expected=True)), "an answer set exists"
 
@@ -87,7 +91,7 @@ def _evidence(
         case Models():
             return from_models(reading, Consistent(evidence, conclusion))
         case Consequences():
-            return _consequent(reading, evidence)
+            return _consequent(reading, evidence, conclusion)
         case Optimum():
             return _optimal(reading, evidence, conclusion)
         case Incumbent():

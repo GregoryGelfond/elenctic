@@ -4,7 +4,9 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  gates:
+  # A secondary check that the package installs and its tests pass under uv, on Python 3.14, from the
+  # tracked uv.lock. The gate itself is the pixi job below.
+  uv-install:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -13,12 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --python 3.14 --extra theory
-      - run: uv run ruff format --check src tests scripts
-      - run: uv run ruff check --no-fix src tests scripts
-      - run: uv run mypy
+      - run: uv sync --locked --python 3.14 --extra theory
       - run: uv run pytest
   pixi:
+    # The gate: format, lint, strict types, import contracts, tests.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

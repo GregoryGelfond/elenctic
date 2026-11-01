@@ -9,6 +9,7 @@ from elenctic.cli import main
 from elenctic.contract import Solver
 from elenctic.engine import ground
 from elenctic.program import Fault, Program
+from elenctic.report import Exit
 from elenctic.spans import Position, Span
 from elenctic.theory import Clingcon, Plain
 
@@ -59,5 +60,5 @@ def test_a_clingcon_contract_without_clingcon_exits_two(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     (tmp_path / "case.lp").write_text(CLINGCON + "p.\n% @expect sat\n")
-    assert main([str(tmp_path)]) == 2
+    assert main([str(tmp_path)]) == Exit.FAULT
     assert ABSENT in capsys.readouterr().out

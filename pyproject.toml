@@ -15,7 +15,7 @@ theory = ["clingcon>=5.2.1,<5.3"]
 elenctic = "elenctic.cli:main"
 
 [dependency-groups]
-dev = ["clingcon>=5.2.1,<5.3", "mypy>=2.4", "pyright>=1.1.414", "ruff>=0.17", "pytest>=9", "hypothesis>=6.170"]
+dev = ["clingcon>=5.2.1,<5.3", "import-linter>=2.5", "mypy>=2.4", "pyright>=1.1.414", "ruff>=0.17", "pytest>=9", "hypothesis>=6.170"]
 
 [build-system]
 requires = ["hatchling"]
@@ -62,6 +62,72 @@ ignore = ["CPY001", "TC001", "TC002", "TC003", "D100", "D101", "D102", "D103", "
 "scripts/**" = ["INP001", "PLR2004", "T201", "S603", "S311"]
 "src/elenctic/cli.py" = ["T201", "S603", "S311"]
 
+[tool.importlinter]
+root_package = "elenctic"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+id = "layers"
+name = "a module imports only from its own layer and the layers below it"
+type = "layers"
+layers = [
+    "elenctic.cli",
+    "elenctic.check",
+    "elenctic.judge",
+    "elenctic.by_models | elenctic.report",
+    "elenctic.reader | elenctic.verdicts",
+    "elenctic.directives | elenctic.engine | elenctic.gates | elenctic.queries | elenctic.readings | elenctic.wellformed | elenctic.writer",
+    "elenctic.contract | elenctic.operands",
+    "elenctic.grounded | elenctic.query | elenctic.syntax | elenctic.unify",
+    "elenctic.classes | elenctic.patterns | elenctic.rows | elenctic.search",
+    "elenctic.facts | elenctic.matching | elenctic.normalize | elenctic.relation | elenctic.substitution | elenctic.theory",
+    "elenctic.body | elenctic.determination | elenctic.extension | elenctic.program | elenctic.tags | elenctic.terms",
+    "elenctic.braces | elenctic.display | elenctic.literals | elenctic.partition | elenctic.spans | elenctic.tree",
+    "elenctic.traversal",
+]
+
+[[tool.importlinter.contracts]]
+id = "clingo-boundary"
+name = "only the modules that read and run programs import clingo; judging, reading contracts and reporting never do"
+type = "forbidden"
+source_modules = ["elenctic"]
+forbidden_modules = ["clingo"]
+allow_indirect_imports = true
+ignore_imports = [
+    "elenctic.body -> clingo",
+    "elenctic.classes -> clingo",
+    "elenctic.engine -> clingo",
+    "elenctic.facts -> clingo",
+    "elenctic.grounded -> clingo",
+    "elenctic.literals -> clingo",
+    "elenctic.matching -> clingo",
+    "elenctic.normalize -> clingo",
+    "elenctic.patterns -> clingo",
+    "elenctic.relation -> clingo",
+    "elenctic.rows -> clingo",
+    "elenctic.search -> clingo",
+    "elenctic.syntax -> clingo",
+    "elenctic.terms -> clingo",
+    "elenctic.theory -> clingo",
+    "elenctic.tree -> clingo",
+]
+
+[[tool.importlinter.contracts]]
+id = "clingcon-boundary"
+name = "clingcon is imported only by the theory module, the one place its optional import is guarded"
+type = "forbidden"
+source_modules = ["elenctic"]
+forbidden_modules = ["clingcon"]
+allow_indirect_imports = true
+ignore_imports = ["elenctic.theory -> clingcon"]
+
+[[tool.importlinter.contracts]]
+id = "spans-are-pure"
+name = "spans know nothing outside the standard library"
+type = "forbidden"
+source_modules = ["elenctic.spans"]
+forbidden_modules = ["clingo", "clingcon", "elenctic.engine", "elenctic.check"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["scripts"]
@@ -77,6 +143,9 @@ clingo = ">=5.8.2,<5.9"
 
 [tool.pixi.pypi-dependencies]
 elenctic = { path = ".", editable = true }
+
+[tool.pixi.feature.dev.pypi-dependencies]
+import-linter = ">=2.5"
 
 [tool.pixi.feature.dev.dependencies]
 clingcon = ">=5.2.1,<5.3"
@@ -94,5 +163,5 @@ default = { features = ["dev"], solve-group = "default" }
 theory = { features = ["dev", "theory"], solve-group = "theory" }
 
 [tool.pixi.feature.dev.tasks]
-check = "ruff format --check src tests scripts && ruff check --no-fix src tests scripts && mypy && pyright && pytest -q"
-test = "pytest -q"
+check = "ruff format --check src tests scripts && ruff check --no-fix src tests scripts && mypy && pyright && lint-imports && pytest"
+test = "pytest"

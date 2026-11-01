@@ -33,7 +33,7 @@ from elenctic.engine import ground, solve
 from elenctic.facts import Shown
 from elenctic.literals import AnswerSet, Assumption, Literal, Scenario, Signature
 from elenctic.program import Fault, Locus, Program
-from elenctic.search import Interrupt, Limits, Request, Run, Seen, optimized
+from elenctic.search import UNLIMITED, Interrupt, Limit, Limits, Request, Run, Seen, optimized
 
 P, Q = Literal("p"), Literal("q")
 
@@ -154,6 +154,11 @@ def test_an_interrupt_already_pulled_stops_before_the_search() -> None:
     interrupt = Interrupt()
     interrupt.pull()
     assert solve(Program("p."), interrupt=interrupt) == Inconclusive(Truncation.INTERRUPTED)
+
+
+def test_a_search_is_unbounded_unless_limited() -> None:
+    assert Limits() == Limits(seconds=Limit.UNBOUNDED, models=Limit.UNBOUNDED)
+    assert Limits() == UNLIMITED
 
 
 def test_a_limit_is_not_negative() -> None:

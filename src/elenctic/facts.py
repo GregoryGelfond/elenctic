@@ -50,19 +50,43 @@ class Facts:
     objective: Span | None = None
 
 
-def _signature(term: AST) -> Signature | None:
-    """Read the predicate a `#show` term names; `None` for a term that is not a literal."""
+def _unnegated_signature(term: AST) -> Signature | None:
+    """Read the predicate a term names, not counting a minus written in front of it."""
     match tree.kind(term):
         case ASTType.Function:
             return Signature(tree.name(term), len(tree.children(term, "arguments")))
         case ASTType.SymbolicTerm if tree.symbol(term).type is SymbolType.Function:
             symbol = tree.symbol(term)
             return Signature(symbol.name, len(symbol.arguments), symbol.positive)
-        case ASTType.UnaryOperation if tree.number(term, "operator_type") == UnaryOperator.Minus:
-            inner = _signature(tree.child(term, "argument"))
-            return inner and Signature(inner.name, inner.arity, positive=not inner.positive)
         case _:
             return None
+
+
+def _is_negation(term: AST) -> bool:
+    return (
+        tree.kind(term) is ASTType.UnaryOperation
+        and tree.number(term, "operator_type") == UnaryOperator.Minus
+    )
+
+
+def _unnegated(term: AST) -> tuple[AST, bool]:
+    """Strip the minus signs in front of `term`; say whether an odd number of them was stripped."""
+    flipped = False
+    while _is_negation(term):
+        term = tree.child(term, "argument")
+        flipped = not flipped
+    return term, flipped
+
+
+def _contrary(signature: Signature) -> Signature:
+    return Signature(signature.name, signature.arity, positive=not signature.positive)
+
+
+def _signature(term: AST) -> Signature | None:
+    """Read the predicate a `#show` term names; `None` for a term that is not a literal."""
+    bare, flipped = _unnegated(term)
+    named = _unnegated_signature(bare)
+    return _contrary(named) if named and flipped else named
 
 
 def _shown(statement: AST) -> Shown:
@@ -93,7 +117,7 @@ def shown_by(statements: Iterable[AST]) -> Shown:
 
 
 def _theoretical(node: AST) -> bool:
-    return tree.kind(node) is ASTType.TheoryAtom or any(map(_theoretical, tree.subtrees(node)))
+    return tree.holds_somewhere(node, lambda part: tree.kind(part) is ASTType.TheoryAtom)
 
 
 _OBJECTIVES: Final = frozenset({"minimize", "maximize"})
@@ -101,10 +125,13 @@ _OBJECTIVES: Final = frozenset({"minimize", "maximize"})
 
 def _objective(node: AST) -> bool:
     """Say whether `node` holds a theory objective: clingcon applies it in every search."""
-    named = (
-        tree.kind(node) is ASTType.TheoryAtom and tree.name(tree.child(node, "term")) in _OBJECTIVES
+    return tree.holds_somewhere(
+        node,
+        lambda part: (
+            tree.kind(part) is ASTType.TheoryAtom
+            and tree.name(tree.child(part, "term")) in _OBJECTIVES
+        ),
     )
-    return named or any(map(_objective, tree.subtrees(node)))
 
 
 def _span(location: Location, program: Program) -> Span:

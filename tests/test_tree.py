@@ -2,6 +2,7 @@ import pytest
 from clingo.ast import AST, ASTType, parse_string
 
 from elenctic import tree
+from nesting import nested
 
 
 def statement(text: str) -> AST:
@@ -40,3 +41,9 @@ def test_the_subtrees_of_a_node_are_those_directly_beneath_it() -> None:
 def test_a_part_that_is_not_what_it_was_asked_for_is_refused() -> None:
     with pytest.raises(TypeError, match="Rule holds its `body` as a"):
         tree.child(statement("p :- q."), "body")
+
+
+def test_a_node_is_searched_to_any_depth() -> None:
+    deep = statement(f"p({nested()}).")
+    assert tree.holds_somewhere(deep, lambda node: tree.kind(node) is ASTType.SymbolicTerm)
+    assert not tree.holds_somewhere(deep, lambda node: tree.kind(node) is ASTType.TheoryAtom)

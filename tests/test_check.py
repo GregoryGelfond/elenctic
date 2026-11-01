@@ -7,9 +7,11 @@ from elenctic.engine import ground
 from elenctic.judge import judge
 from elenctic.literals import Assumption, Literal
 from elenctic.program import Fault, Locus, Program
-from elenctic.search import UNLIMITED, Limits
+from elenctic.search import UNLIMITED, Interrupt, Limits
 from elenctic.spans import Position, Span
 from elenctic.verdicts import Finding, Report, Verdict
+from interrupting import at_first_model
+from nesting import DEEP_NESTING, nested
 
 DRINKS = """
 1 { tea; coffee } 1.
@@ -384,3 +386,41 @@ def test_a_ground_query_may_nest_functions_to_any_depth() -> None:
     nested = "f(" * 200 + "a" + ")" * 200
     program = f"p({nested}). #show p/1.\n% @expect sat\n% @query yes {{ p({nested}) }}\n"
     assert verdicts(program) == [P, P]
+
+
+CHOICES = 8
+ALTERNATIVES = f"1 {{ c(1..{CHOICES}) }} 1.\n% @expect sat\n"
+EVERY_CHOICE = ", ".join(f"c({each})" for each in range(1, CHOICES + 1))
+
+
+@pytest.mark.parametrize(
+    ("claim", "settled"),
+    [("@cautious { c(1) }", F), (f"@brave {{ {EVERY_CHOICE} }}", P)],
+    ids=["cautious", "brave"],
+)
+def test_a_consequence_claim_is_open_when_the_search_is_cut_after_its_first_model(
+    claim: str, settled: Verdict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    text = ALTERNATIVES + f"% {claim}\n"
+    assert verdicts(text) == [P, settled]
+    interrupt = Interrupt()
+    at_first_model(monkeypatch, interrupt.pull)
+    found = check(Program(text, "t.lp"), interrupt=interrupt)
+    assert isinstance(found, Report)
+    assert [f.verdict for f in found.findings] == [P, U]
+    assert str(Truncation.INTERRUPTED) in found.findings[1].detail
+
+
+def test_native_consequences_settle_a_claim_that_a_model_cap_leaves_open() -> None:
+    text = ALTERNATIVES + f"% @cautious {{ c(1) }}\n% @count {CHOICES}\n"
+    assert verdicts(text, limits=Limits(models=1)) == [P, F, U]
+
+
+def test_a_deeply_nested_term_beside_a_theory_atom_is_a_fault_not_an_exception() -> None:
+    theory = "#theory t { c { }; &k/0 : c, any }.\n"
+    (message,) = faults(theory + f"p({nested()}) :- &k {{ 1 }}.\n% @expect sat\n")
+    assert message.startswith("2: the program has theory atoms")
+
+
+def test_a_deeply_nested_term_in_a_show_is_read() -> None:
+    assert verdicts(f"a.\n#show {'-' * DEEP_NESTING}a.\n% @expect sat\n") == [P]

@@ -3,7 +3,9 @@
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from enum import Enum
 from functools import lru_cache
+from math import inf
 from time import monotonic
 from typing import Final
 
@@ -35,20 +37,39 @@ _SLICE: Final = 0.02
 _REMEMBERED: Final = 2**16
 
 
+class Limit(Enum):
+    """What a limit may be besides a number: none, so a search goes on until it ends."""
+
+    UNBOUNDED = "all"
+
+
+def _is_negative(limit: float | Limit) -> bool:
+    return not isinstance(limit, Limit) and limit < 0
+
+
 @dataclass(frozen=True, slots=True)
 class Limits:
-    """How far a search may go; `None` is no limit."""
+    """How far a search may go: seconds and answer sets read, each a number or `Limit.UNBOUNDED`."""
 
-    seconds: float | None = None
-    models: int | None = None
+    seconds: float | Limit = Limit.UNBOUNDED
+    models: int | Limit = Limit.UNBOUNDED
 
     def __post_init__(self) -> None:
-        if any(limit is not None and limit < 0 for limit in (self.seconds, self.models)):
+        if any(_is_negative(limit) for limit in (self.seconds, self.models)):
             message = "a limit is never negative"
             raise ValueError(message)
 
 
 UNLIMITED: Final = Limits()
+
+
+def _deadline(seconds: float | Limit) -> float:
+    """Return the monotonic time at which `seconds` from now are up; never, when unbounded."""
+    match seconds:
+        case Limit.UNBOUNDED:
+            return inf
+        case _:
+            return monotonic() + seconds
 
 
 class Interrupt:
@@ -75,12 +96,12 @@ class Request:
 
     def cutter(self) -> Cut:
         """Return the check that says, as the search goes, whether it has gone far enough."""
-        deadline = None if self.limits.seconds is None else monotonic() + self.limits.seconds
+        deadline = _deadline(self.limits.seconds)
 
         def cut() -> Truncation | None:
             if self.interrupt is not None and self.interrupt.pulled:
                 return Truncation.INTERRUPTED
-            return Truncation.BUDGET if deadline is not None and monotonic() >= deadline else None
+            return Truncation.BUDGET if monotonic() >= deadline else None
 
         return cut
 
@@ -156,7 +177,11 @@ class Plan:
 
     modes: tuple[str, str]
     counted: Callable[[Seen], bool] = _always
-    cap: int | None = None
+    cap: int | Limit = Limit.UNBOUNDED
+
+    def allows(self, counted: int) -> bool:
+        """Say whether `counted` models are within the cap."""
+        return isinstance(self.cap, Limit) or counted <= self.cap
 
 
 ENUMERATION: Final = ("auto", "ignore")
@@ -184,7 +209,7 @@ def drain(
             return found, Exhausted.EXHAUSTED if handle.get().exhausted else Truncation.TARGET
         found.append(read(model))
         counted += plan.counted(found[-1])
-        if plan.cap is not None and counted > plan.cap:
+        if not plan.allows(counted):
             handle.cancel()
             return found[:-1], Truncation.TARGET
         handle.resume()
