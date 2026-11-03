@@ -9,7 +9,7 @@ from math import inf
 from pathlib import Path
 from typing import Final
 
-from elenctic.about import package
+from elenctic.about import VersionExit, package
 from elenctic.check import check
 from elenctic.human import internal_error, render, reserved, version
 from elenctic.json_view import to_json
@@ -236,9 +236,9 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     return run.exit_code
 
 
-def _version(_: argparse.Namespace, presentation: Presentation) -> Exit:
+def _version(presentation: Presentation) -> VersionExit:
     sys.stdout.write(version(package(), loaded_solvers(), presentation.stdout))
-    return Exit.CLAIMS_HOLD
+    return VersionExit.REPORTED
 
 
 def _reserved(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
@@ -246,28 +246,37 @@ def _reserved(arguments: argparse.Namespace, presentation: Presentation) -> Exit
     return Exit.FAULT
 
 
-def _exit_for_internal_error(error: Exception, presentation: Presentation) -> Exit:
-    print(internal_error(error, presentation.stderr), file=sys.stderr)
-    return Exit.INTERNAL_ERROR
+def _guarded[Outcome](
+    run: Callable[[], Outcome], failed: Outcome, presentation: Presentation
+) -> Outcome:
+    """Run a command; a failure that no check anticipated is one line on stderr and `failed`."""
+    try:
+        return run()
+    except Exception as error:  # noqa: BLE001
+        print(internal_error(error, presentation.stderr), file=sys.stderr)
+        return failed
 
 
-def main(argv: Sequence[str] | None = None) -> Exit:
-    """Run a command and return the status to exit with."""
+def main(argv: Sequence[str] | None = None) -> Exit | VersionExit:
+    """Run a command and return its outcome, which is the status to exit with."""
     parser = _parser()
     arguments = parser.parse_args(_normalized(sys.argv[1:] if argv is None else argv))
     if arguments.command is None and not arguments.show_version:
         parser.error("the following arguments are required: COMMAND")
     presentation = _presentation(arguments, os.environ)
-    try:
-        match "version" if arguments.show_version else arguments.command:
-            case "test":
-                return _test(arguments, presentation)
-            case "version":
-                return _version(arguments, presentation)
-            case _:
-                return _reserved(arguments, presentation)
-    except Exception as error:  # noqa: BLE001
-        return _exit_for_internal_error(error, presentation)
+    match "version" if arguments.show_version else arguments.command:
+        case "test":
+            return _guarded(
+                lambda: _test(arguments, presentation), Exit.INTERNAL_ERROR, presentation
+            )
+        case "version":
+            return _guarded(
+                lambda: _version(presentation), VersionExit.INTERNAL_ERROR, presentation
+            )
+        case _:
+            return _guarded(
+                lambda: _reserved(arguments, presentation), Exit.INTERNAL_ERROR, presentation
+            )
 
 
 if __name__ == "__main__":

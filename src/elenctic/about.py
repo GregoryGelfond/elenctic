@@ -7,6 +7,7 @@ holder to the copyright line of `LICENSE`, so they cannot drift apart.
 
 from dataclasses import dataclass
 from email.utils import parseaddr
+from enum import IntEnum
 from importlib.metadata import metadata
 from typing import Final
 
@@ -34,6 +35,15 @@ class Solvers:
     clingo: str
     clingcon: str | None
     """`None` when clingcon is not installed."""
+
+
+class VersionExit(IntEnum):
+    """The status `elenctic version` exits with, which is its own and not that of a test run."""
+
+    REPORTED = 0
+    """The text was written."""
+    INTERNAL_ERROR = 3
+    """The text could not be read: the metadata or the solvers failed."""
 
 
 def package() -> Package:

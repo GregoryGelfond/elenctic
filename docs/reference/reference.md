@@ -68,7 +68,9 @@ numbers) and emphasis `1` (sources and the summary).
 
 ## Exit codes
 
-The status is `elenctic.report.Exit`, an `IntEnum`; the values are fixed.
+Each command returns an outcome of its own, an `IntEnum` that states its process code once; the
+values are fixed. `elenctic test` (and the refusal of a reserved command) returns
+`elenctic.report.Exit`:
 
 | Name | Value | Meaning |
 |---|---|---|
@@ -76,6 +78,16 @@ The status is `elenctic.report.Exit`, an `IntEnum`; the values are fixed.
 | `CLAIM_UNMET` | 1 | some claim failed or was undecided |
 | `FAULT` | 2 | some file could not be checked, or the command was refused |
 | `INTERNAL_ERROR` | 3 | elenctic itself failed; one line on stderr, no traceback |
+
+`elenctic version` returns `elenctic.about.VersionExit`, a different type that shares codes with
+`Exit` and not members:
+
+| Name | Value | Meaning |
+|---|---|---|
+| `REPORTED` | 0 | the text was written |
+| `INTERNAL_ERROR` | 3 | the metadata or the solvers could not be read; one line on stderr |
+
+A usage error is argparse's, status 2, before any command runs.
 
 ## Contract syntax
 
@@ -148,7 +160,7 @@ enforced.
 
 ## JSON
 
-`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`; see `elenctic.json_view.encode`. A
+`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1 or 2); see `elenctic.json_view.encode`. A
 dataclass becomes `{"kind": TypeName, field: …}`, an enum its value, a set a sorted list.
 
 ## Examples

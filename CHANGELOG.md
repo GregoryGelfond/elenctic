@@ -19,7 +19,8 @@ All notable changes are recorded here. The format follows
 - `check` with the verdicts `pass`, `fail` and `undecided`.
 - Command line with `--json`, `--verbose`, `--budget` and `--models`; exit codes `CLAIMS_HOLD` (0), `CLAIM_UNMET` (1) and
   `FAULT` (2), and `INTERNAL_ERROR` (3) for a failure of elenctic itself, reported as one line on
-  stderr. They are the members of `elenctic.report.Exit`, an `IntEnum`.
+  stderr. They are the members of `elenctic.report.Exit`, an `IntEnum`, the outcome of `test`; `version` has its
+  own, `elenctic.about.VersionExit` (`REPORTED` 0, `INTERNAL_ERROR` 3), so no member is shared.
 - Native cautious and brave consequences (`Grounded.consequences`), used by `check` when a search
   holds only such claims.
 - Minimal unsatisfiable cores over assumptions: `Refutation` is `These | NotThese | NoAssumptions`.

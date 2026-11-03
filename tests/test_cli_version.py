@@ -6,7 +6,7 @@ from pathlib import Path
 import clingo
 import pytest
 
-from elenctic.about import Package, Solvers
+from elenctic.about import Package, Solvers, VersionExit
 from elenctic.cli import main
 from elenctic.glyphs import COPYRIGHT
 from elenctic.report import Exit
@@ -38,7 +38,7 @@ def shown(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, str, str
 def test_the_golden_text_in_the_plain_form(
     capsys: pytest.CaptureFixture[str], spelling: list[str]
 ) -> None:
-    assert shown(capsys, *spelling) == (Exit.CLAIMS_HOLD, PLAIN_TEXT, "")
+    assert shown(capsys, *spelling) == (VersionExit.REPORTED, PLAIN_TEXT, "")
 
 
 @pytest.mark.usefixtures("fixed")
@@ -46,7 +46,7 @@ def test_the_golden_text_in_the_plain_form(
 def test_the_golden_text_in_the_nerd_form_with_icons(
     capsys: pytest.CaptureFixture[str], spelling: list[str]
 ) -> None:
-    assert shown(capsys, *spelling, "--icons=always") == (Exit.CLAIMS_HOLD, NERD_TEXT, "")
+    assert shown(capsys, *spelling, "--icons=always") == (VersionExit.REPORTED, NERD_TEXT, "")
 
 
 @pytest.mark.usefixtures("fixed")
@@ -54,13 +54,13 @@ def test_an_option_may_come_after_the_flag_or_the_command(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert shown(capsys, "-V", "--icons") == shown(capsys, "version", "--icons=auto")
-    assert shown(capsys, "--version", "--color=always") == (Exit.CLAIMS_HOLD, PLAIN_TEXT, "")
+    assert shown(capsys, "--version", "--color=always") == (VersionExit.REPORTED, PLAIN_TEXT, "")
 
 
 def test_the_three_spellings_print_identical_bytes(capsys: pytest.CaptureFixture[str]) -> None:
     results = [shown(capsys, *spelling) for spelling in SPELLINGS]
     assert results[0] == results[1] == results[2]
-    assert results[0][0] == Exit.CLAIMS_HOLD
+    assert results[0][0] == VersionExit.REPORTED
 
 
 def test_the_text_is_what_the_metadata_and_the_loaded_solvers_say(
@@ -81,7 +81,7 @@ def test_version_is_a_command_and_not_a_file_to_test(
 ) -> None:
     write(tmp_path, "version", DRINKS + "% @expect sat\n")
     monkeypatch.chdir(tmp_path)
-    assert shown(capsys, "version") == (Exit.CLAIMS_HOLD, PLAIN_TEXT, "")
+    assert shown(capsys, "version") == (VersionExit.REPORTED, PLAIN_TEXT, "")
     assert shown(capsys, "./version") == (Exit.CLAIMS_HOLD, "1/1 passed\n", "")
 
 
@@ -114,7 +114,7 @@ def test_the_flag_is_a_top_level_option_and_wins_wherever_it_stands_before_a_com
 ) -> None:
     argv = [flag if part == "{}" else part for part in placement]
     code, out, err = shown(capsys, *argv)
-    assert (code, err) == (Exit.CLAIMS_HOLD, "")
+    assert (code, err) == (VersionExit.REPORTED, "")
     assert out in {PLAIN_TEXT, NERD_TEXT}
 
 
@@ -136,9 +136,9 @@ def test_the_flag_prints_the_bytes_of_the_command_with_the_same_options(
 def test_an_option_of_the_command_overrides_the_same_option_before_it(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert shown(capsys, "--icons=always", "version") == (Exit.CLAIMS_HOLD, NERD_TEXT, "")
+    assert shown(capsys, "--icons=always", "version") == (VersionExit.REPORTED, NERD_TEXT, "")
     assert shown(capsys, "--icons=always", "version", "--icons=never") == (
-        Exit.CLAIMS_HOLD,
+        VersionExit.REPORTED,
         PLAIN_TEXT,
         "",
     )
@@ -194,16 +194,57 @@ def test_the_help_names_the_command_the_flags_and_the_output_options(
 
 def test_on_a_terminal_icons_alone_shows_the_nerd_glyph_and_a_pipe_never_does() -> None:
     code, out, err = on_terminals(["-V", "--icons"], terminal={"out"})
-    assert (code, err) == (Exit.CLAIMS_HOLD, "")
+    assert (code, err) == (VersionExit.REPORTED, "")
     assert COPYRIGHT.nerd in out
     assert COPYRIGHT.plain not in out
     code, out, err = on_terminals(["-V", "--icons"], terminal=set())
-    assert (code, err) == (Exit.CLAIMS_HOLD, "")
+    assert (code, err) == (VersionExit.REPORTED, "")
     assert COPYRIGHT.plain in out
     assert COPYRIGHT.nerd not in out
 
 
 def test_on_a_terminal_a_leading_icons_shows_the_glyph_for_the_flag_too() -> None:
     code, out, err = on_terminals(["--icons", "-V"], terminal={"out"})
-    assert (code, err) == (Exit.CLAIMS_HOLD, "")
+    assert (code, err) == (VersionExit.REPORTED, "")
     assert COPYRIGHT.nerd in out
+
+
+def test_the_version_outcome_is_its_own_type_that_states_its_own_code(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reported = main(["version"])
+    assert capsys.readouterr().err == ""
+    assert type(reported) is VersionExit
+    assert reported is VersionExit.REPORTED
+    assert int(reported) == 0
+    write(tmp_path, "a.lp", DRINKS + "% @expect sat\n")
+    monkeypatch.chdir(tmp_path)
+    tested = main(["a.lp"])
+    assert type(tested) is Exit
+    assert tested is Exit.CLAIMS_HOLD
+
+
+def test_a_failure_of_its_own_while_reporting_the_version_is_the_versions_own_internal_error(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken() -> Package:
+        message = "no metadata"
+        raise LookupError(message)
+
+    monkeypatch.setattr("elenctic.cli.package", broken)
+    code, out, err = shown(capsys, "version")
+    assert code is VersionExit.INTERNAL_ERROR
+    assert not isinstance(code, Exit)
+    assert (int(code), out) == (3, "")
+    assert err == "elenctic: internal error: LookupError: no metadata\n"
+    assert shown(capsys, "--version") == (code, out, err)
+
+
+def test_the_codes_are_the_values_of_the_outcomes_and_nothing_else() -> None:
+    assert [(m.name, m.value) for m in VersionExit] == [("REPORTED", 0), ("INTERNAL_ERROR", 3)]
+    assert [(m.name, m.value) for m in Exit] == [
+        ("CLAIMS_HOLD", 0),
+        ("CLAIM_UNMET", 1),
+        ("FAULT", 2),
+        ("INTERNAL_ERROR", 3),
+    ]
