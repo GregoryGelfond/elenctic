@@ -1,6 +1,8 @@
 import ast
+import io
 import os
 from pathlib import Path
+from typing import get_type_hints
 
 import pytest
 
@@ -152,6 +154,14 @@ def test_a_pseudo_terminal_is_a_terminal() -> None:
     finally:
         os.close(master)
         os.close(slave)
+
+
+def test_a_stream_is_asked_nothing_but_whether_it_is_a_terminal(tmp_path: Path) -> None:
+    asked = get_type_hints(Stream.of)["stream"]
+    with (tmp_path / "out").open("w") as file:
+        assert isinstance(file, asked)
+    assert isinstance(io.StringIO(), asked)
+    assert not isinstance(object(), asked)
 
 
 def test_only_the_adapters_ask_the_environment_or_a_stream() -> None:

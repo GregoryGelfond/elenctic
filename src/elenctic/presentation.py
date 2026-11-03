@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, StrEnum
-from typing import Final, Self, TextIO
+from typing import Final, Protocol, Self, runtime_checkable
 
 from elenctic.glyphs import Glyphs
 from elenctic.paint import Color
@@ -18,6 +18,13 @@ class When(StrEnum):
     NEVER = "never"
 
 
+@runtime_checkable
+class _Tty(Protocol):
+    """The one thing elenctic asks of an output stream: whether it is a terminal."""
+
+    def isatty(self) -> bool: ...
+
+
 class Stream(Enum):
     """Where output goes."""
 
@@ -26,7 +33,7 @@ class Stream(Enum):
     """A file or a pipe."""
 
     @classmethod
-    def of(cls, stream: TextIO) -> Stream:
+    def of(cls, stream: _Tty) -> Stream:
         return Stream.TERMINAL if stream.isatty() else Stream.REDIRECTED
 
 
