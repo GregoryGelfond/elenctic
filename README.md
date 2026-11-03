@@ -11,8 +11,7 @@ drinks.lp — FAIL
 0/1 passed, 1 fail
 ```
 
-This is the successor to elenctic 0.3; see `DESIGN-2026-10-30.md` for the design and its open
-items.
+This is the successor to elenctic 0.3.
 
 ## Install
 
