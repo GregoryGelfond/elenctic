@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
-from typing import Protocol, Self, override
+from typing import Protocol, Self, override, runtime_checkable
 
 import clingo
 from clingo import Control, Model
@@ -53,6 +53,7 @@ class Plain(Theory):
         return frozenset()
 
 
+@runtime_checkable
 class _Constraints(Protocol):
     """The part of `clingcon.ClingconTheory` that elenctic drives."""
 

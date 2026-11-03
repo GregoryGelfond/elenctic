@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from typing import get_type_hints
 
 import clingo
 import pytest
@@ -76,3 +77,10 @@ def test_the_solvers_are_the_versions_of_the_modules_loaded() -> None:
 @pytest.mark.usefixtures("without_clingcon")
 def test_solvers_without_clingcon_name_clingo_alone() -> None:
     assert loaded_solvers() == Solvers(clingo.__version__, None)
+
+
+def test_what_clingcon_is_asked_for_is_what_the_real_theory_offers() -> None:
+    clingcon = pytest.importorskip("clingcon")
+    asked = get_type_hints(Clingcon.__init__)["theory"]
+    assert isinstance(clingcon.ClingconTheory(), asked)
+    assert not isinstance(object(), asked)
