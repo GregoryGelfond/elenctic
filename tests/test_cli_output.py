@@ -203,7 +203,7 @@ def test_json_keeps_the_whole_document_on_stdout_and_never_colors_it(
     document = json.loads(shown.out)
     assert document["exit_code"] == Exit.FAULT
     results = [entry["result"]["kind"] for entry in document["run"]["entries"]]
-    assert results == ["Report", "Fault"]
+    assert results == ["report", "fault"]
 
 
 def test_an_internal_error_is_painted_by_the_style_of_stderr(

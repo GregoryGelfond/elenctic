@@ -17,7 +17,7 @@ contain `coffee` and not `tea`. With none, the verdict is `fail`.
 ## Read the result as JSON
 
 `elenctic --json file.lp` writes `{"schema": 1, "run": …, "exit_code": n}`. Every object carries a
-`kind` naming its library type; the shape is derived from the types, so it cannot drift.
+`kind` naming its library type in snake case (`report`, `entails`, `fault`); the shape is derived from the types, so it cannot drift.
 
 ## Cancel a search
 

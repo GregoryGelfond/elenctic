@@ -1,15 +1,20 @@
+import dataclasses
 import enum
 import importlib
 import json
 import pkgutil
 import re
+import typing
 
 import pytest
 
 import elenctic
-from elenctic.determination import Truncation
-from elenctic.json_view import SCHEMA, encode, to_json
+from elenctic.contract import Census, Entails
+from elenctic.determination import AnswerSet, Incumbent, Truncation, WorldView
+from elenctic.json_view import SCHEMA, encode, kind_of, to_json
 from elenctic.report import Entry, Exit, Run
+from elenctic.spans import Position
+from elenctic.verdicts import Report
 from runs import FAILING, PROGRAM_WITH_ESCAPE_CODES, entry
 
 
@@ -19,15 +24,15 @@ def test_json_is_derived_from_the_result_types() -> None:
     assert document["exit_code"] == Exit.CLAIM_UNMET
     (only,) = document["run"]["entries"]
     report = only["result"]
-    assert report["kind"] == "Report"
+    assert report["kind"] == "report"
     claim = report["findings"][1]["claim"]
     assert claim["reading"] == {
-        "kind": "Entails",
+        "kind": "entails",
         "mode": "cautious",
         "literals": ["q"],
         "over": "all",
     }
-    assert claim["span"]["start"] == {"kind": "Position", "line": 3, "column": 3}
+    assert claim["span"]["start"] == {"kind": "position", "line": 3, "column": 3}
     assert report["findings"][1]["verdict"] == "fail"
 
 
@@ -73,3 +78,43 @@ def test_every_string_enum_has_snake_case_values_named_for_its_members() -> None
 def test_a_truncation_is_encoded_in_snake_case() -> None:
     assert encode(Truncation.MAX_ANSWER_SETS) == "max_answer_sets"
     assert encode(Truncation.MAX_SECONDS) == "max_seconds"
+
+
+def _result_types(found: set[type], hint: object) -> set[type]:
+    """Collect the dataclasses a hint can lead to, following every field."""
+    if isinstance(hint, typing.TypeAliasType):
+        return _result_types(found, hint.__value__)
+    for part in typing.get_args(hint):
+        _result_types(found, part)
+    if isinstance(hint, type) and dataclasses.is_dataclass(hint) and hint not in found:
+        found.add(hint)
+        for field in typing.get_type_hints(hint).values():
+            _result_types(found, field)
+    return found
+
+
+def test_every_kind_a_run_can_carry_is_snake_case_and_names_one_type() -> None:
+    types = _result_types(set(), Run)
+    assert {Run, Report, Entails, Census, Position} <= types
+    kinds = [kind_of(each) for each in types]
+    assert all(re.fullmatch(r"[a-z]+(_[a-z]+)*", kind) for kind in kinds)
+    assert len(set(kinds)) == len(types)
+
+
+def test_a_kind_is_the_type_name_in_snake_case() -> None:
+    assert [kind_of(each) for each in (Census, AnswerSet, WorldView)] == [
+        "census",
+        "answer_set",
+        "world_view",
+    ]
+    answer_set = AnswerSet(frozenset(), frozenset(), assignment=frozenset(), cost=())
+    assert encode(Incumbent(answer_set)) == {
+        "kind": "incumbent",
+        "answer_set": {
+            "kind": "answer_set",
+            "atoms": [],
+            "shown": [],
+            "assignment": [],
+            "cost": [],
+        },
+    }

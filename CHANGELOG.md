@@ -66,6 +66,8 @@ All notable changes are recorded here. The format follows
 - Every enum value in the JSON is snake_case, and each is its member's name in lower case, so the
   truncations are `max_answer_sets`, `max_seconds` and `interrupted`; the command-line flags keep their
   hyphens.
+- The `kind` of every JSON object is its type's name in snake case (`report`, `entails`, `answer_set`), derived in
+  one place, `json_view.kind_of`.
 
 - Diagnostics for a source that could not be checked go to stderr, with the reserved-command note
   and the internal-error line; verdicts and the summary stay on stdout. `--json` is all on stdout.
