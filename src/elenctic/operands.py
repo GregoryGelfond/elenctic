@@ -2,14 +2,9 @@
 
 from elenctic.determination import Assignment, Range
 from elenctic.literals import AnswerSet, Assumption, Scenario
-from elenctic.spans import Diagnostic, Parsed, Severity
+from elenctic.spans import Diagnostic, Parsed, failure
 from elenctic.syntax import literals, positive, read_literals, read_valuations
 from elenctic.tags import Block, Element
-
-
-def failure(block: Block, message: str, element: Element | None = None) -> Diagnostic:
-    span = block.whole if element is None else block.span(element.start, element.end)
-    return Diagnostic(span, Severity.ERROR, message)
 
 
 def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[AnswerSet]:
@@ -19,9 +14,9 @@ def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[A
         return items
     grounds = positive(items)
     if grounds is None:
-        return failure(block, "expected ground literals, without `not`", element)
+        return failure(block.covering(element), "expected ground literals, without `not`")
     if nonempty and not grounds:
-        return failure(block, "expected at least one literal", element)
+        return failure(block.covering(element), "expected at least one literal")
     return frozenset(grounds)
 
 
@@ -31,7 +26,7 @@ def assumptions(block: Block, element: Element) -> Parsed[Scenario]:
         return items
     grounds = literals(items)
     if grounds is None:
-        return failure(block, "an assumption is a ground literal", element)
+        return failure(block.covering(element), "an assumption is a ground literal")
     return frozenset(
         Assumption(literal, holds=not item.negated)
         for literal, item in zip(grounds, items, strict=True)
@@ -51,20 +46,25 @@ def valuations(block: Block, element: Element) -> Parsed[Assignment]:
     if isinstance(read, Diagnostic):
         return read
     if not read:
-        return failure(block, "expected at least one `term = integer`", element)
+        return failure(block.covering(element), "expected at least one `term = integer`")
     if len({v.variable for v in read}) < len(set(read)):
-        return failure(block, "a term is given two different integers", element)
+        return failure(block.covering(element), "a term is given two different integers")
     return frozenset(read)
+
+
+def _bare(elements: list[Element], word: str) -> int | None:
+    """Find where `word` stands among the elements, outside any braces."""
+    return next((i for i, e in enumerate(elements) if e.text == word and not e.braced), None)
 
 
 def after(
     block: Block, elements: list[Element], word: str, contents: str
 ) -> Parsed[tuple[list[Element], Element | None]]:
     """Split a trailing `word { ... }` off a tag's elements: what precedes it, and its braces."""
-    cut = next((i for i, e in enumerate(elements) if e.text == word and not e.braced), None)
+    cut = _bare(elements, word)
     if cut is None:
         return elements, None
     tail = elements[cut + 1 :]
     if len(tail) != 1 or not tail[0].braced:
-        return failure(block, f"expected `{word} {{ {contents} }}`")
+        return failure(block.covering(), f"expected `{word} {{ {contents} }}`")
     return elements[:cut], tail[0]

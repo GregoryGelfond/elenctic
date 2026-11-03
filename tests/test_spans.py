@@ -1,4 +1,4 @@
-from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose
+from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose, failure
 
 
 def test_a_located_error_becomes_a_diagnostic_with_its_span() -> None:
@@ -37,3 +37,10 @@ def test_an_unlocated_message_is_kept_whole() -> None:
 def test_a_span_prints_as_editors_expect() -> None:
     assert str(Span("f.lp", Position(2, 3), Position(2, 9))) == "f.lp:2:3-9"
     assert str(Span("f.lp", Position(2, 3), Position(4, 5))) == "f.lp:2:3-4:5"
+
+
+def test_a_failure_is_an_error_diagnostic_at_the_span() -> None:
+    where = Span("f.lp", Position(2, 3), Position(2, 9))
+    assert failure(where, "expected a literal") == Diagnostic(
+        where, Severity.ERROR, "expected a literal"
+    )

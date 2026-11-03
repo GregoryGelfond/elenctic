@@ -16,7 +16,7 @@ from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
 from elenctic.program import Fault, Locus, Program
 from elenctic.search import UNLIMITED, Interrupt, Limits
-from elenctic.spans import UNLOCATED, Diagnostic, Position, Severity, Span, diagnose
+from elenctic.spans import UNLOCATED, Diagnostic, Position, Span, diagnose, failure
 from elenctic.theory import Clingcon, Plain, Theory
 
 _EXTRA: Final = "theory"
@@ -43,7 +43,7 @@ def _fault(messages: list[str], error: RuntimeError, program: Program) -> Fault:
         )
         for d in diagnose("".join(messages))
     )
-    return Fault(Locus.PROGRAM, diagnostics or (Diagnostic(UNLOCATED, Severity.ERROR, str(error)),))
+    return Fault(Locus.PROGRAM, diagnostics or (failure(UNLOCATED, str(error)),))
 
 
 def _parse(program: Program, add: Callable[[AST], None], logger: Callable[..., None]) -> None:
@@ -78,7 +78,7 @@ def _absent(solver: Solver, program: Program) -> Fault:
         f"the contract declares `% @elenctic solver {solver}`, which is not installed; "
         f"install `elenctic[{_EXTRA}]`, or use the pixi `{_EXTRA}` environment"
     )
-    return Fault(Locus.REQUEST, (Diagnostic(here, Severity.ERROR, message),))
+    return Fault(Locus.REQUEST, (failure(here, message),))
 
 
 def ground(program: Program, solver: Solver = Solver.CLINGO) -> Grounded | Fault:

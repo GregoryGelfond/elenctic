@@ -7,12 +7,12 @@ from clingo import Symbol, SymbolType
 from clingo.ast import AST, ASTType, ComparisonOperator, Sign
 
 from elenctic import tree
-from elenctic.body import failure, place, read_body, span_of
+from elenctic.body import place, read_body, span_of
 from elenctic.determination import Valuation
 from elenctic.literals import Literal
 from elenctic.normalize import NotAPattern, evaluate, function_of, normalize
 from elenctic.patterns import Pattern
-from elenctic.spans import Diagnostic, Parsed, Span
+from elenctic.spans import Diagnostic, Parsed, Span, failure
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,9 +47,9 @@ def _item(where: Span, literal: AST) -> Parsed[Item]:
     pattern = _pattern(tree.child(literal, "atom")) if simple else None
     sign = tree.number(literal, "sign") if simple else Sign.NoSign
     if isinstance(pattern, NotAPattern):
-        return failure(where, str(pattern), span)
+        return failure(span, str(pattern))
     if pattern is None or sign == Sign.DoubleNegation:
-        return failure(where, "expected a literal", span)
+        return failure(span, "expected a literal")
     return Item(pattern, sign == Sign.Negation, span)
 
 
@@ -87,7 +87,7 @@ def _all[T](parsed: Iterable[Parsed[T]]) -> Parsed[tuple[T, ...]]:
 
 def _valuation(where: Span, literal: AST) -> Parsed[Valuation]:
     return _equation(literal) or failure(
-        where, "expected `term = integer`", place(where, span_of(tree.location(literal)))
+        place(where, span_of(tree.location(literal))), "expected `term = integer`"
     )
 
 

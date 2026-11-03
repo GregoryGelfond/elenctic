@@ -1,8 +1,7 @@
 """The `@elenctic` directives of a contract: which solver it asks for."""
 
 from elenctic.contract import Solver
-from elenctic.operands import failure
-from elenctic.spans import Diagnostic, Parsed
+from elenctic.spans import Diagnostic, Parsed, failure
 from elenctic.tags import Block, elements
 
 
@@ -18,11 +17,13 @@ def _solver(block: Block) -> Parsed[Solver]:
         case ["solver", name] if name in Solver:
             return Solver(name)
         case ["solver", _]:
-            return failure(block, f"unknown solver; known: {known}")
+            return failure(block.covering(), f"unknown solver; known: {known}")
         case ["solver"]:
-            return failure(block, f"`@elenctic solver` needs a solver name; known: {known}")
+            return failure(
+                block.covering(), f"`@elenctic solver` needs a solver name; known: {known}"
+            )
         case _:
-            return failure(block, "unknown `@elenctic` directive; known: `solver`")
+            return failure(block.covering(), "unknown `@elenctic` directive; known: `solver`")
 
 
 def _read(blocks: list[Block]) -> list[tuple[Block, Parsed[Solver]]]:
@@ -32,7 +33,7 @@ def _read(blocks: list[Block]) -> list[tuple[Block, Parsed[Solver]]]:
 
 def _surplus(solvers: list[Block]) -> list[Diagnostic]:
     """Fault every declaration after the first."""
-    return [failure(block, "at most one `@elenctic solver`") for block in solvers[1:]]
+    return [failure(block.covering(), "at most one `@elenctic solver`") for block in solvers[1:]]
 
 
 def declared(blocks: list[Block]) -> tuple[Solver, list[Diagnostic]]:

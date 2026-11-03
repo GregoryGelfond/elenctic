@@ -58,6 +58,11 @@ class Diagnostic:
 type Parsed[T] = T | Diagnostic
 
 
+def failure(where: Span, message: str) -> Diagnostic:
+    """Say that something at `where` is wrong."""
+    return Diagnostic(where, Severity.ERROR, message)
+
+
 UNLOCATED: Final = Span("", Position(1, 1), Position(1, 1))
 
 _HEADER: Final = re.compile(
@@ -90,4 +95,4 @@ def diagnose(message: str) -> tuple[Diagnostic, ...]:
         _diagnostic(found, lines[i + 1 : end])
         for (i, found), end in zip(heads, bounds[1:], strict=True)
     )
-    return found_all or (Diagnostic(UNLOCATED, Severity.ERROR, message.strip()),)
+    return found_all or (failure(UNLOCATED, message.strip()),)

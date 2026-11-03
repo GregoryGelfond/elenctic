@@ -51,7 +51,6 @@ from elenctic.query import (
     answer,
     bindings,
     evaluate,
-    singleton_answer,
 )
 from elenctic.reader import parse_contract
 from elenctic.search import Interrupt, Limit, Limits, Request
@@ -133,7 +132,6 @@ __all__ = [
     "optimal_view",
     "parse_contract",
     "render",
-    "singleton_answer",
     "solve",
     "world_view",
 ]

@@ -7,8 +7,8 @@ from typing import Final
 from elenctic.contract import Assigns, Census, Costs, Entails, Reading, Satisfiable, Witness
 from elenctic.determination import Mode, Range, Valuation
 from elenctic.literals import AnswerSet
-from elenctic.operands import after, failure, ground, model_set, valuations
-from elenctic.spans import Diagnostic, Parsed
+from elenctic.operands import after, ground, model_set, valuations
+from elenctic.spans import Diagnostic, Parsed, failure
 from elenctic.tags import Block, Element
 
 _INTEGER: Final = re.compile(r"-?\d+")
@@ -21,21 +21,21 @@ def expect(block: Block, head: list[Element]) -> Parsed[Reading]:
         case ["unsat"] if len(head) == 1:
             return Satisfiable(expected=False)
         case _:
-            return failure(block, "expected `sat` or `unsat`")
+            return failure(block.covering(), "expected `sat` or `unsat`")
 
 
 def count(block: Block, head: list[Element]) -> Parsed[Reading]:
     over, rest = model_set(head)
     if len(rest) == 1 and not rest[0].braced and rest[0].text.isdecimal():
         return Census(int(rest[0].text), over)
-    return failure(block, "expected a non-negative integer")
+    return failure(block.covering(), "expected a non-negative integer")
 
 
 def cost(block: Block, head: list[Element]) -> Parsed[Reading]:
     levels = head[0].text.split() if len(head) == 1 and head[0].braced else []
     if levels and all(_INTEGER.fullmatch(level) for level in levels):
         return Costs(tuple(map(int, levels)))
-    return failure(block, "expected `{ c1 c2 ... }`, an integer for each level")
+    return failure(block.covering(), "expected `{ c1 c2 ... }`, an integer for each level")
 
 
 def litset(
@@ -46,7 +46,7 @@ def litset(
     def read(block: Block, head: list[Element]) -> Parsed[Reading]:
         chosen, rest = (over, head) if over is not None else model_set(head)
         if len(rest) != 1 or not rest[0].braced:
-            return failure(block, "expected `{ literals }`")
+            return failure(block.covering(), "expected `{ literals }`")
         literals = ground(block, rest[0])
         return literals if isinstance(literals, Diagnostic) else make(literals, chosen)
 
@@ -56,7 +56,7 @@ def litset(
 def assign(block: Block, head: list[Element]) -> Parsed[Reading]:
     over, rest = model_set(head)
     if len(rest) != 1 or not rest[0].braced:
-        return failure(block, "expected `{ term = integer, ... }`")
+        return failure(block.covering(), "expected `{ term = integer, ... }`")
     assignment = valuations(block, rest[0])
     return assignment if isinstance(assignment, Diagnostic) else Assigns(assignment, over)
 

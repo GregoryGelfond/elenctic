@@ -7,10 +7,10 @@ from elenctic.contract import Claim, Contract, Reading
 from elenctic.determination import Range
 from elenctic.directives import declared
 from elenctic.literals import Scenario
-from elenctic.operands import after, assumptions, failure
+from elenctic.operands import after, assumptions
 from elenctic.queries import query
 from elenctic.readings import assign, brave, cautious, cost, count, expect, witness
-from elenctic.spans import Diagnostic, Parsed
+from elenctic.spans import Diagnostic, Parsed, failure
 from elenctic.tags import Block, Element, blocks, elements
 from elenctic.wellformed import wellformed
 
@@ -43,9 +43,9 @@ def _claim(block: Block) -> Parsed[Claim] | None:
     if block.tag in _DIRECTIVES:
         return None
     if block.tag not in _READERS:
-        return failure(block, f"`@{block.tag}` is not a tag")
+        return failure(block.covering(), f"`@{block.tag}` is not a tag")
     if (words := elements(block.payload)) is None:
-        return failure(block, "a brace is never closed")
+        return failure(block.covering(), "a brace is never closed")
     split = _split(block, words)
     if isinstance(split, Diagnostic):
         return split

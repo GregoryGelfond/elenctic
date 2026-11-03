@@ -2,9 +2,8 @@
 
 from clingo import Symbol, SymbolType
 
-from elenctic.body import failure
 from elenctic.normalize import evaluate
-from elenctic.spans import Parsed, Span
+from elenctic.spans import Parsed, Span, failure
 
 
 def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symbol, ...], ...]]:

@@ -76,13 +76,6 @@ def answer(query: Query, view: WorldView) -> Answer:
     return Answer.NO if truths == {Truth.FALSE} else Answer.UNKNOWN
 
 
-def singleton_answer(literal: Literal, cautious: AnswerSet) -> Answer:
-    """Answer a single literal from the cautious consequences alone."""
-    if literal in cautious:
-        return Answer.YES
-    return Answer.NO if literal.contrary in cautious else Answer.UNKNOWN
-
-
 @dataclass(frozen=True, slots=True)
 class Bindings:
     """The values of a pattern's variables that give each answer."""

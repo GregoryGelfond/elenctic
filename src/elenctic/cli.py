@@ -17,7 +17,7 @@ from elenctic.presentation import Environment, Presentation, Stream, When, resol
 from elenctic.program import Fault, Locus, Program
 from elenctic.report import Entry, Exit, Run
 from elenctic.search import Interrupt, Limit, Limits
-from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.spans import Position, Span, failure
 from elenctic.theory import loaded_solvers
 
 DEFAULT_BUDGET: Final = 30.0
@@ -197,10 +197,8 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt) -> Entry | None:
     try:
         program = Program.read(path)
     except (OSError, UnicodeDecodeError) as error:
-        problem = Diagnostic(
-            Span(str(path), Position(1, 1), Position(1, 1)),
-            Severity.ERROR,
-            _unreadable_reason(error),
+        problem = failure(
+            Span(str(path), Position(1, 1), Position(1, 1)), _unreadable_reason(error)
         )
         return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
     result = check(program, limits=limits, interrupt=interrupt)

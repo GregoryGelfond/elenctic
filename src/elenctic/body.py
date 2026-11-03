@@ -5,7 +5,7 @@ from typing import Final
 from clingo.ast import AST, ASTType, Location, parse_string
 
 from elenctic import tree
-from elenctic.spans import Diagnostic, Parsed, Position, Severity, Span, diagnose
+from elenctic.spans import Diagnostic, Parsed, Position, Span, diagnose, failure
 
 _PREFIX: Final = ":- "
 
@@ -25,14 +25,9 @@ def place(where: Span, inner: Span) -> Span:
     return Span(where.source, unprefixed(inner.start), unprefixed(inner.end)).shifted(where.start)
 
 
-def failure(where: Span, message: str, span: Span | None = None) -> Diagnostic:
-    """Say what is wrong with the text at `where`, at `span` within it if that is narrower."""
-    return Diagnostic(span or where, Severity.ERROR, message)
-
-
 def _first_error(where: Span, messages: list[str]) -> Diagnostic:
     found = diagnose("".join(messages))[0]
-    return failure(where, found.message, place(where, found.span))
+    return failure(place(where, found.span), found.message)
 
 
 def read_body(text: str, where: Span) -> Parsed[tuple[AST, ...]]:

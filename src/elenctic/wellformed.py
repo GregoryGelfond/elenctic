@@ -3,16 +3,14 @@
 from elenctic.contract import Census, Claim, Satisfiable, denies_answer_sets
 from elenctic.determination import Range
 from elenctic.literals import Scenario
-from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.spans import Diagnostic, Position, Span, failure
 
 
 def _expectations(claims: list[Claim], source: str) -> list[Diagnostic]:
     expects = [c for c in claims if isinstance(c.reading, Satisfiable) and not c.scenario]
     start = Span(source, Position(1, 1), Position(1, 1))
-    absent = [Diagnostic(start, Severity.ERROR, "missing `@expect`")] if not expects else []
-    return absent + [
-        Diagnostic(c.span, Severity.ERROR, "more than one `@expect`") for c in expects[1:]
-    ]
+    absent = [failure(start, "missing `@expect`")] if not expects else []
+    return absent + [failure(c.span, "more than one `@expect`") for c in expects[1:]]
 
 
 def _expecting(claims: list[Claim], *, satisfiable: bool) -> frozenset[Scenario]:
@@ -36,11 +34,7 @@ def _contradiction(
 def _exclusions(claims: list[Claim]) -> list[Diagnostic]:
     """Find claims that contradict the `@expect` of their own scenario."""
     unsat, sat = _expecting(claims, satisfiable=False), _expecting(claims, satisfiable=True)
-    return [
-        Diagnostic(c.span, Severity.ERROR, message)
-        for c in claims
-        if (message := _contradiction(c, unsat, sat))
-    ]
+    return [failure(c.span, message) for c in claims if (message := _contradiction(c, unsat, sat))]
 
 
 def _nested(claims: list[Claim]) -> list[Diagnostic]:
@@ -51,9 +45,8 @@ def _nested(claims: list[Claim]) -> list[Diagnostic]:
         if isinstance(c.reading, Census)
     }
     return [
-        Diagnostic(
+        failure(
             c.span,
-            Severity.ERROR,
             f"`@count optimal {c.reading.count}` exceeds `@count {counts[c.scenario, Range.ALL]}`: "
             "the optimal answer sets are among the answer sets",
         )

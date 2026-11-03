@@ -6,7 +6,7 @@ from elenctic.facts import Facts
 from elenctic.grounded import Grounded
 from elenctic.literals import Literal, Signature
 from elenctic.query import Answer
-from elenctic.spans import Diagnostic, Severity, Span
+from elenctic.spans import Diagnostic, Span, failure
 
 _IGNORED = (
     "the program has theory atoms, which clingo would ground and ignore; "
@@ -40,11 +40,10 @@ def _contraries(reading: Reading) -> frozenset[Signature]:
 def unsound(contract: Contract, grounded: Grounded) -> list[Diagnostic]:
     """Find what would make a verdict untrustworthy: a claim asks what the program lacks."""
     at_program = [
-        Diagnostic(span, Severity.ERROR, message)
-        for span, message in _theoretical(contract.solver, grounded.facts)
+        failure(span, message) for span, message in _theoretical(contract.solver, grounded.facts)
     ]
     return at_program + [
-        Diagnostic(claim.span, Severity.ERROR, message)
+        failure(claim.span, message)
         for claim in contract.claims
         for message in _lacks(claim.reading, grounded, contract.solver)
     ]

@@ -17,7 +17,6 @@ from elenctic.query import (
     answer,
     bindings,
     evaluate,
-    singleton_answer,
 )
 from elenctic.terms import Compound, Variable
 
@@ -70,13 +69,6 @@ def test_the_answer_is_yes_when_true_in_every_member_and_no_when_false_in_every_
 
 def test_a_conjunction_false_in_each_member_for_a_different_reason_is_no() -> None:
     assert answer(All((P, Q)), world({P.contrary, Q}, {P, Q.contrary})) is Answer.NO
-
-
-@given(views, literals)
-def test_a_single_literal_is_settled_by_the_cautious_consequences_alone(
-    view: WorldView, literal: Literal
-) -> None:
-    assert singleton_answer(literal, view.cautious) is answer(literal, view)
 
 
 @given(consistent_sets, queries)

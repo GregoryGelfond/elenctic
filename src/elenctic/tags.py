@@ -15,6 +15,19 @@ class Piece:
 
 
 @dataclass(frozen=True, slots=True)
+class Element:
+    """A word, or a brace group without its braces, of a payload."""
+
+    text: str
+    start: int
+    braced: bool
+
+    @property
+    def end(self) -> int:
+        return self.start + len(self.text)
+
+
+@dataclass(frozen=True, slots=True)
 class Block:
     """One tag with its payload, which may have been continued over several comment lines."""
 
@@ -43,6 +56,10 @@ class Block:
         return Span(
             self.source, self.at, Position(last.start.line, last.start.column + len(last.text))
         )
+
+    def covering(self, element: Element | None = None) -> Span:
+        """Return where `element` is, or where the whole tag is when none is named."""
+        return self.whole if element is None else self.span(element.start, element.end)
 
 
 _TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+)\b(?P<gap>\s*)(?P<rest>.*?)\s*")
@@ -97,19 +114,6 @@ def is_case(text: str) -> bool:
     return any(
         (found := _TAG.fullmatch(line)) and found["tag"] in KNOWN for line in text.split("\n")
     )
-
-
-@dataclass(frozen=True, slots=True)
-class Element:
-    """A word, or a brace group without its braces, of a payload."""
-
-    text: str
-    start: int
-    braced: bool
-
-    @property
-    def end(self) -> int:
-        return self.start + len(self.text)
 
 
 def elements(payload: str) -> list[Element] | None:
