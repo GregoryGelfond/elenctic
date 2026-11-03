@@ -51,4 +51,4 @@ def test_a_conclusion_is_exhausted_or_a_truncation() -> None:
 
 
 def test_a_truncation_is_named_for_the_limit_that_cut_the_search() -> None:
-    assert [str(cut) for cut in Truncation] == ["max-answer-sets", "max-seconds", "interrupted"]
+    assert [str(cut) for cut in Truncation] == ["max_answer_sets", "max_seconds", "interrupted"]

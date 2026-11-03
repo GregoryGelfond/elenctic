@@ -58,12 +58,14 @@ All notable changes are recorded here. The format follows
 ### Changed
 - Limits are named for what they bound: `--max-seconds` (was `--budget`) and `--max-answer-sets` (was
   `--models`), `Limits.max_seconds` and `Limits.max_answer_sets`, `DEFAULT_MAX_SECONDS` and
-  `DEFAULT_MAX_ANSWER_SETS`, and the truncations `MAX_SECONDS` (`max-seconds`) and `MAX_ANSWER_SETS`
-  (`max-answer-sets`). `UNLIMITED` is gone: use `Limits()`.
+  `DEFAULT_MAX_ANSWER_SETS`, and the truncations `MAX_SECONDS` and `MAX_ANSWER_SETS`. `UNLIMITED` is gone: use `Limits()`.
 - One answer set is an answer set everywhere: the tag `@answer-set` (was `@model`), the types `AnswerSet` (was
   `Model`) and `AnswerSets` (was `Models`), `Atoms` (was `AnswerSet`), `Optimum.answer_sets`,
   `Incumbent.answer_set`, `Seen.answer_set` and `search.answer_sets()`, and the same keys in the JSON.
   The old names are gone.
+- Every enum value in the JSON is snake_case, and each is its member's name in lower case, so the
+  truncations are `max_answer_sets`, `max_seconds` and `interrupted`; the command-line flags keep their
+  hyphens.
 
 - Diagnostics for a source that could not be checked go to stderr, with the reserved-command note
   and the internal-error line; verdicts and the summary stay on stdout. `--json` is all on stdout.

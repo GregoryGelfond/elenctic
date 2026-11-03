@@ -1,7 +1,7 @@
 """What a solve can come to: consistent, inconsistent or inconclusive, and how its search ended."""
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import StrEnum, auto
 
 from elenctic.literals import Assumption, Atoms, Literal, Symbol
 
@@ -9,15 +9,15 @@ from elenctic.literals import Assumption, Atoms, Literal, Symbol
 class Exhausted(StrEnum):
     """The search covered every answer set under the request."""
 
-    EXHAUSTED = "exhausted"
+    EXHAUSTED = auto()
 
 
 class Truncation(StrEnum):
     """The search was cut short, and by what."""
 
-    MAX_ANSWER_SETS = "max-answer-sets"
-    MAX_SECONDS = "max-seconds"
-    INTERRUPTED = "interrupted"
+    MAX_ANSWER_SETS = auto()
+    MAX_SECONDS = auto()
+    INTERRUPTED = auto()
 
 
 type Conclusion = Exhausted | Truncation
@@ -26,8 +26,8 @@ type Conclusion = Exhausted | Truncation
 class Range(StrEnum):
     """Which answer sets a value ranges over: all of them, or those optimal."""
 
-    ALL = "all"
-    OPTIMAL = "optimal"
+    ALL = auto()
+    OPTIMAL = auto()
 
 
 type Cost = tuple[int, ...]
@@ -79,8 +79,8 @@ class AnswerSets:
 
 
 class Mode(StrEnum):
-    CAUTIOUS = "cautious"
-    BRAVE = "brave"
+    CAUTIOUS = auto()
+    BRAVE = auto()
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,7 +1,7 @@
 """The contract: the claims a program is held to, as a vocabulary of readings."""
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import StrEnum, auto
 
 from elenctic.determination import AnswerSet, Assignment, Cost, Mode, Range
 from elenctic.literals import Atoms, Scenario, Symbol
@@ -13,8 +13,8 @@ from elenctic.spans import Diagnostic, Span
 class Solver(StrEnum):
     """What a contract is checked with: clingo alone, or clingo with the clingcon theory."""
 
-    CLINGO = "clingo"
-    CLINGCON = "clingcon"
+    CLINGO = auto()
+    CLINGCON = auto()
 
 
 @dataclass(frozen=True, slots=True)

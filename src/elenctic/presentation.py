@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum, StrEnum
+from enum import Enum, StrEnum, auto
 from typing import Final, Protocol, Self, runtime_checkable
 
 from elenctic.glyphs import Glyphs
@@ -12,10 +12,10 @@ from elenctic.paint import Color
 class When(StrEnum):
     """What `--color` and `--icons` ask for."""
 
-    AUTO = "auto"
+    AUTO = auto()
     """On a terminal, unless `NO_COLOR` or `TERM=dumb` says otherwise."""
-    ALWAYS = "always"
-    NEVER = "never"
+    ALWAYS = auto()
+    NEVER = auto()
 
 
 @runtime_checkable

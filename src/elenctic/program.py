@@ -1,7 +1,7 @@
 """A program to be asked about, and the failure of asking."""
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import StrEnum, auto
 from os import PathLike
 from pathlib import Path
 from typing import Self
@@ -26,8 +26,8 @@ class Program:
 class Locus(StrEnum):
     """Whose fault a failure is."""
 
-    PROGRAM = "program"
-    REQUEST = "request"
+    PROGRAM = auto()
+    REQUEST = auto()
 
 
 @dataclass(frozen=True, slots=True)

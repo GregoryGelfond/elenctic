@@ -1,7 +1,7 @@
 """Three-valued queries over a world view (Gelfond and Kahl, Definition 2.2.2, with its errata)."""
 
 from dataclasses import dataclass
-from enum import IntEnum, StrEnum
+from enum import IntEnum, StrEnum, auto
 from functools import reduce
 
 from elenctic.determination import WorldView
@@ -24,9 +24,9 @@ class Truth(IntEnum):
 
 
 class Answer(StrEnum):
-    YES = "yes"
-    NO = "no"
-    UNKNOWN = "unknown"
+    YES = auto()
+    NO = auto()
+    UNKNOWN = auto()
 
 
 @dataclass(frozen=True, slots=True)

@@ -287,7 +287,8 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 ## JSON
 
 `{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1 or 2); see `elenctic.json_view.encode`. A
-dataclass becomes `{"kind": TypeName, field: …}`, an enum its value, a set a sorted list.
+dataclass becomes `{"kind": TypeName, field: …}`, an enum its value, a set a sorted list. Keys and enum values are snake_case (`max_answer_sets`);
+the command-line flags keep their hyphens (`--max-answer-sets`).
 
 ## Examples
 

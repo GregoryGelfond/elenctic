@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Final, override
 
 
@@ -41,9 +41,9 @@ def _shift(position: Position, origin: Position) -> Position:
 
 
 class Severity(StrEnum):
-    ERROR = "error"
-    WARNING = "warning"
-    NOTE = "note"
+    ERROR = auto()
+    WARNING = auto()
+    NOTE = auto()
 
 
 @dataclass(frozen=True, slots=True)
