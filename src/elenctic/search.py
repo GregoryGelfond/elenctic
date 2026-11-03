@@ -7,10 +7,10 @@ from enum import Enum
 from functools import lru_cache
 from math import inf
 from time import monotonic
-from typing import Final
+from typing import Final, Protocol, runtime_checkable
 
 from clingo import Model as ClingoModel
-from clingo import SolveHandle, Symbol, SymbolType
+from clingo import SolveResult, Symbol, SymbolType
 
 from elenctic.determination import (
     Assignment,
@@ -188,7 +188,18 @@ ENUMERATION: Final = ("auto", "ignore")
 OPTIMIZATION: Final = ("auto", "optN")
 
 
-def _await(handle: SolveHandle, cut: Cut) -> Truncation | None:
+@runtime_checkable
+class _Handle(Protocol):
+    """The part of `clingo.SolveHandle` that a search drives."""
+
+    def resume(self) -> None: ...
+    def wait(self, _: float, /) -> bool: ...
+    def cancel(self) -> None: ...
+    def model(self) -> ClingoModel | None: ...
+    def get(self) -> SolveResult: ...
+
+
+def _await(handle: _Handle, cut: Cut) -> Truncation | None:
     """Wait for a model or the end, cancelling the search if it is cut first."""
     while (truncation := cut()) is None:
         if handle.wait(_SLICE):
@@ -198,7 +209,7 @@ def _await(handle: SolveHandle, cut: Cut) -> Truncation | None:
 
 
 def drain(
-    handle: SolveHandle, plan: Plan, cut: Cut, read: Callable[[ClingoModel], Seen]
+    handle: _Handle, plan: Plan, cut: Cut, read: Callable[[ClingoModel], Seen]
 ) -> tuple[list[Seen], Exhausted | Truncation]:
     """Take models until the end, the cut, or one more counted model than the cap of `plan`."""
     found: list[Seen] = []

@@ -1,5 +1,6 @@
 import threading
 from pathlib import Path
+from typing import get_type_hints
 
 import pytest
 from clingo import Control, Function
@@ -578,3 +579,23 @@ def test_shown_selections_combine_into_one_that_is_wild_if_any_is() -> None:
 def test_an_exhausted_search_that_found_nothing_without_a_refutation_is_refused() -> None:
     with pytest.raises(ValueError, match="is refuted"):
         search.decide(Run((), Exhausted.EXHAUSTED, frozenset()), None, search.models)
+
+
+def test_what_a_search_asks_of_a_handle_is_what_a_real_handle_offers() -> None:
+    asked = get_type_hints(search.drain)["handle"]
+    with Control().solve(yield_=True, async_=True) as handle:
+        assert isinstance(handle, asked)
+    assert not isinstance(object(), asked)
+
+
+def test_a_search_asks_of_a_handle_nothing_more_than_it_drives() -> None:
+    class Driven:
+        def resume(self) -> None: ...
+        def wait(self, timeout: float, /) -> bool:
+            return timeout >= 0
+
+        def cancel(self) -> None: ...
+        def model(self) -> None: ...
+        def get(self) -> None: ...
+
+    assert isinstance(Driven(), get_type_hints(search.drain)["handle"])
