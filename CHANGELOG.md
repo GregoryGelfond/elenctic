@@ -37,15 +37,16 @@ All notable changes are recorded here. The format follows
   declares clingcon without it is an error (`FAULT`, 2).
 
 - `--color auto|always|never` (default `auto`) and `--icons[=WHEN]` (Nerd Font glyphs, off unless asked),
-  each decided per stream. `auto` follows `NO_COLOR`, `TERM=dumb`, `CLICOLOR_FORCE`, then whether the
-  stream is a terminal; `FORCE_COLOR` is not read. See the output section of the reference.
+  each decided per stream. `auto` follows `NO_COLOR`, `TERM=dumb`, then whether the stream is a
+  terminal, so a redirected stream stays plain; only `--color always` colours it. `CLICOLOR_FORCE`,
+  `CLICOLOR` and `FORCE_COLOR` are not read. This governs elenctic's own report and diagnostics;
+  the help and usage messages are coloured as Python's `argparse` does by default. See the output
+  section of the reference.
 
 ### Changed
 
 - Diagnostics for a source that could not be checked go to stderr, with the reserved-command note
   and the internal-error line; verdicts and the summary stay on stdout. `--json` is all on stdout.
-- The help and usage messages follow the same colour decision, so `FORCE_COLOR` and `PYTHON_COLORS` no
-  longer colour them.
 - The terminal text is `elenctic.human`, the JSON is `elenctic.json_view` (`encode`, moved from
   `elenctic.report`, which holds the run's values); escape sequences are written by `elenctic.paint`
   alone.

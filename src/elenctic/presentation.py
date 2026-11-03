@@ -13,7 +13,7 @@ class When(StrEnum):
     """What `--color` and `--icons` ask for."""
 
     AUTO = "auto"
-    """On a terminal, unless the environment says otherwise."""
+    """On a terminal, unless `NO_COLOR` or `TERM=dumb` says otherwise."""
     ALWAYS = "always"
     NEVER = "never"
 
@@ -38,15 +38,12 @@ class Environment:
     """`NO_COLOR` is not empty."""
     dumb: bool
     """`TERM` is `dumb`."""
-    forced: bool
-    """`CLICOLOR_FORCE` is neither empty nor `0`."""
 
     @classmethod
     def of(cls, variables: Mapping[str, str]) -> Self:
         return cls(
             no_color=bool(variables.get("NO_COLOR")),
             dumb=variables.get("TERM") == "dumb",
-            forced=variables.get("CLICOLOR_FORCE", "") not in {"", "0"},
         )
 
 
@@ -70,12 +67,12 @@ PLAIN: Final = Presentation(Style(Color.OFF, Glyphs.PLAIN), Style(Color.OFF, Gly
 
 
 def _color(when: When, stream: Stream, environment: Environment) -> Color:
-    """Decide colour: the choice, else `NO_COLOR`, `TERM=dumb`, `CLICOLOR_FORCE`, the stream."""
+    """Decide colour: the choice, else `NO_COLOR`, `TERM=dumb`, then the stream."""
     if when is not When.AUTO:
         return Color.ON if when is When.ALWAYS else Color.OFF
     if environment.no_color or environment.dumb:
         return Color.OFF
-    return Color.ON if environment.forced or stream is Stream.TERMINAL else Color.OFF
+    return Color.ON if stream is Stream.TERMINAL else Color.OFF
 
 
 def _glyphs(when: When, stream: Stream) -> Glyphs:

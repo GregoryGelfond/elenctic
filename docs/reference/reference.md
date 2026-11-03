@@ -35,11 +35,13 @@ coloured on a terminal. Colour, `auto`, is decided in this order; the first rule
 | 1 | `--color always` or `--color never` | on or off |
 | 2 | `NO_COLOR` is set and not empty | off |
 | 3 | `TERM` is `dumb` | off |
-| 4 | `CLICOLOR_FORCE` is set and is neither empty nor `0` | on |
-| 5 | the stream is a terminal | on, else off |
+| 4 | the stream is a terminal | on, else off |
 
-`FORCE_COLOR` is not read. Python's own `PYTHON_COLORS` does not reach elenctic: the help and usage
-messages follow the same decision, and are coloured only when both stdout and stderr would be.
+A redirected stream (a pipe or a file) stays plain in `auto` whatever the environment says;
+`--color always` is the one way to colour it. `CLICOLOR_FORCE`, `CLICOLOR` and `FORCE_COLOR` are
+not read. This decision covers elenctic's own report and diagnostics. The help and usage messages
+are written by Python's `argparse`, which colours them by its own defaults, including
+`FORCE_COLOR`, `PYTHON_COLORS` and `NO_COLOR`; `--color` does not reach them.
 
 Glyphs ignore the environment. `--icons=always` marks claims with a glyph in place of `[PASS]`,
 `[FAIL]` and `[UNDECIDED]`; `auto` does so on a terminal; `never` and no option leave the text.

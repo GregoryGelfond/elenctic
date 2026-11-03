@@ -12,7 +12,6 @@ from typing import Final
 from elenctic.check import check
 from elenctic.human import internal_error, render, reserved
 from elenctic.json_view import to_json
-from elenctic.paint import Color
 from elenctic.presentation import Environment, Presentation, Stream, When, resolve
 from elenctic.program import Fault, Locus, Program
 from elenctic.report import Entry, Exit, Run
@@ -62,7 +61,7 @@ _models_limit = _limit_reader(int, "a positive integer")
 
 def _output_options() -> argparse.ArgumentParser:
     """Make the parser of the options that decide how output looks; every command takes them."""
-    options = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+    options = argparse.ArgumentParser(add_help=False)
     options.add_argument(
         "--color",
         choices=list(When),
@@ -84,18 +83,12 @@ def _output_options() -> argparse.ArgumentParser:
     return options
 
 
-def _parser(presentation: Presentation) -> argparse.ArgumentParser:
-    """Colour the parser's own help and errors only on streams the presentation colours.
-
-    The parser decides for itself too, from `FORCE_COLOR` and the terminal, so it never colours
-    a stream the presentation leaves plain, but it cannot be made to colour a redirected one.
-    """
-    colored = presentation.stdout.color is Color.ON and presentation.stderr.color is Color.ON
+def _parser() -> argparse.ArgumentParser:
+    """Make the parser; its help and usage are coloured as `argparse` does by default."""
     parser = argparse.ArgumentParser(
         prog="elenctic",
         description="Test, debug and analyse ASP programs. "
         "With no command, the paths are tested: `elenctic PATH...` is `elenctic test PATH...`.",
-        color=colored,
     )
     options = [_output_options()]
     commands = parser.add_subparsers(dest="command", metavar="COMMAND", required=True)
@@ -176,19 +169,14 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt) -> Entry | None:
     return None if result is None else Entry(program.source, result)
 
 
-def _presentation(argv: Sequence[str], environment: Mapping[str, str]) -> Presentation:
+def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str]) -> Presentation:
     """Decide once how each stream is written: the one place that asks the environment and streams.
 
-    The choices are read from `argv` before it is parsed, so that even a usage error is written
-    as decided. A bad choice leaves the defaults; the parser then refuses it.
+    It governs elenctic's own report and diagnostics; the parser's help and usage are its own.
     """
-    try:
-        chosen = _output_options().parse_known_args(argv)[0]
-    except argparse.ArgumentError:
-        chosen = _output_options().parse_args([])
     return resolve(
-        When(chosen.color),
-        When(chosen.icons),
+        When(arguments.color),
+        When(arguments.icons),
         Environment.of(environment),
         stdout=Stream.of(sys.stdout),
         stderr=Stream.of(sys.stderr),
@@ -223,8 +211,8 @@ def _exit_for_internal_error(error: Exception, presentation: Presentation) -> Ex
 def main(argv: Sequence[str] | None = None) -> Exit:
     """Run a command and return the status to exit with."""
     normalized = _normalized(sys.argv[1:] if argv is None else argv)
-    presentation = _presentation(normalized, os.environ)
-    arguments = _parser(presentation).parse_args(normalized)
+    arguments = _parser().parse_args(normalized)
+    presentation = _presentation(arguments, os.environ)
     try:
         return (_test if arguments.command == "test" else _reserved)(arguments, presentation)
     except Exception as error:  # noqa: BLE001

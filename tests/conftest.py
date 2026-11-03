@@ -1,6 +1,6 @@
 import pytest
 
-COLOR_VARIABLES = ("NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "FORCE_COLOR", "PYTHON_COLORS", "TERM")
+COLOR_VARIABLES = ("NO_COLOR", "FORCE_COLOR", "PYTHON_COLORS", "TERM")
 
 
 @pytest.fixture(autouse=True)

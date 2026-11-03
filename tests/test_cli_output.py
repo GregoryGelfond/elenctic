@@ -61,37 +61,27 @@ def test_always_colours_both_streams_by_their_roles(
     assert f"\x1b[1m{missing}:1:1-1\x1b[0m: \x1b[1;31merror\x1b[0m: " in shown.err
 
 
-def test_never_is_plain_whatever_the_environment_forces(
-    capsys: pytest.CaptureFixture[str], unmet: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("CLICOLOR_FORCE", "1")
-    shown = written(capsys, "--color=never", unmet)
-    assert "\x1b" not in shown.out
-
-
-# (environment, arguments) -> coloured? Every stream here is redirected, so only the flag and the
-# environment can colour.
+# (environment, arguments) -> coloured? Every stream here is redirected, so only an explicit
+# choice can colour: the environment never does.
 COLOURED_BY = [
     (({}, []), False),
-    (({"CLICOLOR_FORCE": "1"}, []), True),
-    (({"CLICOLOR_FORCE": "yes"}, []), True),
-    (({"CLICOLOR_FORCE": "0"}, []), False),
-    (({"CLICOLOR_FORCE": ""}, []), False),
-    (({"CLICOLOR_FORCE": "1", "NO_COLOR": "1"}, []), False),
-    (({"CLICOLOR_FORCE": "1", "NO_COLOR": ""}, []), True),
-    (({"CLICOLOR_FORCE": "1", "TERM": "dumb"}, []), False),
-    (({"CLICOLOR_FORCE": "1", "TERM": "xterm"}, []), True),
+    (({"CLICOLOR_FORCE": "1"}, []), False),
+    (({"CLICOLOR_FORCE": "1", "NO_COLOR": ""}, []), False),
+    (({"CLICOLOR_FORCE": "1", "TERM": "xterm"}, []), False),
+    (({"CLICOLOR_FORCE": "1"}, ["--color", "auto"]), False),
     (({"FORCE_COLOR": "1"}, []), False),
     (({"CLICOLOR": "1"}, []), False),
+    (({"TERM": "xterm"}, []), False),
+    (({}, ["--color", "always"]), True),
     (({"NO_COLOR": "1"}, ["--color", "always"]), True),
     (({"TERM": "dumb"}, ["--color", "always"]), True),
     (({"CLICOLOR_FORCE": "1", "NO_COLOR": "1"}, ["--color=never"]), False),
-    (({"CLICOLOR_FORCE": "1"}, ["--color", "auto"]), True),
+    (({"CLICOLOR_FORCE": "1"}, ["--color=never"]), False),
 ]
 
 
 @pytest.mark.parametrize(("setting", "coloured"), COLOURED_BY)
-def test_colour_follows_the_flag_then_the_environment(
+def test_a_redirected_stream_is_coloured_only_by_an_explicit_choice(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     unmet: Path,
@@ -105,16 +95,13 @@ def test_colour_follows_the_flag_then_the_environment(
     assert ("\x1b[" in shown.out, "\x1b[" in shown.err) == (coloured, coloured)
 
 
-def test_a_bad_choice_is_a_usage_error_written_plain(
-    capsys: pytest.CaptureFixture[str], unmet: Path
-) -> None:
+def test_a_bad_choice_is_a_usage_error(capsys: pytest.CaptureFixture[str], unmet: Path) -> None:
     with pytest.raises(SystemExit) as usage:
         main(["--color", "sometimes", str(unmet)])
     assert usage.value.code == Exit.FAULT
     err = capsys.readouterr().err
     assert err.startswith("usage: elenctic ")
     assert "invalid choice: 'sometimes'" in err
-    assert "\x1b" not in err
 
 
 def test_no_glyph_without_icons(capsys: pytest.CaptureFixture[str], unmet: Path) -> None:
@@ -206,12 +193,8 @@ def test_verdicts_and_summary_are_on_stdout_and_diagnostics_on_stderr(
 
 
 def test_json_keeps_the_whole_document_on_stdout_and_never_colours_it(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-    unmet: Path,
-    missing: Path,
+    capsys: pytest.CaptureFixture[str], unmet: Path, missing: Path
 ) -> None:
-    monkeypatch.setenv("CLICOLOR_FORCE", "1")
     shown = written(capsys, "--json", "--color=always", "--icons=always", unmet, missing)
     assert shown.code == Exit.FAULT
     assert shown.err == ""
@@ -235,25 +218,6 @@ def test_an_internal_error_is_painted_by_the_style_of_stderr(
     assert shown.code == Exit.INTERNAL_ERROR
     assert shown.out == ""
     assert shown.err == ("\x1b[1;31melenctic: internal error: RecursionError: no \\x1b[2J\x1b[0m\n")
-
-
-@pytest.mark.parametrize(
-    "environment",
-    [{"FORCE_COLOR": "1"}, {"PYTHON_COLORS": "1"}, {"FORCE_COLOR": "1", "PYTHON_COLORS": "1"}],
-)
-def test_the_parsers_own_colour_is_governed_by_the_presentation(
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
-    environment: dict[str, str],
-) -> None:
-    for name, value in environment.items():
-        monkeypatch.setenv(name, value)
-    with pytest.raises(SystemExit):
-        main(["--help"])
-    assert "\x1b" not in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        main(["--bogus"])
-    assert "\x1b" not in capsys.readouterr().err
 
 
 def test_the_help_names_the_output_options(capsys: pytest.CaptureFixture[str]) -> None:
@@ -342,31 +306,27 @@ def test_a_terminal_is_plain_when_the_environment_says_so(
     assert "\x1b[1;31m[FAIL]\x1b[0m" in out
 
 
-def test_the_parsers_help_is_coloured_when_both_streams_are() -> None:
-    _, out, _ = on_terminals(["--help"], terminal={"out", "err"})
-    assert "\x1b[" in out
-    _, out, _ = on_terminals(["--help"], terminal={"out", "err"}, environment={"NO_COLOR": "1"})
-    assert "\x1b" not in out
-    _, out, _ = on_terminals(["--color=never", "--help"], terminal={"out", "err"})
-    assert "\x1b" not in out
-    _, out, _ = on_terminals(["--help"], terminal={"out"})
-    assert "\x1b" not in out
+def test_an_empty_no_color_says_nothing_to_a_terminal(unmet: Path) -> None:
+    _, out, _ = on_terminals([str(unmet)], terminal={"out"}, environment={"NO_COLOR": ""})
+    assert "\x1b[1;31m[FAIL]\x1b[0m" in out
 
 
-def test_the_parsers_help_is_plain_when_only_one_stream_is_a_terminal(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("terminal", [{"out", "err"}, set()], ids=["terminals", "redirected"])
+def test_an_explicit_choice_wins_over_the_environment_on_either_stream(
+    unmet: Path, terminal: set[str]
 ) -> None:
-    master, slave = os.openpty()
-    try:
-        with os.fdopen(slave, "w", closefd=False) as terminal:
-            monkeypatch.setattr(sys, "stdout", terminal)
-            monkeypatch.setenv("TERM", "xterm-256color")
-            with pytest.raises(SystemExit):
-                main(["--help"])
-            terminal.flush()
-        shown = os.read(master, 65536).decode()
-    finally:
-        os.close(master)
-        os.close(slave)
-    assert "usage: elenctic" in shown
-    assert "\x1b" not in shown
+    hostile = {"NO_COLOR": "1", "TERM": "dumb"}
+    _, out, _ = on_terminals(["--color=always", str(unmet)], terminal=terminal, environment=hostile)
+    assert "\x1b[1;31m[FAIL]\x1b[0m" in out
+    _, out, _ = on_terminals(
+        ["--color=never", str(unmet)], terminal=terminal, environment={"TERM": "xterm"}
+    )
+    assert "\x1b" not in out
+
+
+@pytest.mark.parametrize("variables", [{"CLICOLOR_FORCE": "1"}, {"CLICOLOR": "1"}, {}])
+def test_a_redirected_stream_stays_plain_whatever_the_environment_asks(
+    unmet: Path, variables: dict[str, str]
+) -> None:
+    _, out, err = on_terminals([str(unmet)], terminal=set(), environment=variables)
+    assert "\x1b" not in out + err
