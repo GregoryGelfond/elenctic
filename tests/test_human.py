@@ -1,6 +1,10 @@
 import re
 
+import pytest
+
 from elenctic.about import Package, Solvers
+from elenctic.contract import Claim, Satisfiable
+from elenctic.determination import Truncation
 from elenctic.glyphs import MARKS, Glyphs
 from elenctic.human import (
     SEVERITY_ROLES,
@@ -12,10 +16,10 @@ from elenctic.human import (
 )
 from elenctic.paint import Color
 from elenctic.presentation import PLAIN, Presentation, Style
-from elenctic.report import Run
+from elenctic.report import Entry, Run
 from elenctic.search import Limits
-from elenctic.spans import Severity
-from elenctic.verdicts import Verdict
+from elenctic.spans import Position, Severity, Span
+from elenctic.verdicts import Ended, Finding, Report, Verdict
 from runs import FAILING, FAULTY, PASSING, PROGRAM_WITH_ESCAPE_CODES, UNDECIDED_COUNT, entry
 
 COLORED = Presentation(Style(Color.ON, Glyphs.PLAIN), Style(Color.ON, Glyphs.PLAIN))
@@ -216,3 +220,30 @@ def test_what_the_metadata_says_is_made_legible_and_the_glyph_is_not() -> None:
         "elenctic 1\\x1b[2J | \uf1f9 2026 G\\x1b]0;x | MIT\\x07",
         "clingo 5\\x1b | clingcon 5\\x1b",
     ]
+
+
+ENDED_WORDS = {
+    Truncation.MAX_ANSWER_SETS: "answer-set limit reached (--max-answer-sets)",
+    Truncation.MAX_SECONDS: "time limit reached (--max-seconds)",
+    Truncation.INTERRUPTED: "interrupted",
+}
+
+
+def _ended_line(detail: Ended) -> str:
+    claim = Claim(
+        Satisfiable(expected=True), frozenset(), Span("t.lp", Position(2, 1), Position(2, 9))
+    )
+    finding = Finding(claim, Verdict.UNDECIDED, detail)
+    run = Run((Entry("t.lp", Report("t.lp", (finding,))),))
+    return render(run, PLAIN).stdout.splitlines()[1]
+
+
+@pytest.mark.parametrize("cut", list(Truncation))
+def test_a_search_cut_short_says_in_words_what_ended_it(cut: Truncation) -> None:
+    assert _ended_line(Ended(cut)).endswith(f"(line 2): search ended: {ENDED_WORDS[cut]}")
+
+
+@pytest.mark.parametrize("cut", list(Truncation))
+def test_an_unproven_optimum_says_so_before_what_ended_the_search(cut: Truncation) -> None:
+    line = _ended_line(Ended(cut, optimum_unproven=True))
+    assert line.endswith(f"(line 2): no optimum proven: search ended: {ENDED_WORDS[cut]}")

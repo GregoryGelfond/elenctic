@@ -18,21 +18,20 @@ from elenctic.determination import (
     These,
     Truncation,
 )
-from elenctic.verdicts import Finding, Verdict
+from elenctic.verdicts import Detail, Ended, Finding, Verdict
 
 
 def _consequent(
     reading: Reading, found: Consequences, conclusion: Exhausted | Truncation
-) -> tuple[Verdict, str]:
+) -> tuple[Verdict, Detail]:
     """Judge from native consequences, which settle a claim about them only once exhausted.
 
     An empty claim is the exception: it holds of whatever was found.
     """
     if isinstance(reading, Entails):
-        closed = conclusion is Exhausted.EXHAUSTED
-        if reading.literals and not closed:
-            return Verdict.UNDECIDED, f"search ended: {conclusion}"
-        return entailed(reading, found.literals, closed=closed)
+        if reading.literals and isinstance(conclusion, Truncation):
+            return Verdict.UNDECIDED, Ended(conclusion)
+        return entailed(reading, found.literals, closed=conclusion is Exhausted.EXHAUSTED)
     return Verdict.when(holds=reading == Satisfiable(expected=True)), "an answer set exists"
 
 
@@ -47,7 +46,7 @@ def _levels(cost: Cost) -> str:
 
 def _optimal(
     reading: Reading, found: Optimum, conclusion: Exhausted | Truncation
-) -> tuple[Verdict, str]:
+) -> tuple[Verdict, Detail]:
     """Judge from a proven optimum and the optimal answer sets found, all of them if exhausted."""
     if isinstance(reading, Costs):
         return _cost(reading, found.cost)
@@ -76,10 +75,10 @@ def judge(claim: Claim, found: Found) -> Finding:
     return Finding(claim, *_verdict(claim.reading, found))
 
 
-def _verdict(reading: Reading, found: Found) -> tuple[Verdict, str]:
+def _verdict(reading: Reading, found: Found) -> tuple[Verdict, Detail]:
     match found:
         case Inconclusive(cut):
-            return Verdict.UNDECIDED, f"search ended: {cut}"
+            return Verdict.UNDECIDED, Ended(cut)
         case Inconsistent(refutation):
             return _inconsistent(reading, refutation)
         case Consistent(evidence, conclusion):
@@ -90,7 +89,7 @@ def _evidence(
     reading: Reading,
     evidence: AnswerSets | Consequences | Optimized,
     conclusion: Exhausted | Truncation,
-) -> tuple[Verdict, str]:
+) -> tuple[Verdict, Detail]:
     match evidence:
         case AnswerSets():
             return from_answer_sets(reading, Consistent(evidence, conclusion))
@@ -99,4 +98,4 @@ def _evidence(
         case Optimum():
             return _optimal(reading, evidence, conclusion)
         case Incumbent():
-            return Verdict.UNDECIDED, f"no optimum proven: search ended: {conclusion}"
+            return Verdict.UNDECIDED, Ended(Truncation(conclusion), optimum_unproven=True)

@@ -14,7 +14,7 @@ from elenctic.determination import AnswerSet, Incumbent, Truncation, WorldView
 from elenctic.json_view import SCHEMA, encode, kind_of, to_json
 from elenctic.report import Entry, Exit, Run
 from elenctic.spans import Position
-from elenctic.verdicts import Report
+from elenctic.verdicts import Ended, Report
 from runs import FAILING, PROGRAM_WITH_ESCAPE_CODES, entry
 
 
@@ -117,4 +117,12 @@ def test_a_kind_is_the_type_name_in_snake_case() -> None:
             "assignment": [],
             "cost": [],
         },
+    }
+
+
+def test_a_search_cut_short_is_encoded_as_the_limit_that_ended_it() -> None:
+    assert encode(Ended(Truncation.MAX_SECONDS)) == {
+        "kind": "ended",
+        "cut": "max_seconds",
+        "optimum_unproven": False,
     }

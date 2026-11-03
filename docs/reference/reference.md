@@ -143,6 +143,10 @@ A contract that would be misread is not judged; the file is reported as an error
 search cut short by `--max-seconds` or `--max-answer-sets` can pass an existential claim (a witness was seen) or
 fail a universal one (a counter-example was seen); anything else it leaves `undecided`.
 
+When a cut leaves a claim open, the text says what cut the search: `search ended: answer-set limit reached
+(--max-answer-sets)`, `time limit reached (--max-seconds)` or `interrupted`. In JSON the finding's `detail`
+is then an object, `{"kind": "ended", "cut": "max_seconds", "optimum_unproven": false}`.
+
 ## Library
 
 Everything in `elenctic.__all__`, and nothing else is promised; from 1.0 it follows semver, and
@@ -270,7 +274,9 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Costs` | `@cost { c1 c2 ... }` |
 | `Asks` | `@query A { L, ... }`: a conjunction of ground literals has the answer `A` |
 | `Binds` | `@query A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B` |
-| `Finding` | a claim, the verdict on it, and what was expected against what was found |
+| `Finding` | a claim, the verdict on it, and its `Detail`: what was expected against what was found |
+| `Detail` | text, or an `Ended` when the search ended before it could settle the claim |
+| `Ended` | the `Truncation` that cut the search short, and whether an optimum went unproven; the text view words it, and in JSON it is the finding's `detail` |
 | `Found` | a search `judge` can read: a `Determination` over `AnswerSets`, `Consequences` or `Optimized` |
 | `Report` | the findings for one source; `verdict` is `FAIL` if any fails, else `UNDECIDED` if any is, else `PASS` |
 | `Verdict` | `PASS`, `FAIL` or `UNDECIDED` |

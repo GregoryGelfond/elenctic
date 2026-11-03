@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from elenctic.cli import main
+from elenctic.determination import Truncation, option
 from elenctic.report import Exit
 from interrupting import at_first_answer_set
 
@@ -219,3 +220,21 @@ def test_a_search_that_reaches_the_answer_set_limit_is_undecided_unless_the_limi
     assert f"[UNDECIDED] @count {SUBSETS}" in out
     assert run(capsys, path, "--max-answer-sets", "all") == held
     assert run(capsys, path, "--max-answer-sets", str(SUBSETS)) == held
+
+
+@pytest.mark.parametrize("cut", [Truncation.MAX_ANSWER_SETS, Truncation.MAX_SECONDS])
+def test_the_option_a_search_ended_message_names_is_one_the_command_takes(
+    cut: Truncation, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit):
+        main(["test", "--help"])
+    assert option(cut) in capsys.readouterr().out
+
+
+def test_a_search_that_reaches_the_answer_set_limit_names_the_option_that_set_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @query yes { tea }\n")
+    code, out = run(capsys, path, "--max-answer-sets", "1")
+    assert code == Exit.CLAIM_UNMET
+    assert "search ended: answer-set limit reached (--max-answer-sets)" in out

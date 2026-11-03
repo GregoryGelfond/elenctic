@@ -73,7 +73,7 @@ from elenctic.spans import Diagnostic, Position, Severity, Span
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable
 from elenctic.unify import Unifier, mgu
-from elenctic.verdicts import Finding, Report, Verdict
+from elenctic.verdicts import Detail, Ended, Finding, Report, Verdict
 from elenctic.writer import render
 
 __all__ = [
@@ -99,8 +99,10 @@ __all__ = [
     "Cost",
     "Costs",
     "Cut",
+    "Detail",
     "Determination",
     "Diagnostic",
+    "Ended",
     "Entails",
     "Exhausted",
     "Extension",

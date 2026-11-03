@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 
 from elenctic.contract import Claim
+from elenctic.determination import Truncation
 from elenctic.writer import render
 
 
@@ -19,12 +20,23 @@ class Verdict(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class Ended:
+    """The search ended before it could settle the claim, and by what; the view words it."""
+
+    cut: Truncation
+    optimum_unproven: bool = False
+
+
+type Detail = str | Ended
+
+
+@dataclass(frozen=True, slots=True)
 class Finding:
     """A claim, the verdict on it, and what was expected against what was found."""
 
     claim: Claim
     verdict: Verdict
-    detail: str
+    detail: Detail
 
     @property
     def claim_text(self) -> str:

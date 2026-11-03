@@ -27,7 +27,7 @@ from elenctic.determination import (
 )
 from elenctic.literals import Atoms, Symbol
 from elenctic.query import answer, bindings
-from elenctic.verdicts import Verdict, existential, universal
+from elenctic.verdicts import Detail, Ended, Verdict, existential, universal
 from elenctic.writer import bound, braces, where
 
 _INTERSECTION: Final = "\N{N-ARY INTERSECTION}"
@@ -105,14 +105,14 @@ def _rows(found: frozenset[tuple[Symbol, ...]]) -> str:
     return "{ " + ", ".join(sorted("(" + ",".join(map(str, row)) + ")" for row in found)) + " }"
 
 
-def _worldly(reading: Asks | Binds, found: Consistent[AnswerSets]) -> tuple[Verdict, str]:
+def _worldly(reading: Asks | Binds, found: Consistent[AnswerSets]) -> tuple[Verdict, Detail]:
     view = world_view(found)
     if isinstance(view, Truncation):
-        return Verdict.UNDECIDED, f"search ended: {view}"
+        return Verdict.UNDECIDED, Ended(view)
     return _asked(reading, view)
 
 
-def from_answer_sets(reading: Reading, found: Consistent[AnswerSets]) -> tuple[Verdict, str]:
+def from_answer_sets(reading: Reading, found: Consistent[AnswerSets]) -> tuple[Verdict, Detail]:
     answer_sets = found.evidence.all
     closed = found.conclusion is Exhausted.EXHAUSTED
     match reading:

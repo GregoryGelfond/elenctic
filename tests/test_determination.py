@@ -8,6 +8,7 @@ from elenctic.determination import (
     Exhausted,
     Truncation,
     WorldView,
+    option,
     world_view,
 )
 from elenctic.literals import Literal
@@ -52,3 +53,8 @@ def test_a_conclusion_is_exhausted_or_a_truncation() -> None:
 
 def test_a_truncation_is_named_for_the_limit_that_cut_the_search() -> None:
     assert [str(cut) for cut in Truncation] == ["max_answer_sets", "max_seconds", "interrupted"]
+
+
+def test_a_limit_is_offered_as_the_option_named_for_what_it_bounds() -> None:
+    assert option(Truncation.MAX_ANSWER_SETS) == "--max-answer-sets"
+    assert option(Truncation.MAX_SECONDS) == "--max-seconds"

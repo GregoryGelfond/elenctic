@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Final
 
 from elenctic.about import Package, Solvers
+from elenctic.determination import Truncation, option
 from elenctic.display import legible
 from elenctic.glyphs import COPYRIGHT, MARKS
 from elenctic.paint import Role, paint
@@ -16,7 +17,7 @@ from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
 from elenctic.report import Entry, Run
 from elenctic.spans import Diagnostic, Severity
-from elenctic.verdicts import Finding, Report, Verdict
+from elenctic.verdicts import Ended, Finding, Report, Verdict
 
 VERDICT_ROLES: Final[Mapping[Verdict, Role]] = {
     Verdict.PASS: Role.NOTE,
@@ -27,6 +28,11 @@ SEVERITY_ROLES: Final[Mapping[Severity, Role]] = {
     Severity.ERROR: Role.ERROR,
     Severity.WARNING: Role.WARNING,
     Severity.NOTE: Role.NOTE,
+}
+CUT_WORDS: Final[Mapping[Truncation, str]] = {
+    Truncation.MAX_ANSWER_SETS: f"answer-set limit reached ({option(Truncation.MAX_ANSWER_SETS)})",
+    Truncation.MAX_SECONDS: f"time limit reached ({option(Truncation.MAX_SECONDS)})",
+    Truncation.INTERRUPTED: "interrupted",
 }
 
 
@@ -43,11 +49,21 @@ def _say(style: Style, role: Role, text: str) -> str:
     return paint(style.color, role, legible(text))
 
 
+def _detail(detail: str | Ended) -> str:
+    """Word what was found, or what cut the search short."""
+    match detail:
+        case Ended(cut, optimum_unproven):
+            unproven = "no optimum proven: " if optimum_unproven else ""
+            return f"{unproven}search ended: {CUT_WORDS[cut]}"
+        case _:
+            return legible(detail)
+
+
 def _line(finding: Finding, style: Style) -> str:
     verdict = finding.verdict
     mark = paint(style.color, VERDICT_ROLES[verdict], MARKS[verdict].shown(style.glyphs))
     line = paint(style.color, Role.MARGIN, f"(line {finding.claim.span.start.line})")
-    return f"  {mark} {legible(finding.claim_text)} {line}: {legible(finding.detail)}"
+    return f"  {mark} {legible(finding.claim_text)} {line}: {_detail(finding.detail)}"
 
 
 def _diagnostic(diagnostic: Diagnostic, style: Style) -> str:

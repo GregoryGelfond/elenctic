@@ -9,7 +9,7 @@ from elenctic.literals import Assumption, Literal
 from elenctic.program import Fault, Locus, Program
 from elenctic.search import Interrupt, Limits
 from elenctic.spans import Position, Span
-from elenctic.verdicts import Finding, Report, Verdict
+from elenctic.verdicts import Ended, Finding, Report, Verdict
 from interrupting import at_first_answer_set
 from nesting import DEEP_NESTING, nested
 
@@ -47,8 +47,8 @@ def test_a_wrong_claim_fails_and_says_what_the_program_does() -> None:
     (finding,) = run(DRINKS + "% @expect sat\n% @cautious { tea }\n").findings[1:]
     assert finding.verdict is F
     assert finding.claim.span.start.line == 6
-    assert "missing: { tea }" in finding.detail
-    assert "{ biscuit }" in finding.detail
+    assert "missing: { tea }" in str(finding.detail)
+    assert "{ biscuit }" in str(finding.detail)
 
 
 def test_the_count_is_of_distinct_shown_answer_sets() -> None:
@@ -78,8 +78,8 @@ def test_a_scenario_is_judged_apart_from_the_program() -> None:
 
 def test_a_refuted_scenario_names_the_assumptions_at_fault() -> None:
     report = run(DRINKS + "% @expect sat\n% @brave { tea } assuming { tea, coffee }\n")
-    assert "tea" in report.findings[1].detail
-    assert "coffee" in report.findings[1].detail
+    assert "tea" in str(report.findings[1].detail)
+    assert "coffee" in str(report.findings[1].detail)
 
 
 def test_queries_are_answered_over_every_answer_set() -> None:
@@ -116,7 +116,7 @@ def test_a_search_cut_short_is_undecided_not_failed() -> None:
     report = run(text, limits=Limits(max_seconds=0))
     assert [f.verdict for f in report.findings] == [U, U, U]
     assert report.verdict is U
-    assert str(Truncation.MAX_SECONDS) in report.findings[0].detail
+    assert report.findings[0].detail == Ended(Truncation.MAX_SECONDS)
 
 
 def test_a_satisfiability_claim_alone_asks_the_solver_for_one_answer_set() -> None:
@@ -333,7 +333,7 @@ def test_an_incumbent_is_never_a_pass_for_a_cost_claim() -> None:
     )
     finding = judge(claim, found)
     assert finding.verdict is U
-    assert "no optimum proven" in finding.detail
+    assert finding.detail == Ended(Truncation.MAX_SECONDS, optimum_unproven=True)
 
 
 def test_a_core_that_may_not_be_minimal_says_so() -> None:
@@ -342,8 +342,8 @@ def test_a_core_that_may_not_be_minimal_says_so() -> None:
     exact = judge(claim, Inconsistent(These(core)))
     cut = judge(claim, Inconsistent(These(core, minimal=False)))
     assert exact.detail == "no answer set satisfies the assumptions (p)"
-    assert cut.detail.startswith(exact.detail)
-    assert "may not be minimal" in cut.detail
+    assert str(cut.detail).startswith(str(exact.detail))
+    assert "may not be minimal" in str(cut.detail)
 
 
 NESTED_PROGRAM = (
@@ -364,7 +364,7 @@ def test_a_binding_query_may_nest_its_variables_beneath_a_function() -> None:
 def test_a_nested_binding_query_that_is_wrong_fails_and_says_what_was_found() -> None:
     (finding,) = run(NESTED_PROGRAM + "% @query yes { p(f(X), a) } = { 2 }\n").findings[1:]
     assert finding.verdict is F
-    assert "yes bindings expected { (2) }, found { (1) }" in finding.detail
+    assert "yes bindings expected { (2) }, found { (1) }" in str(finding.detail)
 
 
 def test_a_binding_query_may_name_a_tuple_and_its_ground_part() -> None:
@@ -414,7 +414,7 @@ def test_a_consequence_claim_is_open_when_the_search_is_cut_after_its_first_answ
     found = check(Program(text, "t.lp"), interrupt=interrupt)
     assert isinstance(found, Report)
     assert [f.verdict for f in found.findings] == [P, U]
-    assert str(Truncation.INTERRUPTED) in found.findings[1].detail
+    assert found.findings[1].detail == Ended(Truncation.INTERRUPTED)
 
 
 def test_native_consequences_settle_a_claim_that_an_answer_set_limit_leaves_open() -> None:

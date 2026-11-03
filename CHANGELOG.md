@@ -68,6 +68,11 @@ All notable changes are recorded here. The format follows
   hyphens.
 - The `kind` of every JSON object is its type's name in snake case (`report`, `entails`, `answer_set`), derived in
   one place, `json_view.kind_of`.
+- A search cut short is worded for people by the text view: `search ended: answer-set limit reached
+  (--max-answer-sets)`, `time limit reached (--max-seconds)` or `interrupted`, where the text said
+  `max_answer_sets`. A finding's `detail` is text or `Ended` (the `Truncation`, and whether an optimum went
+  unproven), which is an object in the JSON; `Detail` and `Ended` are exported. The option names come from
+  `determination.option`, which the command line uses too.
 
 - Diagnostics for a source that could not be checked go to stderr, with the reserved-command note
   and the internal-error line; verdicts and the summary stay on stdout. `--json` is all on stdout.

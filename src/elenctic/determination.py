@@ -23,6 +23,14 @@ class Truncation(StrEnum):
 type Conclusion = Exhausted | Truncation
 
 
+def option(limit: Truncation) -> str:
+    """Name the command-line option that sets a limit, for what it bounds: `--max-seconds`.
+
+    The one place an option is named, so the command line and its messages cannot disagree.
+    """
+    return "--" + limit.value.replace("_", "-")
+
+
 class Range(StrEnum):
     """Which answer sets a value ranges over: all of them, or those optimal."""
 

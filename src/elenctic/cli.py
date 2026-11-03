@@ -11,6 +11,7 @@ from typing import Final
 
 from elenctic.about import VersionExit, package
 from elenctic.check import check
+from elenctic.determination import Truncation, option
 from elenctic.human import internal_error, render, reserved, version
 from elenctic.json_view import to_json
 from elenctic.presentation import Environment, Presentation, Stream, When, resolve
@@ -123,14 +124,14 @@ def _parser() -> argparse.ArgumentParser:
     test.add_argument("--json", action="store_true", help="write the run as JSON")
     test.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
     test.add_argument(
-        "--max-seconds",
+        option(Truncation.MAX_SECONDS),
         type=_seconds_limit,
         default=DEFAULT_MAX_SECONDS,
         metavar="SECONDS|all",
         help="time allowed per search, or `all` for no limit (default: %(default)s)",
     )
     test.add_argument(
-        "--max-answer-sets",
+        option(Truncation.MAX_ANSWER_SETS),
         type=_answer_sets_limit,
         default=DEFAULT_MAX_ANSWER_SETS,
         metavar="N|all",
