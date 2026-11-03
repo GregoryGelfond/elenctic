@@ -23,6 +23,12 @@ def run(capsys: pytest.CaptureFixture[str], *argv: object) -> tuple[int, str]:
     return code, capsys.readouterr().out
 
 
+def run_both(capsys: pytest.CaptureFixture[str], *argv: object) -> tuple[int, str, str]:
+    code = main([str(a) for a in argv])
+    captured = capsys.readouterr()
+    return code, captured.out, captured.err
+
+
 def test_a_directory_is_searched_for_cases_and_libraries_are_left_alone(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -43,9 +49,10 @@ def test_a_failing_claim_exits_with_the_claim_unmet(
 def test_a_missing_file_exits_as_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    code, out = run(capsys, tmp_path / "absent.lp")
+    code, out, err = run_both(capsys, tmp_path / "absent.lp")
     assert code == Exit.FAULT
-    assert out.splitlines()[0].startswith(f"{tmp_path / 'absent.lp'}:1:1-1: error: ")
+    assert err.splitlines()[0].startswith(f"{tmp_path / 'absent.lp'}:1:1-1: error: ")
+    assert out == "0/1 passed, 1 error\n"
 
 
 def test_json_is_written_on_request(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -143,11 +150,10 @@ def test_a_file_that_is_not_utf8_is_an_error_of_the_request(
 ) -> None:
     path = tmp_path / "latin1.lp"
     path.write_bytes(b'p("\xff").\n% @expect sat\n')
-    code, out = run(capsys, path)
+    code, out, err = run_both(capsys, path)
     assert code == Exit.FAULT
-    assert (
-        out.splitlines()[0] == f"{path}:1:1-1: error: not valid UTF-8: invalid start byte at byte 3"
-    )
+    assert err == f"{path}:1:1-1: error: not valid UTF-8: invalid start byte at byte 3\n"
+    assert out == "0/1 passed, 1 error\n"
 
 
 def test_a_failure_of_its_own_is_an_internal_error_with_a_message_and_no_traceback(

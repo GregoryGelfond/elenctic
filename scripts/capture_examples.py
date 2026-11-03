@@ -12,11 +12,14 @@ TARGET = ROOT / "docs" / "reference" / "examples.md"
 
 
 def capture(path: Path) -> tuple[int, str]:
-    """Run `elenctic -v PATH` from the repository root; its exit code and what it wrote."""
+    """Run `elenctic -v PATH` from the repository root; its exit code and what it wrote.
+
+    Diagnostics come first, as a terminal shows them.
+    """
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         code = main(["-v", str(path.relative_to(ROOT))])
-    return code, out.getvalue() + err.getvalue()
+    return code, err.getvalue() + out.getvalue()
 
 
 def section(path: Path) -> str:

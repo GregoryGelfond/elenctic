@@ -72,9 +72,10 @@ name = "a module imports only from its own layer and the layers below it"
 type = "layers"
 layers = [
     "elenctic.cli",
-    "elenctic.check",
+    "elenctic.check | elenctic.human | elenctic.json_view",
     "elenctic.judge",
-    "elenctic.by_models | elenctic.report",
+    "elenctic.presentation",
+    "elenctic.by_models | elenctic.glyphs | elenctic.report",
     "elenctic.reader | elenctic.verdicts",
     "elenctic.directives | elenctic.engine | elenctic.gates | elenctic.queries | elenctic.readings | elenctic.wellformed | elenctic.writer",
     "elenctic.contract | elenctic.operands",
@@ -82,7 +83,7 @@ layers = [
     "elenctic.classes | elenctic.patterns | elenctic.rows | elenctic.search",
     "elenctic.facts | elenctic.matching | elenctic.normalize | elenctic.relation | elenctic.substitution | elenctic.theory",
     "elenctic.body | elenctic.determination | elenctic.extension | elenctic.program | elenctic.tags | elenctic.terms",
-    "elenctic.braces | elenctic.display | elenctic.literals | elenctic.partition | elenctic.spans | elenctic.tree",
+    "elenctic.braces | elenctic.display | elenctic.literals | elenctic.paint | elenctic.partition | elenctic.spans | elenctic.tree",
     "elenctic.traversal",
 ]
 

@@ -61,4 +61,4 @@ def test_a_clingcon_contract_without_clingcon_exits_two(
 ) -> None:
     (tmp_path / "case.lp").write_text(CLINGCON + "p.\n% @expect sat\n")
     assert main([str(tmp_path)]) == Exit.FAULT
-    assert ABSENT in capsys.readouterr().out
+    assert ABSENT in capsys.readouterr().err
