@@ -55,7 +55,7 @@ NO_COLOR = Environment(no_color=True, dumb=False)
 DUMB = Environment(no_color=False, dumb=True)
 EVERYTHING = Environment(no_color=True, dumb=True)
 
-# (choice, environment, stdout stream, stderr stream) -> (stdout colour, stderr colour)
+# (choice, environment, stdout stream, stderr stream) -> (stdout color, stderr color)
 PRECEDENCE = [
     # an explicit flag wins over everything, per stream or not
     (When.ALWAYS, EVERYTHING, (R, R), (ON, ON)),
@@ -79,7 +79,7 @@ PRECEDENCE = [
     ("choice", "environment", "streams", "colors"),
     PRECEDENCE,
 )
-def test_colour_is_decided_per_stream_by_the_precedence_table(
+def test_color_is_decided_per_stream_by_the_precedence_table(
     choice: When,
     environment: Environment,
     streams: tuple[Stream, Stream],
@@ -137,7 +137,7 @@ def test_each_stream_has_its_own_glyphs() -> None:
     assert presentation == Presentation(Style(OFF, Glyphs.NERD), Style(OFF, Glyphs.PLAIN))
 
 
-def test_the_plain_presentation_is_no_colour_and_no_glyph() -> None:
+def test_the_plain_presentation_is_no_color_and_no_glyph() -> None:
     assert resolve(When.NEVER, When.NEVER, QUIET, stdout=T, stderr=T) == PLAIN
 
 

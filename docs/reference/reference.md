@@ -11,7 +11,7 @@ like a command is written `./why`.
 | `--json` | write the run as JSON |
 | `-V`, `--version` | print the version and exit; stands before the command (below) |
 | `-v`, `--verbose` | list the claims that passed |
-| `--color WHEN` | colour the text: `auto` (default), `always` or `never` |
+| `--color WHEN` | color the text: `auto` (default), `always` or `never` |
 | `--icons[=WHEN]` | mark claims with Nerd Font glyphs: `auto`, `always` or `never`; given bare it is `auto`, left out it is `never`. A value takes an equals sign: `--icons always` names a path |
 | `--budget SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default 30) |
 | `--models N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default 100,000) |
@@ -26,10 +26,10 @@ command (or alone) and win over the rest of the line, so `elenctic --version tes
 version; a command does not take them, so `elenctic test --version` is a usage error (`FAULT`, 2).
 `--color` and `--icons` may stand before the command too, as in `elenctic --icons --version`; a
 command's own `--color` or `--icons` overrides them. The
-first line is `elenctic VERSION | © 2026 Gregory Gelfond | MIT`: the version and licence are those of
+first line is `elenctic VERSION | © 2026 Gregory Gelfond | MIT`: the version and license are those of
 the installed package, the holder is its author. The second is the versions of clingo and clingcon as
 loaded, such as `clingo 5.8.2 | clingcon 5.2.1`, or `clingcon not installed`. With `--icons` the
-copyright sign is the Nerd Font glyph `fa-copyright`; the text takes no colour.
+copyright sign is the Nerd Font glyph `fa-copyright`; the text takes no color.
 
 `repl`, `why`, `ask` and `explain` are reserved: each writes a note on stderr and exits `FAULT` (2).
 `--color` and `--icons` apply to every command; the other options belong to `test`.
@@ -38,12 +38,12 @@ copyright sign is the Nerd Font glyph `fa-copyright`; the text takes no colour.
 
 Verdicts and the summary go to stdout; diagnostics for sources that could not be checked, the
 reserved-command note and the internal-error line go to stderr. With `--json` the whole document is
-on stdout and is never coloured or marked with glyphs.
+on stdout and is never colored or marked with glyphs.
 
-Colour and glyphs are decided for each stream on its own, so `elenctic … > run.txt` leaves stderr
-coloured on a terminal. Colour, `auto`, is decided in this order; the first rule that applies wins.
+Color and glyphs are decided for each stream on its own, so `elenctic … > run.txt` leaves stderr
+colored on a terminal. Color, `auto`, is decided in this order; the first rule that applies wins.
 
-| Order | Rule | Colour |
+| Order | Rule | Color |
 |---|---|---|
 | 1 | `--color always` or `--color never` | on or off |
 | 2 | `NO_COLOR` is set and not empty | off |
@@ -51,18 +51,18 @@ coloured on a terminal. Colour, `auto`, is decided in this order; the first rule
 | 4 | the stream is a terminal | on, else off |
 
 A redirected stream (a pipe or a file) stays plain in `auto` whatever the environment says;
-`--color always` is the one way to colour it. `CLICOLOR_FORCE`, `CLICOLOR` and `FORCE_COLOR` are
+`--color always` is the one way to color it. `CLICOLOR_FORCE`, `CLICOLOR` and `FORCE_COLOR` are
 not read. This decision covers elenctic's own report and diagnostics. The help and usage messages
-are written by Python's `argparse`, which colours them by its own defaults, including
+are written by Python's `argparse`, which colors them by its own defaults, including
 `FORCE_COLOR`, `PYTHON_COLORS` and `NO_COLOR`; `--color` does not reach them.
 
 Glyphs ignore the environment. `--icons=always` marks claims with a glyph in place of `[PASS]`,
 `[FAIL]` and `[UNDECIDED]`; `auto` does so on a terminal; `never` and no option leave the text.
-Glyphs and colour are independent. The glyphs are from a Nerd Font: a terminal without one shows
+Glyphs and color are independent. The glyphs are from a Nerd Font: a terminal without one shows
 boxes, which is why they are off unless asked for. Program text is made legible before it is
-coloured or marked, so a program cannot write escape sequences.
+colored or marked, so a program cannot write escape sequences.
 
-Colours by role: error `1;31` (a `FAIL`, an error, an internal error), warning `1;33`
+Colors by role: error `1;31` (a `FAIL`, an error, an internal error), warning `1;33`
 (`UNDECIDED`), note `1;32` (`PASS`), help `1;36` (the reserved-command note), margin `1;34` (line
 numbers) and emphasis `1` (sources and the summary).
 

@@ -1,6 +1,6 @@
-"""What elenctic says about itself: its version, licence and holder, and the solvers it runs on.
+"""What elenctic says about itself: its version, license and holder, and the solvers it runs on.
 
-The version and the licence come from the metadata of the installed package, the holder from the
+The version and the license come from the metadata of the installed package, the holder from the
 name in its `Author-email`, and the year is the one constant here. A test compares the year and the
 holder to the copyright line of `LICENSE`, so they cannot drift apart.
 """
@@ -22,7 +22,7 @@ class Package:
     """The package as its metadata and its copyright line state it."""
 
     version: str
-    licence: str
+    license: str
     """An SPDX expression, as the metadata states it."""
     holder: str
     year: int

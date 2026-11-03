@@ -11,7 +11,7 @@ LICENSE = ROOT / "LICENSE"
 COPYRIGHT_LINE = re.compile(r"^Copyright \(c\) (\d{4}) (.+)$", re.MULTILINE)
 
 
-def test_the_package_reads_its_version_licence_and_holder_from_its_metadata() -> None:
+def test_the_package_reads_its_version_license_and_holder_from_its_metadata() -> None:
     installed = metadata("elenctic")
     assert package() == Package(
         installed["Version"],
@@ -29,11 +29,11 @@ def test_the_author_is_declared_with_a_name_and_an_email() -> None:
     assert metadata("elenctic")["Author-email"] == "Gregory Gelfond <gregory_gelfond@fastmail.com>"
 
 
-def test_the_licence_is_mit_and_the_holder_is_the_author() -> None:
+def test_the_license_is_mit_and_the_holder_is_the_author() -> None:
     read = package()
-    assert (read.licence, read.holder) == ("MIT", "Gregory Gelfond")
+    assert (read.license, read.holder) == ("MIT", "Gregory Gelfond")
 
 
-def test_the_year_and_holder_are_those_of_the_copyright_line_of_the_licence_file() -> None:
+def test_the_year_and_holder_are_those_of_the_copyright_line_of_the_license_file() -> None:
     lines = COPYRIGHT_LINE.findall(LICENSE.read_text(encoding="utf-8"))
     assert lines == [(str(package().year), package().holder)]

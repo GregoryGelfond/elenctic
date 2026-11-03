@@ -1,4 +1,4 @@
-"""How output looks: colour and glyphs, decided once per stream from flags and environment."""
+"""How output looks: color and glyphs, decided once per stream from flags and environment."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -39,7 +39,7 @@ class Stream(Enum):
 
 @dataclass(frozen=True, slots=True)
 class Environment:
-    """What the environment says about colour."""
+    """What the environment says about color."""
 
     no_color: bool
     """`NO_COLOR` is not empty."""
@@ -74,7 +74,7 @@ PLAIN: Final = Presentation(Style(Color.OFF, Glyphs.PLAIN), Style(Color.OFF, Gly
 
 
 def _color(when: When, stream: Stream, environment: Environment) -> Color:
-    """Decide colour: the choice, else `NO_COLOR`, `TERM=dumb`, then the stream."""
+    """Decide color: the choice, else `NO_COLOR`, `TERM=dumb`, then the stream."""
     if when is not When.AUTO:
         return Color.ON if when is When.ALWAYS else Color.OFF
     if environment.no_color or environment.dumb:

@@ -129,7 +129,7 @@ def version(package: Package, solvers: Solvers, style: Style) -> str:
     clingcon = "not installed" if solvers.clingcon is None else legible(solvers.clingcon)
     return _lines(
         [
-            f"elenctic {legible(package.version)} | {holder} | {legible(package.licence)}",
+            f"elenctic {legible(package.version)} | {holder} | {legible(package.license)}",
             f"clingo {legible(solvers.clingo)} | clingcon {clingcon}",
         ]
     )

@@ -200,7 +200,7 @@ class _Handle(Protocol):
 
 
 def _await(handle: _Handle, cut: Cut) -> Truncation | None:
-    """Wait for a model or the end, cancelling the search if it is cut first."""
+    """Wait for a model or the end, canceling the search if it is cut first."""
     while (truncation := cut()) is None:
         if handle.wait(_SLICE):
             return None

@@ -72,7 +72,7 @@ def test_every_verdict_and_severity_has_a_role() -> None:
     assert set(SEVERITY_ROLES) == set(Severity)
 
 
-def test_with_colour_on_each_piece_is_painted_by_its_role() -> None:
+def test_with_color_on_each_piece_is_painted_by_its_role() -> None:
     rendered = render(Run((entry(PASSING, "a.lp"), entry(FAILING, "b.lp"))), COLORED)
     assert rendered.stdout == (
         "\x1b[1mb.lp\x1b[0m — \x1b[1;31mFAIL\x1b[0m\n"
@@ -119,7 +119,7 @@ def test_the_existing_symbols_stay_with_glyphs_on() -> None:
     assert "⊆ ⋂" in stdout
 
 
-def test_glyphs_and_colour_are_independent_and_both_survive() -> None:
+def test_glyphs_and_color_are_independent_and_both_survive() -> None:
     both = Presentation(Style(Color.ON, Glyphs.NERD), PLAIN.stderr)
     stdout = render(Run((entry(FAILING, "b.lp"),)), both).stdout
     assert f"\x1b[1;31m{MARKS[Verdict.FAIL].nerd}\x1b[0m" in stdout
@@ -164,7 +164,7 @@ def test_a_glyph_is_added_after_legible_so_it_is_not_escaped() -> None:
     assert "\\uf057" not in stdout
 
 
-def test_the_reserved_note_is_help_and_plain_without_colour() -> None:
+def test_the_reserved_note_is_help_and_plain_without_color() -> None:
     assert reserved("why", PLAIN.stderr) == "elenctic: `why` is reserved and not yet built"
     assert reserved("why", COLORED.stderr) == (
         "\x1b[1;36melenctic: `why` is reserved and not yet built\x1b[0m"
@@ -205,7 +205,7 @@ def test_a_clingcon_that_is_not_installed_is_said_so() -> None:
     )
 
 
-def test_the_version_text_is_never_coloured() -> None:
+def test_the_version_text_is_never_colored() -> None:
     assert version(PACKAGE, SOLVERS, COLORED.stdout) == version(PACKAGE, SOLVERS, PLAIN.stdout)
 
 

@@ -10,7 +10,7 @@ All notable changes are recorded here. The format follows
 - Import contracts (import-linter, in `pyproject.toml`): the layering, clingo reached only by the sixteen
   modules that read and run programs, clingcon only by `theory`, and `spans` free of both. They run
   in `pixi run check` and in CI.
-- Library: `Program`, `ground`, `solve` with `Limits` and a cancellable `Interrupt`; results as
+- Library: `Program`, `ground`, `solve` with `Limits` and a cancelable `Interrupt`; results as
   `Consistent | Inconsistent | Inconclusive` over `Models` or `Consequences`.
 - Query kernel in the public API: `Literal`, `Pattern`, `Query` (`Literal | Pattern | All | Any`), `Answer`,
   `answer`, `bindings`, over a `WorldView` that only an exhausted search yields.
@@ -32,7 +32,7 @@ All notable changes are recorded here. The format follows
 - Preconditions that make a misreadable contract an error: theory atoms, an objective that grounds
   away, a nested `@count optimal`, a derivable unshown contrary under `no`/`unknown`.
 - Subcommands: `elenctic test` (the default) and the reserved `repl`, `why`, `ask`, `explain`.
-- `elenctic version`, `--version` and `-V`: one text with the version, the licence, the holder and the
+- `elenctic version`, `--version` and `-V`: one text with the version, the license, the holder and the
   versions of clingo and clingcon that are loaded. `--version` and `-V` are options of `elenctic`
   itself: valid before the command and winning over the rest of the line, not taken by a command.
 - Every type that a public signature names is exported, so a signature can be read and a value built
@@ -50,9 +50,9 @@ All notable changes are recorded here. The format follows
 
 - `--color auto|always|never` (default `auto`) and `--icons[=WHEN]` (Nerd Font glyphs, off unless asked),
   each decided per stream, and valid before the command as well as after it. `auto` follows
-  `NO_COLOR`, `TERM=dumb`, then whether the stream is a terminal, so a redirected stream stays plain; only `--color always` colours it. `CLICOLOR_FORCE`,
+  `NO_COLOR`, `TERM=dumb`, then whether the stream is a terminal, so a redirected stream stays plain; only `--color always` colors it. `CLICOLOR_FORCE`,
   `CLICOLOR` and `FORCE_COLOR` are not read. This governs elenctic's own report and diagnostics;
-  the help and usage messages are coloured as Python's `argparse` does by default. See the output
+  the help and usage messages are colored as Python's `argparse` does by default. See the output
   section of the reference.
 
 ### Changed

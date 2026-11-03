@@ -1,4 +1,4 @@
-"""How the command line writes: colour, glyphs and streams, as the controller resolves them."""
+"""How the command line writes: color, glyphs and streams, as the controller resolves them."""
 
 import json
 import os
@@ -49,7 +49,7 @@ def test_by_default_a_redirected_stream_is_plain(unmet: Path, missing: Path) -> 
     assert "absent.lp:1:1-1: error: " in err
 
 
-def test_always_colours_both_streams_by_their_roles(
+def test_always_colors_both_streams_by_their_roles(
     capsys: pytest.CaptureFixture[str], unmet: Path, missing: Path
 ) -> None:
     shown = written(capsys, "--color", "always", unmet, missing)
@@ -61,9 +61,9 @@ def test_always_colours_both_streams_by_their_roles(
     assert f"\x1b[1m{missing}:1:1-1\x1b[0m: \x1b[1;31merror\x1b[0m: " in shown.err
 
 
-# (environment, arguments) -> coloured? Every stream here is redirected, so only an explicit
-# choice can colour: the environment never does.
-COLOURED_BY = [
+# (environment, arguments) -> colored? Every stream here is redirected, so only an explicit
+# choice can color: the environment never does.
+COLORED_BY = [
     (({}, []), False),
     (({"CLICOLOR_FORCE": "1"}, []), False),
     (({"CLICOLOR_FORCE": "1", "NO_COLOR": ""}, []), False),
@@ -80,19 +80,19 @@ COLOURED_BY = [
 ]
 
 
-@pytest.mark.parametrize(("setting", "coloured"), COLOURED_BY)
-def test_a_redirected_stream_is_coloured_only_by_an_explicit_choice(
+@pytest.mark.parametrize(("setting", "colored"), COLORED_BY)
+def test_a_redirected_stream_is_colored_only_by_an_explicit_choice(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
     unmet: Path,
     setting: tuple[dict[str, str], list[str]],
-    coloured: bool,
+    colored: bool,
 ) -> None:
     environment, arguments = setting
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
     shown = written(capsys, *arguments, unmet, unmet.with_name("absent.lp"))
-    assert ("\x1b[" in shown.out, "\x1b[" in shown.err) == (coloured, coloured)
+    assert ("\x1b[" in shown.out, "\x1b[" in shown.err) == (colored, colored)
 
 
 def test_a_bad_choice_is_a_usage_error(capsys: pytest.CaptureFixture[str], unmet: Path) -> None:
@@ -161,7 +161,7 @@ def test_a_bad_icons_value_is_a_usage_error(
     assert "invalid choice: 'sometimes'" in capsys.readouterr().err
 
 
-def test_icons_and_colour_are_independent(
+def test_icons_and_color_are_independent(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, unmet: Path
 ) -> None:
     monkeypatch.setenv("NO_COLOR", "1")
@@ -169,9 +169,9 @@ def test_icons_and_colour_are_independent(
     assert FAIL_NERD in glyphed.out
     assert "\x1b" not in glyphed.out
     monkeypatch.delenv("NO_COLOR")
-    coloured = written(capsys, "--color=always", unmet)
-    assert "\x1b[1;31m[FAIL]\x1b[0m" in coloured.out
-    assert FAIL_NERD not in coloured.out
+    colored = written(capsys, "--color=always", unmet)
+    assert "\x1b[1;31m[FAIL]\x1b[0m" in colored.out
+    assert FAIL_NERD not in colored.out
 
 
 def test_icons_and_color_apply_to_every_command(capsys: pytest.CaptureFixture[str]) -> None:
@@ -192,7 +192,7 @@ def test_verdicts_and_summary_are_on_stdout_and_diagnostics_on_stderr(
     assert shown.err.count("\n") == 1
 
 
-def test_json_keeps_the_whole_document_on_stdout_and_never_colours_it(
+def test_json_keeps_the_whole_document_on_stdout_and_never_colors_it(
     capsys: pytest.CaptureFixture[str], unmet: Path, missing: Path
 ) -> None:
     shown = written(capsys, "--json", "--color=always", "--icons=always", unmet, missing)
@@ -266,7 +266,7 @@ def on_terminals(
     return os.waitstatus_to_exitcode(status), shown["out"], shown["err"]
 
 
-def test_each_stream_is_coloured_by_its_own_terminal(unmet: Path, missing: Path) -> None:
+def test_each_stream_is_colored_by_its_own_terminal(unmet: Path, missing: Path) -> None:
     code, out, err = on_terminals([str(unmet), str(missing)], terminal={"err"})
     assert code == Exit.FAULT
     assert "\x1b" not in out
@@ -277,7 +277,7 @@ def test_each_stream_is_coloured_by_its_own_terminal(unmet: Path, missing: Path)
     assert "\x1b" not in err
 
 
-def test_on_terminals_colour_and_glyphs_follow_the_flags_and_the_environment(
+def test_on_terminals_color_and_glyphs_follow_the_flags_and_the_environment(
     unmet: Path,
 ) -> None:
     _, out, _ = on_terminals([str(unmet)], terminal={"out", "err"})

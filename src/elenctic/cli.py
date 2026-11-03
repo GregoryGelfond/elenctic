@@ -80,7 +80,7 @@ def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
         choices=list(When),
         default=When.AUTO if defaults else argparse.SUPPRESS,
         metavar="WHEN",
-        help="colour output: auto (on a terminal), always or never (default: auto)",
+        help="color output: auto (on a terminal), always or never (default: auto)",
     )
     options.add_argument(
         "--icons",
@@ -97,11 +97,11 @@ def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
 
 
 def _parser() -> argparse.ArgumentParser:
-    """Make the parser; its help and usage are coloured as `argparse` does by default."""
+    """Make the parser; its help and usage are colored as `argparse` does by default."""
     parser = argparse.ArgumentParser(
         prog="elenctic",
         parents=[_output_options(defaults=True)],
-        description="Test, debug and analyse ASP programs. "
+        description="Test, debug and analyze ASP programs. "
         "With no command, the paths are tested: `elenctic PATH...` is `elenctic test PATH...`. "
         "`elenctic --version` and `elenctic -V` are `elenctic version`; they stand before "
         "the command, which does not take them.",
@@ -139,7 +139,7 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "version",
         parents=options,
-        help="print the version, the licence and the versions of clingo and clingcon",
+        help="print the version, the license and the versions of clingo and clingcon",
     )
     for name, what in RESERVED.items():
         commands.add_parser(name, parents=options, help=f"{what} (reserved)").add_argument(

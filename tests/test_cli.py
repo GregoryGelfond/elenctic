@@ -115,10 +115,10 @@ MANY_NODES = 400
 SMALL_BUDGETS = [0.005, 0.02, 0.05]
 
 
-def path_colouring(nodes: int) -> str:
+def path_coloring(nodes: int) -> str:
     return (
-        f"node(1..{nodes}). colour(r;g;b). edge(X,X+1) :- node(X), X < {nodes}.\n"
-        "1 { assign(X,C) : colour(C) } 1 :- node(X).\n"
+        f"node(1..{nodes}). color(r;g;b). edge(X,X+1) :- node(X), X < {nodes}.\n"
+        "1 { assign(X,C) : color(C) } 1 :- node(X).\n"
         ":- edge(X,Y), assign(X,C), assign(Y,C).\n"
         "#show assign/2.\n% @expect sat\n% @cautious { assign(2,g) }\n"
     )
@@ -127,7 +127,7 @@ def path_colouring(nodes: int) -> str:
 def test_an_interrupted_consequence_search_is_undecided_and_not_a_pass(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    path = write(tmp_path, "path_colouring.lp", path_colouring(FEW_NODES))
+    path = write(tmp_path, "path_coloring.lp", path_coloring(FEW_NODES))
     assert run(capsys, path)[0] == Exit.CLAIM_UNMET
     at_first_model(monkeypatch, lambda: signal.raise_signal(signal.SIGINT))
     code, out = run(capsys, path)
@@ -139,7 +139,7 @@ def test_an_interrupted_consequence_search_is_undecided_and_not_a_pass(
 def test_a_small_budget_never_passes_a_cautious_claim_that_is_false(
     budget: float, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = write(tmp_path, "path_colouring.lp", path_colouring(MANY_NODES))
+    path = write(tmp_path, "path_coloring.lp", path_coloring(MANY_NODES))
     code, out = run(capsys, path, "--budget", budget)
     assert code == Exit.CLAIM_UNMET
     assert "1/1 passed" not in out

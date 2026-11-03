@@ -44,11 +44,11 @@ type Cell = Bare | Atom | Shape
 """What is known of the terms in one class of the unification graph."""
 
 
-class Colour(Enum):
+class Shade(Enum):
     """How far the occurs check has got with a class: not reached, on the path, or finished."""
 
     WHITE = auto()
-    GREY = auto()
+    GRAY = auto()
     BLACK = auto()
 
 
@@ -151,27 +151,27 @@ class Classes:
     def acyclic(self) -> bool:
         """Say whether no class has itself beneath it: the occurs check, once, after unifying.
 
-        A depth-first search that colours a class grey while its arguments are searched and black
-        after; reaching a grey class closes a cycle. Checking once at the end, not at each binding,
+        A depth-first search that colors a class gray while its arguments are searched and black
+        after; reaching a gray class closes a cycle. Checking once at the end, not at each binding,
         is what keeps unification near-linear.
         """
-        colour = [Colour.WHITE] * len(self._cells)
+        shade = [Shade.WHITE] * len(self._cells)
         roots = (node for node in range(len(self._cells)) if self._classes.find(node) == node)
-        return all(colour[r] is not Colour.WHITE or self._search(r, colour) for r in roots)
+        return all(shade[r] is not Shade.WHITE or self._search(r, shade) for r in roots)
 
-    def _search(self, start: int, colour: list[Colour]) -> bool:
+    def _search(self, start: int, shade: list[Shade]) -> bool:
         pending = [(start, True)]
         while pending:
             node, entering = pending.pop()
             if not entering:
-                colour[node] = Colour.BLACK
-            elif colour[node] is Colour.WHITE:
-                colour[node] = Colour.GREY
+                shade[node] = Shade.BLACK
+            elif shade[node] is Shade.WHITE:
+                shade[node] = Shade.GRAY
                 pending.append((node, False))
                 reached = {self._classes.find(child) for child in self._arguments_of(node)}
-                if any(colour[r] is Colour.GREY for r in reached):
+                if any(shade[r] is Shade.GRAY for r in reached):
                     return False
-                pending.extend((r, True) for r in reached if colour[r] is Colour.WHITE)
+                pending.extend((r, True) for r in reached if shade[r] is Shade.WHITE)
         return True
 
     def solution(self) -> Substitution:

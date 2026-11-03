@@ -1,6 +1,6 @@
 # elenctic
 
-Test, debug and analyse answer set programs. Contracts are written in the program's own
+Test, debug and analyze answer set programs. Contracts are written in the program's own
 comments; the library is first and the command line is a thin client over it.
 
 ```
