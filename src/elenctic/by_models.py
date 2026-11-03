@@ -73,8 +73,9 @@ def _stated(claim: Witness | Assigns) -> str:
 def entailed(claim: Entails, held: AnswerSet, *, closed: bool) -> tuple[Verdict, str]:
     cautious = claim.mode is Mode.CAUTIOUS
     missing = claim.literals - held
+    vacuous = not claim.literals
     verdict = (
-        universal(refuted=bool(missing), closed=closed)
+        universal(refuted=bool(missing), closed=closed or vacuous)
         if cautious
         else existential(found=not missing, closed=closed)
     )

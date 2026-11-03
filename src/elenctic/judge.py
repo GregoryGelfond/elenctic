@@ -24,11 +24,15 @@ from elenctic.verdicts import Finding, Verdict
 def _consequent(
     reading: Reading, found: Consequences, conclusion: Exhausted | Truncation
 ) -> tuple[Verdict, str]:
-    """Judge from native consequences, which settle a claim about them only once exhausted."""
+    """Judge from native consequences, which settle a claim about them only once exhausted.
+
+    An empty claim is the exception: it holds of whatever was found.
+    """
     if isinstance(reading, Entails):
-        if conclusion is not Exhausted.EXHAUSTED:
+        closed = conclusion is Exhausted.EXHAUSTED
+        if reading.literals and not closed:
             return Verdict.UNDECIDED, f"search ended: {conclusion}"
-        return entailed(reading, found.literals, closed=True)
+        return entailed(reading, found.literals, closed=closed)
     return Verdict.when(holds=reading == Satisfiable(expected=True)), "an answer set exists"
 
 
