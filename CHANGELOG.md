@@ -36,8 +36,19 @@ All notable changes are recorded here. The format follows
   counts those. Optional: `elenctic[theory]`, or the pixi `theory` environment; a contract that
   declares clingcon without it is an error (`FAULT`, 2).
 
+- `--color auto|always|never` (default `auto`) and `--icons[=WHEN]` (Nerd Font glyphs, off unless asked),
+  each decided per stream. `auto` follows `NO_COLOR`, `TERM=dumb`, `CLICOLOR_FORCE`, then whether the
+  stream is a terminal; `FORCE_COLOR` is not read. See the output section of the reference.
+
 ### Changed
 
+- Diagnostics for a source that could not be checked go to stderr, with the reserved-command note
+  and the internal-error line; verdicts and the summary stay on stdout. `--json` is all on stdout.
+- The help and usage messages follow the same colour decision, so `FORCE_COLOR` and `PYTHON_COLORS` no
+  longer colour them.
+- The terminal text is `elenctic.human`, the JSON is `elenctic.json_view` (`encode`, moved from
+  `elenctic.report`, which holds the run's values); escape sequences are written by `elenctic.paint`
+  alone.
 - `pixi run -e theory check` is the one documented gate; `check.sh` only runs it. `uv.lock` is tracked.
   The CI uv job is a secondary install check (`uv sync --locked`, then the tests).
 - `--budget` and `--models` take a positive number or the word `all` (no limit); `--models` defaults to

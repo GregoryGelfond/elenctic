@@ -10,6 +10,8 @@ like a command is written `./why`.
 |---|---|
 | `--json` | write the run as JSON |
 | `-v`, `--verbose` | list the claims that passed |
+| `--color WHEN` | colour the text: `auto` (default), `always` or `never` |
+| `--icons[=WHEN]` | mark claims with Nerd Font glyphs: `auto`, `always` or `never`; given bare it is `auto`, left out it is `never`. A value takes an equals sign: `--icons always` names a path |
 | `--budget SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default 30) |
 | `--models N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default 100,000) |
 
@@ -17,6 +19,37 @@ Zero and negative values of `--budget` and `--models` are a usage error (`FAULT`
 choice is `Limits(seconds=…, models=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has a default cap.
 
 `repl`, `why`, `ask` and `explain` are reserved: each writes a note on stderr and exits `FAULT` (2).
+All of the options above apply to every command.
+
+## Output
+
+Verdicts and the summary go to stdout; diagnostics for sources that could not be checked, the
+reserved-command note and the internal-error line go to stderr. With `--json` the whole document is
+on stdout and is never coloured or marked with glyphs.
+
+Colour and glyphs are decided for each stream on its own, so `elenctic … > run.txt` leaves stderr
+coloured on a terminal. Colour, `auto`, is decided in this order; the first rule that applies wins.
+
+| Order | Rule | Colour |
+|---|---|---|
+| 1 | `--color always` or `--color never` | on or off |
+| 2 | `NO_COLOR` is set and not empty | off |
+| 3 | `TERM` is `dumb` | off |
+| 4 | `CLICOLOR_FORCE` is set and is neither empty nor `0` | on |
+| 5 | the stream is a terminal | on, else off |
+
+`FORCE_COLOR` is not read. Python's own `PYTHON_COLORS` does not reach elenctic: the help and usage
+messages follow the same decision, and are coloured only when both stdout and stderr would be.
+
+Glyphs ignore the environment. `--icons=always` marks claims with a glyph in place of `[PASS]`,
+`[FAIL]` and `[UNDECIDED]`; `auto` does so on a terminal; `never` and no option leave the text.
+Glyphs and colour are independent. The glyphs are from a Nerd Font: a terminal without one shows
+boxes, which is why they are off unless asked for. Program text is made legible before it is
+coloured or marked, so a program cannot write escape sequences.
+
+Colours by role: error `1;31` (a `FAIL`, an error, an internal error), warning `1;33`
+(`UNDECIDED`), note `1;32` (`PASS`), help `1;36` (the reserved-command note), margin `1;34` (line
+numbers) and emphasis `1` (sources and the summary).
 
 ## Exit codes
 
@@ -100,7 +133,7 @@ enforced.
 
 ## JSON
 
-`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`; see `elenctic.report.encode`. A
+`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`; see `elenctic.json_view.encode`. A
 dataclass becomes `{"kind": TypeName, field: …}`, an enum its value, a set a sorted list.
 
 ## Examples
