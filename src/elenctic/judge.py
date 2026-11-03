@@ -1,6 +1,6 @@
 """Judge one claim against what a search found, whatever sort of search it was."""
 
-from elenctic.by_models import entailed, from_models
+from elenctic.by_answer_sets import entailed, from_answer_sets
 from elenctic.contract import Claim, Costs, Entails, Reading, Satisfiable, denies_answer_sets
 from elenctic.determination import (
     Consequences,
@@ -48,10 +48,10 @@ def _levels(cost: Cost) -> str:
 def _optimal(
     reading: Reading, found: Optimum, conclusion: Exhausted | Truncation
 ) -> tuple[Verdict, str]:
-    """Judge from a proven optimum and the optimal models found, all of them if exhausted."""
+    """Judge from a proven optimum and the optimal answer sets found, all of them if exhausted."""
     if isinstance(reading, Costs):
         return _cost(reading, found.cost)
-    return from_models(reading, Consistent(found.models, conclusion))
+    return from_answer_sets(reading, Consistent(found.models, conclusion))
 
 
 def _core_text(refutation: These) -> str:
@@ -93,7 +93,7 @@ def _evidence(
 ) -> tuple[Verdict, str]:
     match evidence:
         case Models():
-            return from_models(reading, Consistent(evidence, conclusion))
+            return from_answer_sets(reading, Consistent(evidence, conclusion))
         case Consequences():
             return _consequent(reading, evidence, conclusion)
         case Optimum():

@@ -33,8 +33,8 @@ def assumptions(block: Block, element: Element) -> Parsed[Scenario]:
     )
 
 
-def model_set(head: list[Element]) -> tuple[Range, list[Element]]:
-    """Split a leading `optimal` off a payload: the model set the claim is about, and the rest."""
+def read_range(head: list[Element]) -> tuple[Range, list[Element]]:
+    """Split a leading `optimal` off a payload: the answer sets the claim is about, and the rest."""
     if head and not head[0].braced and head[0].text == Range.OPTIMAL:
         return Range.OPTIMAL, head[1:]
     return Range.ALL, head

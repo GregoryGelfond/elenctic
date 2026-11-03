@@ -25,7 +25,7 @@ def _contradiction(
     reading = claim.reading
     admitted = isinstance(reading, Satisfiable) or denies_answer_sets(reading)
     if claim.scenario in unsat and not admitted:
-        return "`@expect unsat` admits no model claim"
+        return "`@expect unsat` admits no answer set claim"
     if claim.scenario in sat and denies_answer_sets(reading):
         return "`@count 0` is `@expect unsat`, not `@expect sat`"
     return None

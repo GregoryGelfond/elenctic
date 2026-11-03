@@ -39,9 +39,9 @@ def _sets(over: Range) -> str:
     return "optimal answer sets" if over is Range.OPTIMAL else "answer sets"
 
 
-def _count(claim: Census, models: Iterable[Model], *, closed: bool) -> tuple[Verdict, str]:
-    """Count the distinct answers: a model's identity is what it shows and what it assigns."""
-    answers = {model.identity for model in models}
+def _count(claim: Census, answer_sets: Iterable[Model], *, closed: bool) -> tuple[Verdict, str]:
+    """Count the distinct answers: an answer set's identity is what it shows and what it assigns."""
+    answers = {answer_set.identity for answer_set in answer_sets}
     seen = len(answers)
     verdict = universal(
         refuted=seen > claim.count or (closed and seen < claim.count), closed=closed
@@ -54,9 +54,9 @@ def _count(claim: Census, models: Iterable[Model], *, closed: bool) -> tuple[Ver
 
 
 def _witnessed(
-    claim: Witness | Assigns, models: Iterable[Model], *, closed: bool
+    claim: Witness | Assigns, answer_sets: Iterable[Model], *, closed: bool
 ) -> tuple[Verdict, str]:
-    seen = any(claim.upheld_by(model) for model in models)
+    seen = any(claim.upheld_by(answer_set) for answer_set in answer_sets)
     return existential(
         found=seen, closed=closed
     ), f"{_stated(claim)} by an answer set: {'yes' if seen else 'no'}"
@@ -112,8 +112,8 @@ def _worldly(reading: Asks | Binds, found: Consistent[Models]) -> tuple[Verdict,
     return _asked(reading, view)
 
 
-def from_models(reading: Reading, found: Consistent[Models]) -> tuple[Verdict, str]:
-    models = found.evidence.all
+def from_answer_sets(reading: Reading, found: Consistent[Models]) -> tuple[Verdict, str]:
+    answer_sets = found.evidence.all
     closed = found.conclusion is Exhausted.EXHAUSTED
     match reading:
         case Asks() | Binds():
@@ -121,10 +121,12 @@ def from_models(reading: Reading, found: Consistent[Models]) -> tuple[Verdict, s
         case Satisfiable(expected):
             return Verdict.when(holds=expected), "an answer set exists"
         case Census():
-            return _count(reading, models, closed=closed)
+            return _count(reading, answer_sets, closed=closed)
         case Witness() | Assigns():
-            return _witnessed(reading, models, closed=closed)
+            return _witnessed(reading, answer_sets, closed=closed)
         case Entails():
-            return _entails(reading, WorldView(frozenset(m.shown for m in models)), closed=closed)
+            return _entails(
+                reading, WorldView(frozenset(m.shown for m in answer_sets)), closed=closed
+            )
         case Costs():
             return Verdict.UNDECIDED, "no optimum was sought"

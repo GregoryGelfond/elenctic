@@ -44,10 +44,10 @@ class Report:
 
 
 def existential(*, found: bool, closed: bool) -> Verdict:
-    """Settle a claim a model can witness: a model upholds it, only a closed search refutes it."""
+    """Settle a claim an answer set can witness: one upholds it, only a closed search refutes it."""
     return Verdict.PASS if found else Verdict.FAIL if closed else Verdict.UNDECIDED
 
 
 def universal(*, refuted: bool, closed: bool) -> Verdict:
-    """Settle a claim a model can refute: a model refutes it, only a closed search upholds it."""
+    """Settle a claim an answer set can refute: one refutes it, only a closed search upholds it."""
     return Verdict.FAIL if refuted else Verdict.PASS if closed else Verdict.UNDECIDED

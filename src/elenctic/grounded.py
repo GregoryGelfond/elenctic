@@ -88,8 +88,8 @@ class Grounded:
     def _impossible(self, scenario: Iterable[Assumption]) -> frozenset[Assumption]:
         return frozenset(a for a in scenario if a.holds and not self._derivable(a.literal))
 
-    def _read(self, model: ClingoModel) -> Seen:
-        return seen(model, self._theory)
+    def _read(self, answer_set: ClingoModel) -> Seen:
+        return seen(answer_set, self._theory)
 
     def _run(self, scenario: Scenario, plan: Plan, cut: Cut) -> Run:
         assumed = self._assumed(scenario)
@@ -111,7 +111,7 @@ class Grounded:
     def _contradicts(
         self, scenario: frozenset[Assumption], cut: Cut
     ) -> frozenset[Assumption] | Truncation | None:
-        """Return a core of `scenario`, a truncation, or `None` if some model satisfies it."""
+        """Return a core of `scenario`, a truncation, or `None` if some answer set satisfies it."""
         if impossible := self._impossible(scenario):
             return impossible
         run = self._run(scenario, _PROBE, cut)
@@ -124,7 +124,7 @@ class Grounded:
                 return truncation
 
     def refute(self, core: frozenset[Assumption], request: Request) -> Refutation:
-        """Say why no model satisfies the scenario: a clashing subset, shrunk from `core`."""
+        """Say why no answer set satisfies the scenario: a clashing subset, shrunk from `core`."""
         return self._shrunk(request.scenario, core, request.cutter())
 
     def _shrunk(self, scenario: Scenario, core: frozenset[Assumption], cut: Cut) -> Refutation:
@@ -158,7 +158,7 @@ class Grounded:
         limits: Limits = UNLIMITED,
         interrupt: Interrupt | None = None,
     ) -> Determination[Models]:
-        """Enumerate the stable models satisfying `scenario`, whatever the program optimizes."""
+        """Enumerate the answer sets satisfying `scenario`, whatever the program optimizes."""
         return self._search(
             Request(scenario, limits, interrupt), Plan(ENUMERATION, cap=limits.models), models
         )
@@ -185,9 +185,9 @@ class Grounded:
         limits: Limits = UNLIMITED,
         interrupt: Interrupt | None = None,
     ) -> Determination[Optimized]:
-        """Find the optimum under `scenario` and the models that attain it.
+        """Find the optimum under `scenario` and the answer sets that attain it.
 
-        `limits.models` bounds the optimal models, not the improving ones found on the way.
+        `limits.models` bounds the optimal answer sets, not the improving ones found on the way.
         """
         return self._search(
             Request(scenario, limits, interrupt),

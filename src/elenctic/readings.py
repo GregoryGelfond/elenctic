@@ -1,4 +1,4 @@
-"""The tags that state facts of the answer sets: expectation, count, cost, models, consequences."""
+"""The tags that state facts of the answer sets: expectation, count, cost, each, consequences."""
 
 import re
 from collections.abc import Callable
@@ -7,7 +7,7 @@ from typing import Final
 from elenctic.contract import Assigns, Census, Costs, Entails, Reading, Satisfiable, Witness
 from elenctic.determination import Mode, Range, Valuation
 from elenctic.literals import AnswerSet
-from elenctic.operands import after, ground, model_set, valuations
+from elenctic.operands import after, ground, read_range, valuations
 from elenctic.spans import Diagnostic, Parsed, failure
 from elenctic.tags import Block, Element
 
@@ -25,7 +25,7 @@ def expect(block: Block, head: list[Element]) -> Parsed[Reading]:
 
 
 def count(block: Block, head: list[Element]) -> Parsed[Reading]:
-    over, rest = model_set(head)
+    over, rest = read_range(head)
     if len(rest) == 1 and not rest[0].braced and rest[0].text.isdecimal():
         return Census(int(rest[0].text), over)
     return failure(block.covering(), "expected a non-negative integer")
@@ -44,7 +44,7 @@ def litset(
     """Read `[optimal] { literals }`; with `over` fixed, as for `@optimal`, no `optimal` word."""
 
     def read(block: Block, head: list[Element]) -> Parsed[Reading]:
-        chosen, rest = (over, head) if over is not None else model_set(head)
+        chosen, rest = (over, head) if over is not None else read_range(head)
         if len(rest) != 1 or not rest[0].braced:
             return failure(block.covering(), "expected `{ literals }`")
         literals = ground(block, rest[0])
@@ -54,7 +54,7 @@ def litset(
 
 
 def assign(block: Block, head: list[Element]) -> Parsed[Reading]:
-    over, rest = model_set(head)
+    over, rest = read_range(head)
     if len(rest) != 1 or not rest[0].braced:
         return failure(block.covering(), "expected `{ term = integer, ... }`")
     assignment = valuations(block, rest[0])

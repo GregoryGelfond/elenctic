@@ -125,7 +125,7 @@ def solve(
     interrupt: Interrupt | None = None,
     solver: Solver = Solver.CLINGO,
 ) -> Determination[Models] | Fault:
-    """Enumerate the stable models of `program` satisfying `scenario`."""
+    """Enumerate the answer sets of `program` satisfying `scenario`."""
     grounded = ground(program, solver)
     if isinstance(grounded, Fault):
         return grounded

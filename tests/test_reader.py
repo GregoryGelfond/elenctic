@@ -141,11 +141,11 @@ def test_unknown_unsupported_and_malformed_tags_are_each_a_diagnostic_where_they
     assert len(contract.claims) == 1
 
 
-def test_a_contract_needs_exactly_one_expect_and_unsat_admits_no_model_claim() -> None:
+def test_a_contract_needs_exactly_one_expect_and_unsat_admits_no_answer_set_claim() -> None:
     assert messages("% @count 1")[0].startswith("missing")
     assert "more than one" in messages("% @expect sat", "% @expect unsat")[0]
     clash = messages("% @expect unsat", "% @cautious { p }")
-    assert "no model" in clash[0]
+    assert "no answer set" in clash[0]
     assert not messages("% @expect unsat", "% @count 0")
     assert not messages("% @expect unsat", "% @cautious { p } assuming { q }")
 
@@ -278,7 +278,7 @@ def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None
     assert (found.span.start, found.span.end) == (P(3, 8), P(3, 15))
 
 
-def test_optimal_is_a_model_set_a_claim_may_name_and_the_tag_is_sugar_for_it() -> None:
+def test_optimal_is_an_answer_set_set_a_claim_may_name_and_the_tag_is_sugar_for_it() -> None:
     p = frozenset({Literal("p")})
     assert only("% @optimal { p }").reading == Witness(p, Range.OPTIMAL)
     assert only("% @model optimal { p }").reading == Witness(p, Range.OPTIMAL)
@@ -306,7 +306,7 @@ def test_a_malformed_optimal_or_cost_claim_is_a_diagnostic(line: str, message: s
 
 def test_no_optimal_answer_sets_follows_the_same_rule_as_no_answer_sets() -> None:
     assert not messages("% @expect unsat", "% @count optimal 0")
-    assert "no model" in messages("% @expect unsat", "% @cost { 1 }")[0]
+    assert "no answer set" in messages("% @expect unsat", "% @cost { 1 }")[0]
     assert "not `@expect sat`" in messages("% @expect sat", "% @count optimal 0")[0]
 
 

@@ -25,7 +25,7 @@ def _by_search(claims: Iterable[Claim]) -> dict[tuple[Scenario, Range], list[Cla
 
 
 def _limits(group: list[Claim], limits: Limits) -> Limits:
-    """Cap the search at one model for a group that reads no collection of them."""
+    """Cap the search at one answer set for a group that reads no collection of them."""
     return (
         replace(limits, models=1)
         if all(isinstance(c.reading, Satisfiable | Costs) for c in group)
@@ -34,7 +34,7 @@ def _limits(group: list[Claim], limits: Limits) -> Limits:
 
 
 def _closes(group: list[Claim]) -> bool:
-    """Say whether consequences settle a group: it asks only for them and whether a model exists."""
+    """Say whether consequences settle a group: it asks only for them and for an answer set."""
     readings = [c.reading for c in group]
     return all(isinstance(r, Satisfiable | Entails) for r in readings) and any(
         isinstance(r, Entails) for r in readings
@@ -55,7 +55,7 @@ def _entailing(
 
 
 def _capped(found: Found) -> bool:
-    """Say whether a search stopped for want of nothing but the model cap it was given."""
+    """Say whether a search stopped for want of nothing but the answer set cap it was given."""
     return isinstance(found, Consistent) and found.conclusion is Truncation.TARGET
 
 
@@ -90,7 +90,7 @@ def _natively(
     findings: list[Finding],
     native: Callable[[Mode], Determination[Consequences]],
 ) -> list[Finding]:
-    """Replace the verdicts on consequence claims by native ones, which the model cap cannot cut."""
+    """Replace the verdicts on consequence claims by native ones, which the cap cannot cut."""
     entailing = [c for c in group if isinstance(c.reading, Entails)]
     decided = dict(zip(entailing, _entailing(entailing, native), strict=True)) if entailing else {}
     return [decided.get(claim, finding) for claim, finding in zip(group, findings, strict=True)]

@@ -7,7 +7,7 @@ from elenctic.literals import AnswerSet, Assumption, Literal, Symbol
 
 
 class Exhausted(StrEnum):
-    """The search covered every stable model under the request."""
+    """The search covered every answer set under the request."""
 
     EXHAUSTED = "exhausted"
 
@@ -24,7 +24,7 @@ type Conclusion = Exhausted | Truncation
 
 
 class Range(StrEnum):
-    """The model set a value ranges over: every stable model, or those optimal."""
+    """The answer set set a value ranges over: every answer set, or those optimal."""
 
     ALL = "all"
     OPTIMAL = "optimal"
@@ -37,19 +37,19 @@ type Cost = tuple[int, ...]
 
 @dataclass(frozen=True, slots=True, order=True)
 class Valuation:
-    """A theory variable and the integer a model gives it."""
+    """A theory variable and the integer an answer set gives it."""
 
     variable: Symbol
     value: int
 
 
 type Assignment = frozenset[Valuation]
-"""What a constraint theory assigns in a model, kept apart from the atoms, which are literals."""
+"""What a constraint theory assigns in an answer set, kept apart from its literal atoms."""
 
 
 @dataclass(frozen=True, slots=True)
 class Model:
-    """A stable model: every atom of it, the atoms `#show` selects, its theory assignment and cost.
+    """An answer set: every atom of it, the atoms `#show` selects, its theory assignment and cost.
 
     `assignment` is empty without a theory. `cost` is empty unless the search optimized: clingo
     reports no cost when it ignores the objective, so a plain enumeration carries none.
@@ -62,13 +62,13 @@ class Model:
 
     @property
     def identity(self) -> tuple[AnswerSet, Assignment]:
-        """What tells models apart: the atoms shown and the assignment, not the hidden atoms."""
+        """What tells answer sets apart: the atoms shown and the assignment, not the hidden ones."""
         return self.shown, self.assignment
 
 
 @dataclass(frozen=True, slots=True)
 class Models:
-    """At least one model, in the order the solver found them."""
+    """At least one answer set, in the order the solver found them."""
 
     first: Model
     rest: tuple[Model, ...] = ()
@@ -85,7 +85,7 @@ class Mode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Consequences:
-    """The atoms true in every (cautious) or some (brave) stable model, among those shown."""
+    """The atoms true in every (cautious) or some (brave) answer set, among those shown."""
 
     mode: Mode
     literals: AnswerSet
@@ -94,7 +94,7 @@ class Consequences:
 
 @dataclass(frozen=True, slots=True)
 class These:
-    """These assumptions, no fewer when `minimal`, admit no stable model."""
+    """These assumptions, no fewer when `minimal`, admit no answer set."""
 
     core: frozenset[Assumption]
     minimal: bool = True
@@ -102,12 +102,12 @@ class These:
 
 @dataclass(frozen=True, slots=True)
 class NotThese:
-    """The program has no stable model whatever is assumed, and something is assumed."""
+    """The program has no answer set whatever is assumed, and something is assumed."""
 
 
 @dataclass(frozen=True, slots=True)
 class NoAssumptions:
-    """The program has no stable model, and nothing is assumed."""
+    """The program has no answer set, and nothing is assumed."""
 
 
 type Refutation = These | NotThese | NoAssumptions
@@ -115,7 +115,7 @@ type Refutation = These | NotThese | NoAssumptions
 
 @dataclass(frozen=True, slots=True)
 class Consistent[E]:
-    """A stable model exists, and `evidence` is what the search found, ended as `conclusion`."""
+    """An answer set exists, and `evidence` is what the search found, ended as `conclusion`."""
 
     evidence: E
     conclusion: Conclusion
@@ -123,7 +123,7 @@ class Consistent[E]:
 
 @dataclass(frozen=True, slots=True)
 class Inconsistent:
-    """The search ended having covered everything, and no stable model satisfies the request."""
+    """The search ended having covered everything, and no answer set satisfies the request."""
 
     refutation: Refutation
 
@@ -140,7 +140,7 @@ type Determination[E] = Consistent[E] | Inconsistent | Inconclusive
 
 @dataclass(frozen=True, slots=True)
 class Optimum:
-    """A proven optimum: its cost, and the optimal models found (all, if exhausted)."""
+    """A proven optimum: its cost, and the optimal answer sets found (all, if exhausted)."""
 
     cost: Cost
     models: Models
@@ -148,7 +148,7 @@ class Optimum:
 
 @dataclass(frozen=True, slots=True)
 class Incumbent:
-    """The best model found before the search was cut: not proven optimal."""
+    """The best answer set found before the search was cut: not proven optimal."""
 
     model: Model
 
@@ -179,7 +179,7 @@ class WorldView:
 
 
 def world_view(found: Consistent[Models], *, shown: bool = True) -> WorldView | Truncation:
-    """Close a consistent search over models into its world view, or say what left it open."""
+    """Close a consistent search over answer sets into its world view, or say what left it open."""
     match found.conclusion:
         case Exhausted.EXHAUSTED:
             return WorldView(frozenset(m.shown if shown else m.atoms for m in found.evidence.all))
@@ -188,7 +188,7 @@ def world_view(found: Consistent[Models], *, shown: bool = True) -> WorldView | 
 
 
 def optimal_view(found: Consistent[Optimized]) -> WorldView | Truncation:
-    """Close a proven optimum into the world view of its optimal models, or say what cut it."""
+    """Close a proven optimum into the world view of its optimal answer sets, or say what cut it."""
     match found.evidence, found.conclusion:
         case Optimum(_, models), Exhausted.EXHAUSTED:
             return WorldView(frozenset(m.shown for m in models.all), Range.OPTIMAL)

@@ -17,7 +17,7 @@ like a command is written `./why`.
 | `--models N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default 100,000) |
 
 Zero and negative values of `--budget` and `--models` are a usage error (`FAULT`, 2). In the library the same
-choice is `Limits(seconds=…, models=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has a default cap.
+choice is `Limits(seconds=…, answer sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has a default cap.
 
 `elenctic version`, `elenctic --version` and `elenctic -V` print the same two lines on stdout and
 exit `CLAIMS_HOLD` (0); `version` is a command, so a file of that name is written `./version`.
@@ -135,7 +135,7 @@ A contract that would be misread is not judged; the file is reported as an error
 - a `no` or `unknown` query that reads a contrary `-p` off the shown atoms when the program can
   derive `-p` and does not `#show` it;
 - no `@expect`, more than one, or more than one `% @elenctic solver`;
-- under `@expect unsat`, a model claim other than `@count 0`; under `@expect sat`, `@count 0`
+- under `@expect unsat`, an answer set claim other than `@count 0`; under `@expect sat`, `@count 0`
   (each judged under the same assumptions).
 ## Verdicts
 
@@ -177,14 +177,14 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Program` | ASP source text and where it came from |
 | `Grounded` | a program grounded once, to be searched under any number of scenarios |
 | `ground` | ground a program for a `Solver`: a `Grounded`, or a `Fault` saying why not |
-| `solve` | enumerate the stable models of a program under a scenario |
+| `solve` | enumerate the answer sets of a program under a scenario |
 | `Solver` | what a contract is checked with: `CLINGO`, or `CLINGCON`, which adds the clingcon theory |
 | `Fault` | a failure that is no answer about the program: it could not be asked; `locus` says whose, `diagnostics` what |
 | `Locus` | whose fault it is: `PROGRAM` or `REQUEST` |
 | `Request` | what a search is asked: a `Scenario`, its `Limits` and an optional `Interrupt` |
 | `Limits` | how far a search may go, in seconds and in answer sets read, each a number or `Limit.UNBOUNDED` |
 | `Limit` | what a limit may be besides a number: `UNBOUNDED` |
-| `Interrupt` | a request to stop, made from any thread with `pull()` and heeded between models |
+| `Interrupt` | a request to stop, made from any thread with `pull()` and heeded between answer sets |
 | `Cut` | the function a search asks whether to stop: a `Truncation`, or `None` to go on |
 | `Facts` | what the grounded program says about itself, against which a contract is checked |
 | `Shown` | the predicates `#show` selects; with no `#show` every atom is shown |
@@ -194,27 +194,27 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | Name | What it is |
 |---|---|
 | `Determination` | a search's result: `Consistent`, `Inconsistent` or `Inconclusive`, over its evidence |
-| `Consistent` | a stable model exists; `evidence` is what the search found and `conclusion` how it ended |
-| `Inconsistent` | the search covered everything and no stable model satisfies the request; `refutation` says why |
+| `Consistent` | an answer set exists; `evidence` is what the search found and `conclusion` how it ended |
+| `Inconsistent` | the search covered everything and no answer set satisfies the request; `refutation` says why |
 | `Inconclusive` | the search was cut short before it decided |
 | `Conclusion` | how a consistent search ended: `Exhausted` or a `Truncation` |
-| `Exhausted` | the search covered every stable model under the request |
+| `Exhausted` | the search covered every answer set under the request |
 | `Truncation` | the search was cut short, and by what |
-| `Models` | at least one model, in the order the solver found them |
-| `Consequences` | the atoms true in every (cautious) or some (brave) stable model, among those shown |
+| `Models` | at least one answer set, in the order the solver found them |
+| `Consequences` | the atoms true in every (cautious) or some (brave) answer set, among those shown |
 | `Optimized` | the evidence of an optimization: an `Optimum` or an `Incumbent` |
-| `Optimum` | a proven optimum: its cost and the optimal models found (all, if exhausted) |
-| `Incumbent` | the best model found before the search was cut: not proven optimal |
-| `Refutation` | why there is no stable model: `These`, `NotThese` or `NoAssumptions` |
-| `These` | these assumptions, no fewer when `minimal`, admit no stable model |
-| `NotThese` | no stable model whatever is assumed, and something is assumed |
-| `NoAssumptions` | no stable model, and nothing is assumed |
-| `Model` | a stable model: every atom, the atoms `#show` selects, its theory assignment and cost |
-| `Mode` | `CAUTIOUS` or `BRAVE`: consequences true in every, or in some, stable model |
-| `Range` | the model set a value ranges over: `ALL` stable models, or the `OPTIMAL` ones |
+| `Optimum` | a proven optimum: its cost and the optimal answer sets found (all, if exhausted) |
+| `Incumbent` | the best answer set found before the search was cut: not proven optimal |
+| `Refutation` | why there is no answer set: `These`, `NotThese` or `NoAssumptions` |
+| `These` | these assumptions, no fewer when `minimal`, admit no answer set |
+| `NotThese` | no answer set whatever is assumed, and something is assumed |
+| `NoAssumptions` | no answer set, and nothing is assumed |
+| `Model` | an answer set: every atom, the atoms `#show` selects, its theory assignment and cost |
+| `Mode` | `CAUTIOUS` or `BRAVE`: consequences true in every, or in some, answer set |
+| `Range` | the range of answer sets a value ranges over: `ALL` answer sets, or the `OPTIMAL` ones |
 | `Cost` | an optimum's cost, one integer for each priority level |
-| `Assignment` | a model's theory assignment: a set of `Valuation` |
-| `Valuation` | a theory variable and the integer a model gives it |
+| `Assignment` | an answer set's theory assignment: a set of `Valuation` |
+| `Valuation` | a theory variable and the integer an answer set gives it |
 
 ### Literals and terms
 
@@ -248,8 +248,8 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
 | `bindings` | the `Bindings` of a pattern over a `WorldView` |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
-| `world_view` | close a consistent search over models into its `WorldView`, or give the `Truncation` that left it open |
-| `optimal_view` | close a proven optimum into the `WorldView` of its optimal models, or give what cut it |
+| `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
+| `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give what cut it |
 
 ### Contracts and verdicts
 

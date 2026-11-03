@@ -34,7 +34,7 @@ class Theory(ABC):
 
 
 class Plain(Theory):
-    """No theory: statements go in as written, and a model assigns nothing."""
+    """No theory: statements go in as written, and an answer set assigns nothing."""
 
     @override
     def register(self, control: Control) -> None:
@@ -66,7 +66,7 @@ class _Constraints(Protocol):
 
 
 class Clingcon(Theory):
-    """Integer constraints through clingcon, whose assignment of each variable a model carries."""
+    """Integer constraints through clingcon, whose assignment each answer set carries."""
 
     def __init__(self, theory: _Constraints) -> None:
         self._theory = theory

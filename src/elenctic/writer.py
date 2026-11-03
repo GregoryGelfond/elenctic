@@ -47,7 +47,7 @@ def where(assignment: Assignment) -> str:
     return f" where {bound(assignment)}" if assignment else ""
 
 
-def _of_models(reading: Census | Witness | Assigns | Entails | Costs) -> str:
+def _of_answer_sets(reading: Census | Witness | Assigns | Entails | Costs) -> str:
     match reading:
         case Census(count, over):
             return f"@count {_optimally(over)}{count}"
@@ -66,7 +66,7 @@ def _reading(reading: Reading) -> str:
         case Satisfiable(expected):
             return f"@expect {'sat' if expected else 'unsat'}"
         case Census() | Witness() | Assigns() | Entails() | Costs():
-            return _of_models(reading)
+            return _of_answer_sets(reading)
         case Asks(answer, All(parts)):
             return f"@query {answer} {braces(p for p in parts if isinstance(p, Literal))}"
         case Binds(answer, pattern, found):

@@ -15,22 +15,22 @@ from elenctic.literals import Literal
 P, Q = Literal("p"), Literal("q")
 
 
-def model(*atoms: Literal, shown: tuple[Literal, ...] | None = None) -> Model:
+def answer_set(*atoms: Literal, shown: tuple[Literal, ...] | None = None) -> Model:
     return Model(frozenset(atoms), frozenset(atoms if shown is None else shown))
 
 
-def test_an_exhausted_search_yields_the_world_view_of_its_models() -> None:
-    found = Consistent(Models(model(P, Q), (model(P),)), Exhausted.EXHAUSTED)
+def test_an_exhausted_search_yields_the_world_view_of_its_answer_sets() -> None:
+    found = Consistent(Models(answer_set(P, Q), (answer_set(P),)), Exhausted.EXHAUSTED)
     assert world_view(found) == WorldView(frozenset({frozenset({P, Q}), frozenset({P})}))
 
 
 def test_a_truncated_search_yields_no_world_view_only_what_cut_it_short() -> None:
-    found = Consistent(Models(model(P)), Truncation.BUDGET)
+    found = Consistent(Models(answer_set(P)), Truncation.BUDGET)
     assert world_view(found) is Truncation.BUDGET
 
 
 def test_the_world_view_reads_the_shown_atoms_unless_told_otherwise() -> None:
-    found = Consistent(Models(model(P, Q, shown=(P,))), Exhausted.EXHAUSTED)
+    found = Consistent(Models(answer_set(P, Q, shown=(P,))), Exhausted.EXHAUSTED)
     assert world_view(found) == WorldView(frozenset({frozenset({P})}))
     assert world_view(found, shown=False) == WorldView(frozenset({frozenset({P, Q})}))
 

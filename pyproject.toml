@@ -76,7 +76,7 @@ layers = [
     "elenctic.check | elenctic.human | elenctic.json_view",
     "elenctic.judge",
     "elenctic.presentation",
-    "elenctic.by_models | elenctic.glyphs | elenctic.report",
+    "elenctic.by_answer_sets | elenctic.glyphs | elenctic.report",
     "elenctic.reader | elenctic.verdicts",
     "elenctic.directives | elenctic.engine | elenctic.gates | elenctic.queries | elenctic.readings | elenctic.wellformed | elenctic.writer",
     "elenctic.contract | elenctic.operands",

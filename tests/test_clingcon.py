@@ -32,7 +32,7 @@ def verdicts(text: str) -> list[Verdict]:
     return [f.verdict for f in found.findings]
 
 
-def test_every_assignment_of_the_constraints_is_a_model_of_its_own() -> None:
+def test_every_assignment_of_the_constraints_is_an_answer_set_of_its_own() -> None:
     found = solve(Program(SUM), solver=Solver.CLINGCON)
     assert isinstance(found, Consistent)
     assert found.conclusion is Exhausted.EXHAUSTED
@@ -140,7 +140,9 @@ def test_a_theory_objective_is_a_fault_since_no_search_can_switch_it_off() -> No
     assert diagnostic.message.startswith("the program has a theory objective")
 
 
-def test_the_optimum_found_beside_a_theory_is_proven_and_its_models_carry_assignments() -> None:
+def test_the_optimum_found_beside_a_theory_is_proven_and_its_answer_sets_carry_assignments() -> (
+    None
+):
     grounded = ground(Program(WHICH), Solver.CLINGCON)
     assert not isinstance(grounded, Fault)
     found = grounded.optimize()

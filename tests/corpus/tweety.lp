@@ -71,7 +71,7 @@ ab(d2(X)) :- object(X), not -member(X,penguin).
 ab(d1(X)) :- object(X), not -member(X,bird).            
 %% --- elenctic @-contract (Gelfond-Kahl Sec 5.4.3; the program above is verbatim) ---
 %% sam the eagle flies (default d2); tweety the penguin does not (specificity: d3 over d2);
-%% tabby the cat does not (default d1). The conjunctive @query is false in the model (both -fly).
+%% tabby the cat does not (default d1). The conjunctive @query is false in the answer set (both -fly).
 #show fly/1.
 #show -fly/1.
 % @expect sat

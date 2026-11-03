@@ -20,11 +20,11 @@ decides.
 **Claims sharing assumptions share a search.** A contract of only `@expect` claims reads one
 answer set.
 
-**Two sets of answer sets.** All stable models, AS(P), are read with the objective ignored. The
+**Two sets of answer sets.** All answer sets, AS(P), are read with the objective ignored. The
 optimal ones, Opt(P), are read with `optimal` in the claim. A consequence carries which set it
 ranges over, so `⋂ Opt(P)` is never read as `⋂ AS(P)`.
 
-**An optimum is proven or it is an incumbent.** A search cut short can have found a good model but
+**An optimum is proven or it is an incumbent.** A search cut short can have found a good answer set but
 not shown it is best. `@cost` and the `optimal` claims are `undecided` then, never `pass`.
 
 **Consequences are atoms.** `@cautious` and `@brave` range over shown atoms; under clingcon an

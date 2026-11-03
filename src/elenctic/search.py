@@ -1,4 +1,4 @@
-"""How a search is asked, run and read: its limits, its plan, and what its models make of it."""
+"""How a search is asked, run and read: its limits, its plan, and its answer sets."""
 
 import threading
 from collections.abc import Callable, Iterable
@@ -73,7 +73,7 @@ def _deadline(seconds: float | Limit) -> float:
 
 
 class Interrupt:
-    """A request to stop, which may be made from any thread and is heeded between models."""
+    """A request to stop, which may be made from any thread and is heeded between answer sets."""
 
     def __init__(self) -> None:
         self._pulled = threading.Event()
@@ -88,7 +88,7 @@ class Interrupt:
 
 @dataclass(frozen=True, slots=True)
 class Request:
-    """What a search is asked: the scenario its models satisfy, and how far it may go."""
+    """What a search is asked: the scenario its answer sets satisfy, and how far it may go."""
 
     scenario: Scenario = frozenset()
     limits: Limits = UNLIMITED
@@ -119,9 +119,9 @@ def _literals(symbols: Iterable[Symbol]) -> AnswerSet:
 
 @dataclass(frozen=True, slots=True)
 class Seen:
-    """A model as clingo reported it, and whether it is proven optimal (as all are, unoptimized).
+    """An answer set as clingo reported it, and whether it is proven optimal (all are, unoptimized).
 
-    It is read into a `Model` only once it is known to be kept, which most improving models are not.
+    It is read into a `Model` only once it is known to be kept, which most improving ones are not.
     """
 
     atoms: tuple[Symbol, ...]
@@ -137,14 +137,14 @@ class Seen:
         )
 
 
-def seen(model: ClingoModel, theory: Theory) -> Seen:
-    """Take note of a model that clingo reports."""
+def seen(answer_set: ClingoModel, theory: Theory) -> Seen:
+    """Take note of an answer set that clingo reports."""
     return Seen(
-        tuple(model.symbols(atoms=True)),
-        tuple(model.symbols(shown=True)),
-        theory.assignment(model),
-        tuple(model.cost),
-        proven=model.optimality_proven or not model.cost,
+        tuple(answer_set.symbols(atoms=True)),
+        tuple(answer_set.symbols(shown=True)),
+        theory.assignment(answer_set),
+        tuple(answer_set.cost),
+        proven=answer_set.optimality_proven or not answer_set.cost,
     )
 
 
@@ -167,20 +167,20 @@ def _always(_: Seen) -> bool:
 
 
 def proven(seen: Seen) -> bool:
-    """Say whether `seen` is a model that is known to be optimal."""
+    """Say whether `seen` is an answer set that is known to be optimal."""
     return seen.proven
 
 
 @dataclass(frozen=True, slots=True)
 class Plan:
-    """How to run a solve: the (enum, opt) modes, what counts toward the cap on the models."""
+    """How to run a solve: the (enum, opt) modes, what counts toward the cap on the answer sets."""
 
     modes: tuple[str, str]
     counted: Callable[[Seen], bool] = _always
     cap: int | Limit = Limit.UNBOUNDED
 
     def allows(self, counted: int) -> bool:
-        """Say whether `counted` models are within the cap."""
+        """Say whether `counted` answer sets are within the cap."""
         return isinstance(self.cap, Limit) or counted <= self.cap
 
 
@@ -200,7 +200,7 @@ class _Handle(Protocol):
 
 
 def _await(handle: _Handle, cut: Cut) -> Truncation | None:
-    """Wait for a model or the end, canceling the search if it is cut first."""
+    """Wait for an answer set or the end, canceling the search if it is cut first."""
     while (truncation := cut()) is None:
         if handle.wait(_SLICE):
             return None
@@ -211,7 +211,7 @@ def _await(handle: _Handle, cut: Cut) -> Truncation | None:
 def drain(
     handle: _Handle, plan: Plan, cut: Cut, read: Callable[[ClingoModel], Seen]
 ) -> tuple[list[Seen], Exhausted | Truncation]:
-    """Take models until the end, the cut, or one more counted model than the cap of `plan`."""
+    """Take answer sets until the end, the cut, or one more than the cap of `plan` counts."""
     found: list[Seen] = []
     counted = 0
     handle.resume()
@@ -230,7 +230,7 @@ def drain(
 def decide[E](
     run: Run, refutation: Refutation | None, evidence: Callable[[list[Seen]], E]
 ) -> Determination[E]:
-    """Read a run as a determination: models make it consistent, an exhausted none inconsistent."""
+    """Read a run as a determination: answer sets make it consistent, an exhausted none not."""
     if run.found:
         return Consistent(evidence(list(run.found)), run.conclusion)
     match run.conclusion:
@@ -244,13 +244,13 @@ def decide[E](
 
 
 def models(found: list[Seen]) -> Models:
-    """Present the models found: the first, and those after it."""
+    """Present the answer sets found: the first, and those after it."""
     each = [seen.model for seen in found]
     return Models(each[0], tuple(each[1:]))
 
 
 def optimized(found: list[Seen]) -> Optimized:
-    """Present the optimum if one is proven, else the best model so far."""
+    """Present the optimum if one is proven, else the best answer set so far."""
     optimal = [seen for seen in found if seen.proven]
     if optimal:
         return Optimum(optimal[0].cost, models(optimal))

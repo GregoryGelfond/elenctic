@@ -79,9 +79,9 @@ All notable changes are recorded here. The format follows
 
 ### Fixed
 - `Program.read` accepts any path-like (`str | PathLike`).
-- A search is about 2.3 times faster: a model is read into literals only once it is kept, and each
+- A search is about 2.3 times faster: an answer set is read into literals only once it is kept, and each
   clingo symbol is converted once.
-- Native `@cautious`/`@brave` under a model cap are decided from the solver, not the cut search.
+- Native `@cautious`/`@brave` under an answer set cap are decided from the solver, not the cut search.
 - A minimal core is tested on a non-trivial case and under a budget cut (`minimal=False`).
 - A native `@cautious`/`@brave` claim is judged only from a search that ran to its end; if the search
   was cut by a budget, an interrupt or a target it is undecided, where it was reported as a pass or a

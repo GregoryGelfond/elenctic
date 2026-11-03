@@ -10,7 +10,7 @@ from elenctic.program import Fault, Locus, Program
 from elenctic.search import UNLIMITED, Interrupt, Limits
 from elenctic.spans import Position, Span
 from elenctic.verdicts import Finding, Report, Verdict
-from interrupting import at_first_model
+from interrupting import at_first_answer_set
 from nesting import DEEP_NESTING, nested
 
 DRINKS = """
@@ -62,7 +62,7 @@ def test_expecting_unsat_passes_only_without_an_answer_set() -> None:
     assert verdicts("p. :- p.\n% @expect sat") == [F]
 
 
-def test_every_model_claim_fails_when_there_is_no_answer_set() -> None:
+def test_every_answer_set_claim_fails_when_there_is_no_answer_set() -> None:
     text = "p. :- p.\n% @expect sat\n% @model { p }\n% @brave { p }\n% @query yes { p }\n"
     assert verdicts(text) == [F, F, F, F]
 
@@ -117,7 +117,7 @@ def test_a_search_cut_short_is_undecided_not_failed() -> None:
     assert str(Truncation.BUDGET) in report.findings[0].detail
 
 
-def test_a_satisfiability_claim_alone_asks_the_solver_for_one_model() -> None:
+def test_a_satisfiability_claim_alone_asks_the_solver_for_one_answer_set() -> None:
     assert verdicts("{p(1..40)}.\n% @expect sat", limits=Limits(seconds=5)) == [P]
 
 
@@ -158,7 +158,7 @@ KNAPSACK = """
 """
 
 
-def test_a_claim_about_the_optimal_models_reads_those_and_only_those() -> None:
+def test_a_claim_about_the_optimal_answer_sets_reads_those_and_only_those() -> None:
     text = KNAPSACK + (
         "% @expect sat\n"
         "% @count optimal 1\n"
@@ -171,7 +171,7 @@ def test_a_claim_about_the_optimal_models_reads_those_and_only_those() -> None:
     assert verdicts(text) == [P] * 7
 
 
-def test_a_claim_that_holds_of_a_model_but_not_an_optimal_one_fails_when_about_the_optimal() -> (
+def test_a_claim_true_of_an_answer_set_but_not_an_optimal_one_fails_when_about_the_optimal() -> (
     None
 ):
     text = KNAPSACK + "% @expect sat\n% @model optimal { b }\n% @model { b }\n% @count 6\n"
@@ -207,7 +207,7 @@ def test_the_optimum_is_claimed_without_the_ties_all_found() -> None:
     assert verdicts(text, limits=Limits(models=1)) == [P, P, U]
 
 
-def test_native_consequences_decide_a_search_the_model_cap_would_cut() -> None:
+def test_native_consequences_decide_a_search_the_answer_set_cap_would_cut() -> None:
     text = (
         "{p(1..40)}. q.\n"
         "% @expect sat\n% @cautious { q }\n% @brave { p(7) }\n% @cautious { p(1) }\n"
@@ -224,7 +224,7 @@ def test_the_optimal_consequences_are_not_decided_by_those_of_all_answer_sets() 
     assert verdicts(text, limits=Limits(models=2)) == [P, F, P]
 
 
-def test_consequences_beside_a_census_are_still_decided_when_the_model_cap_cuts_it() -> None:
+def test_consequences_beside_a_census_are_still_decided_when_the_answer_set_cap_cuts_it() -> None:
     text = (
         "{p(1..40)}. q.\n% @expect sat\n% @count 5\n"
         "% @cautious { q }\n% @cautious { p(1) }\n% @brave { p(7) }\n"
@@ -398,20 +398,20 @@ EVERY_CHOICE = ", ".join(f"c({each})" for each in range(1, CHOICES + 1))
     [("@cautious { c(1) }", F), (f"@brave {{ {EVERY_CHOICE} }}", P)],
     ids=["cautious", "brave"],
 )
-def test_a_consequence_claim_is_open_when_the_search_is_cut_after_its_first_model(
+def test_a_consequence_claim_is_open_when_the_search_is_cut_after_its_first_answer_set(
     claim: str, settled: Verdict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     text = ALTERNATIVES + f"% {claim}\n"
     assert verdicts(text) == [P, settled]
     interrupt = Interrupt()
-    at_first_model(monkeypatch, interrupt.pull)
+    at_first_answer_set(monkeypatch, interrupt.pull)
     found = check(Program(text, "t.lp"), interrupt=interrupt)
     assert isinstance(found, Report)
     assert [f.verdict for f in found.findings] == [P, U]
     assert str(Truncation.INTERRUPTED) in found.findings[1].detail
 
 
-def test_native_consequences_settle_a_claim_that_a_model_cap_leaves_open() -> None:
+def test_native_consequences_settle_a_claim_that_an_answer_set_cap_leaves_open() -> None:
     text = ALTERNATIVES + f"% @cautious {{ c(1) }}\n% @count {CHOICES}\n"
     assert verdicts(text, limits=Limits(models=1)) == [P, F, U]
 

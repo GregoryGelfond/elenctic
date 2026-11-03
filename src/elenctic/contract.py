@@ -43,8 +43,8 @@ class Witness:
     over: Range = Range.ALL
     assignment: Assignment = frozenset()
 
-    def upheld_by(self, model: Model) -> bool:
-        return model.shown == self.literals and self.assignment <= model.assignment
+    def upheld_by(self, answer_set: Model) -> bool:
+        return answer_set.shown == self.literals and self.assignment <= answer_set.assignment
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,8 +54,8 @@ class Assigns:
     assignment: Assignment
     over: Range = Range.ALL
 
-    def upheld_by(self, model: Model) -> bool:
-        return self.assignment <= model.assignment
+    def upheld_by(self, answer_set: Model) -> bool:
+        return self.assignment <= answer_set.assignment
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +115,7 @@ class Contract:
 
 
 def over(reading: Reading) -> Range:
-    """Name the model set a claim is about: only the optimal-set claims say otherwise."""
+    """Name the range of answer sets a claim is about: only the optimal-set claims say otherwise."""
     if isinstance(reading, Census | Witness | Assigns | Entails | Costs):
         return reading.over
     return Range.ALL

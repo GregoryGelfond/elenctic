@@ -39,15 +39,15 @@ from elenctic.search import UNLIMITED, Interrupt, Limit, Limits, Request, Run, S
 P, Q = Literal("p"), Literal("q")
 
 
-def stable_models(text: str, scenario: Scenario = frozenset()) -> set[frozenset[Literal]]:
+def answer_sets(text: str, scenario: Scenario = frozenset()) -> set[frozenset[Literal]]:
     found = solve(Program(text), scenario)
     assert isinstance(found, Consistent), found
     assert found.conclusion is Exhausted.EXHAUSTED
     return {m.atoms for m in found.evidence.all}
 
 
-def test_every_stable_model_is_found_and_none_twice() -> None:
-    assert stable_models("{p;q}.") == {
+def test_every_answer_set_is_found_and_none_twice() -> None:
+    assert answer_sets("{p;q}.") == {
         frozenset(),
         frozenset({P}),
         frozenset({Q}),
@@ -55,11 +55,11 @@ def test_every_stable_model_is_found_and_none_twice() -> None:
     }
 
 
-def test_an_objective_does_not_narrow_the_stable_models() -> None:
-    assert len(stable_models("{p}. #minimize { 1 : p }.")) == 2
+def test_an_objective_does_not_narrow_the_answer_sets() -> None:
+    assert len(answer_sets("{p}. #minimize { 1 : p }.")) == 2
 
 
-def test_a_model_carries_what_it_shows_apart_from_what_it_holds() -> None:
+def test_an_answer_set_carries_what_it_shows_apart_from_what_it_holds() -> None:
     found = solve(Program("p. q. #show p/0."))
     assert isinstance(found, Consistent)
     assert (found.evidence.first.atoms, found.evidence.first.shown) == (
@@ -68,19 +68,19 @@ def test_a_model_carries_what_it_shows_apart_from_what_it_holds() -> None:
     )
 
 
-def test_a_program_with_no_stable_model_is_inconsistent_with_nothing_to_blame() -> None:
+def test_a_program_with_no_answer_set_is_inconsistent_with_nothing_to_blame() -> None:
     assert solve(Program("p. :- p.")) == Inconsistent(NoAssumptions())
 
 
-def test_a_scenario_that_holds_restricts_the_models() -> None:
-    assert stable_models("{p;q}.", frozenset({Assumption(P)})) == {
+def test_a_scenario_that_holds_restricts_the_answer_sets() -> None:
+    assert answer_sets("{p;q}.", frozenset({Assumption(P)})) == {
         frozenset({P}),
         frozenset({P, Q}),
     }
 
 
-def test_a_scenario_that_fails_restricts_the_models() -> None:
-    assert stable_models("{p;q}.", frozenset({Assumption(P, holds=False)})) == {
+def test_a_scenario_that_fails_restricts_the_answer_sets() -> None:
+    assert answer_sets("{p;q}.", frozenset({Assumption(P, holds=False)})) == {
         frozenset(),
         frozenset({Q}),
     }
@@ -100,7 +100,7 @@ def test_assuming_an_atom_no_rule_derives_is_refuted_by_it_alone() -> None:
 
 
 def test_assuming_such_an_atom_false_is_no_restriction() -> None:
-    assert stable_models("{p}.", frozenset({Assumption(Literal("absent"), holds=False)}))
+    assert answer_sets("{p}.", frozenset({Assumption(Literal("absent"), holds=False)}))
 
 
 def test_assuming_a_fact_false_is_refuted() -> None:
@@ -110,30 +110,30 @@ def test_assuming_a_fact_false_is_refuted() -> None:
 
 
 def test_a_strongly_negated_literal_can_be_assumed() -> None:
-    models = stable_models("{-p}.", frozenset({Assumption(P.contrary)}))
+    models = answer_sets("{-p}.", frozenset({Assumption(P.contrary)}))
     assert models == {frozenset({P.contrary})}
 
 
-def test_the_model_cap_truncates_without_claiming_to_have_finished() -> None:
+def test_the_answer_set_cap_truncates_without_claiming_to_have_finished() -> None:
     found = solve(Program("{p(1..5)}."), limits=Limits(models=3))
     assert isinstance(found, Consistent)
     assert found.conclusion is Truncation.TARGET
     assert len(found.evidence.all) == 3
 
 
-def test_a_cap_equal_to_the_number_of_models_is_still_exhausted() -> None:
+def test_a_cap_equal_to_the_number_of_answer_sets_is_still_exhausted() -> None:
     found = solve(Program("{p;q}."), limits=Limits(models=4))
     assert isinstance(found, Consistent)
     assert (found.conclusion, len(found.evidence.all)) == (Exhausted.EXHAUSTED, 4)
 
 
-def test_a_search_cut_by_the_budget_keeps_the_models_it_found() -> None:
+def test_a_search_cut_by_the_budget_keeps_the_answer_sets_it_found() -> None:
     found = solve(Program("{p(1..40)}."), limits=Limits(seconds=0.2))
     assert isinstance(found, Consistent)
     assert found.conclusion is Truncation.BUDGET
 
 
-def test_a_budget_spent_before_any_model_is_inconclusive_not_inconsistent() -> None:
+def test_a_budget_spent_before_any_answer_set_is_inconclusive_not_inconsistent() -> None:
     assert solve(Program("{p;q}."), limits=Limits(seconds=0)) == Inconclusive(Truncation.BUDGET)
 
 
@@ -207,7 +207,7 @@ def test_a_program_read_from_a_file_resolves_its_includes_beside_it(tmp_path: Pa
     assert found.evidence.first.atoms == {P}
 
 
-def test_the_cautious_consequences_are_what_every_model_shares() -> None:
+def test_the_cautious_consequences_are_what_every_answer_set_shares() -> None:
     grounded = ground(Program("{q}. p."))
     assert not isinstance(grounded, Fault)
     assert grounded.consequences(Mode.CAUTIOUS) == Consistent(
@@ -271,7 +271,7 @@ programs = st.lists(
 
 @settings(max_examples=40, deadline=None)
 @given(programs, st.sampled_from(Mode))
-def test_the_native_consequences_equal_those_derived_from_the_enumerated_models(
+def test_the_native_consequences_equal_those_derived_from_the_enumerated_answer_sets(
     text: str, mode: Mode
 ) -> None:
     grounded = ground(Program(text))
@@ -302,7 +302,7 @@ def test_a_refutation_is_minimal_not_merely_sufficient() -> None:
     assert found == Inconsistent(These(frozenset({Assumption(P), Assumption(Q)})))
 
 
-def test_assumptions_are_not_to_blame_when_the_program_has_no_model_of_its_own() -> None:
+def test_assumptions_are_not_to_blame_when_the_program_has_no_answer_set_of_its_own() -> None:
     assert solve(Program("p. :- p."), frozenset({Assumption(Q)})) == Inconsistent(NotThese())
 
 
@@ -363,7 +363,7 @@ def test_every_refutation_clashes_and_every_proper_part_of_it_is_satisfiable(
     assert all(isinstance(grounded.solve(core - {a}), Consistent) for a in core)
 
 
-def test_the_optimum_is_the_cost_of_the_optimal_models_and_those_are_all_found() -> None:
+def test_the_optimum_is_the_cost_of_the_optimal_answer_sets_and_those_are_all_found() -> None:
     grounded = ground(Program("{p;q}. :- not p, not q. #minimize { 1,p : p; 1,q : q }."))
     assert not isinstance(grounded, Fault)
     found = grounded.optimize()
@@ -392,7 +392,7 @@ def test_levels_are_ordered_highest_priority_first() -> None:
     assert found.evidence.cost == (0, 1)
 
 
-def test_with_no_objective_every_model_is_optimal() -> None:
+def test_with_no_objective_every_answer_set_is_optimal() -> None:
     grounded = ground(Program("{p;q}."))
     assert not isinstance(grounded, Fault)
     found = grounded.optimize()
@@ -401,7 +401,7 @@ def test_with_no_objective_every_model_is_optimal() -> None:
     assert (found.evidence.cost, len(found.evidence.models.all)) == ((), 4)
 
 
-def test_the_model_cap_of_an_optimization_counts_optimal_models_only() -> None:
+def test_the_answer_set_cap_of_an_optimization_counts_optimal_answer_sets_only() -> None:
     grounded = ground(Program("{p;q}. :- not p, not q. #minimize { 1,p : p; 1,q : q }."))
     assert not isinstance(grounded, Fault)
     found = grounded.optimize(limits=Limits(models=1))
@@ -417,7 +417,7 @@ def test_an_optimization_of_an_inconsistent_program_is_inconsistent() -> None:
     assert grounded.optimize() == Inconsistent(NoAssumptions())
 
 
-def test_an_optimization_under_a_scenario_optimizes_among_the_models_it_admits() -> None:
+def test_an_optimization_under_a_scenario_optimizes_among_the_answer_sets_it_admits() -> None:
     grounded = ground(Program("{p;q}. #minimize { 1@2 : p }. #minimize { 1@1 : q }."))
     assert not isinstance(grounded, Fault)
     found = grounded.optimize(frozenset({Assumption(P)}))
@@ -453,7 +453,7 @@ def test_the_exhausted_optimum_closes_a_view_of_the_optimal_answer_sets() -> Non
     assert view == WorldView(frozenset({frozenset({Literal("a")})}), Range.OPTIMAL)
 
 
-def test_no_model_proven_optimal_leaves_the_last_one_as_the_incumbent() -> None:
+def test_no_answer_set_proven_optimal_leaves_the_last_one_as_the_incumbent() -> None:
     first, middle, last = (_seen(atom, proven=False) for atom in "pqr")
     assert optimized([first, middle, last]) == Incumbent(last.model)
     proven = _seen("r", proven=True)
@@ -477,7 +477,9 @@ def clingo_reports(text: str) -> int:
     return len(reported)
 
 
-def test_only_the_models_an_optimization_keeps_are_built(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_only_the_answer_sets_an_optimization_keeps_are_built(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     built: list[AnswerSet] = []
 
     def counting(
@@ -519,7 +521,7 @@ objectives = st.sampled_from(
 
 
 def cost_of(text: str, atoms: frozenset[Literal]) -> tuple[int, ...]:
-    """Cost clingo reports for the one stable model that is exactly `atoms`."""
+    """Cost clingo reports for the one answer set that is exactly `atoms`."""
     control = Control(["--opt-mode=opt", "--warn=none"])
     control.add("base", [], text)
     control.ground([("base", [])])
@@ -532,7 +534,7 @@ def cost_of(text: str, atoms: frozenset[Literal]) -> tuple[int, ...]:
 
 @settings(max_examples=60, deadline=None)
 @given(programs, objectives, scenarios)
-def test_the_optimum_is_the_least_cost_among_all_models_and_its_models_are_those_at_it(
+def test_the_optimum_is_the_least_cost_among_all_answer_sets_and_its_answer_sets_are_those_at_it(
     text: str, objective: str, scenario: frozenset[Assumption]
 ) -> None:
     grounded = ground(Program(f"{text} {objective}"))

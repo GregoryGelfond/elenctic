@@ -1,4 +1,4 @@
-"""Pull an interrupt from inside a search, as soon as it reads its first model."""
+"""Pull an interrupt from inside a search, as soon as it reads its first answer set."""
 
 from collections.abc import Callable
 
@@ -10,8 +10,8 @@ from elenctic.search import Seen, seen
 from elenctic.theory import Theory
 
 
-def at_first_model(monkeypatch: pytest.MonkeyPatch, interrupt: Callable[[], None]) -> None:
-    """Make every search call `interrupt` when it reads a model, so it is cut after the first."""
+def at_first_answer_set(monkeypatch: pytest.MonkeyPatch, interrupt: Callable[[], None]) -> None:
+    """Make every search call `interrupt` on reading an answer set, so it is cut after the first."""
 
     def read(model: ClingoModel, theory: Theory) -> Seen:
         interrupt()

@@ -7,7 +7,7 @@ import pytest
 
 from elenctic.cli import main
 from elenctic.report import Exit
-from interrupting import at_first_model
+from interrupting import at_first_answer_set
 
 DRINKS = "1 { tea; coffee } 1.\nbiscuit.\n#show tea/0. #show coffee/0. #show biscuit/0.\n"
 
@@ -61,7 +61,7 @@ def test_json_is_written_on_request(tmp_path: Path, capsys: pytest.CaptureFixtur
     assert (code, json.loads(out)["exit_code"]) == (Exit.CLAIMS_HOLD, Exit.CLAIMS_HOLD)
 
 
-def test_a_search_that_runs_out_of_models_is_undecided_and_exits_with_the_claim_unmet(
+def test_a_search_that_runs_out_of_answer_sets_is_undecided_and_exits_with_the_claim_unmet(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @count 2\n")
@@ -129,7 +129,7 @@ def test_an_interrupted_consequence_search_is_undecided_and_not_a_pass(
 ) -> None:
     path = write(tmp_path, "path_coloring.lp", path_coloring(FEW_NODES))
     assert run(capsys, path)[0] == Exit.CLAIM_UNMET
-    at_first_model(monkeypatch, lambda: signal.raise_signal(signal.SIGINT))
+    at_first_answer_set(monkeypatch, lambda: signal.raise_signal(signal.SIGINT))
     code, out = run(capsys, path)
     assert code == Exit.CLAIM_UNMET
     assert "[UNDECIDED] @cautious { assign(2,g) } (line 6): search ended: interrupted" in out
@@ -206,7 +206,7 @@ SUBSETS = 2**ELEMENTS
 TOO_SMALL_CAP = SUBSETS - 1
 
 
-def test_a_search_that_reaches_the_model_cap_is_undecided_unless_the_cap_is_lifted(
+def test_a_search_that_reaches_the_answer_set_cap_is_undecided_unless_the_cap_is_lifted(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     every = f"{{ p(1..{ELEMENTS}) }}.\n#show p/1.\n% @expect sat\n% @count {SUBSETS}\n"
