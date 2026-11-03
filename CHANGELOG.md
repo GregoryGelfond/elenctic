@@ -95,6 +95,9 @@ All notable changes are recorded here. The format follows
 - The theory-atom error points at the first theory atom, not at line 1.
 
 ### Fixed
+- Documented that an objective only ranks answer sets and never removes any: unqualified claims and
+  every `@query` read all answer sets, and only `optimal` claims and `@cost` read the optimal ones
+  (`docs/explanation/semantics.md`, which the reference and the guides point to). The behavior is unchanged.
 - A query faults when it reads a literal the program can derive and does not `#show`, whatever its answer:
   `-b. #show b/0.` with `@query yes { -b }` was a false failure and with `@query unknown { -b }` a false
   pass. The gate had checked only the contraries read by `no` and `unknown`, and still does, so a

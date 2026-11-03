@@ -172,7 +172,10 @@ class Grounded:
         limits: Limits = Limits(),
         interrupt: Interrupt | None = None,
     ) -> Determination[Consequences]:
-        """Compute the cautious or brave consequences among the shown atoms, natively."""
+        """Compute the cautious or brave consequences among the shown atoms, natively.
+
+        They are those of all the answer sets, whatever the program optimizes.
+        """
         return self._search(
             Request(scenario, limits, interrupt),
             Plan((mode.value, "ignore")),

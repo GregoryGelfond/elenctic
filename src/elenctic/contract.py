@@ -80,7 +80,7 @@ class Costs:
 
 @dataclass(frozen=True, slots=True)
 class Asks:
-    """`@query A { L, ... }`: the conjunction of ground literals has answer `A`."""
+    """`@query A { L, ... }`: over all answer sets, the conjunction of literals has answer `A`."""
 
     answer: Answer
     query: All

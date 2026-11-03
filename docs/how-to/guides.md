@@ -37,7 +37,9 @@ from elenctic import Limits, Literal, Program, Query, ground, solve, world_view,
 
 Add `@cost { c }` for the optimum's cost and `@count optimal n`, `@answer-set optimal { L }`,
 `@cautious optimal { L }` or `@brave optimal { L }` for the optimal answer sets. A `#maximize`
-level is negated in a cost. The program must optimize something, or the file is an error.
+level is negated in a cost. The program must optimize something, or the file is an error. Claims
+without `optimal`, and queries, still read every answer set; an objective only ranks them (see
+[Semantics](../explanation/semantics.md)).
 See [`optimum.lp`](../reference/examples.md).
 
 ## Check a program with integer constraints

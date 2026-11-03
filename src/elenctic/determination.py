@@ -32,7 +32,11 @@ def option(limit: Truncation) -> str:
 
 
 class Range(StrEnum):
-    """Which answer sets a value ranges over: all of them, or those optimal."""
+    """Which answer sets a value ranges over: all of them, or only the optimal ones.
+
+    An objective ranks answer sets and removes none, so a value ranges over `ALL` unless it says
+    otherwise.
+    """
 
     ALL = auto()
     OPTIMAL = auto()

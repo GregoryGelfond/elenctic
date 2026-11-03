@@ -112,6 +112,11 @@ of the same kind are independent claims: two `@answer-set` claims are two existe
 | `@cost { c1 c2 … }` | the optimum's cost, highest priority first, is exactly this (see below) |
 | any of the above `assuming { l, not l }` | the claim is judged under those assumptions |
 
+An objective ranks answer sets and never removes any: every claim above without `optimal`, and every
+`@query`, reads all the answer sets AS(P) whatever the program optimizes; only the `optimal` claims
+and `@cost` read the optimal ones, Opt(P) ⊆ AS(P)
+([Semantics](../explanation/semantics.md)).
+
 `@note` is ignored. `% @elenctic solver clingcon` (or `clingo`, the default) names the solver the
 contract is checked with; it needs `elenctic[theory]`, and is a fault (`FAULT`, 2) when clingcon is
 not installed. A variable is a term of the program (`x`, `digit(s)`), an integer its value.
