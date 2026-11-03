@@ -166,6 +166,124 @@ makes them one, and `instance`, the pattern both become (the most general common
 public for answering queries and for the interactive session to come; `Pattern.match`, which reads a
 pattern off a ground answer set, does not use it.
 
+## Names
+
+Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
+
+### Programs and searches
+
+| Name | What it is |
+|---|---|
+| `Program` | ASP source text and where it came from |
+| `Grounded` | a program grounded once, to be searched under any number of scenarios |
+| `ground` | ground a program for a `Solver`: a `Grounded`, or a `Fault` saying why not |
+| `solve` | enumerate the stable models of a program under a scenario |
+| `Solver` | what a contract is checked with: `CLINGO`, or `CLINGCON`, which adds the clingcon theory |
+| `Fault` | a failure that is no answer about the program: it could not be asked; `locus` says whose, `diagnostics` what |
+| `Locus` | whose fault it is: `PROGRAM` or `REQUEST` |
+| `Request` | what a search is asked: a `Scenario`, its `Limits` and an optional `Interrupt` |
+| `Limits` | how far a search may go, in seconds and in answer sets read, each a number or `Limit.UNBOUNDED` |
+| `Limit` | what a limit may be besides a number: `UNBOUNDED` |
+| `Interrupt` | a request to stop, made from any thread with `pull()` and heeded between models |
+| `Cut` | the function a search asks whether to stop: a `Truncation`, or `None` to go on |
+| `Facts` | what the grounded program says about itself, against which a contract is checked |
+| `Shown` | the predicates `#show` selects; with no `#show` every atom is shown |
+
+### Results of a search
+
+| Name | What it is |
+|---|---|
+| `Determination` | a search's result: `Consistent`, `Inconsistent` or `Inconclusive`, over its evidence |
+| `Consistent` | a stable model exists; `evidence` is what the search found and `conclusion` how it ended |
+| `Inconsistent` | the search covered everything and no stable model satisfies the request; `refutation` says why |
+| `Inconclusive` | the search was cut short before it decided |
+| `Conclusion` | how a consistent search ended: `Exhausted` or a `Truncation` |
+| `Exhausted` | the search covered every stable model under the request |
+| `Truncation` | the search was cut short, and by what |
+| `Models` | at least one model, in the order the solver found them |
+| `Consequences` | the atoms true in every (cautious) or some (brave) stable model, among those shown |
+| `Optimized` | the evidence of an optimization: an `Optimum` or an `Incumbent` |
+| `Optimum` | a proven optimum: its cost and the optimal models found (all, if exhausted) |
+| `Incumbent` | the best model found before the search was cut: not proven optimal |
+| `Refutation` | why there is no stable model: `These`, `NotThese` or `NoAssumptions` |
+| `These` | these assumptions, no fewer when `minimal`, admit no stable model |
+| `NotThese` | no stable model whatever is assumed, and something is assumed |
+| `NoAssumptions` | no stable model, and nothing is assumed |
+| `Model` | a stable model: every atom, the atoms `#show` selects, its theory assignment and cost |
+| `Mode` | `CAUTIOUS` or `BRAVE`: consequences true in every, or in some, stable model |
+| `Range` | the model set a value ranges over: `ALL` stable models, or the `OPTIMAL` ones |
+| `Cost` | an optimum's cost, one integer for each priority level |
+| `Assignment` | a model's theory assignment: a set of `Valuation` |
+| `Valuation` | a theory variable and the integer a model gives it |
+
+### Literals and terms
+
+| Name | What it is |
+|---|---|
+| `Literal` | a ground classical literal: `p(t, ...)`, or `-p(t, ...)` when not `positive` |
+| `Signature` | a predicate with its arity and sign: `p/1`, or `-p/1` |
+| `AnswerSet` | a set of `Literal` |
+| `Assumption` | a literal taken to hold, or, when not `holds`, taken not to |
+| `Scenario` | a set of `Assumption` under which a search is made |
+| `Term` | a clingo symbol, a `Variable` or a `Compound` |
+| `Variable` | a named variable; `_` is anonymous, and each of its occurrences is a different variable |
+| `Compound` | a function term `f(...)`, `-f(...)` when not `positive`, or a tuple (empty `name`) |
+| `Pattern` | a literal whose arguments may be terms with variables, nested to any depth |
+| `Substitution` | what some variables stand for, as the matching or unifying of patterns found |
+| `Extension` | literals ordered by signature, so that those a pattern can match are found by binary search |
+| `mgu` | the most general unifier of two patterns, or `None` |
+| `Unifier` | two patterns renamed apart, the `Substitution` that makes them one, and the `instance` both become |
+
+### Queries
+
+| Name | What it is |
+|---|---|
+| `Query` | what a `WorldView` is asked: `Literal \| Pattern \| All \| Any` |
+| `All` | the conjunction of its parts |
+| `Any` | the disjunction of its parts; not `typing.Any` |
+| `Answer` | `YES`, `NO` or `UNKNOWN`: a query true in every answer set, false in every one, or neither |
+| `Truth` | truth in one answer set, ordered `FALSE < UNKNOWN < TRUE`, so that conjunction is `min` and disjunction `max` |
+| `evaluate` | a query's `Truth` in one answer set |
+| `answer` | a query's `Answer` over a `WorldView` |
+| `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
+| `bindings` | the `Bindings` of a pattern over a `WorldView` |
+| `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
+| `world_view` | close a consistent search over models into its `WorldView`, or give the `Truncation` that left it open |
+| `optimal_view` | close a proven optimum into the `WorldView` of its optimal models, or give what cut it |
+
+### Contracts and verdicts
+
+| Name | What it is |
+|---|---|
+| `check` | check the contract written in a program: a `Report`, or `None` if it carries none |
+| `parse_contract` | read each tag of a text: a claim for every one that reads, a diagnostic for the rest |
+| `render` | write a claim as the tag line that reads back to it |
+| `judge` | judge one claim against the search over its scenario: a `Finding` |
+| `Contract` | the claims of a source, the diagnostics of its tags and its `solver` |
+| `Claim` | a `Reading` to hold under a `Scenario`, and where it was written |
+| `Reading` | the meaning of one tag: one of the eight below |
+| `Satisfiable` | `@expect sat \| unsat` |
+| `Census` | `@count [optimal] n` |
+| `Witness` | `@model [optimal] { L } [where { A }]`, or `@optimal { L }` |
+| `Assigns` | `@assign [optimal] { A }` |
+| `Entails` | `@cautious [optimal] { L }` and `@brave [optimal] { L }` |
+| `Costs` | `@cost { c1 c2 ... }` |
+| `Asks` | `@query A { L, ... }`: a conjunction of ground literals has the answer `A` |
+| `Binds` | `@query A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B` |
+| `Finding` | a claim, the verdict on it, and what was expected against what was found |
+| `Found` | a search `judge` can read: a `Determination` over `Models`, `Consequences` or `Optimized` |
+| `Report` | the findings for one source; `verdict` is `FAIL` if any fails, else `UNDECIDED` if any is, else `PASS` |
+| `Verdict` | `PASS`, `FAIL` or `UNDECIDED` |
+
+### Sources
+
+| Name | What it is |
+|---|---|
+| `Position` | a point in a source; line and column both count from 1 |
+| `Span` | the half-open stretch of a source from `start` to `end` |
+| `Diagnostic` | a message about a `Span`, with its `Severity` |
+| `Severity` | `ERROR`, `WARNING` or `NOTE` |
+
 ## JSON
 
 `{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1 or 2); see `elenctic.json_view.encode`. A

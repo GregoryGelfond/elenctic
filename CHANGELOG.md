@@ -12,8 +12,9 @@ All notable changes are recorded here. The format follows
   in `pixi run check` and in CI.
 - Library: `Program`, `ground`, `solve` with `Limits` and a cancellable `Interrupt`; results as
   `Consistent | Inconsistent | Inconclusive` over `Models` or `Consequences`.
-- Query kernel in the public API: `Literal`, `Pattern`, `Query` (`Literal | All | Any`), `Answer`,
+- Query kernel in the public API: `Literal`, `Pattern`, `Query` (`Literal | Pattern | All | Any`), `Answer`,
   `answer`, `bindings`, over a `WorldView` that only an exhausted search yields.
+- A row for every name of `elenctic.__all__` in `docs/reference/reference.md`, checked by a test.
 - `mgu(first, second)` and `Unifier`: the most general unifier of two patterns, renamed apart, and
   the pattern both become. Public for answering queries and for the interactive session to come.
 - Contracts read from comments with source spans: `@expect`, `@count`, `@model`, `@cautious`,

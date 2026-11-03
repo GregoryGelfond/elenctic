@@ -122,3 +122,13 @@ def test_the_walk_finds_a_type_that_a_signature_names_and_the_package_does_not_e
         raise NotImplementedError
 
     assert set(_public_types(question)) == {Hidden}
+
+
+def test_the_reference_has_a_row_for_every_exported_name() -> None:
+    reference = (ROOT / "docs" / "reference" / "reference.md").read_text(encoding="utf-8")
+    _, _, names = reference.partition("\n## Names\n")
+    section = names.split("\n## ")[0]
+    missing = [name for name in elenctic.__all__ if f"| `{name}` |" not in section]
+    assert missing == []
+    rows = [line for line in section.splitlines() if line.startswith("| `")]
+    assert len(rows) == len(elenctic.__all__)
