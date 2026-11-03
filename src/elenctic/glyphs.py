@@ -36,3 +36,6 @@ MARKS: Final[Mapping[Verdict, Glyph]] = {
 }
 """The mark of a verdict on a claim: Nerd Fonts 3.5.1 `fa-check_circle`, `fa-times_circle`,
 `fa-question_circle`."""
+
+COPYRIGHT: Final = Glyph("\uf1f9", "\u00a9")
+"""The mark of the copyright line: Nerd Fonts 3.5.1 `fa-copyright`, and the copyright sign."""

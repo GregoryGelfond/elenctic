@@ -28,6 +28,8 @@ All notable changes are recorded here. The format follows
 - Preconditions that make a misreadable contract an error: theory atoms, an objective that grounds
   away, a nested `@count optimal`, a derivable unshown contrary under `no`/`unknown`.
 - Subcommands: `elenctic test` (the default) and the reserved `repl`, `why`, `ask`, `explain`.
+- `elenctic version`, `--version` and `-V`: one text with the version, the licence, the holder and the
+  versions of clingo and clingcon that are loaded.
 - Examples with real output in `docs/reference/examples.md`, checked by a test.
 - Packaging for uv, pixi and conda-forge (`recipe/recipe.yaml`).
 - clingcon: `% @elenctic solver clingcon` in a contract, claims `@assign [optimal] { x=1, … }` and

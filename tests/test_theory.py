@@ -1,9 +1,11 @@
 import sys
 from pathlib import Path
 
+import clingo
 import pytest
 from clingo.ast import AST, parse_string
 
+from elenctic.about import Solvers
 from elenctic.check import check
 from elenctic.cli import main
 from elenctic.contract import Solver
@@ -11,7 +13,7 @@ from elenctic.engine import ground
 from elenctic.program import Fault, Program
 from elenctic.report import Exit
 from elenctic.spans import Position, Span
-from elenctic.theory import Clingcon, Plain
+from elenctic.theory import Clingcon, Plain, loaded_solvers
 
 CLINGCON = "% @elenctic solver clingcon\n"
 ABSENT = (
@@ -62,3 +64,15 @@ def test_a_clingcon_contract_without_clingcon_exits_two(
     (tmp_path / "case.lp").write_text(CLINGCON + "p.\n% @expect sat\n")
     assert main([str(tmp_path)]) == Exit.FAULT
     assert ABSENT in capsys.readouterr().err
+
+
+def test_the_solvers_are_the_versions_of_the_modules_loaded() -> None:
+    clingcon = pytest.importorskip("clingcon")
+    assert loaded_solvers() == Solvers(
+        clingo.__version__, ".".join(str(part) for part in clingcon.ClingconTheory().version())
+    )
+
+
+@pytest.mark.usefixtures("without_clingcon")
+def test_solvers_without_clingcon_name_clingo_alone() -> None:
+    assert loaded_solvers() == Solvers(clingo.__version__, None)

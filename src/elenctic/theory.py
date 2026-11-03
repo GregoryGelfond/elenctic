@@ -4,9 +4,11 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from typing import Protocol, Self, override
 
+import clingo
 from clingo import Control, Model
 from clingo.ast import AST
 
+from elenctic.about import Solvers
 from elenctic.determination import Assignment, Valuation
 from elenctic.literals import Symbol
 
@@ -59,6 +61,7 @@ class _Constraints(Protocol):
     def prepare(self, control: Control, /) -> None: ...
     def on_model(self, model: Model, /) -> None: ...
     def assignment(self, thread_id: int, /) -> Iterable[tuple[Symbol, int | float | Symbol]]: ...
+    def version(self) -> tuple[int, int, int]: ...
 
 
 class Clingcon(Theory):
@@ -77,6 +80,11 @@ class Clingcon(Theory):
             return None
         make: Callable[[], _Constraints] = ClingconTheory
         return cls(make())
+
+    @property
+    def version(self) -> str:
+        """The version of the clingcon that is loaded, as its own library reports it."""
+        return ".".join(str(part) for part in self._theory.version())
 
     @override
     def register(self, control: Control) -> None:
@@ -98,3 +106,9 @@ class Clingcon(Theory):
             for name, value in self._theory.assignment(model.thread_id)
             if isinstance(value, int)
         )
+
+
+def loaded_solvers() -> Solvers:
+    """Read the versions of clingo and clingcon as loaded; clingcon is `None` when not installed."""
+    theory = Clingcon.load()
+    return Solvers(clingo.__version__, None if theory is None else theory.version)

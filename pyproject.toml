@@ -5,6 +5,7 @@ description = "Contracts and queries for answer set programs: a library first, a
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [{ name = "Gregory Gelfond" }]
 requires-python = ">=3.14"
 dependencies = ["clingo>=5.8.2,<5.9"]
 
@@ -83,7 +84,7 @@ layers = [
     "elenctic.classes | elenctic.patterns | elenctic.rows | elenctic.search",
     "elenctic.facts | elenctic.matching | elenctic.normalize | elenctic.relation | elenctic.substitution | elenctic.theory",
     "elenctic.body | elenctic.determination | elenctic.extension | elenctic.program | elenctic.tags | elenctic.terms",
-    "elenctic.braces | elenctic.display | elenctic.literals | elenctic.paint | elenctic.partition | elenctic.spans | elenctic.tree",
+    "elenctic.about | elenctic.braces | elenctic.display | elenctic.literals | elenctic.paint | elenctic.partition | elenctic.spans | elenctic.tree",
     "elenctic.traversal",
 ]
 

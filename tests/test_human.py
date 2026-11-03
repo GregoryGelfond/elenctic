@@ -1,5 +1,6 @@
 import re
 
+from elenctic.about import Package, Solvers
 from elenctic.glyphs import MARKS, Glyphs
 from elenctic.human import (
     SEVERITY_ROLES,
@@ -7,6 +8,7 @@ from elenctic.human import (
     internal_error,
     render,
     reserved,
+    version,
 )
 from elenctic.paint import Color
 from elenctic.presentation import PLAIN, Presentation, Style
@@ -178,3 +180,39 @@ def test_the_internal_error_is_one_legible_line_painted_as_an_error() -> None:
     assert internal_error(error, COLORED.stderr) == (
         "\x1b[1;31melenctic: internal error: RecursionError: no \\x1b[2J\x1b[0m"
     )
+
+
+PACKAGE = Package("1.2.3", "MIT", "Gregory Gelfond", 2026)
+SOLVERS = Solvers("5.8.2", "5.2.1")
+NOT_INSTALLED = Solvers("5.8.2", None)
+
+
+def test_the_version_text_is_two_lines_with_the_plain_copyright_sign() -> None:
+    assert version(PACKAGE, SOLVERS, PLAIN.stdout) == (
+        "elenctic 1.2.3 | \u00a9 2026 Gregory Gelfond | MIT\nclingo 5.8.2 | clingcon 5.2.1\n"
+    )
+
+
+def test_the_version_text_has_the_nerd_copyright_glyph_with_icons() -> None:
+    assert version(PACKAGE, SOLVERS, GLYPHED.stdout) == (
+        "elenctic 1.2.3 | \uf1f9 2026 Gregory Gelfond | MIT\nclingo 5.8.2 | clingcon 5.2.1\n"
+    )
+
+
+def test_a_clingcon_that_is_not_installed_is_said_so() -> None:
+    assert version(PACKAGE, NOT_INSTALLED, PLAIN.stdout).splitlines()[1] == (
+        "clingo 5.8.2 | clingcon not installed"
+    )
+
+
+def test_the_version_text_is_never_coloured() -> None:
+    assert version(PACKAGE, SOLVERS, COLORED.stdout) == version(PACKAGE, SOLVERS, PLAIN.stdout)
+
+
+def test_what_the_metadata_says_is_made_legible_and_the_glyph_is_not() -> None:
+    hostile = Package("1\x1b[2J", "MIT\x07", "G\x1b]0;x", 2026)
+    text = version(hostile, Solvers("5\x1b", "5\x1b"), GLYPHED.stdout)
+    assert text.splitlines() == [
+        "elenctic 1\\x1b[2J | \uf1f9 2026 G\\x1b]0;x | MIT\\x07",
+        "clingo 5\\x1b | clingcon 5\\x1b",
+    ]

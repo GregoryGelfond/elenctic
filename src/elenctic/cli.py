@@ -9,18 +9,25 @@ from math import inf
 from pathlib import Path
 from typing import Final
 
+from elenctic.about import package
 from elenctic.check import check
-from elenctic.human import internal_error, render, reserved
+from elenctic.human import internal_error, render, reserved, version
 from elenctic.json_view import to_json
 from elenctic.presentation import Environment, Presentation, Stream, When, resolve
 from elenctic.program import Fault, Locus, Program
 from elenctic.report import Entry, Exit, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.theory import loaded_solvers
 
 DEFAULT_BUDGET: Final = 30.0
 DEFAULT_MODEL_CAP: Final = 100_000
 
+
+DECIDED: Final = frozenset({"test", "version"})
+"""The subcommands that are built: a first argument that names one is a command, not a path."""
+VERSION_FLAGS: Final = frozenset({"--version", "-V"})
+"""Spellings of `version` that begin the arguments."""
 
 RESERVED = {
     "repl": "an interactive session over a live program",
@@ -88,7 +95,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="elenctic",
         description="Test, debug and analyse ASP programs. "
-        "With no command, the paths are tested: `elenctic PATH...` is `elenctic test PATH...`.",
+        "With no command, the paths are tested: `elenctic PATH...` is `elenctic test PATH...`. "
+        "`elenctic --version` and `elenctic -V` are `elenctic version`.",
     )
     options = [_output_options()]
     commands = parser.add_subparsers(dest="command", metavar="COMMAND", required=True)
@@ -114,6 +122,11 @@ def _parser() -> argparse.ArgumentParser:
         metavar="N|all",
         help="most answer sets read per search, or `all` for no limit (default: %(default)s)",
     )
+    commands.add_parser(
+        "version",
+        parents=options,
+        help="print the version, the licence and the versions of clingo and clingcon",
+    )
     for name, what in RESERVED.items():
         commands.add_parser(name, parents=options, help=f"{what} (reserved)").add_argument(
             "rest", nargs=argparse.REMAINDER
@@ -134,8 +147,10 @@ def _explicit_icons(argv: Iterable[str]) -> list[str]:
 
 
 def _normalized(argv: Sequence[str]) -> list[str]:
-    """Name the default command when the arguments begin with neither a command nor `--help`."""
-    named = bool(argv) and argv[0] in {"test", *RESERVED, "-h", "--help"}
+    """Name the command: `version` for `--version` and `-V`, else `test` unless one is named."""
+    if argv and argv[0] in VERSION_FLAGS:
+        return _explicit_icons(["version", *argv[1:]])
+    named = bool(argv) and argv[0] in {*DECIDED, *RESERVED, "-h", "--help"}
     return _explicit_icons(argv if named or not argv else ["test", *argv])
 
 
@@ -198,6 +213,11 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     return run.exit_code
 
 
+def _version(_: argparse.Namespace, presentation: Presentation) -> Exit:
+    sys.stdout.write(version(package(), loaded_solvers(), presentation.stdout))
+    return Exit.CLAIMS_HOLD
+
+
 def _reserved(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     print(reserved(arguments.command, presentation.stderr), file=sys.stderr)
     return Exit.FAULT
@@ -214,7 +234,13 @@ def main(argv: Sequence[str] | None = None) -> Exit:
     arguments = _parser().parse_args(normalized)
     presentation = _presentation(arguments, os.environ)
     try:
-        return (_test if arguments.command == "test" else _reserved)(arguments, presentation)
+        match arguments.command:
+            case "test":
+                return _test(arguments, presentation)
+            case "version":
+                return _version(arguments, presentation)
+            case _:
+                return _reserved(arguments, presentation)
     except Exception as error:  # noqa: BLE001
         return _exit_for_internal_error(error, presentation)
 

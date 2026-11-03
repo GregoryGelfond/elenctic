@@ -18,6 +18,13 @@ like a command is written `./why`.
 Zero and negative values of `--budget` and `--models` are a usage error (`FAULT`, 2). In the library the same
 choice is `Limits(seconds=…, models=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has a default cap.
 
+`elenctic version`, `elenctic --version` and `elenctic -V` print the same two lines on stdout and
+exit `CLAIMS_HOLD` (0); `version` is a command, so a file of that name is written `./version`. The
+first line is `elenctic VERSION | © 2026 Gregory Gelfond | MIT`: the version and licence are those of
+the installed package, the holder is its author. The second is the versions of clingo and clingcon as
+loaded, such as `clingo 5.8.2 | clingcon 5.2.1`, or `clingcon not installed`. With `--icons` the
+copyright sign is the Nerd Font glyph `fa-copyright`; the text takes no colour.
+
 `repl`, `why`, `ask` and `explain` are reserved: each writes a note on stderr and exits `FAULT` (2).
 All of the options above apply to every command.
 

@@ -3,7 +3,7 @@ import unicodedata
 import pytest
 
 from elenctic.display import legible
-from elenctic.glyphs import MARKS, Glyphs
+from elenctic.glyphs import COPYRIGHT, MARKS, Glyphs
 from elenctic.verdicts import Verdict
 
 PAIRS = [
@@ -36,3 +36,14 @@ def test_legible_would_mangle_a_nerd_glyph_so_it_is_added_after_legible() -> Non
     for mark in MARKS.values():
         assert legible(mark.nerd) != mark.nerd
         assert legible(mark.plain) == mark.plain
+
+
+def test_the_copyright_glyph_is_fa_copyright_and_the_plain_form_is_the_sign() -> None:
+    assert (COPYRIGHT.shown(Glyphs.NERD), COPYRIGHT.shown(Glyphs.PLAIN)) == ("\uf1f9", "\u00a9")
+
+
+def test_the_nerd_copyright_would_be_mangled_by_legible_and_the_plain_sign_would_not() -> None:
+    assert legible(COPYRIGHT.nerd) != COPYRIGHT.nerd
+    assert legible(COPYRIGHT.plain) == COPYRIGHT.plain
+    assert unicodedata.category(COPYRIGHT.nerd) == "Co"
+    assert unicodedata.category(COPYRIGHT.plain) == "So"

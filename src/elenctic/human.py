@@ -8,8 +8,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final
 
+from elenctic.about import Package, Solvers
 from elenctic.display import legible
-from elenctic.glyphs import MARKS
+from elenctic.glyphs import COPYRIGHT, MARKS
 from elenctic.paint import Role, paint
 from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
@@ -115,3 +116,20 @@ def reserved(command: str, style: Style) -> str:
 def internal_error(error: Exception, style: Style) -> str:
     """Write the one line for a failure of elenctic itself."""
     return _say(style, Role.ERROR, f"elenctic: internal error: {type(error).__name__}: {error}")
+
+
+def version(package: Package, solvers: Solvers, style: Style) -> str:
+    """Write the version text: the package and its copyright line, then the solvers loaded.
+
+    The fields are made legible and the glyph is added after, as it would not survive that. The
+    text is plain: it names no role, so `--color` leaves it alone.
+    """
+    mark = COPYRIGHT.shown(style.glyphs)
+    holder = f"{mark} {package.year} {legible(package.holder)}"
+    clingcon = "not installed" if solvers.clingcon is None else legible(solvers.clingcon)
+    return _lines(
+        [
+            f"elenctic {legible(package.version)} | {holder} | {legible(package.licence)}",
+            f"clingo {legible(solvers.clingo)} | clingcon {clingcon}",
+        ]
+    )
