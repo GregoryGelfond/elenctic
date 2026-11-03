@@ -1,7 +1,20 @@
 """Contracts and queries for answer set programs."""
 
 from elenctic.check import check
-from elenctic.contract import Assigns, Claim, Contract, Costs, Solver
+from elenctic.contract import (
+    Asks,
+    Assigns,
+    Binds,
+    Census,
+    Claim,
+    Contract,
+    Costs,
+    Entails,
+    Reading,
+    Satisfiable,
+    Solver,
+    Witness,
+)
 from elenctic.determination import (
     Assignment,
     Conclusion,
@@ -31,9 +44,9 @@ from elenctic.determination import (
 )
 from elenctic.engine import ground, solve
 from elenctic.extension import Extension
-from elenctic.facts import Facts
+from elenctic.facts import Facts, Shown
 from elenctic.grounded import Grounded
-from elenctic.judge import judge
+from elenctic.judge import Found, judge
 from elenctic.literals import (
     AnswerSet,
     Assumption,
@@ -44,7 +57,9 @@ from elenctic.literals import (
 from elenctic.patterns import Pattern
 from elenctic.program import Fault, Locus, Program
 from elenctic.query import (
+    All,
     Answer,
+    Any,
     Bindings,
     Query,
     Truth,
@@ -53,7 +68,7 @@ from elenctic.query import (
     evaluate,
 )
 from elenctic.reader import parse_contract
-from elenctic.search import Interrupt, Limit, Limits, Request
+from elenctic.search import Cut, Interrupt, Limit, Limits, Request
 from elenctic.spans import Diagnostic, Position, Severity, Span
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable
@@ -62,12 +77,17 @@ from elenctic.verdicts import Finding, Report, Verdict
 from elenctic.writer import render
 
 __all__ = [
+    "All",
     "Answer",
     "AnswerSet",
+    "Any",
+    "Asks",
     "Assignment",
     "Assigns",
     "Assumption",
     "Bindings",
+    "Binds",
+    "Census",
     "Claim",
     "Compound",
     "Conclusion",
@@ -76,13 +96,16 @@ __all__ = [
     "Contract",
     "Cost",
     "Costs",
+    "Cut",
     "Determination",
     "Diagnostic",
+    "Entails",
     "Exhausted",
     "Extension",
     "Facts",
     "Fault",
     "Finding",
+    "Found",
     "Grounded",
     "Inconclusive",
     "Inconsistent",
@@ -104,11 +127,14 @@ __all__ = [
     "Program",
     "Query",
     "Range",
+    "Reading",
     "Refutation",
     "Report",
     "Request",
+    "Satisfiable",
     "Scenario",
     "Severity",
+    "Shown",
     "Signature",
     "Solver",
     "Span",
@@ -121,6 +147,7 @@ __all__ = [
     "Valuation",
     "Variable",
     "Verdict",
+    "Witness",
     "WorldView",
     "answer",
     "bindings",

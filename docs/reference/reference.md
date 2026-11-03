@@ -148,7 +148,8 @@ fail a universal one (a counter-example was seen); anything else it leaves `unde
 Everything in `elenctic.__all__`, and nothing else is promised; from 1.0 it follows semver, and
 until then the changelog's Unreleased section is the record. Results are frozen dataclasses; spans
 are half-open, `[start, end)`, one-based. Use one search at a time per `Grounded`; this is not
-enforced.
+enforced. Every elenctic type that a public signature names is among them (a test checks it),
+so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any` is not `typing.Any`.
 
 | Question | Call | Result |
 |---|---|---|

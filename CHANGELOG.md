@@ -34,6 +34,11 @@ All notable changes are recorded here. The format follows
 - `elenctic version`, `--version` and `-V`: one text with the version, the licence, the holder and the
   versions of clingo and clingcon that are loaded. `--version` and `-V` are options of `elenctic`
   itself: valid before the command and winning over the rest of the line, not taken by a command.
+- Every type that a public signature names is exported, so a signature can be read and a value built
+  from `elenctic` alone: the readings `Satisfiable`, `Census`, `Witness`, `Entails`, `Asks`, `Binds`
+  and their union `Reading`, the query parts `All` and `Any`, `Shown`, `Found` and `Cut`. A test walks
+  the signatures of `__all__` and fails on a type left out. `elenctic.Any` is the disjunction of
+  queries, not `typing.Any`.
 - Examples with real output in `docs/reference/examples.md`, checked by a test.
 - Packaging for uv, pixi and conda-forge (`recipe/recipe.yaml`).
 - clingcon: `% @elenctic solver clingcon` in a contract, claims `@assign [optimal] { x=1, … }` and
