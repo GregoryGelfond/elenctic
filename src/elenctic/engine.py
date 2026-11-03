@@ -10,7 +10,7 @@ from clingo.ast import AST, ProgramBuilder, parse_files, parse_string
 from clingo.backend import Observer
 
 from elenctic.contract import Solver
-from elenctic.determination import Determination, Models
+from elenctic.determination import AnswerSets, Determination
 from elenctic.facts import Facts, objective_at, shown_by, theory_at
 from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
@@ -124,7 +124,7 @@ def solve(
     limits: Limits = Limits(),
     interrupt: Interrupt | None = None,
     solver: Solver = Solver.CLINGO,
-) -> Determination[Models] | Fault:
+) -> Determination[AnswerSets] | Fault:
     """Enumerate the answer sets of `program` satisfying `scenario`."""
     grounded = ground(program, solver)
     if isinstance(grounded, Fault):

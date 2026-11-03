@@ -13,6 +13,8 @@ from clingo import Model as ClingoModel
 from clingo import SolveResult, Symbol, SymbolType
 
 from elenctic.determination import (
+    AnswerSet,
+    AnswerSets,
     Assignment,
     Consistent,
     Cost,
@@ -21,14 +23,12 @@ from elenctic.determination import (
     Inconclusive,
     Inconsistent,
     Incumbent,
-    Model,
-    Models,
     Optimized,
     Optimum,
     Refutation,
     Truncation,
 )
-from elenctic.literals import AnswerSet, Assumption, Literal, Scenario
+from elenctic.literals import Assumption, Atoms, Literal, Scenario
 from elenctic.theory import Theory
 
 type Cut = Callable[[], Truncation | None]
@@ -109,7 +109,7 @@ def _literal(symbol: Symbol) -> Literal | None:
     return Literal.of(symbol) if symbol.type is SymbolType.Function and symbol.name else None
 
 
-def _literals(symbols: Iterable[Symbol]) -> AnswerSet:
+def _literals(symbols: Iterable[Symbol]) -> Atoms:
     """Keep the classical literals of `symbols`, each atom read once however often it recurs."""
     return frozenset(literal for s in symbols if (literal := _literal(s)) is not None)
 
@@ -118,7 +118,7 @@ def _literals(symbols: Iterable[Symbol]) -> AnswerSet:
 class Seen:
     """An answer set as clingo reported it, and whether it is proven optimal (all are, unoptimized).
 
-    It is read into a `Model` only once it is known to be kept, which most improving ones are not.
+    It is read into an `AnswerSet` only once it is kept, which most improving ones are not.
     """
 
     atoms: tuple[Symbol, ...]
@@ -128,8 +128,8 @@ class Seen:
     proven: bool
 
     @property
-    def model(self) -> Model:
-        return Model(
+    def answer_set(self) -> AnswerSet:
+        return AnswerSet(
             _literals(self.atoms), _literals(self.shown), assignment=self.assignment, cost=self.cost
         )
 
@@ -243,15 +243,15 @@ def decide[E](
             raise ValueError(message)
 
 
-def models(found: list[Seen]) -> Models:
+def answer_sets(found: list[Seen]) -> AnswerSets:
     """Present the answer sets found: the first, and those after it."""
-    each = [seen.model for seen in found]
-    return Models(each[0], tuple(each[1:]))
+    each = [seen.answer_set for seen in found]
+    return AnswerSets(each[0], tuple(each[1:]))
 
 
 def optimized(found: list[Seen]) -> Optimized:
     """Present the optimum if one is proven, else the best answer set so far."""
     optimal = [seen for seen in found if seen.proven]
     if optimal:
-        return Optimum(optimal[0].cost, models(optimal))
-    return Incumbent(found[-1].model)
+        return Optimum(optimal[0].cost, answer_sets(optimal))
+    return Incumbent(found[-1].answer_set)

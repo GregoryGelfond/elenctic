@@ -3,6 +3,7 @@
 from elenctic.by_answer_sets import entailed, from_answer_sets
 from elenctic.contract import Claim, Costs, Entails, Reading, Satisfiable, denies_answer_sets
 from elenctic.determination import (
+    AnswerSets,
     Consequences,
     Consistent,
     Cost,
@@ -11,7 +12,6 @@ from elenctic.determination import (
     Inconclusive,
     Inconsistent,
     Incumbent,
-    Models,
     Optimized,
     Optimum,
     Refutation,
@@ -51,7 +51,7 @@ def _optimal(
     """Judge from a proven optimum and the optimal answer sets found, all of them if exhausted."""
     if isinstance(reading, Costs):
         return _cost(reading, found.cost)
-    return from_answer_sets(reading, Consistent(found.models, conclusion))
+    return from_answer_sets(reading, Consistent(found.answer_sets, conclusion))
 
 
 def _core_text(refutation: These) -> str:
@@ -68,7 +68,7 @@ def _inconsistent(reading: Reading, refutation: Refutation) -> tuple[Verdict, st
     return Verdict.when(holds=refuted), why
 
 
-type Found = Determination[Models] | Determination[Consequences] | Determination[Optimized]
+type Found = Determination[AnswerSets] | Determination[Consequences] | Determination[Optimized]
 
 
 def judge(claim: Claim, found: Found) -> Finding:
@@ -88,11 +88,11 @@ def _verdict(reading: Reading, found: Found) -> tuple[Verdict, str]:
 
 def _evidence(
     reading: Reading,
-    evidence: Models | Consequences | Optimized,
+    evidence: AnswerSets | Consequences | Optimized,
     conclusion: Exhausted | Truncation,
 ) -> tuple[Verdict, str]:
     match evidence:
-        case Models():
+        case AnswerSets():
             return from_answer_sets(reading, Consistent(evidence, conclusion))
         case Consequences():
             return _consequent(reading, evidence, conclusion)

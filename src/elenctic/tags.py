@@ -62,7 +62,7 @@ class Block:
         return self.whole if element is None else self.span(element.start, element.end)
 
 
-_TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+)\b(?P<gap>\s*)(?P<rest>.*?)\s*")
+_TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+(?:-\w+)*)\b(?P<gap>\s*)(?P<rest>.*?)\s*")
 
 
 _CONTINUATION: Final = re.compile(r"(?P<lead>\s*%\s*)(?P<rest>.*?)\s*")
@@ -72,7 +72,7 @@ _TOKEN: Final = re.compile(r"(?P<open>\{)|(?P<word>[^\s{=]+|=)")
 
 
 KNOWN: Final = frozenset(
-    {"expect", "count", "model", "optimal", "assign", "cautious", "brave", "cost", "query"}
+    {"expect", "count", "answer-set", "optimal", "assign", "cautious", "brave", "cost", "query"}
     | {"elenctic", "note"}
 )
 

@@ -5,7 +5,7 @@
 #show a/0. #show b/0. #show c/0.
 % @expect sat
 % @count optimal 1
-% @model optimal { a, c }
+% @answer-set optimal { a, c }
 % @cautious optimal { a, c }
 % @brave optimal { a, c }
 % @cost { -5 }

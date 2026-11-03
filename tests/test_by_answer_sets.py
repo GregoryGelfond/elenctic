@@ -2,10 +2,10 @@ import pytest
 
 from elenctic.by_answer_sets import from_answer_sets
 from elenctic.contract import Claim, Entails
-from elenctic.determination import Consequences, Consistent, Mode, Model, Models, Truncation
+from elenctic.determination import AnswerSet, AnswerSets, Consequences, Consistent, Mode, Truncation
 from elenctic.engine import solve
 from elenctic.judge import judge
-from elenctic.literals import AnswerSet, Literal
+from elenctic.literals import Atoms, Literal
 from elenctic.program import Program
 from elenctic.search import Limits
 from elenctic.spans import Position, Span
@@ -13,16 +13,16 @@ from elenctic.verdicts import Verdict
 
 P, Q = Literal("p"), Literal("q")
 CUT = (Truncation.MAX_ANSWER_SETS, Truncation.MAX_SECONDS)
-NOTHING: AnswerSet = frozenset()
+NOTHING: Atoms = frozenset()
 
 
 def entails(mode: Mode, *literals: Literal) -> Entails:
     return Entails(mode, frozenset(literals))
 
 
-def stopped(cut: Truncation, *shown: Literal) -> Consistent[Models]:
+def stopped(cut: Truncation, *shown: Literal) -> Consistent[AnswerSets]:
     atoms = frozenset(shown)
-    return Consistent(Models(Model(atoms, atoms)), cut)
+    return Consistent(AnswerSets(AnswerSet(atoms, atoms)), cut)
 
 
 @pytest.mark.parametrize("cut", CUT)

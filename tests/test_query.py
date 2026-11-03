@@ -5,7 +5,7 @@ from hypothesis import strategies as st
 
 from elenctic.determination import WorldView
 from elenctic.extension import Extension
-from elenctic.literals import AnswerSet, Literal
+from elenctic.literals import Atoms, Literal
 from elenctic.patterns import Pattern
 from elenctic.query import (
     All,
@@ -44,12 +44,12 @@ queries = st.recursive(
 
 
 def test_a_literal_is_true_when_present_false_when_its_contrary_is_and_unknown_otherwise() -> None:
-    member: AnswerSet = frozenset({P, Q.contrary})
+    member: Atoms = frozenset({P, Q.contrary})
     assert [evaluate(x, member) for x in (P, Q, R)] == [Truth.TRUE, Truth.FALSE, Truth.UNKNOWN]
 
 
 def test_a_conjunction_is_as_true_as_its_least_true_part_and_a_disjunction_its_most() -> None:
-    member: AnswerSet = frozenset({P, Q.contrary})
+    member: Atoms = frozenset({P, Q.contrary})
     assert evaluate(All((P, R)), member) is Truth.UNKNOWN
     assert evaluate(All((P, Q)), member) is Truth.FALSE
     assert evaluate(Any((R, Q)), member) is Truth.UNKNOWN
@@ -72,7 +72,7 @@ def test_a_conjunction_false_in_each_member_for_a_different_reason_is_no() -> No
 
 
 @given(consistent_sets, queries)
-def test_negation_swaps_conjunction_and_disjunction(member: AnswerSet, query: Query) -> None:
+def test_negation_swaps_conjunction_and_disjunction(member: Atoms, query: Query) -> None:
     def dual(q: Query) -> Query:
         match q:
             case Literal() | Pattern():

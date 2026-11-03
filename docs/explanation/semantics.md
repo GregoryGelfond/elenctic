@@ -8,7 +8,7 @@ set is unknown there unless its contrary is present (Gelfond and Kahl, Definitio
 (by `max-answer-sets`, `max-seconds` or interrupt), or the program has none. Only an exhausted search yields a world
 view, and only a world view answers `@query`; a truncated search leaves such claims `undecided`.
 
-**Existential claims** (`@model`, `@brave`) pass when a witness is seen and fail only when the
+**Existential claims** (`@answer-set`, `@brave`) pass when a witness is seen and fail only when the
 search was exhausted without one. **Universal claims** (`@cautious`) fail when a counter-example is
 seen and pass only when exhausted. `@count n` fails once more than `n` distinct shown sets are
 seen.

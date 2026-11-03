@@ -89,9 +89,9 @@ def test_assign_optimal_ranges_over_the_optimal_answer_sets_only() -> None:
 def test_where_binds_the_assignment_to_the_same_answer_set_as_the_shown_atoms() -> None:
     text = CLINGCON + CHOICE + "% @expect sat\n"
     assert verdicts(text + "% @assign { x=1 }\n% @brave { a, b }\n") == [P, P, P]
-    assert verdicts(text + "% @model { a } where { x=2 }\n") == [P, P]
-    assert verdicts(text + "% @model { a } where { x=1 }\n") == [P, F]
-    assert verdicts(text + "% @model { b } where { x=1 }\n") == [P, P]
+    assert verdicts(text + "% @answer-set { a } where { x=2 }\n") == [P, P]
+    assert verdicts(text + "% @answer-set { a } where { x=1 }\n") == [P, F]
+    assert verdicts(text + "% @answer-set { b } where { x=1 }\n") == [P, P]
 
 
 def test_an_optimal_witness_is_over_the_optimal_answer_sets() -> None:
@@ -150,7 +150,7 @@ def test_the_optimum_found_beside_a_theory_is_proven_and_its_answer_sets_carry_a
     assert isinstance(found.evidence, Optimum)
     assert found.evidence.cost == (0,)
     x = [frozenset({Valuation(Function("x"), n)}) for n in (0, 1)]
-    assert {m.assignment for m in found.evidence.models.all} == set(x)
+    assert {m.assignment for m in found.evidence.answer_sets.all} == set(x)
 
 
 def test_a_clingcon_contract_runs_from_the_command_line(

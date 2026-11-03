@@ -8,4 +8,4 @@
 % @expect sat
 % @count 6
 % @assign { x=1, y=2 }
-% @model { rush } where { x=2, y=1 }
+% @answer-set { rush } where { x=2, y=1 }

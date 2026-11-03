@@ -3,7 +3,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from differential import SHOW, SHOWN_POSITIVE, _case, main
+from differential import SHOW, SHOWN_POSITIVE, _case, current_spelling, main
 
 from elenctic.check import check
 from elenctic.program import Fault, Program
@@ -35,8 +35,17 @@ def stand_in(src: Path) -> None:
 def test_every_generated_case_is_a_contract_elenctic_can_read(*, optimize: bool, show: str) -> None:
     rng = random.Random(7)
     cases = [_case(rng, optimize=optimize, show=show) for _ in range(40)]
-    assert all(isinstance(check(Program(case)), Report | Fault) for case in cases)
+    assert all(isinstance(check(Program(current_spelling(case))), Report | Fault) for case in cases)
+    assert all("is not a tag" not in str(check(Program(current_spelling(case)))) for case in cases)
     assert all("% @expect" in case for case in cases)
+
+
+def test_a_case_is_translated_from_the_tags_of_0_3() -> None:
+    text = "% @model { a }\n% @model optimal { b }\n% @optimal { c }\n"
+    assert (
+        current_spelling(text)
+        == "% @answer-set { a }\n% @answer-set optimal { b }\n% @optimal { c }\n"
+    )
 
 
 def test_the_same_seed_makes_the_same_cases() -> None:

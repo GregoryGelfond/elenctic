@@ -16,6 +16,8 @@ from elenctic.contract import (
     Witness,
 )
 from elenctic.determination import (
+    AnswerSet,
+    AnswerSets,
     Assignment,
     Conclusion,
     Consequences,
@@ -27,8 +29,6 @@ from elenctic.determination import (
     Inconsistent,
     Incumbent,
     Mode,
-    Model,
-    Models,
     NoAssumptions,
     NotThese,
     Optimized,
@@ -48,8 +48,8 @@ from elenctic.facts import Facts, Shown
 from elenctic.grounded import Grounded
 from elenctic.judge import Found, judge
 from elenctic.literals import (
-    AnswerSet,
     Assumption,
+    Atoms,
     Literal,
     Scenario,
     Signature,
@@ -80,11 +80,13 @@ __all__ = [
     "All",
     "Answer",
     "AnswerSet",
+    "AnswerSets",
     "Any",
     "Asks",
     "Assignment",
     "Assigns",
     "Assumption",
+    "Atoms",
     "Bindings",
     "Binds",
     "Census",
@@ -116,8 +118,6 @@ __all__ = [
     "Literal",
     "Locus",
     "Mode",
-    "Model",
-    "Models",
     "NoAssumptions",
     "NotThese",
     "Optimized",

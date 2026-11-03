@@ -52,7 +52,7 @@ def _of_answer_sets(reading: Census | Witness | Assigns | Entails | Costs) -> st
         case Census(count, over):
             return f"@count {_optimally(over)}{count}"
         case Witness(literals, over, assignment):
-            return f"@model {_optimally(over)}{braces(literals)}{where(assignment)}"
+            return f"@answer-set {_optimally(over)}{braces(literals)}{where(assignment)}"
         case Assigns(assignment, over):
             return f"@assign {_optimally(over)}{bound(assignment)}"
         case Entails(mode, literals, over):

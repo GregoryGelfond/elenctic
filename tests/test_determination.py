@@ -1,11 +1,11 @@
 import pytest
 
 from elenctic.determination import (
+    AnswerSet,
+    AnswerSets,
     Conclusion,
     Consistent,
     Exhausted,
-    Model,
-    Models,
     Truncation,
     WorldView,
     world_view,
@@ -15,22 +15,22 @@ from elenctic.literals import Literal
 P, Q = Literal("p"), Literal("q")
 
 
-def answer_set(*atoms: Literal, shown: tuple[Literal, ...] | None = None) -> Model:
-    return Model(frozenset(atoms), frozenset(atoms if shown is None else shown))
+def answer_set(*atoms: Literal, shown: tuple[Literal, ...] | None = None) -> AnswerSet:
+    return AnswerSet(frozenset(atoms), frozenset(atoms if shown is None else shown))
 
 
 def test_an_exhausted_search_yields_the_world_view_of_its_answer_sets() -> None:
-    found = Consistent(Models(answer_set(P, Q), (answer_set(P),)), Exhausted.EXHAUSTED)
+    found = Consistent(AnswerSets(answer_set(P, Q), (answer_set(P),)), Exhausted.EXHAUSTED)
     assert world_view(found) == WorldView(frozenset({frozenset({P, Q}), frozenset({P})}))
 
 
 def test_a_truncated_search_yields_no_world_view_only_what_cut_it_short() -> None:
-    found = Consistent(Models(answer_set(P)), Truncation.MAX_SECONDS)
+    found = Consistent(AnswerSets(answer_set(P)), Truncation.MAX_SECONDS)
     assert world_view(found) is Truncation.MAX_SECONDS
 
 
 def test_the_world_view_reads_the_shown_atoms_unless_told_otherwise() -> None:
-    found = Consistent(Models(answer_set(P, Q, shown=(P,))), Exhausted.EXHAUSTED)
+    found = Consistent(AnswerSets(answer_set(P, Q, shown=(P,))), Exhausted.EXHAUSTED)
     assert world_view(found) == WorldView(frozenset({frozenset({P})}))
     assert world_view(found, shown=False) == WorldView(frozenset({frozenset({P, Q})}))
 

@@ -35,7 +35,7 @@ from elenctic import Limits, Literal, Program, Query, ground, solve, world_view,
 
 ## Check the optimum of a program
 
-Add `@cost { c }` for the optimum's cost and `@count optimal n`, `@model optimal { L }`,
+Add `@cost { c }` for the optimum's cost and `@count optimal n`, `@answer-set optimal { L }`,
 `@cautious optimal { L }` or `@brave optimal { L }` for the optimal answer sets. A `#maximize`
 level is negated in a cost. The program must optimize something, or the file is an error.
 See [`optimum.lp`](../reference/examples.md).
@@ -43,7 +43,7 @@ See [`optimum.lp`](../reference/examples.md).
 ## Check a program with integer constraints
 
 Install `elenctic[theory]` (or use the pixi `theory` environment), write
-`% @elenctic solver clingcon`, then `@assign { x=1 }` and `@model { L } where { x=1 }`. Under
+`% @elenctic solver clingcon`, then `@assign { x=1 }` and `@answer-set { L } where { x=1 }`. Under
 clingcon an answer is a shown set with its assignment, so `@count` counts both. See
 [`clingcon.lp`](../reference/examples.md).
 

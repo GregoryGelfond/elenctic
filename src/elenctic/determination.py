@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from elenctic.literals import AnswerSet, Assumption, Literal, Symbol
+from elenctic.literals import Assumption, Atoms, Literal, Symbol
 
 
 class Exhausted(StrEnum):
@@ -24,7 +24,7 @@ type Conclusion = Exhausted | Truncation
 
 
 class Range(StrEnum):
-    """The answer set set a value ranges over: every answer set, or those optimal."""
+    """Which answer sets a value ranges over: all of them, or those optimal."""
 
     ALL = "all"
     OPTIMAL = "optimal"
@@ -48,33 +48,33 @@ type Assignment = frozenset[Valuation]
 
 
 @dataclass(frozen=True, slots=True)
-class Model:
+class AnswerSet:
     """An answer set: every atom of it, the atoms `#show` selects, its theory assignment and cost.
 
     `assignment` is empty without a theory. `cost` is empty unless the search optimized: clingo
     reports no cost when it ignores the objective, so a plain enumeration carries none.
     """
 
-    atoms: AnswerSet
-    shown: AnswerSet
+    atoms: Atoms
+    shown: Atoms
     assignment: Assignment = frozenset()
     cost: Cost = ()
 
     @property
-    def identity(self) -> tuple[AnswerSet, Assignment]:
+    def identity(self) -> tuple[Atoms, Assignment]:
         """What tells answer sets apart: the atoms shown and the assignment, not the hidden ones."""
         return self.shown, self.assignment
 
 
 @dataclass(frozen=True, slots=True)
-class Models:
+class AnswerSets:
     """At least one answer set, in the order the solver found them."""
 
-    first: Model
-    rest: tuple[Model, ...] = ()
+    first: AnswerSet
+    rest: tuple[AnswerSet, ...] = ()
 
     @property
-    def all(self) -> tuple[Model, ...]:
+    def all(self) -> tuple[AnswerSet, ...]:
         return (self.first, *self.rest)
 
 
@@ -88,7 +88,7 @@ class Consequences:
     """The atoms true in every (cautious) or some (brave) answer set, among those shown."""
 
     mode: Mode
-    literals: AnswerSet
+    literals: Atoms
     over: Range = Range.ALL
 
 
@@ -143,14 +143,14 @@ class Optimum:
     """A proven optimum: its cost, and the optimal answer sets found (all, if exhausted)."""
 
     cost: Cost
-    models: Models
+    answer_sets: AnswerSets
 
 
 @dataclass(frozen=True, slots=True)
 class Incumbent:
     """The best answer set found before the search was cut: not proven optimal."""
 
-    model: Model
+    answer_set: AnswerSet
 
 
 type Optimized = Optimum | Incumbent
@@ -160,7 +160,7 @@ type Optimized = Optimum | Incumbent
 class WorldView:
     """The answer sets of a program, all of them: only an exhausted search yields one."""
 
-    members: frozenset[AnswerSet]
+    members: frozenset[Atoms]
     over: Range = Range.ALL
 
     def __post_init__(self) -> None:
@@ -169,16 +169,16 @@ class WorldView:
             raise ValueError(message)
 
     @property
-    def cautious(self) -> AnswerSet:
+    def cautious(self) -> Atoms:
         first, *rest = self.members
         return first.intersection(*rest)
 
     @property
-    def brave(self) -> AnswerSet:
+    def brave(self) -> Atoms:
         return frozenset[Literal]().union(*self.members)
 
 
-def world_view(found: Consistent[Models], *, shown: bool = True) -> WorldView | Truncation:
+def world_view(found: Consistent[AnswerSets], *, shown: bool = True) -> WorldView | Truncation:
     """Close a consistent search over answer sets into its world view, or say what left it open."""
     match found.conclusion:
         case Exhausted.EXHAUSTED:
@@ -190,8 +190,8 @@ def world_view(found: Consistent[Models], *, shown: bool = True) -> WorldView | 
 def optimal_view(found: Consistent[Optimized]) -> WorldView | Truncation:
     """Close a proven optimum into the world view of its optimal answer sets, or say what cut it."""
     match found.evidence, found.conclusion:
-        case Optimum(_, models), Exhausted.EXHAUSTED:
-            return WorldView(frozenset(m.shown for m in models.all), Range.OPTIMAL)
+        case Optimum(_, answer_sets), Exhausted.EXHAUSTED:
+            return WorldView(frozenset(m.shown for m in answer_sets.all), Range.OPTIMAL)
         case _, Truncation() as cut:
             return cut
         case _:

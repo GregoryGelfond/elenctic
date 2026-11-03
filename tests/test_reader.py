@@ -49,7 +49,7 @@ def test_each_tag_reads_into_its_claim_with_the_line_it_was_written_on() -> None
         "% @count 2",
         "% @cautious { p }",
         "% @brave { p, -q }",
-        "% @model { p, q }",
+        "% @answer-set { p, q }",
     )
     assert not contract.diagnostics
     assert [c.reading for c in contract.claims] == [
@@ -154,7 +154,7 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
     lines = [
         "@expect sat",
         "@count 3",
-        "@model { -p, q(1) }",
+        "@answer-set { -p, q(1) }",
         "@cautious { p } assuming { not r, s }",
         '@brave { q("a,b") }',
         "@query unknown { p(1), -q }",
@@ -164,14 +164,14 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
         "@query no { p(f(g(X,1),a),(Y,-h(X))) } = { (1,2) }",
         "@expect unsat assuming { p }",
         "@count optimal 2",
-        "@model optimal { p, -q }",
+        "@answer-set optimal { p, -q }",
         "@cautious optimal { p } assuming { r }",
         "@brave optimal { q }",
         "@cost { 3 -1 0 }",
         "@assign { x=1, y(a)=-2 }",
         "@assign optimal { x=1 }",
-        "@model { p } where { x=1 }",
-        "@model optimal { p, q } where { f(a,1)=0, x=3 } assuming { r }",
+        "@answer-set { p } where { x=1 }",
+        "@answer-set optimal { p, q } where { f(a,1)=0, x=3 } assuming { r }",
     ]
     contract = parse(*(f"% {line}" for line in lines))
     assert not contract.diagnostics
@@ -189,6 +189,11 @@ def test_a_count_of_zero_contradicts_expecting_sat() -> None:
 def only_diagnostic(*lines: str) -> Diagnostic:
     (found,) = parse("% @expect sat", *lines).diagnostics
     return found
+
+
+def test_the_answer_set_tag_has_a_hyphen_and_the_old_spelling_is_not_a_tag() -> None:
+    assert only("% @answer-set { p }").reading == Witness(frozenset({Literal("p")}))
+    assert "`@model` is not a tag" in only_diagnostic("% @model { p }").message
 
 
 def test_a_string_may_hold_escaped_quotes_commas_and_braces() -> None:
@@ -278,10 +283,10 @@ def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None
     assert (found.span.start, found.span.end) == (P(3, 8), P(3, 15))
 
 
-def test_optimal_is_an_answer_set_set_a_claim_may_name_and_the_tag_is_sugar_for_it() -> None:
+def test_optimal_is_a_range_a_claim_may_name_and_the_tag_is_sugar_for_it() -> None:
     p = frozenset({Literal("p")})
     assert only("% @optimal { p }").reading == Witness(p, Range.OPTIMAL)
-    assert only("% @model optimal { p }").reading == Witness(p, Range.OPTIMAL)
+    assert only("% @answer-set optimal { p }").reading == Witness(p, Range.OPTIMAL)
     assert only("% @cautious optimal { p }").reading == Entails(Mode.CAUTIOUS, p, Range.OPTIMAL)
     assert only("% @brave optimal { p }").reading == Entails(Mode.BRAVE, p, Range.OPTIMAL)
     assert only("% @count optimal 3").reading == Census(3, Range.OPTIMAL)
@@ -295,7 +300,7 @@ def test_optimal_is_an_answer_set_set_a_claim_may_name_and_the_tag_is_sugar_for_
         ("% @cost { 1 x }", "expected `{ c1 c2 ... }`, an integer for each level"),
         ("% @cost 3", "expected `{ c1 c2 ... }`, an integer for each level"),
         ("% @optimal optimal { p }", "expected `{ literals }`"),
-        ("% @model optimal", "expected `{ literals }`"),
+        ("% @answer-set optimal", "expected `{ literals }`"),
         ("% @count optimal", "expected a non-negative integer"),
         ("% @count optimal { 1 }", "expected a non-negative integer"),
     ],
@@ -335,11 +340,13 @@ def test_assign_reads_the_integers_some_answer_set_gives_theory_variables() -> N
 
 def test_a_witness_may_bind_the_assignment_of_the_same_answer_set_with_where() -> None:
     p = frozenset({Literal("p")})
-    assert only("% @model { p } where { x=1 }").reading == Witness(p, assignment=frozenset({X1}))
+    assert only("% @answer-set { p } where { x=1 }").reading == Witness(
+        p, assignment=frozenset({X1})
+    )
     assert only("% @optimal { p } where { x=1, y=2 }").reading == Witness(
         p, Range.OPTIMAL, frozenset({X1, Y2})
     )
-    assert only("% @model { p } where { x=1 } assuming { q }").scenario == frozenset(
+    assert only("% @answer-set { p } where { x=1 } assuming { q }").scenario == frozenset(
         {Assumption(Literal("q"))}
     )
 
@@ -354,11 +361,11 @@ def test_a_witness_may_bind_the_assignment_of_the_same_answer_set_with_where() -
         ("% @assign", "expected `{ term = integer, ... }`"),
         ("% @assign { x=1 } { y=2 }", "expected `{ term = integer, ... }`"),
         ("% @assign optimal optimal { x=1 }", "expected `{ term = integer, ... }`"),
-        ("% @model { p } where { }", "expected at least one `term = integer`"),
-        ("% @model { p } where x=1", "expected `where { term = integer, ... }`"),
-        ("% @model { p } where { x=1 } extra", "expected `where { term = integer, ... }`"),
-        ("% @model { } where { x=1 }", "expected at least one literal"),
-        ("% @model { p } where { x=a }", "expected `term = integer`"),
+        ("% @answer-set { p } where { }", "expected at least one `term = integer`"),
+        ("% @answer-set { p } where x=1", "expected `where { term = integer, ... }`"),
+        ("% @answer-set { p } where { x=1 } extra", "expected `where { term = integer, ... }`"),
+        ("% @answer-set { } where { x=1 }", "expected at least one literal"),
+        ("% @answer-set { p } where { x=a }", "expected `term = integer`"),
     ],
 )
 def test_a_malformed_assignment_is_a_diagnostic(line: str, message: str) -> None:

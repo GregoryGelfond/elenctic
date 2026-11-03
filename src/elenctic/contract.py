@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from elenctic.determination import Assignment, Cost, Mode, Model, Range
-from elenctic.literals import AnswerSet, Scenario, Symbol
+from elenctic.determination import AnswerSet, Assignment, Cost, Mode, Range
+from elenctic.literals import Atoms, Scenario, Symbol
 from elenctic.patterns import Pattern
 from elenctic.query import All, Answer
 from elenctic.spans import Diagnostic, Span
@@ -34,16 +34,16 @@ class Census:
 
 @dataclass(frozen=True, slots=True)
 class Witness:
-    """`@model [optimal] { L } [where { A }]`, or `@optimal { L }`.
+    """`@answer-set [optimal] { L } [where { A }]`, or `@optimal { L }`.
 
     Some answer set shows exactly `L` and, given `A`, assigns at least `A`.
     """
 
-    literals: AnswerSet
+    literals: Atoms
     over: Range = Range.ALL
     assignment: Assignment = frozenset()
 
-    def upheld_by(self, answer_set: Model) -> bool:
+    def upheld_by(self, answer_set: AnswerSet) -> bool:
         return answer_set.shown == self.literals and self.assignment <= answer_set.assignment
 
 
@@ -54,7 +54,7 @@ class Assigns:
     assignment: Assignment
     over: Range = Range.ALL
 
-    def upheld_by(self, answer_set: Model) -> bool:
+    def upheld_by(self, answer_set: AnswerSet) -> bool:
         return self.assignment <= answer_set.assignment
 
 
@@ -63,7 +63,7 @@ class Entails:
     """`@cautious [optimal] { L }` / `@brave [optimal] { L }`: `L` is within the consequences."""
 
     mode: Mode
-    literals: AnswerSet
+    literals: Atoms
     over: Range = Range.ALL
 
 

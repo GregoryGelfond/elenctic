@@ -6,7 +6,12 @@ from typing import NamedTuple, override
 from clingo import Function, Symbol, SymbolType, parse_term
 
 __all__ = [  # `Symbol` is re-exported: the kernel meets clingo's terms only through this module
-    "AnswerSet", "Assumption", "Literal", "Scenario", "Signature", "Symbol",
+    "Assumption",
+    "Atoms",
+    "Literal",
+    "Scenario",
+    "Signature",
+    "Symbol",
 ]  # fmt: skip
 
 
@@ -62,7 +67,7 @@ class Literal:
         return str(self.symbol)
 
 
-type AnswerSet = frozenset[Literal]
+type Atoms = frozenset[Literal]
 
 
 @dataclass(frozen=True, slots=True)

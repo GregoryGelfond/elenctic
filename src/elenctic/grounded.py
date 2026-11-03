@@ -8,11 +8,11 @@ from clingo import Model as ClingoModel
 from clingo.configuration import Configuration
 
 from elenctic.determination import (
+    AnswerSets,
     Consequences,
     Determination,
     Exhausted,
     Mode,
-    Models,
     NoAssumptions,
     NotThese,
     Optimized,
@@ -32,9 +32,9 @@ from elenctic.search import (
     Request,
     Run,
     Seen,
+    answer_sets,
     decide,
     drain,
-    models,
     optimized,
     proven,
     seen,
@@ -156,12 +156,12 @@ class Grounded:
         *,
         limits: Limits = Limits(),
         interrupt: Interrupt | None = None,
-    ) -> Determination[Models]:
+    ) -> Determination[AnswerSets]:
         """Enumerate the answer sets satisfying `scenario`, whatever the program optimizes."""
         return self._search(
             Request(scenario, limits, interrupt),
             Plan(ENUMERATION, max_answer_sets=limits.max_answer_sets),
-            models,
+            answer_sets,
         )
 
     def consequences(
@@ -176,7 +176,7 @@ class Grounded:
         return self._search(
             Request(scenario, limits, interrupt),
             Plan((mode.value, "ignore")),
-            lambda found: Consequences(mode, found[-1].model.shown),
+            lambda found: Consequences(mode, found[-1].answer_set.shown),
         )
 
     def optimize(

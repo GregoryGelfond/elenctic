@@ -17,7 +17,7 @@ from elenctic.wellformed import wellformed
 _READERS: Final[dict[str, Callable[[Block, list[Element]], Parsed[Reading]]]] = {
     "expect": expect,
     "count": count,
-    "model": witness(),
+    "answer-set": witness(),
     "optimal": witness(Range.OPTIMAL),
     "assign": assign,
     "cost": cost,

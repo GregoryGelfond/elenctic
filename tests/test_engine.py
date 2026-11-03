@@ -9,6 +9,8 @@ from hypothesis import strategies as st
 
 from elenctic import search
 from elenctic.determination import (
+    AnswerSet,
+    AnswerSets,
     Assignment,
     Consequences,
     Consistent,
@@ -18,8 +20,6 @@ from elenctic.determination import (
     Inconsistent,
     Incumbent,
     Mode,
-    Model,
-    Models,
     NoAssumptions,
     NotThese,
     Optimum,
@@ -32,7 +32,7 @@ from elenctic.determination import (
 )
 from elenctic.engine import ground, solve
 from elenctic.facts import Shown
-from elenctic.literals import AnswerSet, Assumption, Literal, Scenario, Signature
+from elenctic.literals import Assumption, Atoms, Literal, Scenario, Signature
 from elenctic.program import Fault, Locus, Program
 from elenctic.search import Interrupt, Limit, Limits, Request, Run, Seen, optimized
 
@@ -110,8 +110,8 @@ def test_assuming_a_fact_false_is_refuted() -> None:
 
 
 def test_a_strongly_negated_literal_can_be_assumed() -> None:
-    models = answer_sets("{-p}.", frozenset({Assumption(P.contrary)}))
-    assert models == {frozenset({P.contrary})}
+    computed = answer_sets("{-p}.", frozenset({Assumption(P.contrary)}))
+    assert computed == {frozenset({P.contrary})}
 
 
 def test_the_answer_set_limit_truncates_without_claiming_to_have_finished() -> None:
@@ -282,8 +282,8 @@ def test_the_native_consequences_equal_those_derived_from_the_enumerated_answer_
     enumerated = grounded.solve()
     native = grounded.consequences(mode)
     match enumerated:
-        case Consistent(models, Exhausted.EXHAUSTED):
-            view = world_view(Consistent(models, Exhausted.EXHAUSTED))
+        case Consistent(each, Exhausted.EXHAUSTED):
+            view = world_view(Consistent(each, Exhausted.EXHAUSTED))
             assert not isinstance(view, Truncation)
             expected = view.cautious if mode is Mode.CAUTIOUS else view.brave
             assert native == Consistent(Consequences(mode, expected), Exhausted.EXHAUSTED)
@@ -374,7 +374,7 @@ def test_the_optimum_is_the_cost_of_the_optimal_answer_sets_and_those_are_all_fo
     assert found.conclusion is Exhausted.EXHAUSTED
     assert isinstance(found.evidence, Optimum)
     assert found.evidence.cost == (1,)
-    assert {m.atoms for m in found.evidence.models.all} == {frozenset({P}), frozenset({Q})}
+    assert {m.atoms for m in found.evidence.answer_sets.all} == {frozenset({P}), frozenset({Q})}
 
 
 def test_a_maximized_level_is_reported_as_the_minimized_sum_clingo_reports() -> None:
@@ -401,7 +401,7 @@ def test_with_no_objective_every_answer_set_is_optimal() -> None:
     found = grounded.optimize()
     assert isinstance(found, Consistent)
     assert isinstance(found.evidence, Optimum)
-    assert (found.evidence.cost, len(found.evidence.models.all)) == ((), 4)
+    assert (found.evidence.cost, len(found.evidence.answer_sets.all)) == ((), 4)
 
 
 def test_the_answer_set_limit_of_an_optimization_counts_optimal_answer_sets_only() -> None:
@@ -411,7 +411,7 @@ def test_the_answer_set_limit_of_an_optimization_counts_optimal_answer_sets_only
     assert isinstance(found, Consistent)
     assert found.conclusion is Truncation.MAX_ANSWER_SETS
     assert isinstance(found.evidence, Optimum)
-    assert len(found.evidence.models.all) == 1
+    assert len(found.evidence.answer_sets.all) == 1
 
 
 def test_an_optimization_of_an_inconsistent_program_is_inconsistent() -> None:
@@ -438,10 +438,12 @@ def test_an_interrupted_optimization_is_inconclusive() -> None:
 
 
 def test_the_unproven_best_so_far_is_an_incumbent_and_closes_no_optimal_view() -> None:
-    found = Consistent(Incumbent(Model(frozenset(), frozenset())), Truncation.MAX_SECONDS)
+    found = Consistent(Incumbent(AnswerSet(frozenset(), frozenset())), Truncation.MAX_SECONDS)
     assert optimal_view(found) is Truncation.MAX_SECONDS
     with pytest.raises(ValueError, match="proven"):
-        optimal_view(Consistent(Incumbent(Model(frozenset(), frozenset())), Exhausted.EXHAUSTED))
+        optimal_view(
+            Consistent(Incumbent(AnswerSet(frozenset(), frozenset())), Exhausted.EXHAUSTED)
+        )
 
 
 KNAPSACK = "{ a; b }. :- a, b. #maximize { 3,a : a; 2,b : b }.\n"
@@ -458,9 +460,9 @@ def test_the_exhausted_optimum_closes_a_view_of_the_optimal_answer_sets() -> Non
 
 def test_no_answer_set_proven_optimal_leaves_the_last_one_as_the_incumbent() -> None:
     first, middle, last = (_seen(atom, proven=False) for atom in "pqr")
-    assert optimized([first, middle, last]) == Incumbent(last.model)
+    assert optimized([first, middle, last]) == Incumbent(last.answer_set)
     proven = _seen("r", proven=True)
-    assert optimized([first, proven]) == Optimum(proven.cost, Models(proven.model))
+    assert optimized([first, proven]) == Optimum(proven.cost, AnswerSets(proven.answer_set))
 
 
 def _seen(atom: str, *, proven: bool) -> Seen:
@@ -483,21 +485,19 @@ def clingo_reports(text: str) -> int:
 def test_only_the_answer_sets_an_optimization_keeps_are_built(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    built: list[AnswerSet] = []
+    built: list[Atoms] = []
 
-    def counting(
-        atoms: AnswerSet, shown: AnswerSet, *, assignment: Assignment, cost: Cost
-    ) -> Model:
+    def counting(atoms: Atoms, shown: Atoms, *, assignment: Assignment, cost: Cost) -> AnswerSet:
         built.append(atoms)
-        return Model(atoms, shown, assignment=assignment, cost=cost)
+        return AnswerSet(atoms, shown, assignment=assignment, cost=cost)
 
-    monkeypatch.setattr(search, "Model", counting)
+    monkeypatch.setattr(search, "AnswerSet", counting)
     grounded = ground(Program(IMPROVING))
     assert not isinstance(grounded, Fault)
     found = grounded.optimize()
     assert isinstance(found, Consistent)
     assert isinstance(found.evidence, Optimum)
-    kept = len(found.evidence.models.all)
+    kept = len(found.evidence.answer_sets.all)
     assert clingo_reports(IMPROVING) > kept
     assert len(built) == kept
 
@@ -552,16 +552,16 @@ def test_the_optimum_is_the_least_cost_among_all_answer_sets_and_its_answer_sets
     costs = {m.atoms: cost_of(f"{text} {objective}", m.atoms) for m in every.evidence.all}
     least = min(costs.values())
     assert best.evidence.cost == least
-    assert {m.atoms for m in best.evidence.models.all} == {
+    assert {m.atoms for m in best.evidence.answer_sets.all} == {
         atoms for atoms, cost in costs.items() if cost == least
     }
 
 
 def test_a_run_is_refuted_only_when_it_exhausted_the_space_and_found_nothing() -> None:
-    model = _seen("p", proven=True)
+    lone = _seen("p", proven=True)
     exhausted, cut = Exhausted.EXHAUSTED, Truncation.MAX_SECONDS
     assert Run((), exhausted, frozenset()).refuted
-    assert not Run((model,), exhausted, frozenset()).refuted
+    assert not Run((lone,), exhausted, frozenset()).refuted
     assert not Run((), cut, frozenset()).refuted
 
 
@@ -583,7 +583,7 @@ def test_shown_selections_combine_into_one_that_is_wild_if_any_is() -> None:
 
 def test_an_exhausted_search_that_found_nothing_without_a_refutation_is_refused() -> None:
     with pytest.raises(ValueError, match="is refuted"):
-        search.decide(Run((), Exhausted.EXHAUSTED, frozenset()), None, search.models)
+        search.decide(Run((), Exhausted.EXHAUSTED, frozenset()), None, search.answer_sets)
 
 
 def test_what_a_search_asks_of_a_handle_is_what_a_real_handle_offers() -> None:

@@ -6,7 +6,7 @@ from typing import Final
 
 from elenctic.contract import Assigns, Census, Costs, Entails, Reading, Satisfiable, Witness
 from elenctic.determination import Mode, Range, Valuation
-from elenctic.literals import AnswerSet
+from elenctic.literals import Atoms
 from elenctic.operands import after, ground, read_range, valuations
 from elenctic.spans import Diagnostic, Parsed, failure
 from elenctic.tags import Block, Element
@@ -39,7 +39,7 @@ def cost(block: Block, head: list[Element]) -> Parsed[Reading]:
 
 
 def litset(
-    make: Callable[[AnswerSet, Range], Reading], *, over: Range | None = None
+    make: Callable[[Atoms, Range], Reading], *, over: Range | None = None
 ) -> Callable[[Block, list[Element]], Parsed[Reading]]:
     """Read `[optimal] { literals }`; with `over` fixed, as for `@optimal`, no `optimal` word."""
 
@@ -62,7 +62,7 @@ def assign(block: Block, head: list[Element]) -> Parsed[Reading]:
 
 
 def witness(over: Range | None = None) -> Callable[[Block, list[Element]], Parsed[Reading]]:
-    """Read `[optimal] { literals } [where { term = integer, ... }]`, as `@model` or `@optimal`."""
+    """Read `[optimal] { literals } [where { x=1, ... }]`, as `@answer-set` or `@optimal`."""
 
     def read(block: Block, head: list[Element]) -> Parsed[Reading]:
         split = after(block, head, "where", "term = integer, ...")

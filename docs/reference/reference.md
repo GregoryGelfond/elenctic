@@ -93,20 +93,20 @@ A usage error is argparse's, status 2, before any command runs.
 
 A claim is a comment line beginning `%` followed by a tag. A brace group may continue over
 following comment lines. A contract has exactly one `@expect`, without `assuming`. Several claims
-of the same kind are independent claims: two `@model` claims are two existential claims.
+of the same kind are independent claims: two `@answer-set` claims are two existential claims.
 
 | Claim | Holds when |
 |---|---|
 | `@expect sat` / `@expect unsat` | the program has / has no answer set |
 | `@count n` | exactly `n` distinct shown answer sets; under clingcon, distinct (shown atoms, assignment) pairs |
-| `@model { L }` | some answer set shows exactly `L` |
-| `@model { L } where { x=1, … }` | some answer set shows exactly `L` and assigns each variable that integer (clingcon) |
+| `@answer-set { L }` | some answer set shows exactly `L` |
+| `@answer-set { L } where { x=1, … }` | some answer set shows exactly `L` and assigns each variable that integer (clingcon) |
 | `@assign { x=1, … }` | some answer set assigns each variable that integer (clingcon) |
 | `@cautious { L }` | `L` is in every answer set (⋂ AS(P)); computed by the solver |
 | `@brave { L }` | `L` is in some answer set (∪ AS(P)); computed by the solver |
 | `@query A { L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`) |
 | `@query A { p(X, b) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these |
-| `@model optimal { L }`, `@cautious optimal { L }`, `@brave optimal { L }` | the same, over the optimal answer sets Opt(P); `@optimal { L }` is `@model optimal { L }` |
+| `@answer-set optimal { L }`, `@cautious optimal { L }`, `@brave optimal { L }` | the same, over the optimal answer sets Opt(P); `@optimal { L }` is `@answer-set optimal { L }` |
 | `@assign optimal { x=1, … }` | the same, over the optimal answer sets |
 | `@count optimal n` | exactly `n` distinct shown optimal answer sets |
 | `@cost { c1 c2 … }` | the optimum's cost, highest priority first, is exactly this (see below) |
@@ -153,10 +153,10 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 
 | Question | Call | Result |
 |---|---|---|
-| Is there an answer set? Which? | `solve(program, scenario)` | `Determination[Models]` |
+| Is there an answer set? Which? | `solve(program, scenario)` | `Determination[AnswerSets]` |
 | What is cautious or brave? | `Grounded.consequences(mode, scenario)` | `Determination[Consequences]` |
 | What is optimal, at what cost? | `Grounded.optimize(scenario)` | `Determination[Optimized]` |
-| Over which solver? | `solve(program, solver=Solver.CLINGCON)`, `ground(program, solver)` | the same; a `Model` carries its `assignment` |
+| Over which solver? | `solve(program, solver=Solver.CLINGCON)`, `ground(program, solver)` | the same; an `AnswerSet` carries its `assignment` |
 | Why is there none? | the `Inconsistent` result's `refutation` | `These`, `NotThese` or `NoAssumptions` |
 | Do two patterns have a common instance? | `mgu(first, second)` | a `Unifier`, or `None` |
 
@@ -200,7 +200,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Conclusion` | how a consistent search ended: `Exhausted` or a `Truncation` |
 | `Exhausted` | the search covered every answer set under the request |
 | `Truncation` | the search was cut short, and by what |
-| `Models` | at least one answer set, in the order the solver found them |
+| `AnswerSets` | at least one answer set, in the order the solver found them |
 | `Consequences` | the atoms true in every (cautious) or some (brave) answer set, among those shown |
 | `Optimized` | the evidence of an optimization: an `Optimum` or an `Incumbent` |
 | `Optimum` | a proven optimum: its cost and the optimal answer sets found (all, if exhausted) |
@@ -209,7 +209,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `These` | these assumptions, no fewer when `minimal`, admit no answer set |
 | `NotThese` | no answer set whatever is assumed, and something is assumed |
 | `NoAssumptions` | no answer set, and nothing is assumed |
-| `Model` | an answer set: every atom, the atoms `#show` selects, its theory assignment and cost |
+| `AnswerSet` | an answer set: every atom, the atoms `#show` selects, its theory assignment and cost |
 | `Mode` | `CAUTIOUS` or `BRAVE`: consequences true in every, or in some, answer set |
 | `Range` | the range of answer sets a value ranges over: `ALL` answer sets, or the `OPTIMAL` ones |
 | `Cost` | an optimum's cost, one integer for each priority level |
@@ -222,7 +222,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 |---|---|
 | `Literal` | a ground classical literal: `p(t, ...)`, or `-p(t, ...)` when not `positive` |
 | `Signature` | a predicate with its arity and sign: `p/1`, or `-p/1` |
-| `AnswerSet` | a set of `Literal` |
+| `Atoms` | a set of `Literal` |
 | `Assumption` | a literal taken to hold, or, when not `holds`, taken not to |
 | `Scenario` | a set of `Assumption` under which a search is made |
 | `Term` | a clingo symbol, a `Variable` or a `Compound` |
@@ -264,14 +264,14 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Reading` | the meaning of one tag: one of the eight below |
 | `Satisfiable` | `@expect sat \| unsat` |
 | `Census` | `@count [optimal] n` |
-| `Witness` | `@model [optimal] { L } [where { A }]`, or `@optimal { L }` |
+| `Witness` | `@answer-set [optimal] { L } [where { A }]`, or `@optimal { L }` |
 | `Assigns` | `@assign [optimal] { A }` |
 | `Entails` | `@cautious [optimal] { L }` and `@brave [optimal] { L }` |
 | `Costs` | `@cost { c1 c2 ... }` |
 | `Asks` | `@query A { L, ... }`: a conjunction of ground literals has the answer `A` |
 | `Binds` | `@query A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B` |
 | `Finding` | a claim, the verdict on it, and what was expected against what was found |
-| `Found` | a search `judge` can read: a `Determination` over `Models`, `Consequences` or `Optimized` |
+| `Found` | a search `judge` can read: a `Determination` over `AnswerSets`, `Consequences` or `Optimized` |
 | `Report` | the findings for one source; `verdict` is `FAIL` if any fails, else `UNDECIDED` if any is, else `PASS` |
 | `Verdict` | `PASS`, `FAIL` or `UNDECIDED` |
 

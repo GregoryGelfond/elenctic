@@ -2,7 +2,7 @@ import pytest
 
 from elenctic.check import check
 from elenctic.contract import Claim, Costs, Witness
-from elenctic.determination import Consistent, Inconsistent, Incumbent, Model, These, Truncation
+from elenctic.determination import AnswerSet, Consistent, Inconsistent, Incumbent, These, Truncation
 from elenctic.engine import ground
 from elenctic.judge import judge
 from elenctic.literals import Assumption, Literal
@@ -37,7 +37,7 @@ def test_the_drinks_contract_holds() -> None:
     report = run(
         DRINKS
         + "% @expect sat\n% @count 2\n% @cautious { biscuit }\n% @brave { tea, coffee }\n"
-        + "% @model { tea, biscuit }\n"
+        + "% @answer-set { tea, biscuit }\n"
     )
     assert report.verdict is P
     assert [f.verdict for f in report.findings] == [P] * 5
@@ -63,7 +63,7 @@ def test_expecting_unsat_passes_only_without_an_answer_set() -> None:
 
 
 def test_every_answer_set_claim_fails_when_there_is_no_answer_set() -> None:
-    text = "p. :- p.\n% @expect sat\n% @model { p }\n% @brave { p }\n% @query yes { p }\n"
+    text = "p. :- p.\n% @expect sat\n% @answer-set { p }\n% @brave { p }\n% @query yes { p }\n"
     assert verdicts(text) == [F, F, F, F]
 
 
@@ -110,7 +110,9 @@ def test_a_search_that_did_not_finish_leaves_the_universal_claims_open() -> None
 
 
 def test_a_search_cut_short_is_undecided_not_failed() -> None:
-    text = "{p(1..40)}.\n% @expect sat\n% @model { p(1), p(40) }\n% @query yes { p(1), p(2) }\n"
+    text = (
+        "{p(1..40)}.\n% @expect sat\n% @answer-set { p(1), p(40) }\n% @query yes { p(1), p(2) }\n"
+    )
     report = run(text, limits=Limits(max_seconds=0))
     assert [f.verdict for f in report.findings] == [U, U, U]
     assert report.verdict is U
@@ -162,7 +164,7 @@ def test_a_claim_about_the_optimal_answer_sets_reads_those_and_only_those() -> N
     text = KNAPSACK + (
         "% @expect sat\n"
         "% @count optimal 1\n"
-        "% @model optimal { a, c }\n"
+        "% @answer-set optimal { a, c }\n"
         "% @optimal { a, c }\n"
         "% @cautious optimal { a, c }\n"
         "% @brave optimal { a, c }\n"
@@ -174,7 +176,9 @@ def test_a_claim_about_the_optimal_answer_sets_reads_those_and_only_those() -> N
 def test_a_claim_true_of_an_answer_set_but_not_an_optimal_one_fails_when_about_the_optimal() -> (
     None
 ):
-    text = KNAPSACK + "% @expect sat\n% @model optimal { b }\n% @model { b }\n% @count 6\n"
+    text = (
+        KNAPSACK + "% @expect sat\n% @answer-set optimal { b }\n% @answer-set { b }\n% @count 6\n"
+    )
     assert verdicts(text) == [P, F, P, P]
 
 
@@ -243,7 +247,7 @@ def test_consequence_claims_agree_with_those_read_from_the_enumeration() -> None
 
 
 def test_a_refutation_names_a_minimal_set_of_assumptions() -> None:
-    text = "{ p; q; r }. :- p, q.\n% @expect sat\n% @model { p } assuming { p, q, r }\n"
+    text = "{ p; q; r }. :- p, q.\n% @expect sat\n% @answer-set { p } assuming { p, q, r }\n"
     (finding,) = run(text).findings[1:]
     assert finding.detail == "no answer set satisfies the assumptions (p, q)"
 
@@ -325,7 +329,7 @@ def test_a_cost_claim_judged_without_an_optimization_is_never_a_pass() -> None:
 def test_an_incumbent_is_never_a_pass_for_a_cost_claim() -> None:
     claim = Claim(Costs((0,)), frozenset(), Span("t.lp", Position(1, 1), Position(1, 2)))
     found = Consistent(
-        Incumbent(Model(frozenset(), frozenset(), cost=(0,))), Truncation.MAX_SECONDS
+        Incumbent(AnswerSet(frozenset(), frozenset(), cost=(0,))), Truncation.MAX_SECONDS
     )
     finding = judge(claim, found)
     assert finding.verdict is U

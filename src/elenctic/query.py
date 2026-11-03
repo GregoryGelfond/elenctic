@@ -6,7 +6,7 @@ from functools import reduce
 
 from elenctic.determination import WorldView
 from elenctic.extension import Extension
-from elenctic.literals import AnswerSet, Literal, Symbol
+from elenctic.literals import Atoms, Literal, Symbol
 from elenctic.patterns import Pattern
 from elenctic.relation import Relation
 from elenctic.substitution import Substitution
@@ -46,7 +46,7 @@ class Any:
 type Query = Literal | Pattern | All | Any
 
 
-def evaluate(query: Query, member: AnswerSet) -> Truth:
+def evaluate(query: Query, member: Atoms) -> Truth:
     """Evaluate `query` in one answer set: a literal is true if in it, false if its contrary is.
 
     A pattern with variables has bindings rather than a truth, and is refused.

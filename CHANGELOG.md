@@ -11,13 +11,13 @@ All notable changes are recorded here. The format follows
   modules that read and run programs, clingcon only by `theory`, and `spans` free of both. They run
   in `pixi run check` and in CI.
 - Library: `Program`, `ground`, `solve` with `Limits` and a cancelable `Interrupt`; results as
-  `Consistent | Inconsistent | Inconclusive` over `Models` or `Consequences`.
+  `Consistent | Inconsistent | Inconclusive` over `AnswerSets` or `Consequences`.
 - Query kernel in the public API: `Literal`, `Pattern`, `Query` (`Literal | Pattern | All | Any`), `Answer`,
   `answer`, `bindings`, over a `WorldView` that only an exhausted search yields.
 - A row for every name of `elenctic.__all__` in `docs/reference/reference.md`, checked by a test.
 - `mgu(first, second)` and `Unifier`: the most general unifier of two patterns, renamed apart, and
   the pattern both become. Public for answering queries and for the interactive session to come.
-- Contracts read from comments with source spans: `@expect`, `@count`, `@model`, `@cautious`,
+- Contracts read from comments with source spans: `@expect`, `@count`, `@answer-set`, `@cautious`,
   `@brave`, `@query` with optional `= { bindings }`, and an `assuming { … }` form on any claim.
 - `check` with the verdicts `pass`, `fail` and `undecided`.
 - Command line with `--json`, `--verbose`, `--max-seconds` and `--max-answer-sets`; exit codes `CLAIMS_HOLD` (0), `CLAIM_UNMET` (1) and
@@ -27,7 +27,7 @@ All notable changes are recorded here. The format follows
 - Native cautious and brave consequences (`Grounded.consequences`), used by `check` when a search
   holds only such claims.
 - Minimal unsatisfiable cores over assumptions: `Refutation` is `These | NotThese | NoAssumptions`.
-- Optimization: `Grounded.optimize` returns `Optimum` or `Incumbent`; claims `@model optimal`,
+- Optimization: `Grounded.optimize` returns `Optimum` or `Incumbent`; claims `@answer-set optimal`,
   `@cautious optimal`, `@brave optimal`, `@optimal { L }`, `@count optimal n` and `@cost { … }`.
 - Preconditions that make a misreadable contract an error: theory atoms, an objective that grounds
   away, a nested `@count optimal`, a derivable unshown contrary under `no`/`unknown`.
@@ -43,8 +43,8 @@ All notable changes are recorded here. The format follows
 - Examples with real output in `docs/reference/examples.md`, checked by a test.
 - Packaging for uv, pixi and conda-forge (`recipe/recipe.yaml`).
 - clingcon: `% @elenctic solver clingcon` in a contract, claims `@assign [optimal] { x=1, … }` and
-  `@model … where { x=1, … }`, the library types `Solver`, `Assignment`, `Valuation` and
-  `Model.assignment`. An answer under clingcon is a shown set with its assignment, and `@count`
+  `@answer-set … where { x=1, … }`, the library types `Solver`, `Assignment`, `Valuation` and
+  `AnswerSet.assignment`. An answer under clingcon is a shown set with its assignment, and `@count`
   counts those. Optional: `elenctic[theory]`, or the pixi `theory` environment; a contract that
   declares clingcon without it is an error (`FAULT`, 2).
 
@@ -60,6 +60,10 @@ All notable changes are recorded here. The format follows
   `--models`), `Limits.max_seconds` and `Limits.max_answer_sets`, `DEFAULT_MAX_SECONDS` and
   `DEFAULT_MAX_ANSWER_SETS`, and the truncations `MAX_SECONDS` (`max-seconds`) and `MAX_ANSWER_SETS`
   (`max-answer-sets`). `UNLIMITED` is gone: use `Limits()`.
+- One answer set is an answer set everywhere: the tag `@answer-set` (was `@model`), the types `AnswerSet` (was
+  `Model`) and `AnswerSets` (was `Models`), `Atoms` (was `AnswerSet`), `Optimum.answer_sets`,
+  `Incumbent.answer_set`, `Seen.answer_set` and `search.answer_sets()`, and the same keys in the JSON.
+  The old names are gone.
 
 - Diagnostics for a source that could not be checked go to stderr, with the reserved-command note
   and the internal-error line; verdicts and the summary stay on stdout. `--json` is all on stdout.

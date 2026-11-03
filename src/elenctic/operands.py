@@ -1,13 +1,13 @@
 """The operands of a tag: the words and groups it is read from, and the things they name."""
 
 from elenctic.determination import Assignment, Range
-from elenctic.literals import AnswerSet, Assumption, Scenario
+from elenctic.literals import Assumption, Atoms, Scenario
 from elenctic.spans import Diagnostic, Parsed, failure
 from elenctic.syntax import literals, positive, read_literals, read_valuations
 from elenctic.tags import Block, Element
 
 
-def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[AnswerSet]:
+def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[Atoms]:
     where = block.span(element.start, element.end)
     items = read_literals(element.text, where) if element.text.strip() else ()
     if isinstance(items, Diagnostic):

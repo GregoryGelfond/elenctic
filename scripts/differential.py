@@ -1,6 +1,8 @@
 """Run generated cases through elenctic 0.3 and this library; compare every claim's verdict.
 
 python scripts/differential.py LEGACY_SRC [--cases N] [--seed S] [--optimize] [--hide-contraries]
+
+The cases are written in the spelling of 0.3 (`@model`); the current library reads them translated.
 """
 
 import argparse
@@ -76,6 +78,11 @@ def _case(rng: random.Random, *, optimize: bool, show: str) -> str:
 type Table = dict[tuple[str, int], str]
 
 
+def current_spelling(text: str) -> str:
+    """Translate a case from the tags of 0.3 to those of the current library."""
+    return text.replace("@model", "@answer-set")
+
+
 def _legacy(src: str, corpus: Path) -> Table:
     code = "import sys; from elenctic.cli import main; sys.exit(main(sys.argv[1:]))"
     out = subprocess.run(
@@ -96,7 +103,7 @@ def _legacy(src: str, corpus: Path) -> Table:
 def _current(corpus: Path) -> Table:
     found: Table = {}
     for path in sorted(corpus.rglob("*.lp")):
-        result = check(Program.read(path))
+        result = check(Program(current_spelling(path.read_text()), str(path), path))
         if isinstance(result, Report):
             found |= {
                 (str(path), f.claim.span.start.line): f.verdict.value for f in result.findings

@@ -15,17 +15,17 @@ from elenctic.contract import (
     Witness,
 )
 from elenctic.determination import (
+    AnswerSet,
+    AnswerSets,
     Consistent,
     Exhausted,
     Mode,
-    Model,
-    Models,
     Range,
     Truncation,
     WorldView,
     world_view,
 )
-from elenctic.literals import AnswerSet, Symbol
+from elenctic.literals import Atoms, Symbol
 from elenctic.query import answer, bindings
 from elenctic.verdicts import Verdict, existential, universal
 from elenctic.writer import bound, braces, where
@@ -39,7 +39,7 @@ def _sets(over: Range) -> str:
     return "optimal answer sets" if over is Range.OPTIMAL else "answer sets"
 
 
-def _count(claim: Census, answer_sets: Iterable[Model], *, closed: bool) -> tuple[Verdict, str]:
+def _count(claim: Census, answer_sets: Iterable[AnswerSet], *, closed: bool) -> tuple[Verdict, str]:
     """Count the distinct answers: an answer set's identity is what it shows and what it assigns."""
     answers = {answer_set.identity for answer_set in answer_sets}
     seen = len(answers)
@@ -54,7 +54,7 @@ def _count(claim: Census, answer_sets: Iterable[Model], *, closed: bool) -> tupl
 
 
 def _witnessed(
-    claim: Witness | Assigns, answer_sets: Iterable[Model], *, closed: bool
+    claim: Witness | Assigns, answer_sets: Iterable[AnswerSet], *, closed: bool
 ) -> tuple[Verdict, str]:
     seen = any(claim.upheld_by(answer_set) for answer_set in answer_sets)
     return existential(
@@ -70,7 +70,7 @@ def _stated(claim: Witness | Assigns) -> str:
             return f"{bound(assignment)} assigned"
 
 
-def entailed(claim: Entails, held: AnswerSet, *, closed: bool) -> tuple[Verdict, str]:
+def entailed(claim: Entails, held: Atoms, *, closed: bool) -> tuple[Verdict, str]:
     cautious = claim.mode is Mode.CAUTIOUS
     missing = claim.literals - held
     vacuous = not claim.literals
@@ -105,14 +105,14 @@ def _rows(found: frozenset[tuple[Symbol, ...]]) -> str:
     return "{ " + ", ".join(sorted("(" + ",".join(map(str, row)) + ")" for row in found)) + " }"
 
 
-def _worldly(reading: Asks | Binds, found: Consistent[Models]) -> tuple[Verdict, str]:
+def _worldly(reading: Asks | Binds, found: Consistent[AnswerSets]) -> tuple[Verdict, str]:
     view = world_view(found)
     if isinstance(view, Truncation):
         return Verdict.UNDECIDED, f"search ended: {view}"
     return _asked(reading, view)
 
 
-def from_answer_sets(reading: Reading, found: Consistent[Models]) -> tuple[Verdict, str]:
+def from_answer_sets(reading: Reading, found: Consistent[AnswerSets]) -> tuple[Verdict, str]:
     answer_sets = found.evidence.all
     closed = found.conclusion is Exhausted.EXHAUSTED
     match reading:
