@@ -86,23 +86,110 @@ def test_version_is_a_command_and_not_a_file_to_test(
 
 
 @pytest.mark.usefixtures("fixed")
-@pytest.mark.parametrize("spelling", SPELLINGS)
-def test_a_path_after_the_command_is_a_usage_error(
-    capsys: pytest.CaptureFixture[str], spelling: list[str]
-) -> None:
+def test_a_path_after_the_command_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as usage:
-        main([*spelling, "x.lp"])
+        main(["version", "x.lp"])
     assert usage.value.code == Exit.FAULT
     assert "unrecognized arguments: x.lp" in capsys.readouterr().err
 
 
-def test_the_help_names_the_command_and_its_two_flags(capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.usefixtures("fixed")
+@pytest.mark.parametrize("flag", ["--version", "-V"])
+@pytest.mark.parametrize(
+    "placement",
+    [
+        ["--icons", "{}"],
+        ["--color", "always", "{}"],
+        ["--color=always", "--icons=always", "{}"],
+        ["{}", "--icons"],
+        ["{}", "--color", "never"],
+        ["{}", "test", "x.lp"],
+        ["{}", "x.lp"],
+        ["--color", "never", "{}", "test", "x.lp", "--json"],
+    ],
+    ids=str,
+)
+def test_the_flag_is_a_top_level_option_and_wins_wherever_it_stands_before_a_command(
+    capsys: pytest.CaptureFixture[str], flag: str, placement: list[str]
+) -> None:
+    argv = [flag if part == "{}" else part for part in placement]
+    code, out, err = shown(capsys, *argv)
+    assert (code, err) == (Exit.CLAIMS_HOLD, "")
+    assert out in {PLAIN_TEXT, NERD_TEXT}
+
+
+@pytest.mark.usefixtures("fixed")
+@pytest.mark.parametrize("flag", ["--version", "-V"])
+@pytest.mark.parametrize(
+    "top",
+    [[], ["--icons=always"], ["--color", "always"], ["--icons=always", "--color=never"]],
+    ids=str,
+)
+def test_the_flag_prints_the_bytes_of_the_command_with_the_same_options(
+    capsys: pytest.CaptureFixture[str], flag: str, top: list[str]
+) -> None:
+    assert shown(capsys, *top, flag) == shown(capsys, *top, "version")
+    assert shown(capsys, flag, *top) == shown(capsys, "version", *top)
+
+
+@pytest.mark.usefixtures("fixed")
+def test_an_option_of_the_command_overrides_the_same_option_before_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert shown(capsys, "--icons=always", "version") == (Exit.CLAIMS_HOLD, NERD_TEXT, "")
+    assert shown(capsys, "--icons=always", "version", "--icons=never") == (
+        Exit.CLAIMS_HOLD,
+        PLAIN_TEXT,
+        "",
+    )
+
+
+@pytest.mark.usefixtures("fixed")
+@pytest.mark.parametrize("flag", ["--version", "-V"])
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["test", "{}"],
+        ["test", "x.lp", "{}"],
+        ["x.lp", "{}"],
+        ["version", "{}"],
+        ["repl", "{}"],
+        ["--color", "never", "test", "{}", "x.lp"],
+    ],
+    ids=str,
+)
+def test_a_command_does_not_take_the_flag(
+    capsys: pytest.CaptureFixture[str], flag: str, argv: list[str]
+) -> None:
+    with pytest.raises(SystemExit) as usage:
+        main([flag if part == "{}" else part for part in argv])
+    assert usage.value.code == Exit.FAULT
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert PLAIN_TEXT.splitlines()[0] not in captured.err
+
+
+@pytest.mark.parametrize("argv", [[], ["--color", "always"], ["--icons"]], ids=str)
+def test_options_alone_name_no_command_and_are_a_usage_error(
+    capsys: pytest.CaptureFixture[str], argv: list[str]
+) -> None:
+    with pytest.raises(SystemExit) as usage:
+        main(argv)
+    assert usage.value.code == Exit.FAULT
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "required: COMMAND" in captured.err
+
+
+def test_the_help_names_the_command_the_flags_and_the_output_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     with pytest.raises(SystemExit):
         main(["--help"])
     text = capsys.readouterr().out
     assert "version" in text
-    assert "--version" in text
-    assert "-V" in text
+    assert "-V, --version" in text
+    assert "--color WHEN" in text
 
 
 def test_on_a_terminal_icons_alone_shows_the_nerd_glyph_and_a_pipe_never_does() -> None:
@@ -114,3 +201,9 @@ def test_on_a_terminal_icons_alone_shows_the_nerd_glyph_and_a_pipe_never_does() 
     assert (code, err) == (Exit.CLAIMS_HOLD, "")
     assert COPYRIGHT.plain in out
     assert COPYRIGHT.nerd not in out
+
+
+def test_on_a_terminal_a_leading_icons_shows_the_glyph_for_the_flag_too() -> None:
+    code, out, err = on_terminals(["--icons", "-V"], terminal={"out"})
+    assert (code, err) == (Exit.CLAIMS_HOLD, "")
+    assert COPYRIGHT.nerd in out

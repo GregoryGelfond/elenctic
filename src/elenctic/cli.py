@@ -26,8 +26,10 @@ DEFAULT_MODEL_CAP: Final = 100_000
 
 DECIDED: Final = frozenset({"test", "version"})
 """The subcommands that are built: a first argument that names one is a command, not a path."""
-VERSION_FLAGS: Final = frozenset({"--version", "-V"})
-"""Spellings of `version` that begin the arguments."""
+VERSION_FLAGS: Final = ("-V", "--version")
+"""The option of the main parser that asks for `version`: valid before the command, never after."""
+BARE: Final = frozenset({*VERSION_FLAGS, "-h", "--help"})
+"""The options of the main parser that take no value."""
 
 RESERVED = {
     "repl": "an interactive session over a live program",
@@ -66,26 +68,30 @@ _seconds_limit = _limit_reader(float, "a positive number of seconds")
 _models_limit = _limit_reader(int, "a positive integer")
 
 
-def _output_options() -> argparse.ArgumentParser:
-    """Make the parser of the options that decide how output looks; every command takes them."""
+def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
+    """Make the parser of the options that decide how output looks.
+
+    The main parser and every command take them. Only the main parser holds the defaults: a
+    command that sets nothing leaves what stands before it, and one that does override it.
+    """
     options = argparse.ArgumentParser(add_help=False)
     options.add_argument(
         "--color",
         choices=list(When),
-        default=When.AUTO,
+        default=When.AUTO if defaults else argparse.SUPPRESS,
         metavar="WHEN",
-        help="colour output: auto (on a terminal), always or never (default: %(default)s)",
+        help="colour output: auto (on a terminal), always or never (default: auto)",
     )
     options.add_argument(
         "--icons",
         nargs="?",
         choices=list(When),
         const=When.AUTO,
-        default=When.NEVER,
+        default=When.NEVER if defaults else argparse.SUPPRESS,
         metavar="WHEN",
         help="show Nerd Font glyphs: auto (on a terminal), always or never; "
         "`--icons` alone is `--icons=auto`, a value is given as `--icons=WHEN` "
-        "(default: %(default)s)",
+        "(default: never)",
     )
     return options
 
@@ -94,12 +100,20 @@ def _parser() -> argparse.ArgumentParser:
     """Make the parser; its help and usage are coloured as `argparse` does by default."""
     parser = argparse.ArgumentParser(
         prog="elenctic",
+        parents=[_output_options(defaults=True)],
         description="Test, debug and analyse ASP programs. "
         "With no command, the paths are tested: `elenctic PATH...` is `elenctic test PATH...`. "
-        "`elenctic --version` and `elenctic -V` are `elenctic version`.",
+        "`elenctic --version` and `elenctic -V` are `elenctic version`; they stand before "
+        "the command, which does not take them.",
     )
-    options = [_output_options()]
-    commands = parser.add_subparsers(dest="command", metavar="COMMAND", required=True)
+    parser.add_argument(
+        *VERSION_FLAGS,
+        dest="show_version",
+        action="store_true",
+        help="print the version, as `version` does, and exit",
+    )
+    options = [_output_options(defaults=False)]
+    commands = parser.add_subparsers(dest="command", metavar="COMMAND")
     test = commands.add_parser(
         "test", parents=options, help="check programs against their contracts"
     )
@@ -147,11 +161,20 @@ def _explicit_icons(argv: Iterable[str]) -> list[str]:
 
 
 def _normalized(argv: Sequence[str]) -> list[str]:
-    """Name the command: `version` for `--version` and `-V`, else `test` unless one is named."""
-    if argv and argv[0] in VERSION_FLAGS:
-        return _explicit_icons(["version", *argv[1:]])
-    named = bool(argv) and argv[0] in {*DECIDED, *RESERVED, "-h", "--help"}
-    return _explicit_icons(argv if named or not argv else ["test", *argv])
+    """Name the command: `test` unless one stands after the main parser's options."""
+    arguments = _explicit_icons(argv)
+    at = 0
+    while at < len(arguments):
+        argument = arguments[at]
+        if argument in BARE or argument.startswith(("--color=", "--icons=")):
+            at += 1
+        elif argument == "--color":
+            at += 2
+        else:
+            break
+    if at >= len(arguments) or arguments[at] in {*DECIDED, *RESERVED}:
+        return arguments
+    return [*arguments[:at], "test", *arguments[at:]]
 
 
 def _sources(paths: Iterable[Path]) -> list[Path]:
@@ -230,11 +253,13 @@ def _exit_for_internal_error(error: Exception, presentation: Presentation) -> Ex
 
 def main(argv: Sequence[str] | None = None) -> Exit:
     """Run a command and return the status to exit with."""
-    normalized = _normalized(sys.argv[1:] if argv is None else argv)
-    arguments = _parser().parse_args(normalized)
+    parser = _parser()
+    arguments = parser.parse_args(_normalized(sys.argv[1:] if argv is None else argv))
+    if arguments.command is None and not arguments.show_version:
+        parser.error("the following arguments are required: COMMAND")
     presentation = _presentation(arguments, os.environ)
     try:
-        match arguments.command:
+        match "version" if arguments.show_version else arguments.command:
             case "test":
                 return _test(arguments, presentation)
             case "version":

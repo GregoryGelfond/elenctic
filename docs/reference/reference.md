@@ -9,6 +9,7 @@ like a command is written `./why`.
 | Option | Meaning |
 |---|---|
 | `--json` | write the run as JSON |
+| `-V`, `--version` | print the version and exit; stands before the command (below) |
 | `-v`, `--verbose` | list the claims that passed |
 | `--color WHEN` | colour the text: `auto` (default), `always` or `never` |
 | `--icons[=WHEN]` | mark claims with Nerd Font glyphs: `auto`, `always` or `never`; given bare it is `auto`, left out it is `never`. A value takes an equals sign: `--icons always` names a path |
@@ -19,14 +20,19 @@ Zero and negative values of `--budget` and `--models` are a usage error (`FAULT`
 choice is `Limits(seconds=…, models=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has a default cap.
 
 `elenctic version`, `elenctic --version` and `elenctic -V` print the same two lines on stdout and
-exit `CLAIMS_HOLD` (0); `version` is a command, so a file of that name is written `./version`. The
+exit `CLAIMS_HOLD` (0); `version` is a command, so a file of that name is written `./version`.
+`--version` and `-V` are options of `elenctic` itself, as in `git --version`: they stand before the
+command (or alone) and win over the rest of the line, so `elenctic --version test x.lp` prints the
+version; a command does not take them, so `elenctic test --version` is a usage error (`FAULT`, 2).
+`--color` and `--icons` may stand before the command too, as in `elenctic --icons --version`; a
+command's own `--color` or `--icons` overrides them. The
 first line is `elenctic VERSION | © 2026 Gregory Gelfond | MIT`: the version and licence are those of
 the installed package, the holder is its author. The second is the versions of clingo and clingcon as
 loaded, such as `clingo 5.8.2 | clingcon 5.2.1`, or `clingcon not installed`. With `--icons` the
 copyright sign is the Nerd Font glyph `fa-copyright`; the text takes no colour.
 
 `repl`, `why`, `ask` and `explain` are reserved: each writes a note on stderr and exits `FAULT` (2).
-All of the options above apply to every command.
+`--color` and `--icons` apply to every command; the other options belong to `test`.
 
 ## Output
 

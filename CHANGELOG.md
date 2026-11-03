@@ -29,7 +29,8 @@ All notable changes are recorded here. The format follows
   away, a nested `@count optimal`, a derivable unshown contrary under `no`/`unknown`.
 - Subcommands: `elenctic test` (the default) and the reserved `repl`, `why`, `ask`, `explain`.
 - `elenctic version`, `--version` and `-V`: one text with the version, the licence, the holder and the
-  versions of clingo and clingcon that are loaded.
+  versions of clingo and clingcon that are loaded. `--version` and `-V` are options of `elenctic`
+  itself: valid before the command and winning over the rest of the line, not taken by a command.
 - Examples with real output in `docs/reference/examples.md`, checked by a test.
 - Packaging for uv, pixi and conda-forge (`recipe/recipe.yaml`).
 - clingcon: `% @elenctic solver clingcon` in a contract, claims `@assign [optimal] { x=1, … }` and
@@ -39,8 +40,8 @@ All notable changes are recorded here. The format follows
   declares clingcon without it is an error (`FAULT`, 2).
 
 - `--color auto|always|never` (default `auto`) and `--icons[=WHEN]` (Nerd Font glyphs, off unless asked),
-  each decided per stream. `auto` follows `NO_COLOR`, `TERM=dumb`, then whether the stream is a
-  terminal, so a redirected stream stays plain; only `--color always` colours it. `CLICOLOR_FORCE`,
+  each decided per stream, and valid before the command as well as after it. `auto` follows
+  `NO_COLOR`, `TERM=dumb`, then whether the stream is a terminal, so a redirected stream stays plain; only `--color always` colours it. `CLICOLOR_FORCE`,
   `CLICOLOR` and `FORCE_COLOR` are not read. This governs elenctic's own report and diagnostics;
   the help and usage messages are coloured as Python's `argparse` does by default. See the output
   section of the reference.
