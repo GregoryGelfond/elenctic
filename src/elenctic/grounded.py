@@ -25,7 +25,6 @@ from elenctic.literals import Assumption, Literal, Scenario, Signature
 from elenctic.search import (
     ENUMERATION,
     OPTIMIZATION,
-    UNLIMITED,
     Cut,
     Interrupt,
     Limits,
@@ -42,7 +41,7 @@ from elenctic.search import (
 )
 from elenctic.theory import Theory
 
-_PROBE = Plan(ENUMERATION, cap=0)
+_PROBE = Plan(ENUMERATION, max_answer_sets=0)
 
 
 def _key(assumption: Assumption) -> tuple[Literal, bool]:
@@ -118,7 +117,7 @@ class Grounded:
         match run.conclusion:
             case Exhausted.EXHAUSTED:
                 return run.core
-            case Truncation.TARGET:
+            case Truncation.MAX_ANSWER_SETS:
                 return None
             case Truncation() as truncation:
                 return truncation
@@ -155,12 +154,14 @@ class Grounded:
         self,
         scenario: Scenario = frozenset(),
         *,
-        limits: Limits = UNLIMITED,
+        limits: Limits = Limits(),
         interrupt: Interrupt | None = None,
     ) -> Determination[Models]:
         """Enumerate the answer sets satisfying `scenario`, whatever the program optimizes."""
         return self._search(
-            Request(scenario, limits, interrupt), Plan(ENUMERATION, cap=limits.models), models
+            Request(scenario, limits, interrupt),
+            Plan(ENUMERATION, max_answer_sets=limits.max_answer_sets),
+            models,
         )
 
     def consequences(
@@ -168,7 +169,7 @@ class Grounded:
         mode: Mode,
         scenario: Scenario = frozenset(),
         *,
-        limits: Limits = UNLIMITED,
+        limits: Limits = Limits(),
         interrupt: Interrupt | None = None,
     ) -> Determination[Consequences]:
         """Compute the cautious or brave consequences among the shown atoms, natively."""
@@ -182,15 +183,15 @@ class Grounded:
         self,
         scenario: Scenario = frozenset(),
         *,
-        limits: Limits = UNLIMITED,
+        limits: Limits = Limits(),
         interrupt: Interrupt | None = None,
     ) -> Determination[Optimized]:
         """Find the optimum under `scenario` and the answer sets that attain it.
 
-        `limits.models` bounds the optimal answer sets, not the improving ones found on the way.
+        `limits.max_answer_sets` bounds the optimal answer sets, not the improving ones on the way.
         """
         return self._search(
             Request(scenario, limits, interrupt),
-            Plan(OPTIMIZATION, proven, limits.models),
+            Plan(OPTIMIZATION, proven, limits.max_answer_sets),
             optimized,
         )

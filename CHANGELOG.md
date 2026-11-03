@@ -20,7 +20,7 @@ All notable changes are recorded here. The format follows
 - Contracts read from comments with source spans: `@expect`, `@count`, `@model`, `@cautious`,
   `@brave`, `@query` with optional `= { bindings }`, and an `assuming { … }` form on any claim.
 - `check` with the verdicts `pass`, `fail` and `undecided`.
-- Command line with `--json`, `--verbose`, `--budget` and `--models`; exit codes `CLAIMS_HOLD` (0), `CLAIM_UNMET` (1) and
+- Command line with `--json`, `--verbose`, `--max-seconds` and `--max-answer-sets`; exit codes `CLAIMS_HOLD` (0), `CLAIM_UNMET` (1) and
   `FAULT` (2), and `INTERNAL_ERROR` (3) for a failure of elenctic itself, reported as one line on
   stderr. They are the members of `elenctic.report.Exit`, an `IntEnum`, the outcome of `test`; `version` has its
   own, `elenctic.about.VersionExit` (`REPORTED` 0, `INTERNAL_ERROR` 3), so no member is shared.
@@ -56,6 +56,10 @@ All notable changes are recorded here. The format follows
   section of the reference.
 
 ### Changed
+- Limits are named for what they bound: `--max-seconds` (was `--budget`) and `--max-answer-sets` (was
+  `--models`), `Limits.max_seconds` and `Limits.max_answer_sets`, `DEFAULT_MAX_SECONDS` and
+  `DEFAULT_MAX_ANSWER_SETS`, and the truncations `MAX_SECONDS` (`max-seconds`) and `MAX_ANSWER_SETS`
+  (`max-answer-sets`). `UNLIMITED` is gone: use `Limits()`.
 
 - Diagnostics for a source that could not be checked go to stderr, with the reserved-command note
   and the internal-error line; verdicts and the summary stay on stdout. `--json` is all on stdout.
@@ -64,10 +68,10 @@ All notable changes are recorded here. The format follows
   alone.
 - `pixi run -e theory check` is the one documented gate; `check.sh` only runs it. `uv.lock` is tracked.
   The CI uv job is a secondary install check (`uv sync --locked`, then the tests).
-- `--budget` and `--models` take a positive number or the word `all` (no limit); `--models` defaults to
-  100,000 (`DEFAULT_MODEL_CAP`), so a search that would read more is `undecided`; `--models all` lifts
-  it. The library default stays `Limit.UNBOUNDED`. `0` and negative values are a usage error: `--budget 0` used to mean no limit and `--models 0`
-  an immediate cut. `Limits.seconds` and `Limits.models` are a number or `Limit.UNBOUNDED`, replacing
+- `--max-seconds` and `--max-answer-sets` take a positive number or the word `all` (no limit); `--max-answer-sets` defaults to
+  100,000 (`DEFAULT_MAX_ANSWER_SETS`), so a search that would read more is `undecided`; `--max-answer-sets all` lifts
+  it. The library default stays `Limit.UNBOUNDED`. `0` and negative values are a usage error: `--max-seconds 0` used to mean no limit and `--max-answer-sets 0`
+  an immediate cut. `Limits.max_seconds` and `Limits.max_answer_sets` are a number or `Limit.UNBOUNDED`, replacing
   `None`.
 - A refutation by assumptions whose core may not be minimal (the search was cut short) now says so.
 - `@cost` over `#maximize` is accepted: costs are clingo's minimized sums, so a maximized level is
@@ -81,10 +85,10 @@ All notable changes are recorded here. The format follows
 - `Program.read` accepts any path-like (`str | PathLike`).
 - A search is about 2.3 times faster: an answer set is read into literals only once it is kept, and each
   clingo symbol is converted once.
-- Native `@cautious`/`@brave` under an answer set cap are decided from the solver, not the cut search.
-- A minimal core is tested on a non-trivial case and under a budget cut (`minimal=False`).
+- Native `@cautious`/`@brave` under a limit on answer sets are decided from the solver, not the cut search.
+- A minimal core is tested on a non-trivial case and under a time limit (`minimal=False`).
 - A native `@cautious`/`@brave` claim is judged only from a search that ran to its end; if the search
-  was cut by a budget, an interrupt or a target it is undecided, where it was reported as a pass or a
+  was cut by a limit on seconds or answer sets, or by an interrupt, it is undecided, where it was reported as a pass or a
   fail on the partial set.
 - A term nested thousands deep in a theory atom, an objective or a `#show` is checked or refused
   instead of raising `RecursionError`.

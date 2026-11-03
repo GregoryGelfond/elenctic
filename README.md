@@ -28,7 +28,7 @@ Python 3.14 and clingo 5.8 are required; clingcon 5.2 only for contracts that de
 ```python
 from elenctic import Limits, Program, check
 
-report = check(Program.read("drinks.lp"), limits=Limits(seconds=10))
+report = check(Program.read("drinks.lp"), limits=Limits(max_seconds=10))
 ```
 
 `check` returns a `Report` (a verdict per claim), a `Fault` (the question could not be asked), or

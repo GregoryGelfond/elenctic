@@ -2,7 +2,7 @@
 
 import threading
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from functools import lru_cache
 from math import inf
@@ -49,18 +49,15 @@ def _is_negative(limit: float | Limit) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class Limits:
-    """How far a search may go: seconds and answer sets read, each a number or `Limit.UNBOUNDED`."""
+    """How far a search may go: seconds and answer sets, each a number or `Limit.UNBOUNDED`."""
 
-    seconds: float | Limit = Limit.UNBOUNDED
-    models: int | Limit = Limit.UNBOUNDED
+    max_seconds: float | Limit = Limit.UNBOUNDED
+    max_answer_sets: int | Limit = Limit.UNBOUNDED
 
     def __post_init__(self) -> None:
-        if any(_is_negative(limit) for limit in (self.seconds, self.models)):
+        if any(_is_negative(limit) for limit in (self.max_seconds, self.max_answer_sets)):
             message = "a limit is never negative"
             raise ValueError(message)
-
-
-UNLIMITED: Final = Limits()
 
 
 def _deadline(seconds: float | Limit) -> float:
@@ -91,17 +88,17 @@ class Request:
     """What a search is asked: the scenario its answer sets satisfy, and how far it may go."""
 
     scenario: Scenario = frozenset()
-    limits: Limits = UNLIMITED
+    limits: Limits = field(default_factory=Limits)
     interrupt: Interrupt | None = None
 
     def cutter(self) -> Cut:
         """Return the check that says, as the search goes, whether it has gone far enough."""
-        deadline = _deadline(self.limits.seconds)
+        deadline = _deadline(self.limits.max_seconds)
 
         def cut() -> Truncation | None:
             if self.interrupt is not None and self.interrupt.pulled:
                 return Truncation.INTERRUPTED
-            return Truncation.BUDGET if monotonic() >= deadline else None
+            return Truncation.MAX_SECONDS if monotonic() >= deadline else None
 
         return cut
 
@@ -173,15 +170,15 @@ def proven(seen: Seen) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class Plan:
-    """How to run a solve: the (enum, opt) modes, what counts toward the cap on the answer sets."""
+    """How to run a solve: the (enum, opt) modes, how many answer sets it may count."""
 
     modes: tuple[str, str]
     counted: Callable[[Seen], bool] = _always
-    cap: int | Limit = Limit.UNBOUNDED
+    max_answer_sets: int | Limit = Limit.UNBOUNDED
 
     def allows(self, counted: int) -> bool:
-        """Say whether `counted` answer sets are within the cap."""
-        return isinstance(self.cap, Limit) or counted <= self.cap
+        """Say whether `counted` answer sets are within the most allowed."""
+        return isinstance(self.max_answer_sets, Limit) or counted <= self.max_answer_sets
 
 
 ENUMERATION: Final = ("auto", "ignore")
@@ -211,18 +208,21 @@ def _await(handle: _Handle, cut: Cut) -> Truncation | None:
 def drain(
     handle: _Handle, plan: Plan, cut: Cut, read: Callable[[ClingoModel], Seen]
 ) -> tuple[list[Seen], Exhausted | Truncation]:
-    """Take answer sets until the end, the cut, or one more than the cap of `plan` counts."""
+    """Take answer sets until the end, the cut, or one more than `plan` allows."""
     found: list[Seen] = []
     counted = 0
     handle.resume()
     while (truncation := _await(handle, cut)) is None:
         if (model := handle.model()) is None:
-            return found, Exhausted.EXHAUSTED if handle.get().exhausted else Truncation.TARGET
+            return (
+                found,
+                Exhausted.EXHAUSTED if handle.get().exhausted else Truncation.MAX_ANSWER_SETS,
+            )
         found.append(read(model))
         counted += plan.counted(found[-1])
         if not plan.allows(counted):
             handle.cancel()
-            return found[:-1], Truncation.TARGET
+            return found[:-1], Truncation.MAX_ANSWER_SETS
         handle.resume()
     return found, truncation
 

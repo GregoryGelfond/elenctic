@@ -5,7 +5,7 @@ every one, `no` if false in every one, and `unknown` otherwise. A literal absent
 set is unknown there unless its contrary is present (Gelfond and Kahl, Definition 2.2.2).
 
 **A search ends in one of three ways.** The answer sets were exhausted, the search was truncated
-(by target, budget or interrupt), or the program has none. Only an exhausted search yields a world
+(by `max-answer-sets`, `max-seconds` or interrupt), or the program has none. Only an exhausted search yields a world
 view, and only a world view answers `@query`; a truncated search leaves such claims `undecided`.
 
 **Existential claims** (`@model`, `@brave`) pass when a witness is seen and fail only when the

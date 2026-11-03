@@ -65,7 +65,7 @@ def test_a_search_that_runs_out_of_answer_sets_is_undecided_and_exits_with_the_c
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @count 2\n")
-    code, out = run(capsys, path, "--models", "1")
+    code, out = run(capsys, path, "--max-answer-sets", "1")
     assert code == Exit.CLAIM_UNMET
     assert "[UNDECIDED] @count 2" in out
 
@@ -112,7 +112,7 @@ def test_with_no_argument_vector_the_process_arguments_are_read(
 
 FEW_NODES = 40
 MANY_NODES = 400
-SMALL_BUDGETS = [0.005, 0.02, 0.05]
+SMALL_TIME_LIMITS = [0.005, 0.02, 0.05]
 
 
 def path_coloring(nodes: int) -> str:
@@ -135,12 +135,12 @@ def test_an_interrupted_consequence_search_is_undecided_and_not_a_pass(
     assert "[UNDECIDED] @cautious { assign(2,g) } (line 6): search ended: interrupted" in out
 
 
-@pytest.mark.parametrize("budget", SMALL_BUDGETS)
-def test_a_small_budget_never_passes_a_cautious_claim_that_is_false(
-    budget: float, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("seconds", SMALL_TIME_LIMITS)
+def test_a_small_time_limit_never_passes_a_cautious_claim_that_is_false(
+    seconds: float, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "path_coloring.lp", path_coloring(MANY_NODES))
-    code, out = run(capsys, path, "--budget", budget)
+    code, out = run(capsys, path, "--max-seconds", seconds)
     assert code == Exit.CLAIM_UNMET
     assert "1/1 passed" not in out
 
@@ -173,9 +173,9 @@ def test_a_failure_of_its_own_is_an_internal_error_with_a_message_and_no_traceba
 
 
 REFUSED_LIMIT_TEXTS = [
-    ("--models", "a positive integer", value) for value in ["0", "-1", "none", "1.5", ""]
+    ("--max-answer-sets", "a positive integer", value) for value in ["0", "-1", "none", "1.5", ""]
 ] + [
-    ("--budget", "a positive number of seconds", value)
+    ("--max-seconds", "a positive number of seconds", value)
     for value in ["0", "-1", "-0.5", "none", "inf", "nan", ""]
 ]
 
@@ -197,25 +197,25 @@ def test_a_limit_may_be_all_or_a_positive_number_even_a_fraction_of_a_second(
     path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @count 2\n")
     held = (Exit.CLAIMS_HOLD, "1/1 passed\n")
     assert run(capsys, path) == held
-    assert run(capsys, path, "--models", "all", "--budget", "all") == held
-    assert run(capsys, path, "--models", "2", "--budget", "0.5") == held
+    assert run(capsys, path, "--max-answer-sets", "all", "--max-seconds", "all") == held
+    assert run(capsys, path, "--max-answer-sets", "2", "--max-seconds", "0.5") == held
 
 
 ELEMENTS = 4
 SUBSETS = 2**ELEMENTS
-TOO_SMALL_CAP = SUBSETS - 1
+TOO_SMALL_LIMIT = SUBSETS - 1
 
 
-def test_a_search_that_reaches_the_answer_set_cap_is_undecided_unless_the_cap_is_lifted(
+def test_a_search_that_reaches_the_answer_set_limit_is_undecided_unless_the_limit_is_lifted(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     every = f"{{ p(1..{ELEMENTS}) }}.\n#show p/1.\n% @expect sat\n% @count {SUBSETS}\n"
     path = write(tmp_path, "subsets.lp", every)
     held = (Exit.CLAIMS_HOLD, "1/1 passed\n")
     assert run(capsys, path) == held
-    monkeypatch.setattr("elenctic.cli.DEFAULT_MODEL_CAP", TOO_SMALL_CAP)
+    monkeypatch.setattr("elenctic.cli.DEFAULT_MAX_ANSWER_SETS", TOO_SMALL_LIMIT)
     code, out = run(capsys, path)
     assert code == Exit.CLAIM_UNMET
     assert f"[UNDECIDED] @count {SUBSETS}" in out
-    assert run(capsys, path, "--models", "all") == held
-    assert run(capsys, path, "--models", str(SUBSETS)) == held
+    assert run(capsys, path, "--max-answer-sets", "all") == held
+    assert run(capsys, path, "--max-answer-sets", str(SUBSETS)) == held

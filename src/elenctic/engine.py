@@ -15,7 +15,7 @@ from elenctic.facts import Facts, objective_at, shown_by, theory_at
 from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
 from elenctic.program import Fault, Locus, Program
-from elenctic.search import UNLIMITED, Interrupt, Limits
+from elenctic.search import Interrupt, Limits
 from elenctic.spans import UNLOCATED, Diagnostic, Position, Span, diagnose, failure
 from elenctic.theory import Clingcon, Plain, Theory
 
@@ -121,7 +121,7 @@ def solve(
     program: Program,
     scenario: Scenario = frozenset(),
     *,
-    limits: Limits = UNLIMITED,
+    limits: Limits = Limits(),
     interrupt: Interrupt | None = None,
     solver: Solver = Solver.CLINGO,
 ) -> Determination[Models] | Fault:

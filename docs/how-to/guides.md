@@ -2,11 +2,11 @@
 
 ## Limit a search
 
-`elenctic --budget 5 --models 1000 file.lp` stops each search after five seconds or a thousand
+`elenctic --max-seconds 5 --max-answer-sets 1000 file.lp` stops each search after five seconds or a thousand
 answer sets. A claim that needed more than was read is `undecided`, never `pass`.
-`all` lifts a limit: `--budget all`, `--models all`. Without `--models` the command line reads at most
+`all` lifts a limit: `--max-seconds all`, `--max-answer-sets all`. Without `--max-answer-sets` the command line reads at most
 100,000 answer sets per search; a claim that needed more is `undecided`, never `pass`. Zero and negative
-values are refused. In the library: `Limits(seconds=5, answer sets=1000)`; a limit left out is
+values are refused. In the library: `Limits(max_seconds=5, max_answer_sets=1000)`; a limit left out is
 `Limit.UNBOUNDED`, since a library call states its own limits.
 
 ## Check a claim under assumptions
@@ -50,7 +50,7 @@ clingcon an answer is a shown set with its assignment, so `@count` counts both. 
 ## Ask what is true in every answer set without enumerating them
 
 `@cautious { L }` and `@brave { L }` are computed by the solver; a contract holding only these
-reads no answer set and is decided whatever `--models` says.
+reads no answer set and is decided whatever `--max-answer-sets` says.
 
 ## Find out why a claim has no answer set
 
@@ -65,7 +65,7 @@ cut short while shrinking it).
 from elenctic import Limits, Program, ground
 
 grounded = ground(Program("{ a; b }. #minimize { 1,a : a; 2,b : b }."))
-found = grounded.optimize(limits=Limits(seconds=5))
+found = grounded.optimize(limits=Limits(max_seconds=5))
 ```
 
 `found.evidence` is an `Optimum` (proven) or an `Incumbent` (best found when the search ended

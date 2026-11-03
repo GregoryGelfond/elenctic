@@ -12,7 +12,7 @@ from elenctic.spans import Position, Span
 from elenctic.verdicts import Verdict
 
 P, Q = Literal("p"), Literal("q")
-CUT = (Truncation.TARGET, Truncation.BUDGET)
+CUT = (Truncation.MAX_ANSWER_SETS, Truncation.MAX_SECONDS)
 NOTHING: AnswerSet = frozenset()
 
 
@@ -53,16 +53,16 @@ def test_a_cut_search_that_showed_a_literal_upholds_only_what_more_answer_sets_c
     assert from_answer_sets(entails(mode, P), stopped(cut, P))[0] is verdict
 
 
-def test_a_search_cut_by_the_answer_set_cap_settles_the_same_way() -> None:
-    found = solve(Program("{p;q}."), limits=Limits(models=1))
+def test_a_search_cut_by_the_answer_set_limit_settles_the_same_way() -> None:
+    found = solve(Program("{p;q}."), limits=Limits(max_answer_sets=1))
     assert isinstance(found, Consistent)
-    assert found.conclusion is Truncation.TARGET
+    assert found.conclusion is Truncation.MAX_ANSWER_SETS
     verdicts = [from_answer_sets(entails(Mode.CAUTIOUS, *lits), found)[0] for lits in ((P,), ())]
     assert verdicts == [Verdict.FAIL, Verdict.PASS]
 
 
 @pytest.mark.parametrize("mode", Mode)
 def test_an_empty_claim_holds_of_a_cut_native_search_too(mode: Mode) -> None:
-    found = Consistent(Consequences(mode, NOTHING), Truncation.BUDGET)
+    found = Consistent(Consequences(mode, NOTHING), Truncation.MAX_SECONDS)
     claim = Claim(entails(mode), frozenset(), Span("t.lp", Position(1, 1), Position(1, 2)))
     assert judge(claim, found).verdict is Verdict.PASS

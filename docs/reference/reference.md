@@ -13,11 +13,11 @@ like a command is written `./why`.
 | `-v`, `--verbose` | list the claims that passed |
 | `--color WHEN` | color the text: `auto` (default), `always` or `never` |
 | `--icons[=WHEN]` | mark claims with Nerd Font glyphs: `auto`, `always` or `never`; given bare it is `auto`, left out it is `never`. A value takes an equals sign: `--icons always` names a path |
-| `--budget SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default 30) |
-| `--models N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default 100,000) |
+| `--max-seconds SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default 30) |
+| `--max-answer-sets N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default 100,000) |
 
-Zero and negative values of `--budget` and `--models` are a usage error (`FAULT`, 2). In the library the same
-choice is `Limits(seconds=…, answer sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has a default cap.
+Zero and negative values of `--max-seconds` and `--max-answer-sets` are a usage error (`FAULT`, 2). In the library the same
+choice is `Limits(max_seconds=…, max_answer_sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has default limits.
 
 `elenctic version`, `elenctic --version` and `elenctic -V` print the same two lines on stdout and
 exit `CLAIMS_HOLD` (0); `version` is a command, so a file of that name is written `./version`.
@@ -140,7 +140,7 @@ A contract that would be misread is not judged; the file is reported as an error
 ## Verdicts
 
 `pass`, `fail`, `undecided`. A report's verdict is the worst, with `fail` over `undecided`. A
-search cut short by `--budget` or `--models` can pass an existential claim (a witness was seen) or
+search cut short by `--max-seconds` or `--max-answer-sets` can pass an existential claim (a witness was seen) or
 fail a universal one (a counter-example was seen); anything else it leaves `undecided`.
 
 ## Library

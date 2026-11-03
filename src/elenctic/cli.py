@@ -20,8 +20,8 @@ from elenctic.search import Interrupt, Limit, Limits
 from elenctic.spans import Position, Span, failure
 from elenctic.theory import loaded_solvers
 
-DEFAULT_BUDGET: Final = 30.0
-DEFAULT_MODEL_CAP: Final = 100_000
+DEFAULT_MAX_SECONDS: Final = 30.0
+DEFAULT_MAX_ANSWER_SETS: Final = 100_000
 
 
 DECIDED: Final = frozenset({"test", "version"})
@@ -65,7 +65,7 @@ def _limit_reader[N: (int, float)](
 
 
 _seconds_limit = _limit_reader(float, "a positive number of seconds")
-_models_limit = _limit_reader(int, "a positive integer")
+_answer_sets_limit = _limit_reader(int, "a positive integer")
 
 
 def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
@@ -123,16 +123,16 @@ def _parser() -> argparse.ArgumentParser:
     test.add_argument("--json", action="store_true", help="write the run as JSON")
     test.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
     test.add_argument(
-        "--budget",
+        "--max-seconds",
         type=_seconds_limit,
-        default=DEFAULT_BUDGET,
+        default=DEFAULT_MAX_SECONDS,
         metavar="SECONDS|all",
         help="time allowed per search, or `all` for no limit (default: %(default)s)",
     )
     test.add_argument(
-        "--models",
-        type=_models_limit,
-        default=DEFAULT_MODEL_CAP,
+        "--max-answer-sets",
+        type=_answer_sets_limit,
+        default=DEFAULT_MAX_ANSWER_SETS,
         metavar="N|all",
         help="most answer sets read per search, or `all` for no limit (default: %(default)s)",
     )
@@ -220,7 +220,7 @@ def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str])
 
 
 def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
-    limits = Limits(seconds=arguments.budget, models=arguments.models)
+    limits = Limits(max_seconds=arguments.max_seconds, max_answer_sets=arguments.max_answer_sets)
     interrupt = Interrupt()
     signal.signal(signal.SIGINT, lambda _signal, _frame: interrupt.pull())
     entries = [_entry(path, limits, interrupt) for path in _sources(arguments.paths)]

@@ -15,8 +15,8 @@ class Exhausted(StrEnum):
 class Truncation(StrEnum):
     """The search was cut short, and by what."""
 
-    TARGET = "target"
-    BUDGET = "budget"
+    MAX_ANSWER_SETS = "max-answer-sets"
+    MAX_SECONDS = "max-seconds"
     INTERRUPTED = "interrupted"
 
 

@@ -7,7 +7,7 @@ from elenctic.engine import ground
 from elenctic.judge import judge
 from elenctic.literals import Assumption, Literal
 from elenctic.program import Fault, Locus, Program
-from elenctic.search import UNLIMITED, Interrupt, Limits
+from elenctic.search import Interrupt, Limits
 from elenctic.spans import Position, Span
 from elenctic.verdicts import Finding, Report, Verdict
 from interrupting import at_first_answer_set
@@ -20,13 +20,13 @@ biscuit.
 """
 
 
-def run(text: str, *, limits: Limits = UNLIMITED) -> Report:
+def run(text: str, *, limits: Limits = Limits()) -> Report:
     found = check(Program(text, "t.lp"), limits=limits)
     assert isinstance(found, Report), found
     return found
 
 
-def verdicts(text: str, *, limits: Limits = UNLIMITED) -> list[Verdict]:
+def verdicts(text: str, *, limits: Limits = Limits()) -> list[Verdict]:
     return [f.verdict for f in run(text, limits=limits).findings]
 
 
@@ -105,20 +105,20 @@ def test_binding_queries_are_checked_against_the_partition_of_instances() -> Non
 
 def test_a_search_that_did_not_finish_leaves_the_universal_claims_open() -> None:
     text = "{p(1..40)}. q.\n% @expect sat\n% @count 5\n% @cautious { p(1) }\n% @brave { q }\n"
-    report = run(text, limits=Limits(models=100))
+    report = run(text, limits=Limits(max_answer_sets=100))
     assert [f.verdict for f in report.findings] == [P, F, F, P]
 
 
 def test_a_search_cut_short_is_undecided_not_failed() -> None:
     text = "{p(1..40)}.\n% @expect sat\n% @model { p(1), p(40) }\n% @query yes { p(1), p(2) }\n"
-    report = run(text, limits=Limits(seconds=0))
+    report = run(text, limits=Limits(max_seconds=0))
     assert [f.verdict for f in report.findings] == [U, U, U]
     assert report.verdict is U
-    assert str(Truncation.BUDGET) in report.findings[0].detail
+    assert str(Truncation.MAX_SECONDS) in report.findings[0].detail
 
 
 def test_a_satisfiability_claim_alone_asks_the_solver_for_one_answer_set() -> None:
-    assert verdicts("{p(1..40)}.\n% @expect sat", limits=Limits(seconds=5)) == [P]
+    assert verdicts("{p(1..40)}.\n% @expect sat", limits=Limits(max_seconds=5)) == [P]
 
 
 def test_the_verdict_of_a_report_is_its_worst_finding() -> None:
@@ -204,15 +204,15 @@ def test_the_optimum_is_claimed_without_the_ties_all_found() -> None:
         "{ p; q }. :- not p, not q. #minimize { 1,p : p; 1,q : q }.\n"
         "% @expect sat\n% @cost { 1 }\n% @count optimal 2\n"
     )
-    assert verdicts(text, limits=Limits(models=1)) == [P, P, U]
+    assert verdicts(text, limits=Limits(max_answer_sets=1)) == [P, P, U]
 
 
-def test_native_consequences_decide_a_search_the_answer_set_cap_would_cut() -> None:
+def test_native_consequences_decide_a_search_the_answer_set_limit_would_cut() -> None:
     text = (
         "{p(1..40)}. q.\n"
         "% @expect sat\n% @cautious { q }\n% @brave { p(7) }\n% @cautious { p(1) }\n"
     )
-    assert verdicts(text, limits=Limits(models=3)) == [P, P, P, F]
+    assert verdicts(text, limits=Limits(max_answer_sets=3)) == [P, P, P, F]
 
 
 def test_the_optimal_consequences_are_not_decided_by_those_of_all_answer_sets() -> None:
@@ -220,17 +220,17 @@ def test_the_optimal_consequences_are_not_decided_by_those_of_all_answer_sets() 
         "1 { a; b } 1. { z }. #minimize { 1,z : z }. #show a/0. #show b/0.\n"
         "% @expect sat\n% @cautious optimal { a }\n% @brave optimal { a }\n"
     )
-    assert verdicts(text, limits=Limits(models=1)) == [P, U, P]
-    assert verdicts(text, limits=Limits(models=2)) == [P, F, P]
+    assert verdicts(text, limits=Limits(max_answer_sets=1)) == [P, U, P]
+    assert verdicts(text, limits=Limits(max_answer_sets=2)) == [P, F, P]
 
 
-def test_consequences_beside_a_census_are_still_decided_when_the_answer_set_cap_cuts_it() -> None:
+def test_consequences_beside_a_census_are_still_decided_when_the_answer_set_limit_cuts_it() -> None:
     text = (
         "{p(1..40)}. q.\n% @expect sat\n% @count 5\n"
         "% @cautious { q }\n% @cautious { p(1) }\n% @brave { p(7) }\n"
     )
-    assert verdicts(text, limits=Limits(models=3)) == [P, U, P, F, P]
-    assert verdicts(text, limits=Limits(seconds=0)) == [U] * 5
+    assert verdicts(text, limits=Limits(max_answer_sets=3)) == [P, U, P, F, P]
+    assert verdicts(text, limits=Limits(max_seconds=0)) == [U] * 5
 
 
 def test_consequence_claims_agree_with_those_read_from_the_enumeration() -> None:
@@ -311,7 +311,7 @@ def test_an_objective_that_grounds_away_is_no_objective() -> None:
 
 def test_a_query_over_a_search_that_did_not_finish_is_undecided() -> None:
     text = "{p(1..40)}.\n% @expect sat\n% @query yes { p(1) }\n"
-    assert verdicts(text, limits=Limits(models=2)) == [P, U]
+    assert verdicts(text, limits=Limits(max_answer_sets=2)) == [P, U]
 
 
 def test_a_cost_claim_judged_without_an_optimization_is_never_a_pass() -> None:
@@ -324,7 +324,9 @@ def test_a_cost_claim_judged_without_an_optimization_is_never_a_pass() -> None:
 
 def test_an_incumbent_is_never_a_pass_for_a_cost_claim() -> None:
     claim = Claim(Costs((0,)), frozenset(), Span("t.lp", Position(1, 1), Position(1, 2)))
-    found = Consistent(Incumbent(Model(frozenset(), frozenset(), cost=(0,))), Truncation.BUDGET)
+    found = Consistent(
+        Incumbent(Model(frozenset(), frozenset(), cost=(0,))), Truncation.MAX_SECONDS
+    )
     finding = judge(claim, found)
     assert finding.verdict is U
     assert "no optimum proven" in finding.detail
@@ -411,9 +413,9 @@ def test_a_consequence_claim_is_open_when_the_search_is_cut_after_its_first_answ
     assert str(Truncation.INTERRUPTED) in found.findings[1].detail
 
 
-def test_native_consequences_settle_a_claim_that_an_answer_set_cap_leaves_open() -> None:
+def test_native_consequences_settle_a_claim_that_an_answer_set_limit_leaves_open() -> None:
     text = ALTERNATIVES + f"% @cautious {{ c(1) }}\n% @count {CHOICES}\n"
-    assert verdicts(text, limits=Limits(models=1)) == [P, F, U]
+    assert verdicts(text, limits=Limits(max_answer_sets=1)) == [P, F, U]
 
 
 def test_a_deeply_nested_term_beside_a_theory_atom_is_a_fault_not_an_exception() -> None:

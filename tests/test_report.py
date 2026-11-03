@@ -16,7 +16,10 @@ def test_a_failing_claim_leaves_the_claim_unmet() -> None:
 
 
 def test_an_undecided_claim_leaves_the_claim_unmet() -> None:
-    assert Run((entry(UNDECIDED_COUNT, "u.lp", Limits(models=1)),)).exit_code == Exit.CLAIM_UNMET
+    assert (
+        Run((entry(UNDECIDED_COUNT, "u.lp", Limits(max_answer_sets=1)),)).exit_code
+        == Exit.CLAIM_UNMET
+    )
 
 
 def test_a_fault_outranks_a_failure() -> None:

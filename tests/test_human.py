@@ -41,7 +41,7 @@ def test_a_failing_claim_is_named_with_its_line_and_what_was_found() -> None:
 
 
 def test_an_undecided_claim_is_counted_apart() -> None:
-    run = Run((entry(UNDECIDED_COUNT, "u.lp", Limits(models=1)),))
+    run = Run((entry(UNDECIDED_COUNT, "u.lp", Limits(max_answer_sets=1)),))
     stdout = render(run, PLAIN).stdout
     assert "  [UNDECIDED] @count 4 (line 4)" in stdout
     assert stdout.endswith("0/1 passed, 1 undecided\n")
@@ -86,7 +86,7 @@ def test_with_color_on_each_piece_is_painted_by_its_role() -> None:
 def test_a_passed_claim_is_a_note_and_an_undecided_one_a_warning() -> None:
     passed = render(Run((entry(PASSING, "a.lp"),)), COLORED, verbose=True).stdout
     assert "\x1b[1;32m[PASS]\x1b[0m" in passed
-    run = Run((entry(UNDECIDED_COUNT, "u.lp", Limits(models=1)),))
+    run = Run((entry(UNDECIDED_COUNT, "u.lp", Limits(max_answer_sets=1)),))
     undecided = render(run, COLORED).stdout
     assert "\x1b[1;33m[UNDECIDED]\x1b[0m" in undecided
     assert undecided.endswith("\x1b[1;33m1 undecided\x1b[0m\n")

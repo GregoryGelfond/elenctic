@@ -34,7 +34,7 @@ from elenctic.engine import ground, solve
 from elenctic.facts import Shown
 from elenctic.literals import AnswerSet, Assumption, Literal, Scenario, Signature
 from elenctic.program import Fault, Locus, Program
-from elenctic.search import UNLIMITED, Interrupt, Limit, Limits, Request, Run, Seen, optimized
+from elenctic.search import Interrupt, Limit, Limits, Request, Run, Seen, optimized
 
 P, Q = Literal("p"), Literal("q")
 
@@ -114,33 +114,37 @@ def test_a_strongly_negated_literal_can_be_assumed() -> None:
     assert models == {frozenset({P.contrary})}
 
 
-def test_the_answer_set_cap_truncates_without_claiming_to_have_finished() -> None:
-    found = solve(Program("{p(1..5)}."), limits=Limits(models=3))
+def test_the_answer_set_limit_truncates_without_claiming_to_have_finished() -> None:
+    found = solve(Program("{p(1..5)}."), limits=Limits(max_answer_sets=3))
     assert isinstance(found, Consistent)
-    assert found.conclusion is Truncation.TARGET
+    assert found.conclusion is Truncation.MAX_ANSWER_SETS
     assert len(found.evidence.all) == 3
 
 
-def test_a_cap_equal_to_the_number_of_answer_sets_is_still_exhausted() -> None:
-    found = solve(Program("{p;q}."), limits=Limits(models=4))
+def test_a_limit_equal_to_the_number_of_answer_sets_is_still_exhausted() -> None:
+    found = solve(Program("{p;q}."), limits=Limits(max_answer_sets=4))
     assert isinstance(found, Consistent)
     assert (found.conclusion, len(found.evidence.all)) == (Exhausted.EXHAUSTED, 4)
 
 
-def test_a_search_cut_by_the_budget_keeps_the_answer_sets_it_found() -> None:
-    found = solve(Program("{p(1..40)}."), limits=Limits(seconds=0.2))
+def test_a_search_cut_by_the_time_limit_keeps_the_answer_sets_it_found() -> None:
+    found = solve(Program("{p(1..40)}."), limits=Limits(max_seconds=0.2))
     assert isinstance(found, Consistent)
-    assert found.conclusion is Truncation.BUDGET
+    assert found.conclusion is Truncation.MAX_SECONDS
 
 
-def test_a_budget_spent_before_any_answer_set_is_inconclusive_not_inconsistent() -> None:
-    assert solve(Program("{p;q}."), limits=Limits(seconds=0)) == Inconclusive(Truncation.BUDGET)
+def test_a_time_limit_spent_before_any_answer_set_is_inconclusive_not_inconsistent() -> None:
+    assert solve(Program("{p;q}."), limits=Limits(max_seconds=0)) == Inconclusive(
+        Truncation.MAX_SECONDS
+    )
 
 
-def test_a_budget_is_spent_at_the_very_moment_it_runs_out(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_time_limit_is_spent_at_the_very_moment_it_runs_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(search, "monotonic", lambda: 100.0)
-    cut = Request(frozenset(), Limits(seconds=0)).cutter()
-    assert cut() is Truncation.BUDGET
+    cut = Request(frozenset(), Limits(max_seconds=0)).cutter()
+    assert cut() is Truncation.MAX_SECONDS
 
 
 def test_an_interrupt_pulled_from_another_thread_ends_the_search() -> None:
@@ -158,13 +162,12 @@ def test_an_interrupt_already_pulled_stops_before_the_search() -> None:
 
 
 def test_a_search_is_unbounded_unless_limited() -> None:
-    assert Limits() == Limits(seconds=Limit.UNBOUNDED, models=Limit.UNBOUNDED)
-    assert Limits() == UNLIMITED
+    assert Limits() == Limits(max_seconds=Limit.UNBOUNDED, max_answer_sets=Limit.UNBOUNDED)
 
 
 def test_a_limit_is_not_negative() -> None:
     with pytest.raises(ValueError, match="negative"):
-        Limits(seconds=-1)
+        Limits(max_seconds=-1)
 
 
 def test_a_syntax_error_is_a_fault_of_the_program_placed_in_it() -> None:
@@ -235,8 +238,8 @@ def test_consequences_of_an_inconsistent_program_are_inconsistent() -> None:
 def test_a_truncated_consequence_search_claims_nothing() -> None:
     grounded = ground(Program("{p(1..40)}."))
     assert not isinstance(grounded, Fault)
-    assert grounded.consequences(Mode.BRAVE, limits=Limits(seconds=0)) == Inconclusive(
-        Truncation.BUDGET
+    assert grounded.consequences(Mode.BRAVE, limits=Limits(max_seconds=0)) == Inconclusive(
+        Truncation.MAX_SECONDS
     )
 
 
@@ -306,11 +309,11 @@ def test_assumptions_are_not_to_blame_when_the_program_has_no_answer_set_of_its_
     assert solve(Program("p. :- p."), frozenset({Assumption(Q)})) == Inconsistent(NotThese())
 
 
-def test_a_refutation_cut_short_by_the_budget_is_not_called_minimal() -> None:
+def test_a_refutation_cut_short_by_the_time_limit_is_not_called_minimal() -> None:
     grounded = ground(Program("{p;q;r}. :- p, q."))
     assert not isinstance(grounded, Fault)
     core = frozenset({Assumption(P), Assumption(Q), Assumption(Literal("r"))})
-    cut = grounded.refute(core, Request(core, Limits(seconds=0)))
+    cut = grounded.refute(core, Request(core, Limits(max_seconds=0)))
     assert cut == These(core, minimal=False)
 
 
@@ -325,15 +328,15 @@ def test_a_refutation_among_many_assumptions_is_the_few_that_clash() -> None:
 PIGEONS = "p(1..14). h(1..13). 1 { in(P,H) : h(H) } 1 :- p(P), y. :- in(P,H), in(Q,H), P < Q."
 
 
-def test_a_refutation_whose_shrinking_the_budget_cuts_is_sufficient_and_says_so() -> None:
+def test_a_refutation_whose_shrinking_the_time_limit_cuts_is_sufficient_and_says_so() -> None:
     program = f"{{x;y}}. :- x, y. {PIGEONS}"
     scenario = frozenset({Assumption(Literal("x")), Assumption(Literal("y"))})
-    found = solve(Program(program), scenario, limits=Limits(seconds=0.3))
+    found = solve(Program(program), scenario, limits=Limits(max_seconds=0.3))
     assert found == Inconsistent(These(scenario, minimal=False))
     exact = solve(
-        Program(program), frozenset({Assumption(Literal("y"))}), limits=Limits(seconds=0.3)
+        Program(program), frozenset({Assumption(Literal("y"))}), limits=Limits(max_seconds=0.3)
     )
-    assert exact == Inconclusive(Truncation.BUDGET)
+    assert exact == Inconclusive(Truncation.MAX_SECONDS)
 
 
 scenarios = st.frozensets(
@@ -401,12 +404,12 @@ def test_with_no_objective_every_answer_set_is_optimal() -> None:
     assert (found.evidence.cost, len(found.evidence.models.all)) == ((), 4)
 
 
-def test_the_answer_set_cap_of_an_optimization_counts_optimal_answer_sets_only() -> None:
+def test_the_answer_set_limit_of_an_optimization_counts_optimal_answer_sets_only() -> None:
     grounded = ground(Program("{p;q}. :- not p, not q. #minimize { 1,p : p; 1,q : q }."))
     assert not isinstance(grounded, Fault)
-    found = grounded.optimize(limits=Limits(models=1))
+    found = grounded.optimize(limits=Limits(max_answer_sets=1))
     assert isinstance(found, Consistent)
-    assert found.conclusion is Truncation.TARGET
+    assert found.conclusion is Truncation.MAX_ANSWER_SETS
     assert isinstance(found.evidence, Optimum)
     assert len(found.evidence.models.all) == 1
 
@@ -435,8 +438,8 @@ def test_an_interrupted_optimization_is_inconclusive() -> None:
 
 
 def test_the_unproven_best_so_far_is_an_incumbent_and_closes_no_optimal_view() -> None:
-    found = Consistent(Incumbent(Model(frozenset(), frozenset())), Truncation.BUDGET)
-    assert optimal_view(found) is Truncation.BUDGET
+    found = Consistent(Incumbent(Model(frozenset(), frozenset())), Truncation.MAX_SECONDS)
+    assert optimal_view(found) is Truncation.MAX_SECONDS
     with pytest.raises(ValueError, match="proven"):
         optimal_view(Consistent(Incumbent(Model(frozenset(), frozenset())), Exhausted.EXHAUSTED))
 
@@ -556,7 +559,7 @@ def test_the_optimum_is_the_least_cost_among_all_answer_sets_and_its_answer_sets
 
 def test_a_run_is_refuted_only_when_it_exhausted_the_space_and_found_nothing() -> None:
     model = _seen("p", proven=True)
-    exhausted, cut = Exhausted.EXHAUSTED, Truncation.BUDGET
+    exhausted, cut = Exhausted.EXHAUSTED, Truncation.MAX_SECONDS
     assert Run((), exhausted, frozenset()).refuted
     assert not Run((model,), exhausted, frozenset()).refuted
     assert not Run((), cut, frozenset()).refuted

@@ -12,7 +12,7 @@ from elenctic.judge import Found, judge
 from elenctic.literals import Scenario
 from elenctic.program import Fault, Locus, Program
 from elenctic.reader import parse_contract
-from elenctic.search import UNLIMITED, Interrupt, Limits
+from elenctic.search import Interrupt, Limits
 from elenctic.tags import is_case
 from elenctic.verdicts import Finding, Report
 
@@ -25,9 +25,9 @@ def _by_search(claims: Iterable[Claim]) -> dict[tuple[Scenario, Range], list[Cla
 
 
 def _limits(group: list[Claim], limits: Limits) -> Limits:
-    """Cap the search at one answer set for a group that reads no collection of them."""
+    """Limit the search to one answer set for a group that reads no collection of them."""
     return (
-        replace(limits, models=1)
+        replace(limits, max_answer_sets=1)
         if all(isinstance(c.reading, Satisfiable | Costs) for c in group)
         else limits
     )
@@ -54,9 +54,9 @@ def _entailing(
     ]
 
 
-def _capped(found: Found) -> bool:
-    """Say whether a search stopped for want of nothing but the answer set cap it was given."""
-    return isinstance(found, Consistent) and found.conclusion is Truncation.TARGET
+def _cut_by_count(found: Found) -> bool:
+    """Say whether a search stopped for want of nothing but the most answer sets it was allowed."""
+    return isinstance(found, Consistent) and found.conclusion is Truncation.MAX_ANSWER_SETS
 
 
 def _judge_group(
@@ -80,7 +80,7 @@ def _judge_group(
     else:
         found = grounded.solve(scenario, limits=_limits(group, limits), interrupt=interrupt)
     findings = [judge(claim, found) for claim in group]
-    if over is Range.ALL and _capped(found):
+    if over is Range.ALL and _cut_by_count(found):
         return _natively(group, findings, native)
     return findings
 
@@ -90,7 +90,7 @@ def _natively(
     findings: list[Finding],
     native: Callable[[Mode], Determination[Consequences]],
 ) -> list[Finding]:
-    """Replace the verdicts on consequence claims by native ones, which the cap cannot cut."""
+    """Replace the verdicts on consequence claims by native ones, which the limit cannot cut."""
     entailing = [c for c in group if isinstance(c.reading, Entails)]
     decided = dict(zip(entailing, _entailing(entailing, native), strict=True)) if entailing else {}
     return [decided.get(claim, finding) for claim, finding in zip(group, findings, strict=True)]
@@ -99,7 +99,7 @@ def _natively(
 def check(
     program: Program,
     *,
-    limits: Limits = UNLIMITED,
+    limits: Limits = Limits(),
     interrupt: Interrupt | None = None,
 ) -> Report | Fault | None:
     """Check the contract written in `program`; `None` if it carries none."""
