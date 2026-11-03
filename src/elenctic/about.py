@@ -1,11 +1,12 @@
 """What elenctic says about itself: its version, licence and holder, and the solvers it runs on.
 
-The version and the licence come from the metadata of the installed package, the holder from its
-authors, and the year is the one constant here. A test compares the year and the holder to the
-copyright line of `LICENSE`, so they cannot drift apart.
+The version and the licence come from the metadata of the installed package, the holder from the
+name in its `Author-email`, and the year is the one constant here. A test compares the year and the
+holder to the copyright line of `LICENSE`, so they cannot drift apart.
 """
 
 from dataclasses import dataclass
+from email.utils import parseaddr
 from importlib.metadata import metadata
 from typing import Final
 
@@ -38,4 +39,5 @@ class Solvers:
 def package() -> Package:
     """Read the package: an error if the metadata lacks a field, since each has one source."""
     installed = metadata(DISTRIBUTION)
-    return Package(installed["Version"], installed["License-Expression"], installed["Author"], YEAR)
+    holder, _ = parseaddr(installed["Author-email"])
+    return Package(installed["Version"], installed["License-Expression"], holder, YEAR)

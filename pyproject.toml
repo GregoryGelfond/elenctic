@@ -5,7 +5,7 @@ description = "Contracts and queries for answer set programs: a library first, a
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Gregory Gelfond" }]
+authors = [{ name = "Gregory Gelfond", email = "gregory_gelfond@fastmail.com" }]
 requires-python = ">=3.14"
 dependencies = ["clingo>=5.8.2,<5.9"]
 
