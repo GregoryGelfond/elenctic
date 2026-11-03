@@ -157,6 +157,13 @@ enforced.
 | What is optimal, at what cost? | `Grounded.optimize(scenario)` | `Determination[Optimized]` |
 | Over which solver? | `solve(program, solver=Solver.CLINGCON)`, `ground(program, solver)` | the same; a `Model` carries its `assignment` |
 | Why is there none? | the `Inconsistent` result's `refutation` | `These`, `NotThese` or `NoAssumptions` |
+| Do two patterns have a common instance? | `mgu(first, second)` | a `Unifier`, or `None` |
+
+`mgu` renames the two patterns apart, so that a variable of one is not the variable of the other for
+having the same name, and returns a `Unifier`: the two renamed patterns, the `Substitution` that
+makes them one, and `instance`, the pattern both become (the most general common instance). It is
+public for answering queries and for the interactive session to come; `Pattern.match`, which reads a
+pattern off a ground answer set, does not use it.
 
 ## JSON
 

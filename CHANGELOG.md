@@ -14,6 +14,8 @@ All notable changes are recorded here. The format follows
   `Consistent | Inconsistent | Inconclusive` over `Models` or `Consequences`.
 - Query kernel in the public API: `Literal`, `Pattern`, `Query` (`Literal | All | Any`), `Answer`,
   `answer`, `singleton_answer`, `bindings`, over a `WorldView` that only an exhausted search yields.
+- `mgu(first, second)` and `Unifier`: the most general unifier of two patterns, renamed apart, and
+  the pattern both become. Public for answering queries and for the interactive session to come.
 - Contracts read from comments with source spans: `@expect`, `@count`, `@model`, `@cautious`,
   `@brave`, `@query` with optional `= { bindings }`, and an `assuming { … }` form on any claim.
 - `check` with the verdicts `pass`, `fail` and `undecided`.
