@@ -132,8 +132,9 @@ A contract that would be misread is not judged; the file is reported as an error
 - `@assign` or `where` under clingo, which has no assignment to read;
 - an `optimal` or `@cost` claim over a program whose objective grounds away;
 - `@count optimal N` greater than an explicit `@count M`;
-- a `no` or `unknown` query that reads a contrary `-p` off the shown atoms when the program can
-  derive `-p` and does not `#show` it;
+- a query (`@query`, any answer) that reads a literal `p` off the shown atoms when the program can
+  derive `p` and does not `#show` it, and a `no` or `unknown` query that reads the contrary `-p` so
+  when the program can derive `-p` and does not `#show` it;
 - no `@expect`, more than one, or more than one `% @elenctic solver`;
 - under `@expect unsat`, an answer set claim other than `@count 0`; under `@expect sat`, `@count 0`
   (each judged under the same assumptions).

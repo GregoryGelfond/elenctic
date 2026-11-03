@@ -295,6 +295,36 @@ def test_a_binding_query_that_reads_its_contrary_needs_it_shown_too() -> None:
     assert verdicts(program + "% @query yes { p(X) } = { }\n") == [P, P]
 
 
+HIDDEN_LITERAL = "-b.\n#show b/0.\n% @expect sat\n"
+HIDDEN_LITERAL_FAULT = (
+    "4: reads `-b/0` off the shown atoms, but the program can derive it and does not `#show` it"
+)
+
+
+@pytest.mark.parametrize("answer", ["yes", "no", "unknown"])
+def test_a_query_needs_the_literal_it_reads_shown_when_the_program_can_derive_it(
+    answer: str,
+) -> None:
+    assert faults(HIDDEN_LITERAL + f"% @query {answer} {{ -b }}\n") == [HIDDEN_LITERAL_FAULT]
+
+
+def test_a_hidden_literal_is_found_inside_a_conjunction_or_a_disjunction() -> None:
+    for query in ["{ -b, b }", "{ b | -b }", "{ b, { -b | b } }"]:
+        assert faults(HIDDEN_LITERAL + f"% @query yes {query}\n")
+
+
+def test_a_binding_query_needs_the_pattern_it_reads_shown_when_the_program_can_derive_it() -> None:
+    program = "-p(1). #show p/1.\n% @expect sat\n"
+    for answer in ["yes", "no", "unknown"]:
+        assert faults(program + f"% @query {answer} {{ -p(X) }} = {{ 1 }}\n")
+
+
+def test_a_literal_the_program_cannot_derive_needs_no_show() -> None:
+    program = "b. #show b/0.\n% @expect sat\n"
+    assert verdicts(program + "% @query yes { b }\n% @query no { -b }\n") == [P, P, P]
+    assert verdicts(program + "% @query unknown { -b }\n") == [P, F]
+
+
 def test_a_theory_atom_is_not_checked_as_though_it_were_interpreted() -> None:
     text = "#theory t { c { }; &k/0 : c, any }.\n{p}. &k { 1 }.\n% @expect sat\n"
     (message,) = faults(text)

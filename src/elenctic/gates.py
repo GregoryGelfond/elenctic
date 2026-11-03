@@ -5,7 +5,8 @@ from elenctic.determination import Range
 from elenctic.facts import Facts
 from elenctic.grounded import Grounded
 from elenctic.literals import Literal, Signature
-from elenctic.query import Answer
+from elenctic.patterns import Pattern
+from elenctic.query import All, Answer, Any, Query
 from elenctic.spans import Diagnostic, Span, failure
 
 _IGNORED = (
@@ -22,13 +23,31 @@ _UNASSIGNED = (
 )
 
 
+def _parts(query: Query) -> list[Literal | Pattern]:
+    """List the literals and patterns a query reads, however deeply it nests them."""
+    match query:
+        case All(parts) | Any(parts):
+            return [read for part in parts for read in _parts(part)]
+        case _:
+            return [query]
+
+
+def _read(reading: Reading) -> frozenset[Signature]:
+    """Name the predicates a query reads off the shown atoms, whatever its answer."""
+    match reading:
+        case Asks(_, query):
+            return frozenset(part.signature for part in _parts(query))
+        case Binds(_, pattern, _):
+            return frozenset({pattern.signature})
+        case _:
+            return frozenset()
+
+
 def _contraries(reading: Reading) -> frozenset[Signature]:
     """Name the predicates a `no` or `unknown` query reads as contraries off the shown atoms."""
     match reading:
         case Asks(Answer.NO | Answer.UNKNOWN, query):
-            return frozenset(
-                part.contrary.signature for part in query.parts if isinstance(part, Literal)
-            )
+            return frozenset(part.contrary.signature for part in _parts(query))
         case Binds(Answer.UNKNOWN, pattern, _):
             return frozenset({pattern.contrary.signature})
         case Binds(Answer.NO, pattern, found) if found:
@@ -71,10 +90,11 @@ def _lacks(reading: Reading, grounded: Grounded, solver: Solver) -> list[str]:
             "`#maximize` or `:~`, or its elements ground away"
         )
     ] * (over(reading) is Range.OPTIMAL and not grounded.facts.optimizes)
+    contraries = _contraries(reading)
     unshown = [
-        f"reads the contrary `{signature}` off the shown atoms, "
+        f"reads {'the contrary ' * (signature in contraries)}`{signature}` off the shown atoms, "
         "but the program can derive it and does not `#show` it"
-        for signature in sorted(_contraries(reading))
+        for signature in sorted(_read(reading) | contraries)
         if signature in grounded.signatures and not grounded.facts.shown.covers(signature)
     ]
     assigned = [_UNASSIGNED] * (solver is Solver.CLINGO and _assigning(reading))
