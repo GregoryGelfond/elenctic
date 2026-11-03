@@ -32,7 +32,8 @@ The status is `elenctic.report.Exit`, an `IntEnum`; the values are fixed.
 ## Contract syntax
 
 A claim is a comment line beginning `%` followed by a tag. A brace group may continue over
-following comment lines. Every contract begins with `@expect`.
+following comment lines. A contract has exactly one `@expect`, without `assuming`. Several claims
+of the same kind are independent claims: two `@model` claims are two existential claims.
 
 | Claim | Holds when |
 |---|---|
@@ -72,8 +73,10 @@ A contract that would be misread is not judged; the file is reported as an error
 - an `optimal` or `@cost` claim over a program whose objective grounds away;
 - `@count optimal N` greater than an explicit `@count M`;
 - a `no` or `unknown` query that reads a contrary `-p` off the shown atoms when the program can
-  derive `-p` and does not `#show` it.
-
+  derive `-p` and does not `#show` it;
+- no `@expect`, more than one, or more than one `% @elenctic solver`;
+- under `@expect unsat`, a model claim other than `@count 0`; under `@expect sat`, `@count 0`
+  (each judged under the same assumptions).
 ## Verdicts
 
 `pass`, `fail`, `undecided`. A report's verdict is the worst, with `fail` over `undecided`. A
@@ -82,8 +85,10 @@ fail a universal one (a counter-example was seen); anything else it leaves `unde
 
 ## Library
 
-Everything in `elenctic.__all__`. Results are frozen dataclasses; spans are half-open,
-`[start, end)`, one-based.
+Everything in `elenctic.__all__`, and nothing else is promised; from 1.0 it follows semver, and
+until then the changelog's Unreleased section is the record. Results are frozen dataclasses; spans
+are half-open, `[start, end)`, one-based. Use one search at a time per `Grounded`; this is not
+enforced.
 
 | Question | Call | Result |
 |---|---|---|
@@ -95,7 +100,8 @@ Everything in `elenctic.__all__`. Results are frozen dataclasses; spans are half
 
 ## JSON
 
-`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`; see `elenctic.report.encode`.
+`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`; see `elenctic.report.encode`. A
+dataclass becomes `{"kind": TypeName, field: …}`, an enum its value, a set a sorted list.
 
 ## Examples
 
