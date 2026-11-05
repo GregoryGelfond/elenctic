@@ -58,20 +58,25 @@ Exit code 1.
 ## `hidden-contrary.lp`
 
 ```
-% `-p` can be derived but is not shown, so "no" would mean "hidden", not "false".
-{ p }. { -p }. :- p, -p.
-#show p/0.
+% `-b` can be derived but is not shown. The query is answered over the full answer sets;
+% a note marks that it reads a hidden literal.
+-b.
+#show b/0.
 % @expect sat
-% @query no { p }
+% @query yes { -b }
 ```
 
 ```
 $ elenctic -v docs/examples/hidden-contrary.lp
-docs/examples/hidden-contrary.lp:5:3-18: error: reads the contrary `-p/0` off the shown atoms, but the program can derive it and does not `#show` it
-0/1 passed, 1 error
+docs/examples/hidden-contrary.lp:6:3-20: note: reads `-b/0`, which the program can derive and does not `#show`
+docs/examples/hidden-contrary.lp — PASS
+  [PASS] @expect sat (line 5): an answer set exists
+  [PASS] @query yes { -b } (line 6): yes expected, answer is yes
+
+1/1 passed
 ```
 
-Exit code 2.
+Exit code 0.
 
 ## `no-objective.lp`
 

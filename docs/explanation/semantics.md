@@ -1,8 +1,16 @@
 # Semantics
 
-**Answers are three-valued per answer set.** Over a set of answer sets, a query is `yes` if true in
-every one, `no` if false in every one, and `unknown` otherwise. A literal absent from an answer
-set is unknown there unless its contrary is present (Gelfond and Kahl, Definition 2.2.2).
+**Answers are three-valued per answer set.** Over a set of answer sets, a ground query
+(singleton, conjunctive or disjunctive) is `yes` if true in every one, `no` if false in every
+one, and `unknown` otherwise. A literal absent from an answer set is unknown there unless its
+contrary is present (Gelfond and Kahl, Definition 2.2.2, with the errata that this rule holds for
+every ground query).
+
+**Queries range over the full answer sets.** `@query` reads every atom of each answer set, not
+only those `#show` selects. `#show` still governs what `@answer-set`, `@count`, `@cautious` and
+`@brave` report. When a query reads a literal the program can derive and does not `#show`, the
+run records a note (a lint) on that claim; the note does not change the verdict or the exit. A
+later `--strict` may promote such notes to faults; that flag is not built yet.
 
 **A search ends in one of three ways.** The answer sets were exhausted, the search was truncated
 (by `max-answer-sets`, `max-seconds` or interrupt), or the program has none. Only an exhausted search yields a world

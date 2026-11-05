@@ -114,7 +114,9 @@ of the same kind are independent claims: two `@answer-set` claims are two existe
 
 An objective ranks answer sets and never removes any: every claim above without `optimal`, and every
 `@query`, reads all the answer sets AS(P) whatever the program optimizes; only the `optimal` claims
-and `@cost` read the optimal ones, Opt(P) ⊆ AS(P)
+and `@cost` read the optimal ones, Opt(P) ⊆ AS(P). `@query` evaluates over the full answer sets
+(every atom), not only those `#show` selects; a query that reads a derivable unshown literal gets a
+note in the report, which does not change the exit
 ([Semantics](../explanation/semantics.md)).
 
 `@note` is ignored. `% @elenctic solver clingcon` (or `clingo`, the default) names the solver the
@@ -137,9 +139,6 @@ A contract that would be misread is not judged; the file is reported as an error
 - `@assign` or `where` under clingo, which has no assignment to read;
 - an `optimal` or `@cost` claim over a program whose objective grounds away;
 - `@count optimal N` greater than an explicit `@count M`;
-- a query (`@query`, any answer) that reads a literal `p` off the shown atoms when the program can
-  derive `p` and does not `#show` it, and a `no` or `unknown` query that reads the contrary `-p` so
-  when the program can derive `-p` and does not `#show` it;
 - no `@expect`, more than one, or more than one `% @elenctic solver`;
 - under `@expect unsat`, an answer set claim other than `@count 0`; under `@expect sat`, `@count 0`
   (each judged under the same assumptions).
@@ -197,7 +196,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Interrupt` | a request to stop, made from any thread with `pull()` and heeded between answer sets |
 | `Cut` | the function a search asks whether to stop: a `Truncation`, or `None` to go on |
 | `Facts` | what the grounded program says about itself, against which a contract is checked |
-| `Shown` | the predicates `#show` selects; with no `#show` every atom is shown |
+| `Shown` | the predicates an unconditional `#show` selects; with no `#show` every atom is shown; a conditional or variable `#show` names none |
 
 ### Results of a search
 
@@ -284,7 +283,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Detail` | text, or an `Ended` when the search ended before it could settle the claim |
 | `Ended` | the `Truncation` that cut the search short, and whether an optimum went unproven; the text view words it, and in JSON it is the finding's `detail` |
 | `Found` | a search `judge` can read: a `Determination` over `AnswerSets`, `Consequences` or `Optimized` |
-| `Report` | the findings for one source; `verdict` is `FAIL` if any fails, else `UNDECIDED` if any is, else `PASS` |
+| `Report` | the findings for one source, and `lints` (notes on queries that read a hidden literal); `verdict` is `FAIL` if any fails, else `UNDECIDED` if any is, else `PASS` |
 | `Verdict` | `PASS`, `FAIL` or `UNDECIDED` |
 
 ### Sources

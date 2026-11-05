@@ -30,7 +30,8 @@ All notable changes are recorded here. The format follows
 - Optimization: `Grounded.optimize` returns `Optimum` or `Incumbent`; claims `@answer-set optimal`,
   `@cautious optimal`, `@brave optimal`, `@optimal { L }`, `@count optimal n` and `@cost { … }`.
 - Preconditions that make a misreadable contract an error: theory atoms, an objective that grounds
-  away, a nested `@count optimal`, a derivable unshown contrary under `no`/`unknown`.
+  away, a nested `@count optimal`.
+- `Report.lints`: notes when a query reads a literal the program can derive and does not `#show`.
 - Subcommands: `elenctic test` (the default) and the reserved `repl`, `why`, `ask`, `explain`.
 - `elenctic version`, `--version` and `-V`: one text with the version, the license, the holder and the
   versions of clingo and clingcon that are loaded. `--version` and `-V` are options of `elenctic`
@@ -89,7 +90,11 @@ All notable changes are recorded here. The format follows
 - A refutation by assumptions whose core may not be minimal (the search was cut short) now says so.
 - `@cost` over `#maximize` is accepted: costs are clingo's minimized sums, so a maximized level is
   negated.
-- A `no`/`unknown` query faults only when its contrary is derivable and not shown.
+- A query that reads a literal the program can derive and does not `#show` is noted (a lint on the
+  report), not refused; the note does not change the exit. The old refusal of such queries, and the
+  refusal of a `no`/`unknown` query whose contrary was derivable and unshown, are gone: full
+  answer-set evaluation makes both gates redundant for correctness. A later `--strict` may promote
+  the notes to faults; that flag is not built yet.
 - A theory atom with no `#theory` declaration is reported with elenctic's own message and location
   rather than clingo's.
 - The theory-atom error points at the first theory atom, not at line 1.
@@ -98,10 +103,12 @@ All notable changes are recorded here. The format follows
 - Documented that an objective only ranks answer sets and never removes any: unqualified claims and
   every `@query` read all answer sets, and only `optimal` claims and `@cost` read the optimal ones
   (`docs/explanation/semantics.md`, which the reference and the guides point to). The behavior is unchanged.
-- A query faults when it reads a literal the program can derive and does not `#show`, whatever its answer:
-  `-b. #show b/0.` with `@query yes { -b }` was a false failure and with `@query unknown { -b }` a false
-  pass. The gate had checked only the contraries read by `no` and `unknown`, and still does, so a
-  contrary the program cannot derive needs no `#show`.
+- Queries evaluate over the full answer sets, not the shown projection: `-b. #show b/0.` with
+  `@query yes { -b }` is yes, and `-p. #show p/0.` with `@query yes { p }` reports no (not unknown).
+- An empty `no` binding is no longer a vacuous pass when a contrary holds:
+  `-p(1). #show p/1.` with `@query no { p(X) } = { }` fails; the no-set is `{1}`.
+- A variable `#show X : q(X).` no longer makes every predicate "shown" for coverage checks, and a
+  conditional `#show p : r.` no longer counts as unconditionally showing `p`.
 - `Program.read` accepts any path-like (`str | PathLike`).
 - A search is about 2.3 times faster: an answer set is read into literals only once it is kept, and each
   clingo symbol is converted once.
