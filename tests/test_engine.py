@@ -502,8 +502,8 @@ def test_only_the_answer_sets_an_optimization_keeps_are_built(
     assert len(built) == kept
 
 
-def test_a_show_of_a_term_names_the_signature_whether_constant_negated_or_applied() -> None:
-    grounded = ground(Program("{ -p; q; r(1) }. #show -p : q. #show s : q. #show r(1) : q.\n"))
+def test_a_show_of_a_term_names_the_signature_when_the_show_has_no_body() -> None:
+    grounded = ground(Program("{ -p; q; r(1) }. #show -p. #show s. #show r(1).\n"))
     assert not isinstance(grounded, Fault)
     shown = grounded.facts.shown
     assert shown.signatures == {
@@ -566,11 +566,14 @@ def test_a_run_is_refuted_only_when_it_exhausted_the_space_and_found_nothing() -
 
 
 def test_a_show_of_a_term_restricts_what_is_shown_to_the_signature_it_names() -> None:
-    grounded = ground(Program("p. q. #show q : p.\n"))
+    grounded = ground(Program("p. q. #show q.\n"))
     assert not isinstance(grounded, Fault)
     covers = grounded.facts.shown.covers
     assert covers(Signature("q", 0))
     assert not covers(Signature("p", 0))
+    conditional = ground(Program("p. q. #show q : p.\n"))
+    assert not isinstance(conditional, Fault)
+    assert not conditional.facts.shown.covers(Signature("q", 0))
 
 
 def test_shown_selections_combine_into_one_that_is_wild_if_any_is() -> None:

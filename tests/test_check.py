@@ -1,12 +1,16 @@
+from dataclasses import replace
+
 import pytest
 
 from elenctic.check import check
-from elenctic.contract import Claim, Costs, Witness
+from elenctic.contract import Asks, Claim, Costs, Witness
 from elenctic.determination import AnswerSet, Consistent, Inconsistent, Incumbent, These, Truncation
 from elenctic.engine import ground
+from elenctic.gates import hidden_reads
 from elenctic.judge import judge
 from elenctic.literals import Assumption, Literal
 from elenctic.program import Fault, Locus, Program
+from elenctic.query import All, Answer, Any
 from elenctic.search import Interrupt, Limits
 from elenctic.spans import Position, Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
@@ -265,14 +269,10 @@ def test_an_optimal_claim_needs_an_objective_in_the_program() -> None:
     assert len(faults("{p}.\n% @expect sat\n% @optimal { p }\n% @count optimal 1\n")) == 2
 
 
-def test_a_no_query_needs_the_contrary_shown_when_the_program_can_derive_it() -> None:
+def test_a_no_query_over_full_answer_sets_sees_a_hidden_contrary() -> None:
     program = "{p}. {-p}. :- p, -p. #show p/0.\n% @expect sat\n"
-    (message,) = faults(program + "% @query no { p }\n")
-    assert message == (
-        "3: reads the contrary `-p/0` off the shown atoms, but the program can derive it "
-        "and does not `#show` it"
-    )
-    assert faults(program + "% @query unknown { p }\n")
+    assert verdicts(program + "% @query no { p }\n") == [P, F]
+    assert verdicts(program + "% @query unknown { p }\n") == [P, P]
     assert verdicts(program + "% @query yes { p }\n") == [P, F]
 
 
@@ -287,42 +287,73 @@ def test_a_shown_contrary_or_a_program_that_shows_everything_is_fine() -> None:
     assert verdicts(everything) == [P, P]
 
 
-def test_a_binding_query_that_reads_its_contrary_needs_it_shown_too() -> None:
-    program = "{p(1)}. {-p(1)}. :- p(1), -p(1). #show p/1.\n% @expect sat\n"
-    assert faults(program + "% @query unknown { p(X) } = { 1 }\n")
-    assert faults(program + "% @query no { p(X) } = { 1 }\n")
-    assert verdicts(program + "% @query no { p(X) } = { }\n") == [P, P]
+def test_an_empty_no_binding_is_not_vacuously_true_when_a_contrary_holds() -> None:
+    program = "-p(1). #show p/1.\n% @expect sat\n"
+    report = run(program + "% @query no { p(X) } = { }\n")
+    assert [f.verdict for f in report.findings] == [P, F]
+    assert "found { (1) }" in str(report.findings[1].detail)
+    assert verdicts(program + "% @query no { p(X) } = { 1 }\n") == [P, P]
     assert verdicts(program + "% @query yes { p(X) } = { }\n") == [P, P]
 
 
+def test_a_yes_query_reports_no_when_the_contrary_holds_in_every_answer_set() -> None:
+    (finding,) = run("-p.\n#show p/0.\n% @expect sat\n% @query yes { p }\n").findings[1:]
+    assert finding.verdict is F
+    assert finding.detail == "yes expected, answer is no"
+
+
 HIDDEN_LITERAL = "-b.\n#show b/0.\n% @expect sat\n"
-HIDDEN_LITERAL_FAULT = (
-    "4: reads `-b/0` off the shown atoms, but the program can derive it and does not `#show` it"
-)
+HIDDEN_LITERAL_NOTE = "4: reads `-b/0`, which the program can derive and does not `#show`"
+
+
+def notes(text: str) -> list[str]:
+    report = run(text)
+    return [f"{d.span.start.line}: {d.message}" for d in report.lints]
 
 
 @pytest.mark.parametrize("answer", ["yes", "no", "unknown"])
-def test_a_query_needs_the_literal_it_reads_shown_when_the_program_can_derive_it(
-    answer: str,
-) -> None:
-    assert faults(HIDDEN_LITERAL + f"% @query {answer} {{ -b }}\n") == [HIDDEN_LITERAL_FAULT]
+def test_a_query_that_reads_a_hidden_literal_is_noted_not_refused(answer: str) -> None:
+    text = HIDDEN_LITERAL + f"% @query {answer} {{ -b }}\n"
+    assert notes(text) == [HIDDEN_LITERAL_NOTE]
+    expected = {"yes": [P, P], "no": [P, F], "unknown": [P, F]}[answer]
+    assert verdicts(text) == expected
 
 
 def test_a_hidden_literal_is_found_inside_a_conjunction_or_a_disjunction() -> None:
-    for query in ["{ -b, b }", "{ b | -b }", "{ b, { -b | b } }"]:
-        assert faults(HIDDEN_LITERAL + f"% @query yes {query}\n")
+    assert notes(HIDDEN_LITERAL + "% @query yes { -b, b }\n") == [HIDDEN_LITERAL_NOTE]
+    program = Program(HIDDEN_LITERAL + "% @query yes { b }\n", "t.lp")
+    grounded = ground(program)
+    assert not isinstance(grounded, Fault)
+    claim = run(HIDDEN_LITERAL + "% @query yes { b }\n").findings[1].claim
+    nested = Asks(Answer.YES, All((Any((Literal("b", positive=False), Literal("b"))),)))
+    noted = hidden_reads([replace(claim, reading=nested)], grounded)
+    assert [f"{d.span.start.line}: {d.message}" for d in noted] == [HIDDEN_LITERAL_NOTE]
 
 
-def test_a_binding_query_needs_the_pattern_it_reads_shown_when_the_program_can_derive_it() -> None:
+def test_a_binding_query_that_reads_a_hidden_pattern_is_noted() -> None:
     program = "-p(1). #show p/1.\n% @expect sat\n"
     for answer in ["yes", "no", "unknown"]:
-        assert faults(program + f"% @query {answer} {{ -p(X) }} = {{ 1 }}\n")
+        text = program + f"% @query {answer} {{ -p(X) }} = {{ 1 }}\n"
+        assert notes(text) == ["3: reads `-p/1`, which the program can derive and does not `#show`"]
 
 
 def test_a_literal_the_program_cannot_derive_needs_no_show() -> None:
     program = "b. #show b/0.\n% @expect sat\n"
     assert verdicts(program + "% @query yes { b }\n% @query no { -b }\n") == [P, P, P]
     assert verdicts(program + "% @query unknown { -b }\n") == [P, F]
+    assert notes(program + "% @query yes { b }\n") == []
+
+
+def test_a_variable_show_does_not_hide_the_lint_for_another_predicate() -> None:
+    text = "-b. q(1). #show X : q(X). #show b/0.\n% @expect sat\n% @query yes { -b }\n"
+    assert notes(text) == ["3: reads `-b/0`, which the program can derive and does not `#show`"]
+    assert verdicts(text) == [P, P]
+
+
+def test_a_conditional_show_does_not_count_as_showing_the_predicate() -> None:
+    text = "p. {r}. #show p : r. #show r/0.\n% @expect sat\n% @query yes { p }\n"
+    assert notes(text) == ["3: reads `p/0`, which the program can derive and does not `#show`"]
+    assert verdicts(text) == [P, P]
 
 
 def test_a_theory_atom_is_not_checked_as_though_it_were_interpreted() -> None:
@@ -413,9 +444,10 @@ def test_a_term_that_stands_for_no_one_term_is_a_fault_not_a_query_with_no_match
     assert "is not a pattern" in message
 
 
-def test_a_nested_binding_query_that_reads_its_contrary_needs_it_shown_too() -> None:
+def test_a_nested_binding_query_over_a_hidden_contrary_is_judged_not_refused() -> None:
     program = "{p(f(1))}. {-p(f(1))}. :- p(f(1)), -p(f(1)). #show p/1.\n% @expect sat\n"
-    assert faults(program + "% @query unknown { p(f(X)) } = { 1 }\n")
+    assert verdicts(program + "% @query unknown { p(f(X)) } = { 1 }\n") == [P, P]
+    assert notes(program + "% @query unknown { p(f(X)) } = { 1 }\n") == []
 
 
 def test_a_ground_query_may_nest_functions_to_any_depth() -> None:

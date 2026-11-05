@@ -1,4 +1,4 @@
-from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose, failure
+from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose, failure, note
 
 
 def test_a_located_error_becomes_a_diagnostic_with_its_span() -> None:
@@ -43,4 +43,11 @@ def test_a_failure_is_an_error_diagnostic_at_the_span() -> None:
     where = Span("f.lp", Position(2, 3), Position(2, 9))
     assert failure(where, "expected a literal") == Diagnostic(
         where, Severity.ERROR, "expected a literal"
+    )
+
+
+def test_a_note_is_a_diagnostic_that_does_not_fail() -> None:
+    where = Span("t.lp", Position(1, 1), Position(1, 2))
+    assert note(where, "reads a hidden literal") == Diagnostic(
+        where, Severity.NOTE, "reads a hidden literal"
     )

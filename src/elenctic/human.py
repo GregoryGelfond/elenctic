@@ -78,7 +78,7 @@ def _fault(fault: Fault, style: Style) -> list[str]:
 
 def _entry(entry: Entry, style: Style, *, verbose: bool) -> list[str]:
     match entry.result:
-        case Report(source, findings) as report if verbose or report.verdict is not Verdict.PASS:
+        case Report(source, findings, _) as report if verbose or report.verdict is not Verdict.PASS:
             shown = [f for f in findings if verbose or f.verdict is not Verdict.PASS]
             verdict = paint(style.color, VERDICT_ROLES[report.verdict], report.verdict.name)
             return [
@@ -111,17 +111,24 @@ def _lines(lines: list[str]) -> str:
 def render(run: Run, presentation: Presentation, *, verbose: bool = False) -> Rendered:
     """Write a run as text: each source that did not pass, with its claims that did not.
 
-    The faults, which keep a source from being checked, are the diagnostics.
+    The faults, which keep a source from being checked, are the diagnostics. Notes on queries
+    that read a hidden literal are diagnostics too, and do not change the exit.
     """
     stdout, stderr = presentation.stdout, presentation.stderr
     shown = [line for entry in run.entries for line in _entry(entry, stdout, verbose=verbose)]
+    notes = [
+        _diagnostic(lint, stderr)
+        for entry in run.entries
+        if isinstance(entry.result, Report)
+        for lint in entry.result.lints
+    ]
     faults = [
         line
         for entry in run.entries
         if isinstance(entry.result, Fault)
         for line in _fault(entry.result, stderr)
     ]
-    return Rendered(_lines([*shown, _summary(run, stdout)]), _lines(faults))
+    return Rendered(_lines([*shown, _summary(run, stdout)]), _lines([*notes, *faults]))
 
 
 def reserved(command: str, style: Style) -> str:

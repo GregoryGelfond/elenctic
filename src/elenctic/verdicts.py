@@ -5,6 +5,7 @@ from enum import StrEnum, auto
 
 from elenctic.contract import Claim
 from elenctic.determination import Truncation
+from elenctic.spans import Diagnostic
 from elenctic.writer import render
 
 
@@ -47,6 +48,7 @@ class Finding:
 class Report:
     source: str
     findings: tuple[Finding, ...]
+    lints: tuple[Diagnostic, ...] = ()
 
     @property
     def verdict(self) -> Verdict:

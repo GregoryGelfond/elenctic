@@ -3,6 +3,7 @@ import re
 import pytest
 
 from elenctic.about import Package, Solvers
+from elenctic.check import check
 from elenctic.contract import Claim, Satisfiable
 from elenctic.determination import Truncation
 from elenctic.glyphs import MARKS, Glyphs
@@ -16,6 +17,7 @@ from elenctic.human import (
 )
 from elenctic.paint import Color
 from elenctic.presentation import PLAIN, Presentation, Style
+from elenctic.program import Program
 from elenctic.report import Entry, Run
 from elenctic.search import Limits
 from elenctic.spans import Position, Severity, Span
@@ -247,3 +249,13 @@ def test_a_search_cut_short_says_in_words_what_ended_it(cut: Truncation) -> None
 def test_an_unproven_optimum_says_so_before_what_ended_the_search(cut: Truncation) -> None:
     line = _ended_line(Ended(cut, optimum_unproven=True))
     assert line.endswith(f"(line 2): no optimum proven: search ended: {ENDED_WORDS[cut]}")
+
+
+def test_a_lint_is_a_note_on_stderr_even_when_every_claim_passed() -> None:
+    found = check(Program("-b.\n#show b/0.\n% @expect sat\n% @query yes { -b }\n", "t.lp"))
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+    assert found.lints
+    rendered = render(Run((Entry("t.lp", found),)), PLAIN, verbose=True)
+    assert "note: reads `-b/0`" in rendered.stderr
+    assert "PASS" in rendered.stdout

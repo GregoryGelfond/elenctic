@@ -6,7 +6,7 @@ from dataclasses import replace
 from elenctic.contract import Claim, Costs, Entails, Satisfiable, over
 from elenctic.determination import Consequences, Consistent, Determination, Mode, Range, Truncation
 from elenctic.engine import ground
-from elenctic.gates import unsound
+from elenctic.gates import hidden_reads, unsound
 from elenctic.grounded import Grounded
 from elenctic.judge import Found, judge
 from elenctic.literals import Scenario
@@ -120,4 +120,8 @@ def check(
             group, _judge_group(grounded, key, group, limits, interrupt), strict=True
         )
     }
-    return Report(program.source, tuple(judged[claim] for claim in contract.claims))
+    return Report(
+        program.source,
+        tuple(judged[claim] for claim in contract.claims),
+        tuple(hidden_reads(contract.claims, grounded)),
+    )

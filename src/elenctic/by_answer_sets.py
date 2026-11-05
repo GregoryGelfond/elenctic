@@ -106,7 +106,7 @@ def _rows(found: frozenset[tuple[Symbol, ...]]) -> str:
 
 
 def _worldly(reading: Asks | Binds, found: Consistent[AnswerSets]) -> tuple[Verdict, Detail]:
-    view = world_view(found)
+    view = world_view(found, shown=False)
     if isinstance(view, Truncation):
         return Verdict.UNDECIDED, Ended(view)
     return _asked(reading, view)

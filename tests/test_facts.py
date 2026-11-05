@@ -26,3 +26,20 @@ def test_a_chain_of_minus_signs_is_read_to_any_length() -> None:
     even = DEEP_NESTING - DEEP_NESTING % 2
     assert shown(f"#show {'-' * even}a.").signatures == {Signature("a", 0)}
     assert shown(f"#show {'-' * (even + 1)}a.").signatures == {Signature("a", 0, positive=False)}
+
+
+def test_a_conditional_show_does_not_name_its_predicate() -> None:
+    found = shown("#show p : r. #show q.")
+    assert found.signatures == {Signature("q", 0)}
+    assert found.restricted
+    assert not found.covers(Signature("p", 0))
+    assert found.covers(Signature("q", 0))
+
+
+def test_a_variable_show_does_not_cover_every_predicate() -> None:
+    found = shown("#show X : q(X). #show b/0.")
+    assert found.wild
+    assert found.signatures == {Signature("b", 0)}
+    assert found.covers(Signature("b", 0))
+    assert not found.covers(Signature("b", 0, positive=False))
+    assert not found.covers(Signature("q", 1))

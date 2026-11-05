@@ -63,6 +63,11 @@ def failure(where: Span, message: str) -> Diagnostic:
     return Diagnostic(where, Severity.ERROR, message)
 
 
+def note(where: Span, message: str) -> Diagnostic:
+    """Say something about `where` that does not fail the run."""
+    return Diagnostic(where, Severity.NOTE, message)
+
+
 UNLOCATED: Final = Span("", Position(1, 1), Position(1, 1))
 
 _HEADER: Final = re.compile(

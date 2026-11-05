@@ -5,7 +5,7 @@ NEEDS_CLINGCON = {"clingcon.lp"}
 EXIT_CODES = {
     "clingcon.lp": 0,
     "consequences.lp": 1,
-    "hidden-contrary.lp": 2,
+    "hidden-contrary.lp": 0,
     "no-objective.lp": 2,
     "optimum-wrong.lp": 1,
     "optimum.lp": 0,

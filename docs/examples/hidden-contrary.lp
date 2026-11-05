@@ -1,5 +1,6 @@
-% `-p` can be derived but is not shown, so "no" would mean "hidden", not "false".
-{ p }. { -p }. :- p, -p.
-#show p/0.
+% `-b` can be derived but is not shown. The query is answered over the full answer sets;
+% a note marks that it reads a hidden literal.
+-b.
+#show b/0.
 % @expect sat
-% @query no { p }
+% @query yes { -b }

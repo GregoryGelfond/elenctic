@@ -18,7 +18,9 @@ from elenctic.spans import Position, Span
 class Shown:
     """The predicates `#show` selects; with no `#show` statement every atom is shown.
 
-    A `#show` of a term with a variable selects what the grounder decides, so it is `wild`.
+    A `#show` of a bare variable is `wild`: the grounder decides what appears, so no signature
+    is named. A `#show` with a body shows its term only when the body holds, so it does not
+    name a signature either. `covers` follows the named signatures only.
     """
 
     signatures: frozenset[Signature] = frozenset()
@@ -26,7 +28,7 @@ class Shown:
     wild: bool = False
 
     def covers(self, signature: Signature) -> bool:
-        return not self.restricted or self.wild or signature in self.signatures
+        return not self.restricted or signature in self.signatures
 
     def __or__(self, other: Shown) -> Shown:
         return Shown(
@@ -102,10 +104,13 @@ def _shown(statement: AST) -> Shown:
         case ASTType.ShowTerm:
             term = tree.child(statement, "term")
             named = _signature(term)
+            conditional = bool(tree.children(statement, "body"))
+            wild = tree.kind(term) is ASTType.Variable
+            selected = named if named is not None and not conditional and not wild else None
             return Shown(
-                frozenset({named} if named else ()),
+                frozenset({selected} if selected is not None else ()),
                 restricted=True,
-                wild=tree.kind(term) is ASTType.Variable,
+                wild=wild,
             )
         case _:
             return Shown()
