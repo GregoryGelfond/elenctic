@@ -1,5 +1,6 @@
 import annotationlib
 import importlib
+import importlib.util
 import typing
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -34,11 +35,17 @@ def test_the_package_reexports_what_its_modules_define() -> None:
     assert elenctic.Answer is query.Answer
 
 
-@pytest.mark.parametrize("name", ["mgu", "Unifier"])
+@pytest.mark.parametrize("name", ["mgu", "unify", "Unifier"])
 @pytest.mark.parametrize("document", ["docs/reference/reference.md", "CHANGELOG.md"])
 def test_the_unifier_is_public_and_is_documented(name: str, document: str) -> None:
     assert name in elenctic.__all__
     assert name in (ROOT / document).read_text(encoding="utf-8")
+
+
+def test_a_query_is_answered_by_unification_and_there_is_no_matcher_beside_it() -> None:
+    assert not hasattr(elenctic.Pattern, "match")
+    assert not hasattr(elenctic.Pattern, "bindings_in")
+    assert importlib.util.find_spec("elenctic.matching") is None
 
 
 def _ours(annotation: object) -> bool:

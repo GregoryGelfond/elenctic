@@ -13,10 +13,10 @@ from elenctic.traversal import fold
 
 @dataclass(frozen=True, slots=True)
 class NotAPattern:
-    """A term that cannot be matched, for it does not stand for one term.
+    """A term that cannot be unified, for it does not stand for one term.
 
-    This is not a failure to match: matching fails when a pattern differs from what it faces, and
-    this is a pattern that could never have been read, so the two are never taken for each other.
+    This is not a failure to unify: unification fails when two patterns have no common instance,
+    and this is a pattern that could never have been read, so the two are never confused.
     """
 
     term: str

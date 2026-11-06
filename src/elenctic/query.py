@@ -8,8 +8,10 @@ from elenctic.determination import WorldView
 from elenctic.extension import Extension
 from elenctic.literals import Atoms, Literal, Symbol
 from elenctic.patterns import Pattern
-from elenctic.relation import Relation
+from elenctic.relation import Relation, Row
 from elenctic.substitution import Substitution
+from elenctic.terms import Variable
+from elenctic.unify import unify
 
 UNIT = Relation((), frozenset({()}))
 NOTHING = Relation((), frozenset())
@@ -69,7 +71,22 @@ def evaluate(query: Query, member: Atoms) -> Truth:
 
 
 def answer(query: Query, view: WorldView) -> Answer:
-    """Yes if `query` is true in every answer set, no if false in every one, else unknown."""
+    """Yes if `query` is true in every answer set, no if false in every one, else unknown.
+
+    A literal is true in every answer set when it is a cautious consequence and false in every one
+    when its contrary is, so it is answered from the cautious consequences alone.
+    """
+    if isinstance(query, Pattern):
+        query = _closed(query)
+    if isinstance(query, Literal):
+        cautious = view.cautious
+        return (
+            Answer.YES
+            if query in cautious
+            else Answer.NO
+            if query.contrary in cautious
+            else Answer.UNKNOWN
+        )
     truths = {evaluate(query, member) for member in view.members}
     if truths == {Truth.TRUE}:
         return Answer.YES
@@ -97,10 +114,26 @@ def _closed(pattern: Pattern) -> Literal:
     return literal
 
 
-def _named(pattern: Pattern) -> None:
+def _row(variables: tuple[Variable, ...], unifier: Substitution) -> Row:
+    """Return the values `unifier` gives `variables`: symbols, for it unified them with a fact."""
+    return tuple(value for v in variables if isinstance(value := unifier.apply(v), Symbol))
+
+
+def _unifiers(pattern: Pattern, facts: Extension) -> Relation:
+    """Return the values of the variables of `pattern` in its most general unifier with each fact.
+
+    A fact is ground, so renaming it apart from the pattern changes nothing: the unifier is the
+    one `mgu` finds, over the pattern's own variables.
+    """
     if pattern.anonymous:
         message = f"`{pattern}` has an anonymous variable, which no binding can name"
         raise ValueError(message)
+    rows = frozenset(
+        _row(pattern.variables, unifier)
+        for fact in facts.with_signature(pattern.signature)
+        if (unifier := unify(pattern, Pattern.of(fact))) is not None
+    )
+    return Relation(pattern.variables, rows)
 
 
 def _entertained(query: Query, brave: Extension) -> Relation:
@@ -109,9 +142,7 @@ def _entertained(query: Query, brave: Extension) -> Relation:
         case Literal():
             return _entertained(Pattern.of(query), brave)
         case Pattern():
-            _named(query)
-            found = query.bindings_in(brave) | query.contrary.bindings_in(brave)
-            return Relation(query.variables, found)
+            return _unifiers(query, brave).union(_unifiers(query.contrary, brave))
         case All(parts):
             return reduce(Relation.join, (_entertained(p, brave) for p in parts), UNIT)
         case Any(parts):
@@ -138,8 +169,19 @@ def bindings(query: Query, view: WorldView) -> Bindings:
     is entertained when every part of a conjunction has an instance, or its contrary has, in
     some answer set, and when some part of a disjunction has; an instance the world view says
     nothing about is unknown to it, but is not listed, for there are infinitely many.
+
+    The cautious consequences are the facts a pattern is unified with: an instance is yes when it
+    is one of them and no when its contrary is. The brave consequences add only the instances
+    entertained and neither. A conjunction or disjunction can be false or true in every answer
+    set for a different part in each, so each of its instances is answered over the answer sets.
     """
-    found = _entertained(query, Extension(view.brave))
+    brave = Extension(view.brave)
+    if isinstance(query, Pattern):
+        cautious = Extension(view.cautious)
+        yes = _unifiers(query, cautious).rows
+        no = _unifiers(query.contrary, cautious).rows
+        return Bindings(yes, no, _entertained(query, brave).rows - yes - no)
+    found = _entertained(query, brave)
     answered = {
         row: answer(
             _instance(query, Substitution(dict(zip(found.columns, row, strict=True)))), view

@@ -7,7 +7,7 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
-- Import contracts (import-linter, in `pyproject.toml`): the layering, clingo reached only by the sixteen
+- Import contracts (import-linter, in `pyproject.toml`): the layering, clingo reached only by the fifteen
   modules that read and run programs, clingcon only by `theory`, and `spans` free of both. They run
   in `pixi run check` and in CI.
 - Library: `Program`, `ground`, `solve` with `Limits` and a cancelable `Interrupt`; results as
@@ -17,6 +17,8 @@ All notable changes are recorded here. The format follows
 - A row for every name of `elenctic.__all__` in `docs/reference/reference.md`, checked by a test.
 - `mgu(first, second)` and `Unifier`: the most general unifier of two patterns, renamed apart, and
   the pattern both become. Public for answering queries and for the interactive session to come.
+- `unify(first, second)`: the same unifier for two patterns that share their variables by name, as a
+  `Substitution`. It is what query answering calls; against a ground pattern it agrees with `mgu`.
 - Contracts read from comments with source spans: `@expect`, `@count`, `@answer-set`, `@cautious`,
   `@brave`, `@query` with optional `= { bindings }`, and an `assuming { … }` form on any claim.
 - `check` with the verdicts `pass`, `fail` and `undecided`.
@@ -57,6 +59,11 @@ All notable changes are recorded here. The format follows
   section of the reference.
 
 ### Changed
+- The bindings of a query pattern are its most general unifiers with the cautious consequences of
+  the full answer sets: yes where it unifies with one, no where its contrary does. The brave
+  consequences give only the unknown instances (entertained, neither yes nor no). A ground literal
+  is yes when cautious and no when its contrary is. A conjunction or disjunction is still answered
+  over each answer set. The answers are unchanged; how they are found is not.
 - Limits are named for what they bound: `--max-seconds` (was `--budget`) and `--max-answer-sets` (was
   `--models`), `Limits.max_seconds` and `Limits.max_answer_sets`, `DEFAULT_MAX_SECONDS` and
   `DEFAULT_MAX_ANSWER_SETS`, and the truncations `MAX_SECONDS` and `MAX_ANSWER_SETS`. `UNLIMITED` is gone: use `Limits()`.
@@ -98,6 +105,11 @@ All notable changes are recorded here. The format follows
 - A theory atom with no `#theory` declaration is reported with elenctic's own message and location
   rather than clingo's.
 - The theory-atom error points at the first theory atom, not at line 1.
+
+### Removed
+- `Pattern.match`, `Pattern.bindings_in` and the module `elenctic.matching`, a one-sided matcher of a
+  pattern against ground symbols. Query answering unifies instead (`unify`, the algorithm of `mgu`);
+  there is one mechanism for "does this pattern have this instance".
 
 ### Fixed
 - A binding query with an anonymous variable, `@query yes { p(_, X) } = { … }`, is refused where it

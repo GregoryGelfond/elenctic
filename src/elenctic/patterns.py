@@ -1,4 +1,4 @@
-"""Patterns: literals whose arguments may be terms with variables, standing for those they match."""
+"""Patterns: literals whose arguments may be terms with variables, standing for their instances."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -6,9 +6,7 @@ from typing import override
 
 from clingo import Symbol
 
-from elenctic.extension import Extension
 from elenctic.literals import Literal, Signature
-from elenctic.matching import match
 from elenctic.substitution import Substitution
 from elenctic.terms import Term, Variable, leaves, rename, render, variables
 
@@ -72,18 +70,3 @@ class Pattern:
     def renamed(self, renaming: Callable[[Variable], Variable]) -> Pattern:
         """Return this pattern with each variable replaced by what `renaming` makes of it."""
         return Pattern(self.name, tuple(rename(a, renaming) for a in self.arguments), self.positive)
-
-    def match(self, literal: Literal) -> tuple[Symbol, ...] | None:
-        """Return the values of `variables` that make this pattern the literal, if any."""
-        if literal.signature != self.signature:
-            return None
-        bound = match(self.arguments, literal.arguments)
-        return None if bound is None else tuple(bound[v] for v in self.variables)
-
-    def bindings_in(self, extension: Extension) -> frozenset[tuple[Symbol, ...]]:
-        """Return the values of `variables` over the literals of `extension` that match."""
-        return frozenset(
-            found
-            for literal in extension.with_signature(self.signature)
-            if (found := self.match(literal)) is not None
-        )

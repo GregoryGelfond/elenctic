@@ -1,4 +1,8 @@
-"""Unification of two patterns: their most general unifier, near-linear and without recursion."""
+"""Unification of two patterns: their most general unifier, near-linear and without recursion.
+
+One algorithm, `unify_terms`, finds it; `unify` and `mgu` are its two entries, for patterns that
+share their variables by name and for patterns renamed apart. Queries are answered by it.
+"""
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
@@ -53,10 +57,10 @@ def unify_terms(left: Iterable[Term], right: Iterable[Term]) -> Substitution | N
 
 
 def unify(first: Pattern, second: Pattern) -> Substitution | None:
-    """Find the most general unifier of two patterns, if they have one.
+    """Find the most general unifier of two patterns that share their variables by name, if any.
 
-    The patterns must have the same signature and their variables are taken to be the same
-    where they share a name.
+    The patterns must have the same signature. Against a ground pattern, which has no variables to
+    rename, this is the unifier `mgu` finds, over the variables of the other pattern.
     """
     if first.signature != second.signature:
         return None

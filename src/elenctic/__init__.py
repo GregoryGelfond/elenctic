@@ -72,7 +72,7 @@ from elenctic.search import Cut, Interrupt, Limit, Limits, Request
 from elenctic.spans import Diagnostic, Position, Severity, Span
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable
-from elenctic.unify import Unifier, mgu
+from elenctic.unify import Unifier, mgu, unify
 from elenctic.verdicts import Detail, Ended, Finding, Report, Verdict
 from elenctic.writer import render
 
@@ -162,5 +162,6 @@ __all__ = [
     "parse_contract",
     "render",
     "solve",
+    "unify",
     "world_view",
 ]

@@ -12,6 +12,19 @@ only those `#show` selects. `#show` still governs what `@answer-set`, `@count`, 
 run records a note (a lint) on that claim; the note does not change the verdict or the exit. A
 later `--strict` may promote such notes to faults; that flag is not built yet.
 
+**A query with variables has bindings, found by unification.** The cautious consequences
+(⋂ AS(P), over the full answer sets) are the facts a pattern is unified with: an instance `p(t)` is
+`yes` exactly when it is one of them and `no` exactly when its contrary `-p(t)` is, by the rule
+above, so the yes and no bindings are the pattern's most general unifiers with those facts and with
+the contrary's. A ground literal is answered the same way. The `unknown` bindings are the instances
+some answer set entertains (they or their contrary are in ∪ AS(P), the brave consequences) that are
+neither; the brave consequences are read for this alone, since infinitely many instances are in no
+answer set and are not listed. A conjunction or disjunction can be `no` or `yes` for a different part
+in each answer set, which no consequence records, so each of its instances is answered over the
+answer sets themselves. An anonymous variable, `_`, names no binding and is refused. A binding claim
+`@query A { p(X) } = { … }` holds when the bindings with answer `A` equal the stated set; no other
+relation (subset, superset) is offered.
+
 **A search ends in one of three ways.** The answer sets were exhausted, the search was truncated
 (by `max-answer-sets`, `max-seconds` or interrupt), or the program has none. Only an exhausted search yields a world
 view, and only a world view answers `@query`; a truncated search leaves such claims `undecided`.

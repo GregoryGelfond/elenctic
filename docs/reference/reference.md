@@ -168,12 +168,16 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 | Over which solver? | `solve(program, solver=Solver.CLINGCON)`, `ground(program, solver)` | the same; an `AnswerSet` carries its `assignment` |
 | Why is there none? | the `Inconsistent` result's `refutation` | `These`, `NotThese` or `NoAssumptions` |
 | Do two patterns have a common instance? | `mgu(first, second)` | a `Unifier`, or `None` |
+| The same, their variables shared by name? | `unify(first, second)` | a `Substitution`, or `None` |
 
 `mgu` renames the two patterns apart, so that a variable of one is not the variable of the other for
 having the same name, and returns a `Unifier`: the two renamed patterns, the `Substitution` that
-makes them one, and `instance`, the pattern both become (the most general common instance). It is
-public for answering queries and for the interactive session to come; `Pattern.match`, which reads a
-pattern off a ground answer set, does not use it.
+makes them one, and `instance`, the pattern both become (the most general common instance). `unify`
+is the same unifier without the renaming: a variable of one pattern is the variable of the other with
+its name. Both rest on one algorithm (Martelli and Montanari, near-linear, without recursion), and
+queries are answered by it: a pattern's bindings are its unifiers with the cautious and brave
+consequences ([Semantics](../explanation/semantics.md)). Against a ground pattern there is nothing
+to rename, and `unify` and `mgu` find the same unifier.
 
 ## Names
 
@@ -238,9 +242,10 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Variable` | a named variable; `_` is anonymous, and each of its occurrences is a different variable |
 | `Compound` | a function term `f(...)`, `-f(...)` when not `positive`, or a tuple (empty `name`) |
 | `Pattern` | a literal whose arguments may be terms with variables, nested to any depth |
-| `Substitution` | what some variables stand for, as the matching or unifying of patterns found |
-| `Extension` | literals ordered by signature, so that those a pattern can match are found by binary search |
-| `mgu` | the most general unifier of two patterns, or `None` |
+| `Substitution` | what some variables stand for, as the unifying of patterns found |
+| `Extension` | literals ordered by signature, so that those a pattern can unify with are found by binary search |
+| `mgu` | the most general unifier of two patterns renamed apart, as a `Unifier`, or `None` |
+| `unify` | the most general unifier of two patterns that share their variables by name, as a `Substitution`, or `None` |
 | `Unifier` | two patterns renamed apart, the `Substitution` that makes them one, and the `instance` both become |
 
 ### Queries
@@ -255,7 +260,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `evaluate` | a query's `Truth` in one answer set |
 | `answer` | a query's `Answer` over a `WorldView` |
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
-| `bindings` | the `Bindings` of a pattern over a `WorldView` |
+| `bindings` | the `Bindings` of a pattern over a `WorldView`: its unifiers with the cautious consequences (yes, and no by the contrary), and with the brave ones for the rest it entertains (unknown) |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give what cut it |

@@ -6,7 +6,6 @@ from clingo import Function, Number, Symbol, parse_term
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from elenctic.matching import match
 from elenctic.patterns import Pattern
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable, build, rename, variables
@@ -296,7 +295,7 @@ def test_the_unifier_is_most_general_every_other_unifier_is_an_instance_of_it(
         found = unify_terms([left], [right])
         assert found is not None
         assert isinstance(ground, Symbol)
-        assert match([found.apply(left)], [ground]) is not None
+        assert reference_instance(found.apply(left), ground) == ground
 
 
 @settings(max_examples=400, deadline=None)
@@ -304,13 +303,13 @@ def test_the_unifier_is_most_general_every_other_unifier_is_an_instance_of_it(
     TERMS,
     st.sampled_from([A, B, parse_term("f(a)"), parse_term("f(g(a,b),a)"), parse_term("-f(a)")]),
 )
-def test_matching_agrees_with_unification_when_one_side_is_ground(
-    pattern: Term, ground: Symbol
+def test_against_a_ground_pattern_unify_and_mgu_find_the_same_unifier(
+    term: Term, ground: Symbol
 ) -> None:
-    pattern, _ = undisturbed(pattern, ground)
-    matched = match([pattern], [ground])
-    unified = unify_terms([pattern], [ground])
-    assert (matched is None) is (unified is None)
-    if matched is not None and unified is not None:
-        assert Substitution(matched).apply(pattern) == ground
-        assert all(unified.apply(v) == s for v, s in matched.items())
+    term, _ = undisturbed(term, ground)
+    pattern, fact = Pattern("p", (term,)), Pattern("p", (ground,))
+    shared, apart = unify(pattern, fact), mgu(pattern, fact)
+    assert (shared is None) is (apart is None)
+    if shared is not None and apart is not None:
+        assert pattern.apply(shared) == fact
+        assert apart.instance == fact
