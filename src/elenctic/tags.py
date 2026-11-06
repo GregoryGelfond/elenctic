@@ -10,6 +10,8 @@ from elenctic.spans import Position, Span
 
 @dataclass(frozen=True, slots=True)
 class Piece:
+    """A stretch of a tag's payload with its start in the source."""
+
     text: str
     start: Position
 

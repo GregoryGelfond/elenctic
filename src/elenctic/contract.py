@@ -111,6 +111,8 @@ class Claim:
 
 @dataclass(frozen=True, slots=True)
 class Contract:
+    """The claims a program is held to, and the solver that checks them."""
+
     claims: tuple[Claim, ...]
     diagnostics: tuple[Diagnostic, ...]
     solver: Solver = Solver.CLINGO

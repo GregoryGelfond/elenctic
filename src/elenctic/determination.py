@@ -91,6 +91,8 @@ class AnswerSets:
 
 
 class Mode(StrEnum):
+    """Cautious or brave consequences: true in every answer set, or in some."""
+
     CAUTIOUS = auto()
     BRAVE = auto()
 

@@ -26,6 +26,8 @@ class Truth(IntEnum):
 
 
 class Answer(StrEnum):
+    """The three-valued answer of a query: yes, no, or unknown."""
+
     YES = auto()
     NO = auto()
     UNKNOWN = auto()

@@ -92,13 +92,16 @@ def _entails(claim: Entails, view: WorldView, *, closed: bool) -> tuple[Verdict,
 
 def _asked(claim: Asks | Binds, view: WorldView) -> tuple[Verdict, str]:
     match claim:
-        case Asks(expected, query):
-            found = answer(query, view)
-            return Verdict.when(holds=found is expected), f"{expected} expected, answer is {found}"
-        case Binds(expected, pattern, wanted):
-            got = bindings(pattern, view).giving(expected)
-            detail = f"{expected} bindings expected {_rows(wanted)}, found {_rows(got)}"
-            return Verdict.when(holds=got == wanted), detail
+        case Asks():
+            found = answer(claim.query, view)
+            return (
+                Verdict.when(holds=found is claim.answer),
+                f"{claim.answer} expected, answer is {found}",
+            )
+        case Binds():
+            got = bindings(claim.pattern, view).giving(claim.answer)
+            detail = f"{claim.answer} bindings expected {_rows(claim.bindings)}, found {_rows(got)}"
+            return Verdict.when(holds=got == claim.bindings), detail
 
 
 def _rows(found: frozenset[tuple[Symbol, ...]]) -> str:

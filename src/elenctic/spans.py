@@ -41,6 +41,8 @@ def _shift(position: Position, origin: Position) -> Position:
 
 
 class Severity(StrEnum):
+    """How serious a diagnostic is."""
+
     ERROR = auto()
     WARNING = auto()
     NOTE = auto()

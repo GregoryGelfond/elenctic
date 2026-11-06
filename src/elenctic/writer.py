@@ -72,9 +72,10 @@ def _reading(reading: Reading) -> str:
                 f"@query {_optimally(over)}{answer} "
                 f"{braces(p for p in parts if isinstance(p, Literal))}"
             )
-        case Binds(answer, pattern, found, over):
+        case Binds(answer, pattern, bindings, over):
             return (
-                f"@query {_optimally(over)}{answer} {{ {pattern} }} = {_bindings(pattern, found)}"
+                f"@query {_optimally(over)}{answer} {{ {pattern} }} = "
+                f"{_bindings(pattern, bindings)}"
             )
 
 

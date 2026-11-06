@@ -30,6 +30,8 @@ class Entry:
 
 @dataclass(frozen=True, slots=True)
 class Run:
+    """What checking each source came to."""
+
     entries: tuple[Entry, ...]
 
     @property
