@@ -33,7 +33,7 @@ from elenctic.verdicts import Finding, Report
 
 def _enough(group: list[Claim]) -> Callable[[list[Seen]], bool] | None:
     """Return a stop condition once every existential witness claim is upheld, or none."""
-    if not group or not all(isinstance(c.reading, Witness | Assigns) for c in group):
+    if not group or not all(isinstance(c.reading, Satisfiable | Witness | Assigns) for c in group):
         return None
 
     def enough(found: list[Seen]) -> bool:

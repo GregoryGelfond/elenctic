@@ -583,3 +583,18 @@ def test_a_hidden_contrary_is_noted_whatever_the_query_answer() -> None:
     for word in ("yes", "no", "unknown"):
         text = program + f"% @query {word} {{ p }}\n"
         assert notes(text) == ["4: reads `-p/0`, which the program can derive and does not `#show`"]
+
+
+def test_witness_search_stops_reading_when_every_witness_holds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads = 0
+
+    def counted() -> None:
+        nonlocal reads
+        reads += 1
+
+    at_first_answer_set(monkeypatch, counted)
+    report = run("a. { b(1..8) }.\n% @expect sat\n% @answer-set { a }\n")
+    assert report.verdict is P
+    assert reads <= 4
