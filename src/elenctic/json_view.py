@@ -179,8 +179,3 @@ def schema_document() -> dict[str, Json]:
         "additionalProperties": False,
         "$defs": {kind_of(each): _object_schema(each) for each in types},
     }
-
-
-def schema_text() -> str:
-    """Write the JSON Schema of a `--json` document."""
-    return json.dumps(schema_document(), indent=2) + "\n"
