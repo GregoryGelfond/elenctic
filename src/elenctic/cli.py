@@ -12,13 +12,13 @@ from typing import Final
 from elenctic.about import VersionExit, package
 from elenctic.check import check
 from elenctic.determination import Truncation, option
-from elenctic.human import internal_error, render, reserved, version
+from elenctic.human import Format, internal_error, render, reserved, version
 from elenctic.json_view import to_json
 from elenctic.presentation import Environment, Presentation, Stream, When, resolve
 from elenctic.program import Fault, Locus, Program
 from elenctic.report import Entry, Exit, Run
 from elenctic.search import Interrupt, Limit, Limits
-from elenctic.spans import Position, Span, failure
+from elenctic.spans import failure
 from elenctic.theory import loaded_solvers
 
 DEFAULT_MAX_SECONDS: Final = 30.0
@@ -121,7 +121,15 @@ def _parser() -> argparse.ArgumentParser:
     test.add_argument(
         "paths", nargs="+", type=Path, help=".lp files, or directories searched for them"
     )
-    test.add_argument("--json", action="store_true", help="write the run as JSON")
+    test.add_argument(
+        "--format",
+        choices=("full", "short", "json"),
+        default="full",
+        help="how to write the run: rustc form (default), one-line short, or JSON",
+    )
+    test.add_argument(
+        "--json", action="store_true", help="write the run as JSON (same as --format json)"
+    )
     test.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
     test.add_argument(
         option(Truncation.MAX_SECONDS),
@@ -186,10 +194,10 @@ def _sources(paths: Iterable[Path]) -> list[Path]:
     ]
 
 
-def _unreadable_reason(error: OSError | UnicodeDecodeError) -> str:
+def _unreadable_note(error: OSError | UnicodeDecodeError) -> str:
     match error:
         case UnicodeDecodeError():
-            return f"not valid UTF-8: {error.reason} at byte {error.start}"
+            return f"not valid UTF-8 at byte {error.start}: {error.reason}"
         case _:
             return str(error)
 
@@ -199,11 +207,13 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt) -> Entry | None:
         program = Program.read(path)
     except (OSError, UnicodeDecodeError) as error:
         problem = failure(
-            Span(str(path), Position(1, 1), Position(1, 1)), _unreadable_reason(error)
+            None,
+            f"cannot read `{path}`",
+            notes=(_unreadable_note(error),),
         )
         return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
     result = check(program, limits=limits, interrupt=interrupt)
-    return None if result is None else Entry(program.source, result)
+    return None if result is None else Entry(program.source, result, program.text)
 
 
 def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str]) -> Presentation:
@@ -226,10 +236,16 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     signal.signal(signal.SIGINT, lambda _signal, _frame: interrupt.pull())
     entries = [_entry(path, limits, interrupt) for path in _sources(arguments.paths)]
     run = Run(tuple(entry for entry in entries if entry is not None))
-    if arguments.json:
+    fmt = "json" if arguments.json else arguments.format
+    if fmt == "json":
         print(to_json(run))
     else:
-        rendered = render(run, presentation, verbose=arguments.verbose)
+        rendered = render(
+            run,
+            presentation,
+            verbose=arguments.verbose,
+            form=Format.SHORT if fmt == "short" else Format.FULL,
+        )
         sys.stderr.write(rendered.stderr)
         sys.stdout.write(rendered.stdout)
     return run.exit_code

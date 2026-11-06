@@ -26,6 +26,8 @@ class Entry:
 
     source: str
     result: Report | Fault
+    text: str | None = None
+    """The program text, kept so a diagnostic can show a snippet; none when unread."""
 
 
 @dataclass(frozen=True, slots=True)

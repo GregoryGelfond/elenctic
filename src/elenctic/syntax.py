@@ -7,7 +7,7 @@ from clingo import Symbol, SymbolType
 from clingo.ast import AST, ASTType, ComparisonOperator, Sign
 
 from elenctic import tree
-from elenctic.body import place, read_body, span_of
+from elenctic.body import place, prefixed, read_body, span_of
 from elenctic.determination import Valuation
 from elenctic.literals import Literal
 from elenctic.normalize import NotAPattern, evaluate, function_of, normalize
@@ -38,8 +38,8 @@ def _pattern(atom: AST) -> Pattern | NotAPattern | None:
     return Pattern(tree.name(function), terms, positive=positive)
 
 
-def _item(where: Span, literal: AST) -> Parsed[Item]:
-    span = place(where, span_of(tree.location(literal)))
+def _item(where: Span, literal: AST, source: str) -> Parsed[Item]:
+    span = place(where, span_of(tree.location(literal), source))
     simple = (
         tree.kind(literal) is ASTType.Literal
         and tree.kind(tree.child(literal, "atom")) is ASTType.SymbolicAtom
@@ -47,9 +47,9 @@ def _item(where: Span, literal: AST) -> Parsed[Item]:
     pattern = _pattern(tree.child(literal, "atom")) if simple else None
     sign = tree.number(literal, "sign") if simple else Sign.NoSign
     if isinstance(pattern, NotAPattern):
-        return failure(span, str(pattern))
+        return failure(span, f"`{pattern.term}` is not a pattern", label=pattern.reason)
     if pattern is None or sign == Sign.DoubleNegation:
-        return failure(span, "expected a literal")
+        return failure(span, f"expected a literal, found `{literal}`", label="expected a literal")
     return Item(pattern, sign == Sign.Negation, span)
 
 
@@ -68,13 +68,21 @@ def positive(items: Iterable[Item]) -> list[Literal] | None:
 def read_literals(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
     """Read a comma-separated list of literals written at `where`."""
     body = read_body(text, where)
-    return body if isinstance(body, Diagnostic) else _all(_item(where, each) for each in body)
+    source = prefixed(text)
+    return (
+        body if isinstance(body, Diagnostic) else _all(_item(where, each, source) for each in body)
+    )
 
 
 def read_valuations(text: str, where: Span) -> Parsed[tuple[Valuation, ...]]:
     """Read a comma-separated list of `term=integer` written at `where`."""
     body = read_body(text, where)
-    return body if isinstance(body, Diagnostic) else _all(_valuation(where, each) for each in body)
+    source = prefixed(text)
+    return (
+        body
+        if isinstance(body, Diagnostic)
+        else _all(_valuation(where, each, source) for each in body)
+    )
 
 
 def _all[T](parsed: Iterable[Parsed[T]]) -> Parsed[tuple[T, ...]]:
@@ -85,9 +93,11 @@ def _all[T](parsed: Iterable[Parsed[T]]) -> Parsed[tuple[T, ...]]:
     )
 
 
-def _valuation(where: Span, literal: AST) -> Parsed[Valuation]:
+def _valuation(where: Span, literal: AST, source: str) -> Parsed[Valuation]:
     return _equation(literal) or failure(
-        place(where, span_of(tree.location(literal))), "expected `term = integer`"
+        place(where, span_of(tree.location(literal), source)),
+        f"expected `term = integer`, found `{literal}`",
+        label="expected `term = integer`",
     )
 
 

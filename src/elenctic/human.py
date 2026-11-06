@@ -6,6 +6,7 @@ terminal, and the styling that follows is never escaped.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum, auto
 from typing import Final
 
 from elenctic.about import Package, Solvers
@@ -16,7 +17,7 @@ from elenctic.paint import Role, paint
 from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
 from elenctic.report import Entry, Run
-from elenctic.spans import Diagnostic, Severity
+from elenctic.spans import Child, Diagnostic, Severity, Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
 
 VERDICT_ROLES: Final[Mapping[Verdict, Role]] = {
@@ -28,12 +29,20 @@ SEVERITY_ROLES: Final[Mapping[Severity, Role]] = {
     Severity.ERROR: Role.ERROR,
     Severity.WARNING: Role.WARNING,
     Severity.NOTE: Role.NOTE,
+    Severity.HELP: Role.HELP,
 }
 CUT_WORDS: Final[Mapping[Truncation, str]] = {
     Truncation.MAX_ANSWER_SETS: f"answer-set limit reached ({option(Truncation.MAX_ANSWER_SETS)})",
     Truncation.MAX_SECONDS: f"time limit reached ({option(Truncation.MAX_SECONDS)})",
     Truncation.INTERRUPTED: "interrupted",
 }
+
+
+class Format(StrEnum):
+    """How diagnostics are written for a human."""
+
+    FULL = auto()
+    SHORT = auto()
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,14 +75,97 @@ def _line(finding: Finding, style: Style) -> str:
     return f"  {mark} {legible(finding.claim_text)} {line}: {_detail(finding.detail)}"
 
 
-def _diagnostic(diagnostic: Diagnostic, style: Style) -> str:
-    where = _say(style, Role.EMPHASIS, str(diagnostic.span))
+def _header(diagnostic: Diagnostic, style: Style) -> str:
     severity = paint(style.color, SEVERITY_ROLES[diagnostic.severity], diagnostic.severity.value)
-    return f"{where}: {severity}: {legible(diagnostic.message)}"
+    return f"{severity}: {_say(style, Role.EMPHASIS, diagnostic.message)}"
 
 
-def _fault(fault: Fault, style: Style) -> list[str]:
-    return [_diagnostic(d, style) for d in fault.diagnostics] or [str(fault.locus)]
+def _short(diagnostic: Diagnostic, style: Style) -> str:
+    """Today's one-line form: `path:l:c-c: level: message` when located."""
+    severity = paint(style.color, SEVERITY_ROLES[diagnostic.severity], diagnostic.severity.value)
+    message = legible(diagnostic.message)
+    if diagnostic.span is None:
+        return f"{severity}: {message}"
+    where = _say(style, Role.EMPHASIS, str(diagnostic.span))
+    return f"{where}: {severity}: {message}"
+
+
+def _margin(style: Style, text: str) -> str:
+    return paint(style.color, Role.MARGIN, text)
+
+
+def _caret_line(span: Span, label: str, style: Style, role: Role) -> str:
+    width = max(1, span.end.column - span.start.column) if span.end.line == span.start.line else 1
+    carets = paint(style.color, role, "^" * width)
+    pad = " " * (span.start.column - 1)
+    marked = f"{pad}{carets}"
+    if not label:
+        return f"{_margin(style, '  |')} {marked}"
+    return f"{_margin(style, '  |')} {marked} {legible(label)}"
+
+
+def _snippet(diagnostic: Diagnostic, text: str, style: Style) -> list[str]:
+    span = diagnostic.span
+    if span is None:
+        return []
+    lines = text.split("\n")
+    if not (1 <= span.start.line <= len(lines)):
+        return []
+    source_line = lines[span.start.line - 1]
+    number = str(span.start.line)
+    gutter = _margin(style, f"{number} |")
+    arrow = _margin(style, f" --> {legible(span.source)}:{span.start.line}:{span.start.column}")
+    role = SEVERITY_ROLES[diagnostic.severity]
+    return [
+        arrow,
+        _margin(style, "  |"),
+        f"{gutter} {legible(source_line)}",
+        _caret_line(span, diagnostic.label, style, role),
+    ]
+
+
+def _child_lines(children: tuple[Child, ...], style: Style) -> list[str]:
+    lines: list[str] = []
+    for child in children:
+        role = SEVERITY_ROLES[child.severity]
+        label = paint(style.color, role, f"= {child.severity.value}:")
+        lines.append(f"{_margin(style, '  |')}")
+        lines.append(f"  {label} {legible(child.message)}")
+    return lines
+
+
+def _full(diagnostic: Diagnostic, text: str | None, style: Style) -> list[str]:
+    """Render the rustc multi-line form: header, location, snippet, notes and help."""
+    lines = [_header(diagnostic, style)]
+    if text is not None and diagnostic.span is not None:
+        lines.extend(_snippet(diagnostic, text, style))
+    elif diagnostic.span is not None:
+        span = diagnostic.span
+        lines.append(
+            _margin(
+                style,
+                f" --> {legible(span.source)}:{span.start.line}:{span.start.column}",
+            )
+        )
+    lines.extend(_child_lines(diagnostic.children, style))
+    return lines
+
+
+def _diagnostic_lines(
+    diagnostic: Diagnostic, text: str | None, style: Style, form: Format
+) -> list[str]:
+    if form is Format.SHORT:
+        return [_short(diagnostic, style)]
+    return _full(diagnostic, text, style)
+
+
+def _fault(fault: Fault, text: str | None, style: Style, form: Format) -> list[str]:
+    lines = [
+        line
+        for diagnostic in fault.diagnostics
+        for line in _diagnostic_lines(diagnostic, text, style, form)
+    ]
+    return lines or [str(fault.locus)]
 
 
 def _entry(entry: Entry, style: Style, *, verbose: bool) -> list[str]:
@@ -108,25 +200,33 @@ def _lines(lines: list[str]) -> str:
     return "".join(f"{line}\n" for line in lines)
 
 
-def render(run: Run, presentation: Presentation, *, verbose: bool = False) -> Rendered:
+def render(
+    run: Run,
+    presentation: Presentation,
+    *,
+    verbose: bool = False,
+    form: Format = Format.FULL,
+) -> Rendered:
     """Write a run as text: each source that did not pass, with its claims that did not.
 
     The faults, which keep a source from being checked, are the diagnostics. Notes on queries
-    that read a hidden literal are diagnostics too, and do not change the exit.
+    that read a hidden literal are diagnostics too, and do not change the exit. `form` chooses
+    the rustc multi-line form or today's one-line short form.
     """
     stdout, stderr = presentation.stdout, presentation.stderr
     shown = [line for entry in run.entries for line in _entry(entry, stdout, verbose=verbose)]
     notes = [
-        _diagnostic(lint, stderr)
+        line
         for entry in run.entries
         if isinstance(entry.result, Report)
         for lint in entry.result.lints
+        for line in _diagnostic_lines(lint, entry.text, stderr, form)
     ]
     faults = [
         line
         for entry in run.entries
         if isinstance(entry.result, Fault)
-        for line in _fault(entry.result, stderr)
+        for line in _fault(entry.result, entry.text, stderr, form)
     ]
     return Rendered(_lines([*shown, _summary(run, stdout)]), _lines([*notes, *faults]))
 

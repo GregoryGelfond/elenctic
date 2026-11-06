@@ -69,7 +69,7 @@ from elenctic.query import (
 )
 from elenctic.reader import parse_contract
 from elenctic.search import Cut, Interrupt, Limit, Limits, Request
-from elenctic.spans import Diagnostic, Position, Severity, Span
+from elenctic.spans import Child, Diagnostic, Position, Severity, Span
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable
 from elenctic.unify import Unifier, mgu, unify
@@ -90,6 +90,7 @@ __all__ = [
     "Bindings",
     "Binds",
     "Census",
+    "Child",
     "Claim",
     "Compound",
     "Conclusion",
