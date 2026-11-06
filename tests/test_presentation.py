@@ -167,15 +167,20 @@ def test_a_stream_is_asked_nothing_but_whether_it_is_a_terminal(tmp_path: Path) 
 def test_only_the_adapters_ask_the_environment_or_a_stream() -> None:
     package = Path(elenctic.__file__).parent
     asked = {"environ", "environb", "getenv", "isatty"}
-    users = {
-        path.name: {
-            node.attr
-            for node in ast.walk(ast.parse(path.read_text()))
-            if isinstance(node, ast.Attribute) and node.attr in asked
-        }
-        for path in package.glob("*.py")
-    }
-    assert {name: found for name, found in users.items() if found} == {
+    users: dict[str, set[str]] = {}
+    for path in package.glob("*.py"):
+        tree = ast.parse(path.read_text())
+        found: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr in asked:
+                found.add(node.attr)
+            if isinstance(node, ast.ImportFrom) and node.module == "os":
+                found.update(alias.name for alias in node.names if alias.name in asked)
+            if isinstance(node, ast.Name) and node.id in asked:
+                found.add(node.id)
+        if found:
+            users[path.name] = found
+    assert users == {
         "cli.py": {"environ"},
         "presentation.py": {"isatty"},
     }

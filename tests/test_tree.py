@@ -22,7 +22,7 @@ def test_a_node_is_read_by_its_kind_and_its_parts() -> None:
 def test_numbers_and_flags_are_read_as_what_they_are() -> None:
     shown = statement("#show p/2.")
     assert tree.number(shown, "arity") == 2
-    assert tree.flag(shown, "positive")
+    assert tree.holds_flag(shown, "positive")
     assert tree.location(shown).begin.line == 1
     atom = tree.child(tree.child(statement("p(1)."), "head"), "atom")
     (argument,) = tree.children(tree.child(atom, "symbol"), "arguments")

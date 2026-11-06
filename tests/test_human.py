@@ -12,7 +12,7 @@ from elenctic.human import (
     VERDICT_ROLES,
     Format,
     internal_error,
-    render,
+    render_run,
     reserved,
     version,
 )
@@ -33,12 +33,12 @@ FAILED_CLAIM = "  [FAIL] @cautious { q } (line 3): { q } ⊆ ⋂ AS(P) = { p } (
 
 
 def test_a_run_of_passing_sources_says_so_on_stdout() -> None:
-    rendered = render(Run((entry(PASSING, "a.lp"),)), PLAIN)
+    rendered = render_run(Run((entry(PASSING, "a.lp"),)), PLAIN)
     assert (rendered.stdout, rendered.stderr) == ("1/1 passed\n", "")
 
 
 def test_a_failing_claim_is_named_with_its_line_and_what_was_found() -> None:
-    rendered = render(Run((entry(PASSING, "a.lp"), entry(FAILING, "b.lp"))), PLAIN)
+    rendered = render_run(Run((entry(PASSING, "a.lp"), entry(FAILING, "b.lp"))), PLAIN)
     assert rendered.stdout.splitlines() == [
         "b.lp — FAIL",
         FAILED_CLAIM,
@@ -50,13 +50,13 @@ def test_a_failing_claim_is_named_with_its_line_and_what_was_found() -> None:
 
 def test_an_undecided_claim_is_counted_apart() -> None:
     run = Run((entry(UNDECIDED_COUNT, "u.lp", Limits(max_answer_sets=1)),))
-    stdout = render(run, PLAIN).stdout
+    stdout = render_run(run, PLAIN).stdout
     assert "  [UNDECIDED] @count 4 (line 4)" in stdout
     assert stdout.endswith("0/1 passed, 1 undecided\n")
 
 
 def test_a_fault_is_a_diagnostic_on_stderr_and_a_count_on_stdout() -> None:
-    rendered = render(
+    rendered = render_run(
         Run((entry(PASSING, "a.lp"), entry(FAULTY, "c.lp"))), PLAIN, form=Format.SHORT
     )
     assert rendered.stdout == "1/2 passed, 1 error\n"
@@ -67,14 +67,14 @@ def test_a_fault_is_a_diagnostic_on_stderr_and_a_count_on_stdout() -> None:
 
 def test_verbose_lists_the_claims_that_passed() -> None:
     run = Run((entry(PASSING, "a.lp"),))
-    assert "  [PASS] @expect sat" in render(run, PLAIN, verbose=True).stdout
-    assert "[PASS]" not in render(run, PLAIN).stdout
+    assert "  [PASS] @expect sat" in render_run(run, PLAIN, verbose=True).stdout
+    assert "[PASS]" not in render_run(run, PLAIN).stdout
 
 
 def test_verbose_lists_a_passed_claim_beside_the_failed_one_only_when_asked() -> None:
     run = Run((entry(FAILING, "b.lp"),))
-    assert "[PASS]" not in render(run, PLAIN).stdout
-    assert "  [PASS] @expect sat" in render(run, PLAIN, verbose=True).stdout
+    assert "[PASS]" not in render_run(run, PLAIN).stdout
+    assert "  [PASS] @expect sat" in render_run(run, PLAIN, verbose=True).stdout
 
 
 def test_every_verdict_and_severity_has_a_role() -> None:
@@ -83,7 +83,7 @@ def test_every_verdict_and_severity_has_a_role() -> None:
 
 
 def test_with_color_on_each_piece_is_painted_by_its_role() -> None:
-    rendered = render(Run((entry(PASSING, "a.lp"), entry(FAILING, "b.lp"))), COLORED)
+    rendered = render_run(Run((entry(PASSING, "a.lp"), entry(FAILING, "b.lp"))), COLORED)
     assert rendered.stdout == (
         "\x1b[1mb.lp\x1b[0m — \x1b[1;31mFAIL\x1b[0m\n"
         "  \x1b[1;31m[FAIL]\x1b[0m @cautious { q } \x1b[1;34m(line 3)\x1b[0m: "
@@ -94,29 +94,29 @@ def test_with_color_on_each_piece_is_painted_by_its_role() -> None:
 
 
 def test_a_passed_claim_is_a_note_and_an_undecided_one_a_warning() -> None:
-    passed = render(Run((entry(PASSING, "a.lp"),)), COLORED, verbose=True).stdout
+    passed = render_run(Run((entry(PASSING, "a.lp"),)), COLORED, verbose=True).stdout
     assert "\x1b[1;32m[PASS]\x1b[0m" in passed
     run = Run((entry(UNDECIDED_COUNT, "u.lp", Limits(max_answer_sets=1)),))
-    undecided = render(run, COLORED).stdout
+    undecided = render_run(run, COLORED).stdout
     assert "\x1b[1;33m[UNDECIDED]\x1b[0m" in undecided
     assert undecided.endswith("\x1b[1;33m1 undecided\x1b[0m\n")
 
 
 def test_a_fault_is_painted_on_stderr_by_the_style_of_stderr() -> None:
     presentation = Presentation(PLAIN.stdout, COLORED.stderr)
-    rendered = render(Run((entry(FAULTY, "c.lp"),)), presentation, form=Format.SHORT)
+    rendered = render_run(Run((entry(FAULTY, "c.lp"),)), presentation, form=Format.SHORT)
     assert rendered.stdout == "0/1 passed, 1 error\n"
     assert rendered.stderr.startswith("\x1b[1mc.lp:2:")
     assert "\x1b[0m: \x1b[1;31merror\x1b[0m: " in rendered.stderr
     presentation = Presentation(COLORED.stdout, PLAIN.stderr)
-    rendered = render(Run((entry(FAULTY, "c.lp"),)), presentation, form=Format.SHORT)
+    rendered = render_run(Run((entry(FAULTY, "c.lp"),)), presentation, form=Format.SHORT)
     assert rendered.stdout == "\x1b[1m0/1 passed\x1b[0m, \x1b[1;31m1 error\x1b[0m\n"
     assert "\x1b" not in rendered.stderr
 
 
 def test_with_glyphs_on_a_verdict_is_marked_by_its_glyph_not_its_bracketed_name() -> None:
     run = Run((entry(PASSING, "a.lp"), entry(FAILING, "b.lp")))
-    stdout = render(run, GLYPHED, verbose=True).stdout
+    stdout = render_run(run, GLYPHED, verbose=True).stdout
     assert f"  {MARKS[Verdict.FAIL].nerd} @cautious {{ q }} (line 3)" in stdout
     assert f"  {MARKS[Verdict.PASS].nerd} @expect sat (line 2)" in stdout
     assert "[FAIL]" not in stdout
@@ -124,19 +124,19 @@ def test_with_glyphs_on_a_verdict_is_marked_by_its_glyph_not_its_bracketed_name(
 
 
 def test_the_existing_symbols_stay_with_glyphs_on() -> None:
-    stdout = render(Run((entry(FAILING, "b.lp"),)), GLYPHED).stdout
+    stdout = render_run(Run((entry(FAILING, "b.lp"),)), GLYPHED).stdout
     assert " — " in stdout
     assert "⊆ ⋂" in stdout
 
 
 def test_glyphs_and_color_are_independent_and_both_survive() -> None:
     both = Presentation(Style(Color.ON, Glyphs.NERD), PLAIN.stderr)
-    stdout = render(Run((entry(FAILING, "b.lp"),)), both).stdout
+    stdout = render_run(Run((entry(FAILING, "b.lp"),)), both).stdout
     assert f"\x1b[1;31m{MARKS[Verdict.FAIL].nerd}\x1b[0m" in stdout
 
 
 def test_text_from_a_program_cannot_steer_the_terminal() -> None:
-    stdout = render(Run((entry(PROGRAM_WITH_ESCAPE_CODES, "a\x1b[2J.lp"),)), PLAIN).stdout
+    stdout = render_run(Run((entry(PROGRAM_WITH_ESCAPE_CODES, "a\x1b[2J.lp"),)), PLAIN).stdout
     assert all(each.isprintable() or each == "\n" for each in stdout)
     assert r'p("\x1b[2J\x1b[31mRED\r")' in stdout
     assert stdout.startswith("a\\x1b[2J.lp — FAIL\n")
@@ -144,7 +144,7 @@ def test_text_from_a_program_cannot_steer_the_terminal() -> None:
 
 def test_a_diagnostic_is_as_legible_as_a_verdict() -> None:
     run = Run((entry('p :- "\x1b[2J\x07". q(.\n% @expect sat\n', "c.lp"),))
-    stderr = render(run, PLAIN, form=Format.SHORT).stderr
+    stderr = render_run(run, PLAIN, form=Format.SHORT).stderr
     assert stderr.startswith("c.lp:1:")
     assert "\x1b" not in stderr
     assert "\x07" not in stderr
@@ -152,7 +152,7 @@ def test_a_diagnostic_is_as_legible_as_a_verdict() -> None:
 
 def test_text_is_made_legible_before_it_is_painted() -> None:
     run = Run((entry(PROGRAM_WITH_ESCAPE_CODES, "a\x1b[2J.lp"),))
-    stdout = render(run, COLORED).stdout
+    stdout = render_run(run, COLORED).stdout
     assert stdout.startswith("\x1b[1ma\\x1b[2J.lp\x1b[0m — ")
     assert r'p("\x1b[2J\x1b[31mRED\r")' in stdout
     assert stdout.count("\x1b") == len(SEQUENCE.findall(stdout))
@@ -161,7 +161,7 @@ def test_text_is_made_legible_before_it_is_painted() -> None:
 
 def test_a_diagnostic_is_made_legible_before_it_is_painted() -> None:
     run = Run((entry('p :- "\x1b[2J\x07". q(.\n% @expect sat\n', "c\x1b[2J.lp"),))
-    stderr = render(run, COLORED, form=Format.SHORT).stderr
+    stderr = render_run(run, COLORED, form=Format.SHORT).stderr
     assert stderr.startswith("\x1b[1mc\\x1b[2J.lp:1:")
     assert stderr.count("\x1b") == len(SEQUENCE.findall(stderr))
     assert "\x07" not in stderr
@@ -169,15 +169,15 @@ def test_a_diagnostic_is_made_legible_before_it_is_painted() -> None:
 
 def test_a_glyph_is_added_after_legible_so_it_is_not_escaped() -> None:
     run = Run((entry(PROGRAM_WITH_ESCAPE_CODES, "a\x1b[2J.lp"),))
-    stdout = render(run, GLYPHED).stdout
+    stdout = render_run(run, GLYPHED).stdout
     assert MARKS[Verdict.FAIL].nerd in stdout
     assert "\\uf057" not in stdout
 
 
 def test_the_reserved_note_is_help_and_plain_without_color() -> None:
-    assert reserved("why", PLAIN.stderr) == "elenctic: `why` is reserved and not yet built"
+    assert reserved("why", PLAIN.stderr) == "elenctic: `why` is reserved and not yet built\n"
     assert reserved("why", COLORED.stderr) == (
-        "\x1b[1;36melenctic: `why` is reserved and not yet built\x1b[0m"
+        "\x1b[1;36melenctic: `why` is reserved and not yet built\x1b[0m\n"
     )
 
 
@@ -185,10 +185,10 @@ def test_the_internal_error_is_one_legible_line_painted_as_an_error() -> None:
     error = RecursionError("no \x1b[2J")
     assert (
         internal_error(error, PLAIN.stderr)
-        == "elenctic: internal error: RecursionError: no \\x1b[2J"
+        == "elenctic: internal error: RecursionError: no \\x1b[2J\n"
     )
     assert internal_error(error, COLORED.stderr) == (
-        "\x1b[1;31melenctic: internal error: RecursionError: no \\x1b[2J\x1b[0m"
+        "\x1b[1;31melenctic: internal error: RecursionError: no \\x1b[2J\x1b[0m\n"
     )
 
 
@@ -241,7 +241,7 @@ def _ended_line(detail: Ended) -> str:
     )
     finding = Finding(claim, Verdict.UNDECIDED, detail)
     run = Run((Entry("t.lp", Report("t.lp", (finding,))),))
-    return render(run, PLAIN).stdout.splitlines()[1]
+    return render_run(run, PLAIN).stdout.splitlines()[1]
 
 
 @pytest.mark.parametrize("cut", list(Truncation))
@@ -260,14 +260,14 @@ def test_a_lint_is_a_note_on_stderr_even_when_every_claim_passed() -> None:
     assert isinstance(found, Report)
     assert found.verdict is Verdict.PASS
     assert found.lints
-    rendered = render(Run((Entry("t.lp", found),)), PLAIN, verbose=True)
+    rendered = render_run(Run((Entry("t.lp", found),)), PLAIN, verbose=True)
     assert "note: reads `-b/0`" in rendered.stderr
     assert "PASS" in rendered.stdout
 
 
 def test_full_format_shows_a_snippet_with_carets_and_a_label() -> None:
     text = "p.\n% @expect sat\n% @count x\n"
-    rendered = render(Run((entry(text, "c.lp"),)), PLAIN)
+    rendered = render_run(Run((entry(text, "c.lp"),)), PLAIN)
     assert rendered.stderr == (
         "error: expected a non-negative integer, found `x`\n"
         " --> c.lp:3:10\n"
@@ -279,13 +279,13 @@ def test_full_format_shows_a_snippet_with_carets_and_a_label() -> None:
 
 def test_short_format_is_the_one_line_gcc_form() -> None:
     text = "p.\n% @expect sat\n% @count x\n"
-    rendered = render(Run((entry(text, "c.lp"),)), PLAIN, form=Format.SHORT)
+    rendered = render_run(Run((entry(text, "c.lp"),)), PLAIN, form=Format.SHORT)
     assert rendered.stderr == "c.lp:3:10-11: error: expected a non-negative integer, found `x`\n"
 
 
 def test_a_help_child_is_printed_under_the_snippet() -> None:
     text = "p.\n% @count 1\n"
-    rendered = render(Run((entry(text, "m.lp"),)), PLAIN)
+    rendered = render_run(Run((entry(text, "m.lp"),)), PLAIN)
     assert rendered.stderr.startswith("error: missing `@expect`\n")
     assert "= help: add `% @expect sat` or `% @expect unsat`\n" in rendered.stderr
     assert " --> " not in rendered.stderr
@@ -293,8 +293,8 @@ def test_a_help_child_is_printed_under_the_snippet() -> None:
 
 def test_human_and_json_share_the_same_diagnostic_fields() -> None:
     run = Run((entry("p.\n% @expect sat\n% @count x\n", "c.lp"),))
-    short = render(run, PLAIN, form=Format.SHORT).stderr
-    full = render(run, PLAIN).stderr
+    short = render_run(run, PLAIN, form=Format.SHORT).stderr
+    full = render_run(run, PLAIN).stderr
     (entry_,) = run.entries
     assert isinstance(entry_.result, Fault)
     (diagnostic,) = entry_.result.diagnostics
@@ -309,7 +309,7 @@ def test_human_and_json_share_the_same_diagnostic_fields() -> None:
 
 def test_a_primary_span_across_lines_marks_its_first_character() -> None:
     text = "p.\n% @expect sat\n% @cautious { not p,\n%   q }\n"
-    rendered = render(Run((entry(text, "m.lp"),)), PLAIN)
+    rendered = render_run(Run((entry(text, "m.lp"),)), PLAIN)
     assert rendered.stderr == (
         "error: expected ground literals, found `not p, q`\n"
         " --> m.lp:3:14\n"
@@ -323,11 +323,11 @@ def test_a_primary_span_across_lines_marks_its_first_character() -> None:
 
 def test_a_diagnostic_on_the_first_line_shows_its_snippet() -> None:
     text = "% @count x\np.\n% @expect sat\n"
-    rendered = render(Run((entry(text, "f.lp"),)), PLAIN)
+    rendered = render_run(Run((entry(text, "f.lp"),)), PLAIN)
     assert "1 | % @count x\n" in rendered.stderr
 
 
 def test_a_diagnostic_on_a_last_line_without_a_newline_shows_its_snippet() -> None:
     text = "p.\n% @expect sat\n% @count x"
-    rendered = render(Run((entry(text, "l.lp"),)), PLAIN)
+    rendered = render_run(Run((entry(text, "l.lp"),)), PLAIN)
     assert "3 | % @count x\n" in rendered.stderr

@@ -10,7 +10,7 @@ from clingo.ast import parse_string
 from elenctic import tree
 from elenctic.body import span_of
 from elenctic.check import check
-from elenctic.human import render
+from elenctic.human import render_run
 from elenctic.presentation import PLAIN
 from elenctic.program import Fault, Locus, Program
 from elenctic.reader import parse_contract
@@ -104,7 +104,7 @@ def test_carets_match_the_primary_span_width() -> None:
     (diagnostic,) = result.diagnostics
     assert diagnostic.span is not None
     width = diagnostic.span.end.column - diagnostic.span.start.column
-    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    stderr = render_run(Run((Entry("t.lp", result, text),)), PLAIN).stderr
     assert "^" * width in stderr
 
 
@@ -117,7 +117,7 @@ def test_carets_sit_under_the_token_after_multibyte_text_on_the_same_line() -> N
     diagnostic = next(d for d in result.diagnostics if d.span is not None)
     assert diagnostic.span is not None
     assert line[diagnostic.span.start.column - 1 : diagnostic.span.end.column - 1] == "assuming x"
-    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    stderr = render_run(Run((Entry("t.lp", result, text),)), PLAIN).stderr
     width = diagnostic.span.end.column - diagnostic.span.start.column
     pad = " " * (diagnostic.span.start.column - 1)
     assert f"| {pad}{'^' * width}" in stderr
@@ -141,7 +141,7 @@ def test_clingo_reports_byte_columns_and_we_convert_them_before_carets() -> None
     src_line = text.split("\n")[2]
     marked = src_line[diagnostic.span.start.column - 1 : diagnostic.span.end.column - 1]
     assert "1..2" in marked
-    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    stderr = render_run(Run((Entry("t.lp", result, text),)), PLAIN).stderr
     width = max(1, diagnostic.span.end.column - diagnostic.span.start.column)
     assert "^" * width in stderr
 
@@ -166,7 +166,7 @@ def test_a_zero_width_primary_span_still_draws_one_caret() -> None:
     diagnostic = next(d for d in result.diagnostics if d.span is not None)
     assert diagnostic.span is not None
     assert diagnostic.span.start == diagnostic.span.end
-    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    stderr = render_run(Run((Entry("t.lp", result, text),)), PLAIN).stderr
     assert "  |         ^ expected a non-negative integer" in stderr
 
 
@@ -174,7 +174,7 @@ def test_a_snippet_includes_the_last_line_of_the_source() -> None:
     text = "p.\n% @expect sat\n% @count x\n"
     result = check(Program(text, "t.lp"))
     assert isinstance(result, Fault)
-    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    stderr = render_run(Run((Entry("t.lp", result, text),)), PLAIN).stderr
     assert "3 | % @count x" in stderr
     assert "^" in stderr
 
@@ -182,6 +182,6 @@ def test_a_snippet_includes_the_last_line_of_the_source() -> None:
 def test_a_snippet_is_omitted_when_the_span_line_is_outside_the_source() -> None:
     where = Span("t.lp", Position(99, 1), Position(99, 2))
     result = Fault(Locus.REQUEST, (Diagnostic(where, Severity.ERROR, "gone"),))
-    stderr = render(Run((Entry("t.lp", result, "one line\n"),)), PLAIN).stderr
+    stderr = render_run(Run((Entry("t.lp", result, "one line\n"),)), PLAIN).stderr
     assert "gone" in stderr
     assert "99 |" not in stderr
