@@ -468,6 +468,9 @@
             },
             {
               "$ref": "#/$defs/fault"
+            },
+            {
+              "$ref": "#/$defs/internal"
             }
           ]
         }
@@ -533,6 +536,26 @@
               "$ref": "#/$defs/ended"
             }
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "internal": {
+      "type": "object",
+      "required": [
+        "kind",
+        "error_type",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "const": "internal"
+        },
+        "error_type": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
         }
       },
       "additionalProperties": false

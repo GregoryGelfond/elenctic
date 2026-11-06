@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from elenctic import check as real_check
 from elenctic.cli import main
 from elenctic.determination import Truncation, option
+from elenctic.program import Program
 from elenctic.report import Exit
 from interrupting import at_first_answer_set
 
@@ -171,7 +173,7 @@ def test_a_failure_of_its_own_is_an_internal_error_with_a_message_and_no_traceba
     code = main([str(path)])
     captured = capsys.readouterr()
     assert code == Exit.INTERNAL_ERROR
-    assert captured.out == ""
+    assert captured.out == "0/1 passed, 1 error\n"
     assert captured.err == "elenctic: internal error: RecursionError: no \\x1b[2J\n"
 
 
@@ -181,6 +183,29 @@ REFUSED_LIMIT_TEXTS = [
     ("--max-seconds", "a positive number of seconds", value)
     for value in ["0", "-1", "-0.5", "none", "inf", "nan", ""]
 ]
+
+
+def test_an_internal_error_in_one_source_leaves_the_others(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def selective(program: object, **kw: object) -> object:
+        assert isinstance(program, Program)
+        if Path(program.source).name == "b.lp":
+            message = "injected failure in one source"
+            raise RuntimeError(message)
+        return real_check(program, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("elenctic.cli.check", selective)
+    a = write(tmp_path, "a.lp", "p.\n% @expect sat\n% @count 3\n")
+    b = write(tmp_path, "b.lp", "p.\n% @expect sat\n")
+    c = write(tmp_path, "c.lp", "p.\n% @expect sat\n")
+    code = main([str(a), str(b), str(c)])
+    captured = capsys.readouterr()
+    assert code == Exit.INTERNAL_ERROR
+    assert "a.lp" in captured.out
+    assert "FAIL" in captured.out
+    assert "1/3 passed, 1 fail, 1 error" in captured.out
+    assert "elenctic: internal error: RuntimeError: injected failure in one source" in captured.err
 
 
 @pytest.mark.parametrize(("option", "expected", "value"), REFUSED_LIMIT_TEXTS)

@@ -16,7 +16,7 @@ from elenctic.human import Format, internal_error, render_run, reserved, version
 from elenctic.json_view import to_json
 from elenctic.presentation import Environment, Presentation, Stream, When, resolve
 from elenctic.program import Fault, Locus, Program
-from elenctic.report import Entry, Exit, Run
+from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.spans import Diagnostic, failure, first_unlexable, note
 from elenctic.tags import is_case, near_misses
@@ -259,7 +259,10 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt, *, named: bool) -> 
         if named:
             return Entry(program.source, _not_a_case(path, program.text), program.text)
         return None
-    result = check(program, limits=limits, interrupt=interrupt)
+    try:
+        result = check(program, limits=limits, interrupt=interrupt)
+    except Exception as error:  # noqa: BLE001
+        return Entry(program.source, Internal.of(error), program.text)
     return None if result is None else Entry(program.source, result, program.text)
 
 

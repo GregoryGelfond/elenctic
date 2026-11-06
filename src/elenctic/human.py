@@ -17,7 +17,7 @@ from elenctic.glyphs import COPYRIGHT, MARKS
 from elenctic.paint import Role, paint
 from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
-from elenctic.report import Entry, Run
+from elenctic.report import Entry, Internal, Run
 from elenctic.spans import Child, Diagnostic, Severity, Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
 
@@ -254,7 +254,12 @@ def render_run(
         if isinstance(entry.result, Fault)
         for line in _fault(entry.result, entry.text, stderr, form, entry.source)
     ]
-    return Rendered(_lines([*shown, _summary(run, stdout)]), _lines([*notes, *faults]))
+    internals = [
+        internal_error(entry.result, stderr).rstrip("\n")
+        for entry in run.entries
+        if isinstance(entry.result, Internal)
+    ]
+    return Rendered(_lines([*shown, _summary(run, stdout)]), _lines([*notes, *faults, *internals]))
 
 
 def reserved(command: str, style: Style) -> str:
@@ -264,11 +269,13 @@ def reserved(command: str, style: Style) -> str:
     )
 
 
-def internal_error(error: Exception, style: Style) -> str:
+def internal_error(error: Exception | Internal, style: Style) -> str:
     """Write the one line for a failure of elenctic itself."""
-    return (
-        _say(style, Role.ERROR, f"elenctic: internal error: {type(error).__name__}: {error}") + "\n"
-    )
+    if isinstance(error, Internal):
+        name, message = error.error_type, error.message
+    else:
+        name, message = type(error).__name__, str(error)
+    return _say(style, Role.ERROR, f"elenctic: internal error: {name}: {message}") + "\n"
 
 
 def version(package: Package, solvers: Solvers, style: Style) -> str:

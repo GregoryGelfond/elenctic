@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Self
 
 from elenctic.program import Fault
 from elenctic.spans import Diagnostic
@@ -22,11 +23,23 @@ class Exit(IntEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class Internal:
+    """elenctic itself failed while checking this source."""
+
+    error_type: str
+    message: str
+
+    @classmethod
+    def of(cls, error: Exception) -> Self:
+        return cls(type(error).__name__, str(error))
+
+
+@dataclass(frozen=True, slots=True)
 class Entry:
     """The outcome of checking one source."""
 
     source: str
-    result: Report | Fault
+    result: Report | Fault | Internal
     text: str | None = None
     """The program text, kept so a diagnostic can show a snippet; none when unread."""
 
@@ -41,8 +54,10 @@ class Run:
 
     @property
     def exit_code(self) -> Exit:
-        """A fault if any source could not be checked, else a failure unless every claim passed."""
+        """An internal failure first, else a fault, else unmet unless every claim passed."""
         results = [entry.result for entry in self.entries]
+        if any(isinstance(result, Internal) for result in results):
+            return Exit.INTERNAL_ERROR
         if any(isinstance(result, Fault) for result in results):
             return Exit.FAULT
         unmet = any(r.verdict is not Verdict.PASS for r in results if isinstance(r, Report))
