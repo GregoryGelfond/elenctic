@@ -115,6 +115,19 @@ def _literals(symbols: Iterable[Symbol]) -> Atoms:
 
 
 @dataclass(frozen=True, slots=True)
+class Keep:
+    """Which symbol collections of an answer set to retain for later conversion."""
+
+    atoms: bool = True
+    shown: bool = True
+
+
+KEEP_ALL = Keep()
+KEEP_NONE = Keep(atoms=False, shown=False)
+KEEP_SHOWN = Keep(atoms=False, shown=True)
+
+
+@dataclass(frozen=True, slots=True)
 class Seen:
     """An answer set as clingo reported it, and whether it is proven optimal (all are, unoptimized).
 
@@ -134,11 +147,11 @@ class Seen:
         )
 
 
-def seen(answer_set: ClingoModel, theory: Theory) -> Seen:
-    """Take note of an answer set that clingo reports."""
+def seen(answer_set: ClingoModel, theory: Theory, keep: Keep = KEEP_ALL) -> Seen:
+    """Take note of an answer set that clingo reports; keep only the symbol sets claims need."""
     return Seen(
-        tuple(answer_set.symbols(atoms=True)),
-        tuple(answer_set.symbols(shown=True)),
+        tuple(answer_set.symbols(atoms=True)) if keep.atoms else (),
+        tuple(answer_set.symbols(shown=True)) if keep.shown else (),
         theory.assignment(answer_set),
         tuple(answer_set.cost),
         proven=answer_set.optimality_proven or not answer_set.cost,
@@ -179,6 +192,8 @@ class Plan:
     """Enumerate distinct `#show` projections when the claims read only shown identities."""
     enough: Callable[[list[Seen]], bool] | None = None
     """Stop once every claim the group cares about is decided from `found` (existential groups)."""
+    keep: Keep = KEEP_ALL
+    """Which symbol sets to retain when reading each answer set."""
 
     def allows(self, counted: int) -> bool:
         """Say whether `counted` answer sets are within the most allowed."""

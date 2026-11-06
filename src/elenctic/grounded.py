@@ -1,9 +1,9 @@
 """A program grounded once, searched under any number of scenarios."""
 
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 
-from clingo import Control, Symbol, SymbolType
+from clingo import Control
 from clingo import Model as ClingoModel
 from clingo.configuration import Configuration
 
@@ -25,9 +25,13 @@ from elenctic.facts import Facts
 from elenctic.literals import Assumption, Literal, Scenario, Signature
 from elenctic.search import (
     ENUMERATION,
+    KEEP_ALL,
+    KEEP_NONE,
+    KEEP_SHOWN,
     OPTIMIZATION,
     Cut,
     Interrupt,
+    Keep,
     Limit,
     Limits,
     Plan,
@@ -43,7 +47,7 @@ from elenctic.search import (
 )
 from elenctic.theory import Theory
 
-_PROBE = Plan(ENUMERATION, max_answer_sets=0)
+_PROBE = Plan(ENUMERATION, max_answer_sets=0, keep=KEEP_NONE)
 
 
 def _key(assumption: Assumption) -> tuple[Literal, bool]:
@@ -65,32 +69,30 @@ class Grounded:
         self._control = control
         self._theory = theory
         self.facts = facts
-        # Read before any search: clingo later drops atoms that assumptions have made false.
-        self._literals: Mapping[Symbol, int] = {
-            atom.symbol: atom.literal for atom in control.symbolic_atoms
-        }
+        # Signatures from clingo; atom→literal looked up on demand so a sat-only case
+        # never walks the whole symbolic atom table.
         self.signatures: frozenset[Signature] = frozenset(
-            Signature(symbol.name, len(symbol.arguments), symbol.positive)
-            for symbol in self._literals
-            if symbol.type is SymbolType.Function
+            Signature(name, arity, positive)
+            for name, arity, positive in control.symbolic_atoms.signatures
         )
 
     def _derivable(self, literal: Literal) -> bool:
-        return bool(self._literals.get(literal.symbol))
+        return literal.symbol in self._control.symbolic_atoms
 
     def _assumed(self, scenario: Iterable[Assumption]) -> dict[int, Assumption]:
         """Map the clingo literal of each assumption that says something about the grounding."""
-        return {
-            (lit if a.holds else -lit): a
-            for a in scenario
-            if (lit := self._literals.get(a.literal.symbol))
-        }
+        atoms = self._control.symbolic_atoms
+        assumed: dict[int, Assumption] = {}
+        for a in scenario:
+            symbol = a.literal.symbol
+            if symbol not in atoms:
+                continue
+            lit = atoms[symbol].literal
+            assumed[lit if a.holds else -lit] = a
+        return assumed
 
     def _impossible(self, scenario: Iterable[Assumption]) -> frozenset[Assumption]:
         return frozenset(a for a in scenario if a.holds and not self._derivable(a.literal))
-
-    def _read(self, answer_set: ClingoModel) -> Seen:
-        return seen(answer_set, self._theory)
 
     def _run(self, scenario: Scenario, plan: Plan, cut: Cut) -> Run:
         assumed = self._assumed(scenario)
@@ -100,8 +102,12 @@ class Grounded:
         section.models = "0"
         section.enum_mode, section.opt_mode = plan.modes
         section.project = "auto" if plan.project else "no"
+
+        def read(answer_set: ClingoModel) -> Seen:
+            return seen(answer_set, self._theory, plan.keep)
+
         with self._control.solve(assumptions=list(assumed), yield_=True, async_=True) as handle:
-            found, conclusion = drain(handle, plan, cut, self._read)
+            found, conclusion = drain(handle, plan, cut, read)
             run = Run(tuple(found), conclusion, frozenset())
             core = (
                 frozenset(assumed[lit] for lit in handle.core())
@@ -153,7 +159,7 @@ class Grounded:
         refutation = self._shrunk(request.scenario, run.core, cut) if run.refuted else None
         return decide(run, refutation, evidence)
 
-    def solve(
+    def solve(  # noqa: PLR0913
         self,
         scenario: Scenario = frozenset(),
         *,
@@ -161,6 +167,7 @@ class Grounded:
         interrupt: Interrupt | None = None,
         project: bool = False,
         enough: Callable[[list[Seen]], bool] | None = None,
+        keep: Keep = KEEP_ALL,
     ) -> Determination[AnswerSets]:
         """Enumerate the answer sets satisfying `scenario`, whatever the program optimizes."""
         return self._search(
@@ -170,6 +177,7 @@ class Grounded:
                 max_answer_sets=limits.max_answer_sets,
                 project=project,
                 enough=enough,
+                keep=keep,
             ),
             answer_sets,
         )
@@ -188,7 +196,7 @@ class Grounded:
         """
         return self._search(
             Request(scenario, limits, interrupt),
-            Plan((mode.value, "ignore")),
+            Plan((mode.value, "ignore"), keep=KEEP_SHOWN),
             lambda found: Consequences(mode, found[-1].answer_set.shown),
         )
 
@@ -199,6 +207,7 @@ class Grounded:
         limits: Limits = Limits(),
         interrupt: Interrupt | None = None,
         project: bool = False,
+        keep: Keep = KEEP_ALL,
     ) -> Determination[Optimized]:
         """Find the optimum under `scenario` and the answer sets that attain it.
 
@@ -210,17 +219,19 @@ class Grounded:
         if not project:
             return self._search(
                 request,
-                Plan(OPTIMIZATION, proven, limits.max_answer_sets),
+                Plan(OPTIMIZATION, proven, limits.max_answer_sets, keep=keep),
                 optimized,
             )
-        return self._optimize_projected(request)
+        return self._optimize_projected(request, keep=keep)
 
-    def _optimize_projected(self, request: Request) -> Determination[Optimized]:
+    def _optimize_projected(
+        self, request: Request, *, keep: Keep = KEEP_ALL
+    ) -> Determination[Optimized]:
         """Prove the optimum, then enumerate at that cost with `#show` projection."""
         cut = request.cutter()
         prove = self._run(
             request.scenario,
-            Plan(("auto", "opt"), max_answer_sets=Limit.UNBOUNDED),
+            Plan(("auto", "opt"), max_answer_sets=Limit.UNBOUNDED, keep=keep),
             cut,
         )
         if prove.refuted:
@@ -236,6 +247,7 @@ class Grounded:
                 ("auto", f"enum,{bound}"),
                 max_answer_sets=request.limits.max_answer_sets,
                 project=True,
+                keep=keep,
             ),
             cut,
         )

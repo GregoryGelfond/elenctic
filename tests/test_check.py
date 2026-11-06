@@ -542,3 +542,20 @@ def test_a_deeply_nested_term_beside_a_theory_atom_is_a_fault_not_an_exception()
 
 def test_a_deeply_nested_term_in_a_show_is_read() -> None:
     assert verdicts(f"a.\n#show {'-' * DEEP_NESTING}a.\n% @expect sat\n") == [P]
+
+
+def test_an_expect_only_case_never_converts_literals(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A satisfiability-only group keeps no symbols, so Literal.of is never called."""
+    calls: list[object] = []
+    real = Literal.of
+
+    @classmethod  # type: ignore[misc]
+    def counting(cls: type[Literal], symbol: object) -> Literal:
+        calls.append(symbol)
+        return real(symbol)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Literal, "of", counting)
+    found = check(Program("n(1..1000). m(X) :- n(X).\n% @expect sat\n", "t.lp"))
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+    assert calls == []

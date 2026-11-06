@@ -24,7 +24,7 @@ from elenctic.judge import Found, judge
 from elenctic.literals import Scenario
 from elenctic.program import Fault, Locus, Program
 from elenctic.reader import parse_contract
-from elenctic.search import Interrupt, Limits, Seen
+from elenctic.search import Interrupt, Keep, Limits, Seen
 from elenctic.tags import is_case
 from elenctic.verdicts import Finding, Report
 
@@ -70,6 +70,14 @@ def _limits(group: list[Claim], limits: Limits) -> Limits:
     )
 
 
+def _keep(group: list[Claim]) -> Keep:
+    """Retain only the symbol sets the group's readings convert into literals."""
+    kinds = {type(claim.reading) for claim in group}
+    atoms = bool(kinds & {Asks, Binds})
+    shown = bool(kinds & {Census, Witness, Entails})
+    return Keep(atoms=atoms, shown=shown)
+
+
 def _closes(group: list[Claim]) -> bool:
     """Say whether consequences settle a group: it asks only for them and for an answer set."""
     readings = [c.reading for c in group]
@@ -111,9 +119,14 @@ def _judge_group(  # noqa: PLR0913
     def native(mode: Mode) -> Determination[Consequences]:
         return grounded.consequences(mode, scenario, limits=limits, interrupt=interrupt)
 
+    keep = _keep(group)
     if over is Range.OPTIMAL:
         found: Found = grounded.optimize(
-            scenario, limits=_limits(group, limits), interrupt=interrupt, project=project
+            scenario,
+            limits=_limits(group, limits),
+            interrupt=interrupt,
+            project=project,
+            keep=keep,
         )
     elif _closes(group):
         return _entailing(group, native)
@@ -124,6 +137,7 @@ def _judge_group(  # noqa: PLR0913
             interrupt=interrupt,
             project=project,
             enough=_enough(group),
+            keep=keep,
         )
     findings = [judge(claim, found) for claim in group]
     if over is Range.ALL and _cut_by_count(found):
