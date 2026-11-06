@@ -338,8 +338,7 @@
         "severity",
         "message",
         "label",
-        "children",
-        "code"
+        "children"
       ],
       "properties": {
         "kind": {
@@ -384,7 +383,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "Reserved; unused in schema 1."
         }
       },
       "additionalProperties": false

@@ -273,7 +273,7 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
         ),
         (
             "% @cautious { p } assuming { q } extra",
-            "expected `assuming { literals }`, found `assuming {  q  } extra`",
+            "expected `assuming { literals }`, found `assuming { q } extra`",
             P(2, 3),
             P(2, 39),
         ),
@@ -414,7 +414,7 @@ def test_a_witness_may_bind_the_assignment_of_the_same_answer_set_with_where() -
         ),
         (
             "% @answer-set { p } where { x=1 } extra",
-            "expected `where { term = integer, ... }`, found `where {  x=1  } extra`",
+            "expected `where { term = integer, ... }`, found `where { x=1 } extra`",
         ),
         ("% @answer-set { } where { x=1 }", "expected at least one literal, found `{ }`"),
         ("% @answer-set { p } where { x=a }", "expected `term = integer`, found `x = a`"),
