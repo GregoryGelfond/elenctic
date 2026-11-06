@@ -118,25 +118,27 @@ def _worldly(reading: Asks | Binds, found: Consistent[AnswerSets]) -> tuple[Verd
 def from_answer_sets(reading: Reading, found: Consistent[AnswerSets]) -> tuple[Verdict, Detail]:
     answer_sets = found.evidence.all
     closed = found.conclusion is Exhausted.EXHAUSTED
-    match reading:
-        case Asks() | Binds():
-            return _worldly(reading, found)
-        case Satisfiable(expected):
-            verdict_detail: tuple[Verdict, Detail] = (
-                Verdict.when(holds=expected),
-                "an answer set exists",
-            )
-        case Census():
-            verdict_detail = _count(reading, answer_sets, closed=closed)
-        case Witness() | Assigns():
-            verdict_detail = _witnessed(reading, answer_sets, closed=closed)
-        case Entails():
-            verdict_detail = _entails(
-                reading, WorldView(frozenset(m.shown for m in answer_sets)), closed=closed
-            )
-        case Costs():
-            verdict_detail = (Verdict.UNDECIDED, "no optimum was sought")
-    verdict, detail = verdict_detail
+
+    def judged() -> tuple[Verdict, Detail]:
+        match reading:
+            case Asks() | Binds():
+                return _worldly(reading, found)
+            case Satisfiable(expected):
+                return Verdict.when(holds=expected), "an answer set exists"
+            case Census():
+                return _count(reading, answer_sets, closed=closed)
+            case Witness() | Assigns():
+                return _witnessed(reading, answer_sets, closed=closed)
+            case Entails():
+                return _entails(
+                    reading,
+                    WorldView(frozenset(m.shown for m in answer_sets)),
+                    closed=closed,
+                )
+            case Costs():
+                return Verdict.UNDECIDED, "no optimum was sought"
+
+    verdict, detail = judged()
     if verdict is Verdict.UNDECIDED and isinstance(found.conclusion, Truncation):
         return verdict, Ended(found.conclusion)
     return verdict, detail

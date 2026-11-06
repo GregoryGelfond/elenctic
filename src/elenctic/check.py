@@ -37,7 +37,11 @@ def _enough(group: list[Claim]) -> Callable[[list[Seen]], bool] | None:
 
     def enough(found: list[Seen]) -> bool:
         sets = [seen.answer_set for seen in found]
-        return all(any(c.reading.upheld_by(answer) for answer in sets) for c in group)
+        return all(
+            any(reading.upheld_by(answer) for answer in sets)
+            for claim in group
+            if isinstance((reading := claim.reading), Witness | Assigns)
+        )
 
     return enough
 

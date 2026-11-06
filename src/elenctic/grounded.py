@@ -85,10 +85,10 @@ class Grounded:
         assumed: dict[int, Assumption] = {}
         for a in scenario:
             symbol = a.literal.symbol
-            if symbol not in atoms:
+            atom = atoms[symbol] if symbol in atoms else None  # noqa: SIM401
+            if atom is None:
                 continue
-            lit = atoms[symbol].literal
-            assumed[lit if a.holds else -lit] = a
+            assumed[atom.literal if a.holds else -atom.literal] = a
         return assumed
 
     def _impossible(self, scenario: Iterable[Assumption]) -> frozenset[Assumption]:
