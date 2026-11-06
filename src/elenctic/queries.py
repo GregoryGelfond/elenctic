@@ -4,7 +4,7 @@ from typing import Final
 
 from elenctic.contract import Asks, Binds, Reading
 from elenctic.determination import Range
-from elenctic.operands import pointing, read_range
+from elenctic.operands import pointing, read_range, shown
 from elenctic.query import All, Answer
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Parsed, failure
@@ -72,7 +72,7 @@ def _binds(
     if head[2].text != "=" or len(items) != 1 or items[0].negated:
         return failure(
             block.covering(head[1]),
-            f"expected one positive pattern before `=`, found `{{{head[1].text}}}`",
+            f"expected one positive pattern before `=`, found `{shown(head[1:2])}`",
             label="expected one positive pattern before `=`",
         )
     pattern = items[0].pattern

@@ -198,6 +198,11 @@ def test_the_answer_set_tag_has_a_hyphen_and_the_old_spelling_is_not_a_tag() -> 
     assert "unknown tag `@model`" in only_diagnostic("% @model { p }").message
 
 
+def test_an_unknown_tag_names_a_close_one_as_help() -> None:
+    found = only_diagnostic("% @expct sat")
+    assert [c.message for c in found.children] == ["there is a tag with a similar name: `@expect`"]
+
+
 def test_a_string_may_hold_escaped_quotes_commas_and_braces() -> None:
     claim = only(r'% @brave { q("a\"}b,c") }')
     assert claim.reading == Entails(Mode.BRAVE, frozenset({Literal("q", (String('a"}b,c'),))}))
@@ -482,3 +487,19 @@ def test_an_assumption_with_a_variable_is_refused_as_not_ground() -> None:
     found = messages("% @expect sat", "% @brave { p } assuming { q(X) }")
     assert len(found) == 1
     assert "ground" in found[0]
+
+
+@pytest.mark.parametrize(
+    ("lines", "message"),
+    [
+        (("% @query yes { p.", "%   q }"), "expected a list of literals, found `p. q`"),
+        (
+            ("% @query yes { p(X),", "%   q(Y) } = { 1 }"),
+            "expected one positive pattern before `=`, found `{ p(X), q(Y) }`",
+        ),
+    ],
+)
+def test_found_text_written_over_lines_is_shown_on_one(
+    lines: tuple[str, ...], message: str
+) -> None:
+    assert only_diagnostic(*lines).message == message

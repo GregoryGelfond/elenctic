@@ -10,18 +10,22 @@ from elenctic.tags import Block, Element
 def shown(elements: list[Element] | Element) -> str:
     """Show what was written, for an `expected …, found …` message."""
     if isinstance(elements, Element):
-        text = elements.text.strip()
-        return text or "{ }"
+        return _flat(elements.text) or "{ }"
     if not elements:
         return "{ }"
     parts: list[str] = []
     for element in elements:
+        inner = _flat(element.text)
         if element.braced:
-            inner = element.text.strip()
-            parts.append("{ }" if not inner else f"{{ {inner} }}")
+            parts.append(f"{{ {inner} }}" if inner else "{ }")
         else:
-            parts.append(element.text)
+            parts.append(inner)
     return " ".join(parts)
+
+
+def _flat(text: str) -> str:
+    """Put text written over several comment lines on one line, single-spaced."""
+    return " ".join(text.split())
 
 
 def pointing(block: Block, found: list[Element] | Element | None = None) -> Span:

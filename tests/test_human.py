@@ -305,3 +305,29 @@ def test_human_and_json_share_the_same_diagnostic_fields() -> None:
     assert short == f"{diagnostic.span}: error: {diagnostic.message}\n"
     assert diagnostic.message in full
     assert diagnostic.label in full
+
+
+def test_a_primary_span_across_lines_marks_its_first_character() -> None:
+    text = "p.\n% @expect sat\n% @cautious { not p,\n%   q }\n"
+    rendered = render(Run((entry(text, "m.lp"),)), PLAIN)
+    assert rendered.stderr == (
+        "error: expected ground literals, found `not p, q`\n"
+        " --> m.lp:3:14\n"
+        "  |\n"
+        "3 | % @cautious { not p,\n"
+        "  |              ^ expected ground literals\n"
+        "  |\n"
+        "  = note: `not` is not allowed here\n"
+    )
+
+
+def test_a_diagnostic_on_the_first_line_shows_its_snippet() -> None:
+    text = "% @count x\np.\n% @expect sat\n"
+    rendered = render(Run((entry(text, "f.lp"),)), PLAIN)
+    assert "1 | % @count x\n" in rendered.stderr
+
+
+def test_a_diagnostic_on_a_last_line_without_a_newline_shows_its_snippet() -> None:
+    text = "p.\n% @expect sat\n% @count x"
+    rendered = render(Run((entry(text, "l.lp"),)), PLAIN)
+    assert "3 | % @count x\n" in rendered.stderr
