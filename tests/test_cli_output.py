@@ -233,37 +233,64 @@ def on_terminals(
     argv: list[str], *, terminal: set[str], environment: dict[str, str] | None = None
 ) -> tuple[int, str, str]:
     """Run the command line with the named streams (`out`, `err`) on a pseudo-terminal."""
+    return spawned(
+        [sys.executable, "-m", "elenctic.cli", *argv], terminal=terminal, environment=environment
+    )
+
+
+def _read_ready(chunks: dict[int, list[bytes]], timeout: float) -> bool:
+    """Read what each descriptor holds within `timeout` seconds; whether any held something."""
+    ready = select.select(list(chunks), [], [], timeout)[0]
+    for read_end in ready:
+        chunks[read_end].append(os.read(read_end, 65536))
+    return bool(ready)
+
+
+def spawned(
+    command: list[str], *, terminal: set[str], environment: dict[str, str] | None = None
+) -> tuple[int, str, str]:
+    """Run a command with the named streams on a pseudo-terminal: its exit code, out and err.
+
+    Output is read while the command runs, or a full terminal would stop it, and the write ends
+    stay open until it is read, because closing the last one discards what a terminal holds on
+    macOS (Linux keeps it).
+    """
     reads: dict[str, int] = {}
     writes: dict[str, int] = {}
     for name in ("out", "err"):
         reads[name], writes[name] = os.openpty() if name in terminal else os.pipe()
     env = {"PATH": os.environ["PATH"], "TERM": "xterm-256color", **(environment or {})}
     pid = os.posix_spawn(
-        sys.executable,
-        [sys.executable, "-m", "elenctic.cli", *argv],
+        command[0],
+        command,
         env,
         file_actions=[
             (os.POSIX_SPAWN_DUP2, writes["out"], 1),
             (os.POSIX_SPAWN_DUP2, writes["err"], 2),
         ],
     )
-    for write_end in writes.values():
-        os.close(write_end)
-    _, status = os.waitpid(pid, 0)
-    shown: dict[str, str] = {}
-    for name, read_end in reads.items():
-        chunks: list[bytes] = []
-        while select.select([read_end], [], [], 0.5)[0]:
-            try:
-                chunk = os.read(read_end, 65536)
-            except OSError:
-                break
-            if not chunk:
-                break
-            chunks.append(chunk)
-        os.close(read_end)
-        shown[name] = b"".join(chunks).decode().replace("\r\n", "\n")
-    return os.waitstatus_to_exitcode(status), shown["out"], shown["err"]
+    chunks: dict[int, list[bytes]] = {read_end: [] for read_end in reads.values()}
+    done, status = 0, 0
+    while not done:
+        _read_ready(chunks, 0.05)
+        done, status = os.waitpid(pid, os.WNOHANG)
+    while _read_ready(chunks, 0):
+        pass
+    for end in (*reads.values(), *writes.values()):
+        os.close(end)
+    out, err = (
+        b"".join(chunks[reads[name]]).decode().replace("\r\n", "\n") for name in ("out", "err")
+    )
+    return os.waitstatus_to_exitcode(status), out, err
+
+
+def test_a_terminal_shows_all_that_a_command_writes_however_much_it_writes() -> None:
+    much = 1 << 20
+    code, out, err = spawned(
+        [sys.executable, "-c", f"import sys; sys.stdout.write('x' * {much})"],
+        terminal={"out", "err"},
+    )
+    assert (code, len(out), err) == (0, much, "")
 
 
 def test_each_stream_is_colored_by_its_own_terminal(unmet: Path, missing: Path) -> None:
