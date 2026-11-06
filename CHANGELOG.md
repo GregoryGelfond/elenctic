@@ -118,6 +118,7 @@ All notable changes are recorded here. The format follows
   there is one mechanism for "does this pattern have this instance".
 
 ### Fixed
+- Reference: `elenctic version` exits `REPORTED` (0), not `CLAIMS_HOLD`.
 - A binding query with an anonymous variable, `@query yes { p(_, X) } = { … }`, is refused where it
   is read (`FAULT`, 2: "an anonymous variable has no binding to state: name it") instead of
   failing inside elenctic (`INTERNAL_ERROR`, 3); `bindings` raises `ValueError` for it. An instance

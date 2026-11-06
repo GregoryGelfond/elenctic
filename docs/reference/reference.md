@@ -20,7 +20,7 @@ Zero and negative values of `--max-seconds` and `--max-answer-sets` are a usage 
 choice is `Limits(max_seconds=…, max_answer_sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has default limits.
 
 `elenctic version`, `elenctic --version` and `elenctic -V` print the same two lines on stdout and
-exit `CLAIMS_HOLD` (0); `version` is a command, so a file of that name is written `./version`.
+exit `REPORTED` (0); `version` is a command, so a file of that name is written `./version`.
 `--version` and `-V` are options of `elenctic` itself, as in `git --version`: they stand before the
 command (or alone) and win over the rest of the line, so `elenctic --version test x.lp` prints the
 version; a command does not take them, so `elenctic test --version` is a usage error (`FAULT`, 2).
