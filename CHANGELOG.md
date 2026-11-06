@@ -7,6 +7,9 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- JSON Schema for the `--json` document: `docs/reference/output-v1.schema.json`, generated from the
+  result types `encode` walks (`elenctic.json_view.schema_document`); regenerate with
+  `scripts/write_output_schema.py`. A test fails if the committed file is stale.
 - `python -m elenctic` runs the same CLI as the `elenctic` console script (`src/elenctic/__main__.py`).
 - Import contracts (import-linter, in `pyproject.toml`): the layering, clingo reached only by the fifteen
   modules that read and run programs, clingcon only by `theory`, and `spans` free of both. They run

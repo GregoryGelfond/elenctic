@@ -1,0 +1,650 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GregoryGelfond/elenctic/docs/reference/output-v1.schema.json",
+  "title": "elenctic output schema 1",
+  "type": "object",
+  "required": [
+    "schema",
+    "run",
+    "exit_code"
+  ],
+  "properties": {
+    "schema": {
+      "const": 1
+    },
+    "run": {
+      "$ref": "#/$defs/run"
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "description": "The Exit of the test run (0, 1, 2, or 3)."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "all": {
+      "type": "object",
+      "required": [
+        "kind",
+        "parts"
+      ],
+      "properties": {
+        "kind": {
+          "const": "all"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/all"
+              },
+              {
+                "$ref": "#/$defs/any"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "any": {
+      "type": "object",
+      "required": [
+        "kind",
+        "parts"
+      ],
+      "properties": {
+        "kind": {
+          "const": "any"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/all"
+              },
+              {
+                "$ref": "#/$defs/any"
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "asks": {
+      "type": "object",
+      "required": [
+        "kind",
+        "answer",
+        "query",
+        "over"
+      ],
+      "properties": {
+        "kind": {
+          "const": "asks"
+        },
+        "answer": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "query": {
+          "$ref": "#/$defs/all"
+        },
+        "over": {
+          "type": "string",
+          "enum": [
+            "all",
+            "optimal"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "assigns": {
+      "type": "object",
+      "required": [
+        "kind",
+        "assignment",
+        "over"
+      ],
+      "properties": {
+        "kind": {
+          "const": "assigns"
+        },
+        "assignment": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/valuation"
+          }
+        },
+        "over": {
+          "type": "string",
+          "enum": [
+            "all",
+            "optimal"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "assumption": {
+      "type": "object",
+      "required": [
+        "kind",
+        "literal",
+        "holds"
+      ],
+      "properties": {
+        "kind": {
+          "const": "assumption"
+        },
+        "literal": {
+          "type": "string"
+        },
+        "holds": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "binds": {
+      "type": "object",
+      "required": [
+        "kind",
+        "answer",
+        "pattern",
+        "bindings",
+        "over"
+      ],
+      "properties": {
+        "kind": {
+          "const": "binds"
+        },
+        "answer": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "over": {
+          "type": "string",
+          "enum": [
+            "all",
+            "optimal"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "census": {
+      "type": "object",
+      "required": [
+        "kind",
+        "count",
+        "over"
+      ],
+      "properties": {
+        "kind": {
+          "const": "census"
+        },
+        "count": {
+          "type": "integer"
+        },
+        "over": {
+          "type": "string",
+          "enum": [
+            "all",
+            "optimal"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "claim": {
+      "type": "object",
+      "required": [
+        "kind",
+        "reading",
+        "scenario",
+        "span"
+      ],
+      "properties": {
+        "kind": {
+          "const": "claim"
+        },
+        "reading": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/satisfiable"
+            },
+            {
+              "$ref": "#/$defs/census"
+            },
+            {
+              "$ref": "#/$defs/witness"
+            },
+            {
+              "$ref": "#/$defs/assigns"
+            },
+            {
+              "$ref": "#/$defs/entails"
+            },
+            {
+              "$ref": "#/$defs/costs"
+            },
+            {
+              "$ref": "#/$defs/asks"
+            },
+            {
+              "$ref": "#/$defs/binds"
+            }
+          ]
+        },
+        "scenario": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assumption"
+          }
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        }
+      },
+      "additionalProperties": false
+    },
+    "costs": {
+      "type": "object",
+      "required": [
+        "kind",
+        "cost"
+      ],
+      "properties": {
+        "kind": {
+          "const": "costs"
+        },
+        "cost": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "kind",
+        "span",
+        "severity",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "const": "diagnostic"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "note"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ended": {
+      "type": "object",
+      "required": [
+        "kind",
+        "cut",
+        "optimum_unproven"
+      ],
+      "properties": {
+        "kind": {
+          "const": "ended"
+        },
+        "cut": {
+          "type": "string",
+          "enum": [
+            "max_answer_sets",
+            "max_seconds",
+            "interrupted"
+          ]
+        },
+        "optimum_unproven": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "entails": {
+      "type": "object",
+      "required": [
+        "kind",
+        "mode",
+        "literals",
+        "over"
+      ],
+      "properties": {
+        "kind": {
+          "const": "entails"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "cautious",
+            "brave"
+          ]
+        },
+        "literals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "over": {
+          "type": "string",
+          "enum": [
+            "all",
+            "optimal"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source",
+        "result"
+      ],
+      "properties": {
+        "kind": {
+          "const": "entry"
+        },
+        "source": {
+          "type": "string"
+        },
+        "result": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/report"
+            },
+            {
+              "$ref": "#/$defs/fault"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "fault": {
+      "type": "object",
+      "required": [
+        "kind",
+        "locus",
+        "diagnostics"
+      ],
+      "properties": {
+        "kind": {
+          "const": "fault"
+        },
+        "locus": {
+          "type": "string",
+          "enum": [
+            "program",
+            "request"
+          ]
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "kind",
+        "claim",
+        "verdict",
+        "detail"
+      ],
+      "properties": {
+        "kind": {
+          "const": "finding"
+        },
+        "claim": {
+          "$ref": "#/$defs/claim"
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "undecided"
+          ]
+        },
+        "detail": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/ended"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "position": {
+      "type": "object",
+      "required": [
+        "kind",
+        "line",
+        "column"
+      ],
+      "properties": {
+        "kind": {
+          "const": "position"
+        },
+        "line": {
+          "type": "integer"
+        },
+        "column": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "report": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source",
+        "findings",
+        "lints"
+      ],
+      "properties": {
+        "kind": {
+          "const": "report"
+        },
+        "source": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "lints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "kind",
+        "entries"
+      ],
+      "properties": {
+        "kind": {
+          "const": "run"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entry"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "satisfiable": {
+      "type": "object",
+      "required": [
+        "kind",
+        "expected"
+      ],
+      "properties": {
+        "kind": {
+          "const": "satisfiable"
+        },
+        "expected": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "span": {
+      "type": "object",
+      "required": [
+        "kind",
+        "source",
+        "start",
+        "end"
+      ],
+      "properties": {
+        "kind": {
+          "const": "span"
+        },
+        "source": {
+          "type": "string"
+        },
+        "start": {
+          "$ref": "#/$defs/position"
+        },
+        "end": {
+          "$ref": "#/$defs/position"
+        }
+      },
+      "additionalProperties": false
+    },
+    "valuation": {
+      "type": "object",
+      "required": [
+        "kind",
+        "variable",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "valuation"
+        },
+        "variable": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "witness": {
+      "type": "object",
+      "required": [
+        "kind",
+        "literals",
+        "over",
+        "assignment"
+      ],
+      "properties": {
+        "kind": {
+          "const": "witness"
+        },
+        "literals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "over": {
+          "type": "string",
+          "enum": [
+            "all",
+            "optimal"
+          ]
+        },
+        "assignment": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/valuation"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -7,11 +7,12 @@ import re
 import typing
 
 import pytest
+from write_output_schema import TARGET, render
 
 import elenctic
 from elenctic.contract import Census, Entails
 from elenctic.determination import AnswerSet, Incumbent, Truncation, WorldView
-from elenctic.json_view import SCHEMA, encode, kind_of, to_json
+from elenctic.json_view import SCHEMA, encode, kind_of, schema_document, schema_text, to_json
 from elenctic.report import Entry, Exit, Run
 from elenctic.spans import Position
 from elenctic.verdicts import Ended, Report
@@ -126,3 +127,20 @@ def test_a_search_cut_short_is_encoded_as_the_limit_that_ended_it() -> None:
         "cut": "max_seconds",
         "optimum_unproven": False,
     }
+
+
+def test_the_published_schema_is_what_the_types_describe() -> None:
+    assert TARGET.read_text() == render()
+
+
+def test_the_schema_document_names_schema_one_and_the_run_kinds() -> None:
+    document = schema_document()
+    properties = document["properties"]
+    defs = document["$defs"]
+    assert isinstance(properties, dict)
+    assert isinstance(defs, dict)
+    assert properties["schema"] == {"const": SCHEMA}
+    assert "run" in defs
+    assert "literal" not in defs
+    assert "pattern" not in defs
+    assert schema_text().endswith("\n")
