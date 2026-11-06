@@ -50,12 +50,15 @@ conda install -c conda-forge elenctic
 mamba install -c conda-forge elenctic
 ```
 
-From a clone of this repository (editable, with the lockfile):
+From source, straight from Git or from a clone:
 
 ```bash
-uv tool install .
+pip install 'elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic-exp'
+
+git clone https://github.com/GregoryGelfond/elenctic-exp && cd elenctic-exp
+pip install '.[theory]'
 uv tool install '.[theory]'
-# or: pixi install -e theory
+pixi install -e theory     # the locked environment
 ```
 
 ### Container
