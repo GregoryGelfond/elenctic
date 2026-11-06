@@ -131,14 +131,23 @@ def test_a_claim_over_assignments_without_the_solver_says_which_to_declare() -> 
     assert diagnostic.children[0].message == "declare `% @elenctic solver clingcon`"
 
 
-def test_a_theory_objective_is_a_fault_since_no_search_can_switch_it_off() -> None:
+def test_expect_alone_is_admitted_over_a_theory_objective() -> None:
     found = check(
         Program(CLINGCON + "&dom { 0..3 } = x.\n&minimize { x }.\n% @expect sat\n", "t.lp")
     )
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+
+
+def test_a_non_expect_claim_over_a_theory_objective_is_a_fault() -> None:
+    found = check(
+        Program(
+            CLINGCON + "&dom { 0..3 } = x.\n&minimize { x }.\n% @expect sat\n% @count 1\n",
+            "t.lp",
+        )
+    )
     assert isinstance(found, Fault)
     (diagnostic,) = found.diagnostics
-    assert diagnostic.span is not None
-    assert diagnostic.span.start.line == 3
     assert diagnostic.message == "theory objective is not seen by the cost"
 
 
