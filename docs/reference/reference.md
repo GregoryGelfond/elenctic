@@ -16,9 +16,17 @@ like a command is written `./why`.
 | `--icons[=WHEN]` | mark claims with Nerd Font glyphs: `auto`, `always` or `never`; given bare it is `auto`, left out it is `never`. A value takes an equals sign: `--icons always` names a path |
 | `--max-seconds SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default: 30) |
 | `--max-answer-sets N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default: 100,000) |
+| `--root DIR` | the root: the directory every path and every `#include` must lie under (default: each directory searched, or a named file's own directory) |
 
 Zero and negative values of `--max-seconds` and `--max-answer-sets` are a usage error (`FAULT`, 2). In the library the same
 choice is `Limits(max_seconds=…, max_answer_sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has default limits.
+
+Every file a case reaches by `#include` must lie under its root once symbolic links and `..` are
+resolved; the root is `--root DIR`, else the directory searched, else a named file's own directory.
+A case that includes a file outside it is refused (`FAULT`, 2) before it runs, naming the path and
+never its contents. With `--root`, a path not under DIR is refused the same way and the other paths
+still run; a `--root` that is not a directory is a usage error. In the library the root is
+`check(program, root=…)`, by default the program's own directory.
 
 `elenctic version`, `elenctic --version` and `elenctic -V` print the same two lines on stdout and
 exit `REPORTED` (0); `version` is a command, so a file of that name is written `./version`.

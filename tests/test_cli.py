@@ -449,7 +449,7 @@ def test_json_carries_verdict_and_solver_without_program_text(
     assert entry["result"]["solver"] == "clingo"
 
 
-def test_an_include_outside_the_corpus_is_refused(
+def test_an_include_outside_the_root_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     outside = write(tmp_path, "outside.lp", "secret(42).\n")
@@ -459,12 +459,16 @@ def test_an_include_outside_the_corpus_is_refused(
     write(corpus, "case.lp", case)
     code, out, err = run_both(capsys, corpus)
     assert code == Exit.FAULT
-    assert "outside the corpus" in err
+    assert f"which is outside the root {corpus}" in err
+    assert (
+        "help: test from a directory that holds every included file, or name one as the root "
+        "(`--root` on the command line, `root=` to `check`)"
+    ) in err
     assert "secret(42)" not in err
     assert "secret(42)" not in out
 
 
-def test_an_include_under_the_corpus_root_is_allowed(
+def test_an_include_under_the_root_is_allowed(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     write(tmp_path, "lib.lp", "p.\n")
@@ -472,3 +476,168 @@ def test_an_include_under_the_corpus_root_is_allowed(
     deep.mkdir(parents=True)
     write(deep, "case.lp", '#include "../../lib.lp".\n% @expect sat\n')
     assert run(capsys, tmp_path) == (Exit.CLAIMS_HOLD, "1/1 passed\n")
+
+
+def sibling_layout(tmp_path: Path) -> Path:
+    """Lay out a case under `scenarios/` that includes a library under `encodings/`."""
+    (tmp_path / "encodings").mkdir()
+    write(tmp_path / "encodings", "lib.lp", "p.\n")
+    scenario = tmp_path / "scenarios" / "one"
+    scenario.mkdir(parents=True)
+    write(scenario, "case.lp", '#include "../../encodings/lib.lp".\n% @expect sat\n')
+    return scenario
+
+
+def test_root_lets_a_subtree_include_from_a_sibling(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    scenario = sibling_layout(tmp_path)
+    assert run(capsys, "--root", tmp_path, tmp_path / "scenarios") == (
+        Exit.CLAIMS_HOLD,
+        "1/1 passed\n",
+    )
+    assert run(capsys, "--root", tmp_path, scenario / "case.lp") == (
+        Exit.CLAIMS_HOLD,
+        "1/1 passed\n",
+    )
+
+
+def test_without_root_a_subtree_is_its_own_root(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    scenario = sibling_layout(tmp_path)
+    code, out, err = run_both(capsys, tmp_path / "scenarios")
+    assert code == Exit.FAULT
+    assert f"which is outside the root {tmp_path / 'scenarios'}" in err
+    assert "`--root`" in err
+    assert out == "0/1 passed, 1 error\n"
+    assert run_both(capsys, scenario / "case.lp")[0] == Exit.FAULT
+
+
+def test_root_still_refuses_an_include_that_leaves_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sibling_layout(tmp_path)
+    code, _out, err = run_both(capsys, "--root", tmp_path / "scenarios", tmp_path / "scenarios")
+    assert code == Exit.FAULT
+    assert f"which is outside the root {tmp_path / 'scenarios'}" in err
+
+
+def test_a_path_outside_the_root_is_refused_and_the_rest_still_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    write(root, "in.lp", "p.\n% @expect sat\n")
+    stray = write(tmp_path, "stray.lp", "secret(42).\n% @expect sat\n")
+    code, out, err = run_both(capsys, "--root", root, root, stray)
+    assert code == Exit.FAULT
+    assert err.splitlines()[0] == f"error: `{stray}` is outside the root {root}"
+    assert "help: name paths under the root, or choose a root that holds them" in err
+    assert "secret(42)" not in err
+    assert out == "1/2 passed, 1 error\n"
+
+
+@pytest.mark.parametrize(
+    ("argument", "held"),
+    [
+        ("root/../stray.lp", False),
+        ("root/sub/../in.lp", True),
+        ("root/..", False),
+        ("root", True),
+    ],
+)
+def test_root_compares_paths_after_resolving_dot_dot(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], argument: str, *, held: bool
+) -> None:
+    root = tmp_path / "root"
+    (root / "sub").mkdir(parents=True)
+    write(root, "in.lp", "p.\n% @expect sat\n")
+    write(tmp_path, "stray.lp", "p.\n% @expect sat\n")
+    code, _out, err = run_both(capsys, "--root", root, tmp_path / argument)
+    assert (code == Exit.CLAIMS_HOLD) is held
+    assert ("is outside the root" in err) is not held
+
+
+def test_root_follows_symbolic_links_before_it_compares(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    write(elsewhere, "case.lp", "p.\n% @expect sat\n")
+    (root / "file.lp").symlink_to(elsewhere / "case.lp")
+    (root / "dir").symlink_to(elsewhere, target_is_directory=True)
+    for linked in (root / "file.lp", root / "dir"):
+        code, _out, err = run_both(capsys, "--root", root, linked)
+        assert code == Exit.FAULT
+        assert f"`{linked}` is outside the root {root}" in err
+    alias = tmp_path / "alias"
+    alias.symlink_to(elsewhere, target_is_directory=True)
+    assert run(capsys, "--root", alias, elsewhere) == (Exit.CLAIMS_HOLD, "1/1 passed\n")
+
+
+def test_a_walked_link_out_of_the_root_is_refused_by_containment(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = write(tmp_path, "case.lp", "p.\n% @expect sat\n")
+    (root / "link.lp").symlink_to(outside)
+    code, _out, err = run_both(capsys, "--root", root, root)
+    assert code == Exit.FAULT
+    assert f"this case loads {outside}, which is outside the root {root}" in err
+
+
+@pytest.mark.parametrize("name", ["absent", "file.lp"])
+def test_root_must_be_a_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    write(tmp_path, "file.lp", "p.\n% @expect sat\n")
+    with pytest.raises(SystemExit) as usage:
+        main(["--root", str(tmp_path / name), str(tmp_path)])
+    assert usage.value.code == Exit.FAULT
+    assert f"`{tmp_path / name}` is not a directory" in capsys.readouterr().err
+
+
+def test_a_refused_path_is_a_fault_entry_in_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    stray = write(tmp_path, "stray.lp", "p.\n% @expect sat\n")
+    code, out = run(capsys, "--json", "--root", root, stray)
+    assert code == Exit.FAULT
+    (entry,) = json.loads(out)["run"]["entries"]
+    assert entry["source"] == str(stray)
+    assert entry["result"]["kind"] == "fault"
+
+
+def test_refusals_keep_the_order_the_paths_were_given(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    first = write(root, "a.lp", "p.\n% @expect sat\n")
+    stray = write(tmp_path, "stray.lp", "p.\n% @expect sat\n")
+    last = write(root, "b.lp", "p.\n% @expect sat\n")
+    code, out = run(capsys, "--json", "--root", root, first, stray, last)
+    assert code == Exit.FAULT
+    entries = json.loads(out)["run"]["entries"]
+    assert [entry["source"] for entry in entries] == [str(first), str(stray), str(last)]
+
+
+def test_a_symbolic_link_loop_is_unreadable_not_a_crash(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "x.lp").symlink_to(root / "y.lp")
+    (root / "y.lp").symlink_to(root / "x.lp")
+    write(root, "ok.lp", "p.\n% @expect sat\n")
+    for argv in (["--root", root, root / "x.lp"], [root / "x.lp"], ["--root", root, root]):
+        code, out, err = run_both(capsys, "--color", "never", *argv)
+        assert code == Exit.FAULT
+        assert "cannot read" in err
+        assert "error" in out

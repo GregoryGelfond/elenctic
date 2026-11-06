@@ -7,6 +7,8 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `--root DIR`: one root for every path and `#include` of a run, so a subtree whose cases include
+  files from a sibling directory can be tested on its own.
 - `Containerfile`: a local multi-stage recipe for the CLI (uv sync from the lockfile with the
   theory extra). Build it yourself; there is no published image and no CI image build.
 - Pixi environments `py314` and `py315` for the test suite under those Pythons (`pixi run -e py314 test`).
@@ -70,7 +72,7 @@ All notable changes are recorded here. The format follows
 ### Fixed
 - Docs: JSON `exit_code` includes 3; guides state `world_view` on a truncation; `@expect`-only searches stop once satisfiability is decided.
 - Guides: an interrupted `check` yields undecided findings; `solve` yields `Inconclusive`.
-- An `#include` that resolves outside the corpus root is refused before the case is run; the diagnostic names the escaping path and never its contents.
+- An `#include` that resolves outside the root is refused before the case is run; the diagnostic names the escaping path and never its contents.
 - Non-ASCII outside strings and comments is refused with a located diagnostic before clingo sees
   it (program text, `#include`d files, and tag payloads), so a bad character never aborts the
   process; `--json` still emits a document.
@@ -98,6 +100,7 @@ All notable changes are recorded here. The format follows
 - A second SIGINT restores the default handler so the process can exit 130.
 
 ### Changed
+- The include refusal says `outside the root DIR` and has a help line.
 - Consistency across docs, help and internals: truncation prose; reserved-command helps as imperatives; `--help` says "answer set programs"; `(default: …)` in the reference; "source" for a checked unit; stderr prefix rule; `render_run`, `holds_flag`, `Classes.merge`; CLI writes with `write` only; American-spelling and reading-name notes in the README; mechanical checks in `tests/test_consistency.py`.
 - Diagnostics follow the rustc model by default (`--format full`): `error: message`, ` --> path:line:col`, a source snippet with carets and a primary label, then `= note:` / `= help:` lines. `--format short` keeps today's one-line gcc form; `--json` is an alias of `--format json`. Messages are lowercase with no trailing period; fix-it wording stands only on `help`. Clingo's byte columns are converted to Unicode scalar columns so carets land. The JSON schema keeps `SCHEMA = 1` and adds optional `label`, `children`, and `code` on `diagnostic` (no codes in 1.0).
 - CI cancels superseded pull-request runs (`concurrency` with `cancel-in-progress` on pull requests only).

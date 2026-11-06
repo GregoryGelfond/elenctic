@@ -66,6 +66,15 @@ def _limit_reader[N: (int, float)](
     return parse
 
 
+def _directory(text: str) -> Path:
+    """Read the value of `--root`: a directory that exists."""
+    path = Path(text)
+    if not path.is_dir():
+        message = f"`{text}` is not a directory"
+        raise argparse.ArgumentTypeError(message)
+    return path
+
+
 _seconds_limit = _limit_reader(float, "a positive number of seconds")
 _answer_sets_limit = _limit_reader(int, "a positive integer")
 
@@ -133,6 +142,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     test.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
     test.add_argument(
+        "--root",
+        type=_directory,
+        metavar="DIR",
+        help="the directory every path and every `#include` must lie under (default: each "
+        "directory searched, or a named file's own directory)",
+    )
+    test.add_argument(
         option(Truncation.MAX_SECONDS),
         type=_seconds_limit,
         default=DEFAULT_MAX_SECONDS,
@@ -187,20 +203,37 @@ def _normalized(argv: Sequence[str]) -> list[str]:
     return [*arguments[:at], "test", *arguments[at:]]
 
 
-def _sources(paths: Iterable[Path]) -> list[tuple[Path, bool, Path]]:
-    """Yield each `.lp` path, whether the user named it, and the corpus root that contains it.
+type _Source = tuple[Path, bool, Path]
+"""A `.lp` path to check, whether the user named it, and its root."""
 
-    A walked directory is the root. A named file's own directory is the root.
-    """
-    return [
-        (
-            found,
-            not path.is_dir(),
-            path.resolve() if path.is_dir() else found.parent.resolve(),
-        )
-        for path in paths
-        for found in (sorted(path.rglob("*.lp")) if path.is_dir() else [path])
-    ]
+
+def _plan(paths: Sequence[Path], root: Path | None) -> list[_Source | Entry]:
+    """Return each path's sources in the order given; a path outside `root` is refused instead."""
+    boundary = None if root is None else root.resolve()
+    return [item for path in paths for item in _placed(path, boundary)]
+
+
+def _placed(path: Path, boundary: Path | None) -> list[_Source | Entry]:
+    if boundary is not None and not path.resolve().is_relative_to(boundary):
+        return [_outside(path, boundary)]
+    return [*_sources(path, boundary)]
+
+
+def _sources(path: Path, boundary: Path | None) -> list[_Source]:
+    """Return the `.lp` files of `path` with their root: `boundary`, else the path's own."""
+    if not path.is_dir():
+        return [(path, True, path.parent.resolve() if boundary is None else boundary)]
+    root = path.resolve() if boundary is None else boundary
+    return [(found, False, root) for found in sorted(path.rglob("*.lp"))]
+
+
+def _outside(path: Path, root: Path) -> Entry:
+    problem = failure(
+        None,
+        f"`{path}` is outside the root {root}",
+        help=("name paths under the root, or choose a root that holds them",),
+    )
+    return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
 
 
 def _unreadable_note(error: OSError | UnicodeDecodeError) -> str:
@@ -227,7 +260,7 @@ def _not_a_case(path: Path, text: str) -> Fault:
     )
 
 
-def _walked_notes(sources: list[tuple[Path, bool, Path]]) -> tuple[Diagnostic, ...]:
+def _walked_notes(sources: list[_Source]) -> tuple[Diagnostic, ...]:
     """Return notes for walked libraries whose `@tag` looks misspelled (forgotten cases)."""
     found: list[Diagnostic] = []
     for path, named, _root in sources:
@@ -275,6 +308,14 @@ def _entry(
     return None if result is None else Entry(program.source, result, program.text)
 
 
+def _checked(item: _Source | Entry, limits: Limits, interrupt: Interrupt) -> Entry | None:
+    """Check a planned source; a refusal stands as it is."""
+    if isinstance(item, Entry):
+        return item
+    path, named, root = item
+    return _entry(path, limits, interrupt, named=named, root=root)
+
+
 def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str]) -> Presentation:
     """Decide once how each stream is written: the one place that reads the environment.
 
@@ -307,13 +348,11 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     limits = Limits(max_seconds=arguments.max_seconds, max_answer_sets=arguments.max_answer_sets)
     interrupt = Interrupt()
     signal.signal(signal.SIGINT, _sigint(interrupt))
-    sources = _sources(arguments.paths)
-    entries = [
-        _entry(path, limits, interrupt, named=named, root=root) for path, named, root in sources
-    ]
+    plan = _plan(arguments.paths, arguments.root)
+    entries = [_checked(item, limits, interrupt) for item in plan]
     run = Run(
         tuple(entry for entry in entries if entry is not None),
-        notes=_walked_notes(sources),
+        notes=_walked_notes([item for item in plan if not isinstance(item, Entry)]),
     )
     fmt = "json" if arguments.json else arguments.format
     if fmt == "json":

@@ -149,7 +149,7 @@ def included_sources(program: Program) -> frozenset[Path]:
 
 
 def containment(program: Program, root: Path) -> Fault | None:
-    """Refuse a program that `#include`s a file outside `root` (the corpus the run was pointed at).
+    """Refuse a program that `#include`s a file outside `root`, the directory the run is held to.
 
     The diagnostic names escaping paths only — never their contents — so a refused include cannot
     publish another file through elenctic's own report.
@@ -164,8 +164,14 @@ def containment(program: Program, root: Path) -> Fault | None:
         (
             failure(
                 None,
-                f"this case loads {named}, which is outside the corpus at {root}",
-                notes=("a case may only include files from the corpus it belongs to",),
+                f"this case loads {named}, which is outside the root {root}",
+                notes=("a case may only include files under its root",),
+                help=(
+                    (
+                        "test from a directory that holds every included file, or name one "
+                        "as the root (`--root` on the command line, `root=` to `check`)"
+                    ),
+                ),
             ),
         ),
     )

@@ -162,7 +162,7 @@ def _natively(
     return [decided.get(claim, finding) for claim, finding in zip(group, findings, strict=True)]
 
 
-def _corpus_root(program: Program, root: Path | None) -> Path | None:
+def _root(program: Program, root: Path | None) -> Path | None:
     """Return the containment boundary: `root`, else the program's directory, else none."""
     if root is not None:
         return root
@@ -173,7 +173,7 @@ def _prepared(program: Program, root: Path | None) -> tuple[Contract, Grounded] 
     """Parse, contain, ground and soundness-check `program`; `None` if it is not a case."""
     if not is_case(program.text):
         return None
-    boundary = _corpus_root(program, root)
+    boundary = _root(program, root)
     if boundary is not None and (refused := containment(program, boundary)) is not None:
         return refused
     contract = parse_contract(program.text, program.source)
@@ -196,7 +196,7 @@ def check(
 ) -> Report | Fault | None:
     """Check the contract written in `program`; `None` if it carries none.
 
-    `root` is the corpus containment boundary: every `#include` must resolve under it. When omitted
+    `root` is the containment boundary: every `#include` must resolve under it. When omitted
     and the program has a path, the program's directory is the boundary (a named file's own dir).
     """
     opened = _prepared(program, root)
