@@ -109,7 +109,9 @@ def _absent(solver: Solver, _program: Program) -> Fault:
             failure(
                 None,
                 f"solver `{solver}` is not installed",
-                help=(f"install `elenctic[{_EXTRA}]`, or use the pixi `{_EXTRA}` environment",),
+                help=(
+                    f"install `elenctic[{_EXTRA}]`, or install clingcon in the same environment",
+                ),
             ),
         ),
     )

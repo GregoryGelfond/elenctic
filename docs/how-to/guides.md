@@ -45,7 +45,7 @@ See [`optimum.lp`](../reference/examples.md).
 
 ## Check a program with integer constraints
 
-Install `elenctic[theory]` (or use the pixi `theory` environment), write
+Install `elenctic[theory]` (or install clingcon in the same environment), write
 `% @elenctic solver clingcon`, then `@assign { x=1 }` and `@answer-set { L } where { x=1 }`. Under
 clingcon an answer is a shown set with its assignment, so `@count` counts both. See
 [`clingcon.lp`](../reference/examples.md).

@@ -17,7 +17,7 @@ from elenctic.theory import Clingcon, Plain, loaded_solvers
 
 CLINGCON = "% @elenctic solver clingcon\n"
 ABSENT = "solver `clingcon` is not installed"
-ABSENT_HELP = "install `elenctic[theory]`, or use the pixi `theory` environment"
+ABSENT_HELP = "install `elenctic[theory]`, or install clingcon in the same environment"
 
 
 @pytest.fixture
