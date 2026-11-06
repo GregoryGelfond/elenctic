@@ -120,3 +120,7 @@ def test_a_compound_and_a_substitution_are_written_as_the_terms_they_hold() -> N
     term = Compound("f", (Variable("X"), Number(2)))
     assert (str(term), repr(term)) == ("f(X,2)", "Compound(f(X,2))")
     assert str(Substitution({Variable("X"): term, Variable("Y"): Number(1)})) == "{X=f(X,2), Y=1}"
+
+
+def test_a_one_element_tuple_keeps_its_trailing_comma() -> None:
+    assert render(Compound("", (X,))) == "(X,)"

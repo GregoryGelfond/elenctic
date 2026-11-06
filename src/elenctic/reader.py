@@ -83,6 +83,6 @@ def parse_contract(text: str, source: str = "<string>") -> Contract:
     expect_seen = any(block.tag == "expect" for block in each)
     return Contract(
         tuple(claims),
-        (*problems, *misdeclared, *wellformed(claims, source, expect_seen=expect_seen)),
+        (*problems, *misdeclared, *wellformed(claims, expect_seen=expect_seen)),
         solver,
     )

@@ -1,6 +1,17 @@
 """What would make a verdict untrustworthy: a claim asks what the program or the solver lacks."""
 
-from elenctic.contract import Asks, Assigns, Binds, Claim, Contract, Reading, Solver, Witness, over
+from elenctic.contract import (
+    Asks,
+    Assigns,
+    Binds,
+    Claim,
+    Contract,
+    Reading,
+    Satisfiable,
+    Solver,
+    Witness,
+    over,
+)
 from elenctic.determination import Range
 from elenctic.facts import Facts
 from elenctic.grounded import Grounded
@@ -43,7 +54,7 @@ def _read(reading: Reading) -> frozenset[Signature]:
 def unsound(contract: Contract, grounded: Grounded) -> list[Diagnostic]:
     """Find what would make a verdict untrustworthy: a claim asks what the program lacks."""
     return [
-        *_theoretical(contract.solver, grounded.facts),
+        *_theoretical(contract.solver, grounded.facts, contract.claims),
         *(
             diagnostic
             for claim in contract.claims
@@ -70,8 +81,10 @@ def hidden_reads(claims: list[Claim] | tuple[Claim, ...], grounded: Grounded) ->
     ]
 
 
-def _theoretical(solver: Solver, facts: Facts) -> list[Diagnostic]:
-    """Find theory atoms clingo would ignore, or a theory objective clingcon cannot switch off."""
+def _theoretical(
+    solver: Solver, facts: Facts, claims: tuple[Claim, ...] | list[Claim]
+) -> list[Diagnostic]:
+    """Find theory atoms clingo ignores, or a theory objective non-`@expect` claims cannot use."""
     if facts.theory is not None and solver is Solver.CLINGO:
         return [
             failure(
@@ -81,7 +94,9 @@ def _theoretical(solver: Solver, facts: Facts) -> list[Diagnostic]:
                 help=("declare `% @elenctic solver clingcon` to check them with clingcon",),
             )
         ]
-    if facts.objective is not None:
+    if facts.objective is not None and not all(
+        isinstance(claim.reading, Satisfiable) for claim in claims
+    ):
         return [
             failure(
                 facts.objective,

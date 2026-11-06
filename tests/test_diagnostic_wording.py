@@ -147,7 +147,7 @@ def test_clingo_reports_byte_columns_and_we_convert_them_before_carets() -> None
 
 
 def test_wellformed_reports_missing_expect_when_none_was_seen() -> None:
-    found = wellformed([], "x.lp")
+    found = wellformed([])
     assert [d.message for d in found] == ["missing `@expect`"]
 
 

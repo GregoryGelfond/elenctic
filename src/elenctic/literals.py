@@ -77,5 +77,9 @@ class Assumption:
     literal: Literal
     holds: bool = True
 
+    @override
+    def __str__(self) -> str:
+        return str(self.literal) if self.holds else f"not {self.literal}"
+
 
 type Scenario = frozenset[Assumption]

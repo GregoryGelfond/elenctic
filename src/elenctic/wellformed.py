@@ -42,10 +42,11 @@ def _contradiction(
             "answer-set claim under `@expect unsat`",
             label="claims an answer set",
         )
-    if claim.scenario in sat and denies_answer_sets(reading):
+    if claim.scenario in sat and isinstance(reading, Census) and reading.count == 0:
+        word = "optimal " if reading.over is Range.OPTIMAL else ""
         return failure(
             claim.span,
-            "`@count 0` contradicts `@expect sat`",
+            f"`@count {word}0` contradicts `@expect sat`",
             label="claims no answer set",
             help=("use `@expect unsat`",),
         )
@@ -78,16 +79,37 @@ def _nested(claims: list[Claim]) -> list[Diagnostic]:
     ]
 
 
-def wellformed(claims: list[Claim], source: str, *, expect_seen: bool = False) -> list[Diagnostic]:
+def _repeated_counts(claims: list[Claim]) -> list[Diagnostic]:
+    """Refuse a second `@count` for the same scenario and range."""
+    seen: set[tuple[Scenario, Range]] = set()
+    repeated: list[Diagnostic] = []
+    for claim in claims:
+        if not isinstance(claim.reading, Census):
+            continue
+        key = (claim.scenario, claim.reading.over)
+        if key in seen:
+            tag = "@count optimal" if claim.reading.over is Range.OPTIMAL else "@count"
+            repeated.append(
+                failure(
+                    claim.span,
+                    f"`{tag}` given more than once",
+                    label="given again here",
+                )
+            )
+        else:
+            seen.add(key)
+    return repeated
+
+
+def wellformed(claims: list[Claim], *, expect_seen: bool = False) -> list[Diagnostic]:
     """Find what no single claim shows wrong: a missing or doubled `@expect`, and claims at odds.
 
-    `source` names the file; a missing `@expect` has no span, so the path comes from the entry.
     `expect_seen` is true when an `@expect` tag was written, even if it did not read: then
     `missing` is not emitted on top of that tag's own diagnostic.
     """
-    _ = source
     return [
         *_expectations(claims, expect_seen=expect_seen),
         *_exclusions(claims),
+        *_repeated_counts(claims),
         *_nested(claims),
     ]

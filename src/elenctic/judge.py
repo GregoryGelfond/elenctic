@@ -54,7 +54,7 @@ def _optimal(
 
 
 def _core_text(refutation: These) -> str:
-    core = ", ".join(sorted(str(a.literal) for a in refutation.core))
+    core = ", ".join(sorted(str(a) for a in refutation.core))
     caveat = (
         "" if refutation.minimal else "; the search was truncated, so the core may not be minimal"
     )

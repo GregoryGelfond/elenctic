@@ -150,7 +150,10 @@ def render(term: Term) -> str:
     def assemble(node: Term, results: list[str]) -> str:
         match node:
             case Compound(name, _, positive):
-                return f"{'' if positive else '-'}{name}({','.join(results)})"
+                body = ",".join(results)
+                if name == "" and len(results) == 1:
+                    body += ","
+                return f"{'' if positive else '-'}{name}({body})"
             case Variable(name):
                 return name
             case _:

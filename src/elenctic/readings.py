@@ -30,7 +30,12 @@ def expect(block: Block, head: list[Element]) -> Parsed[Reading]:
 
 def count(block: Block, head: list[Element]) -> Parsed[Reading]:
     over, rest = read_range(head)
-    if len(rest) == 1 and not rest[0].braced and rest[0].text.isdecimal():
+    if (
+        len(rest) == 1
+        and not rest[0].braced
+        and rest[0].text.isascii()
+        and rest[0].text.isdecimal()
+    ):
         return Census(int(rest[0].text), over)
     return failure(
         pointing(block, rest),

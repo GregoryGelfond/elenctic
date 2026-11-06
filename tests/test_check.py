@@ -559,3 +559,19 @@ def test_an_expect_only_case_never_converts_literals(monkeypatch: pytest.MonkeyP
     assert isinstance(found, Report)
     assert found.verdict is Verdict.PASS
     assert calls == []
+
+
+def test_a_second_count_for_the_same_cell_is_refused() -> None:
+    (message,) = faults("{a; b}.\n% @expect sat\n% @count 4\n% @count 3\n")
+    assert "`@count` given more than once" in message
+
+
+def test_count_optimal_zero_names_optimal_in_the_contradiction() -> None:
+    (message,) = faults("{a}.\n#minimize { 1 : a }.\n% @expect sat\n% @count optimal 0\n")
+    assert "`@count optimal 0` contradicts `@expect sat`" in message
+
+
+def test_a_refutation_core_shows_not() -> None:
+    found = run("a.\n% @expect sat\n% @answer-set { a } assuming { not a }\n")
+    assert found.findings[1].verdict is Verdict.FAIL
+    assert "not a" in str(found.findings[1].detail)

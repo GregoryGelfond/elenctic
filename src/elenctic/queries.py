@@ -8,7 +8,7 @@ from elenctic.operands import pointing, read_range, shown
 from elenctic.query import All, Answer
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Parsed, failure
-from elenctic.syntax import Item, positive, read_literals
+from elenctic.syntax import Item, literals, read_literals
 from elenctic.tags import Block, Element
 
 
@@ -55,13 +55,27 @@ def query(block: Block, head: list[Element]) -> Parsed[Reading]:
 def _asks(
     block: Block, answer: Answer, items: tuple[Item, ...], element: Element, over: Range
 ) -> Parsed[Reading]:
-    grounds = positive(items)
-    if not grounds:
+    where = block.covering(element)
+    if any(item.negated for item in items):
         return failure(
-            block.covering(element),
+            where,
+            "query uses `not`",
+            label="`not` is not a query atom",
+            help=("drop `not`, or state a positive pattern with bindings",),
+        )
+    grounds = literals(items)
+    if grounds is None:
+        return failure(
+            where,
             "query with variables states no bindings",
             label="has variables",
-            help=("state its bindings: `{ q(X) } = { ... }`",),
+            help=(f"state its bindings: `{{ {shown(element)} }} = {{ ... }}`",),
+        )
+    if not grounds:
+        return failure(
+            where,
+            "expected at least one atom, found `{ }`",
+            label="empty query",
         )
     return Asks(answer, All(tuple(grounds)), over)
 

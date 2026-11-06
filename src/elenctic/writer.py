@@ -22,7 +22,8 @@ from elenctic.query import All
 
 def braces(literals: Iterable[Literal]) -> str:
     """Write literals as the `{ ... }` the contract syntax uses, in a fixed order."""
-    return "{ " + ", ".join(map(str, sorted(literals))) + " }"
+    parts = ", ".join(map(str, sorted(literals)))
+    return "{ }" if not parts else "{ " + parts + " }"
 
 
 def _bindings(pattern: Pattern, found: frozenset[tuple[Symbol, ...]]) -> str:
@@ -39,7 +40,7 @@ def _optimally(over: Range) -> str:
 def bound(assignment: Assignment) -> str:
     """Write an assignment as the `{ term=integer, ... }` the contract syntax uses."""
     written = sorted(f"{v.variable}={v.value}" for v in assignment)
-    return "{ " + ", ".join(written) + " }"
+    return "{ }" if not written else "{ " + ", ".join(written) + " }"
 
 
 def where(assignment: Assignment) -> str:
