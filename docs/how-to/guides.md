@@ -21,8 +21,9 @@ contain `coffee` and not `tea`. With none, the verdict is `fail`.
 
 ## Cancel a search
 
-Pass an `Interrupt` to `check` or `solve` and call `pull()` from any thread. The result is
-`Inconclusive` with the truncation `interrupted`.
+Pass an `Interrupt` to `check` or `solve` and call `pull()` from any thread. `solve` returns
+`Inconclusive` with the truncation `interrupted`; `check` returns a `Report` whose findings are
+`undecided` for the same reason.
 
 ## Use the kernel without a contract
 

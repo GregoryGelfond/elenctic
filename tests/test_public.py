@@ -62,6 +62,9 @@ def _elenctic_types(annotation: object) -> Iterator[object]:
             yield annotation
         yield from _elenctic_types(annotation.__value__)
         return
+    origin = typing.get_origin(annotation)
+    if isinstance(origin, type) and _ours(origin):
+        yield origin
     if isinstance(annotation, type) and _ours(annotation):
         yield annotation
     for part in typing.get_args(annotation):
@@ -139,3 +142,10 @@ def test_the_reference_has_a_row_for_every_exported_name() -> None:
     assert missing == []
     rows = [line for line in section.splitlines() if line.startswith("| `")]
     assert len(rows) == len(elenctic.__all__)
+
+
+def test_a_generic_annotation_yields_its_origin() -> None:
+    from elenctic.determination import AnswerSets, Consistent
+
+    names = {t.__name__ for t in _elenctic_types(Consistent[AnswerSets]) if isinstance(t, type)}
+    assert names == {"Consistent", "AnswerSets"}

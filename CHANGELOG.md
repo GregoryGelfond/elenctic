@@ -66,6 +66,7 @@ All notable changes are recorded here. The format follows
   section of the reference.
 
 ### Fixed
+- Guides: an interrupted `check` yields undecided findings; `solve` yields `Inconclusive`.
 - An `#include` that resolves outside the corpus root is refused before the case is run; the diagnostic names the escaping path and never its contents.
 - Non-ASCII outside strings and comments is refused with a located diagnostic before clingo sees
   it (program text, `#include`d files, and tag payloads), so a bad character never aborts the
