@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `python -m elenctic` runs the same CLI as the `elenctic` console script (`src/elenctic/__main__.py`).
 - Import contracts (import-linter, in `pyproject.toml`): the layering, clingo reached only by the fifteen
   modules that read and run programs, clingcon only by `theory`, and `spans` free of both. They run
   in `pixi run check` and in CI.

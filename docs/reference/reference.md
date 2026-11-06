@@ -2,7 +2,7 @@
 
 ## Command line
 
-`elenctic [test] PATH…` checks programs against the contracts in their comments. `PATH` is an
+`elenctic [test] PATH…` checks programs against the contracts in their comments. `python -m elenctic` is the same command line as the `elenctic` console script. `PATH` is an
 `.lp` file or a directory searched for them. With no command the arguments are paths; a path named
 like a command is written `./why`.
 

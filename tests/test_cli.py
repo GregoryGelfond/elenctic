@@ -1,5 +1,6 @@
 import json
 import signal
+import subprocess
 import sys
 from pathlib import Path
 
@@ -238,3 +239,16 @@ def test_a_search_that_reaches_the_answer_set_limit_names_the_option_that_set_it
     code, out = run(capsys, path, "--max-answer-sets", "1")
     assert code == Exit.CLAIM_UNMET
     assert "search ended: answer-set limit reached (--max-answer-sets)" in out
+
+
+def test_python_m_elenctic_runs_the_same_cli() -> None:
+    help_main = subprocess.run(
+        [sys.executable, "-m", "elenctic", "--help"], check=False, capture_output=True, text=True
+    )
+    assert help_main.returncode == 0
+    assert "usage: elenctic" in help_main.stdout
+    version = subprocess.run(
+        [sys.executable, "-m", "elenctic", "-V"], check=False, capture_output=True, text=True
+    )
+    assert version.returncode == 0
+    assert version.stdout.startswith("elenctic ")
