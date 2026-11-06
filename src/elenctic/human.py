@@ -189,7 +189,9 @@ def _fault(
 
 def _entry(entry: Entry, style: Style, *, verbose: bool) -> list[str]:
     match entry.result:
-        case Report(source, findings, _) as report if verbose or report.verdict is not Verdict.PASS:
+        case Report(source=source, findings=findings) as report if (
+            verbose or report.verdict is not Verdict.PASS
+        ):
             shown = [f for f in findings if verbose or f.verdict is not Verdict.PASS]
             verdict = paint(style.color, VERDICT_ROLES[report.verdict], report.verdict.name)
             return [

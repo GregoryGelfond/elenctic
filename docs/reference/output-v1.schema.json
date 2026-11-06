@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/GregoryGelfond/elenctic/docs/reference/output-v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/main/docs/reference/output-v1.schema.json",
   "title": "elenctic output schema 1",
   "type": "object",
   "required": [
@@ -336,9 +336,7 @@
         "kind",
         "span",
         "severity",
-        "message",
-        "label",
-        "children"
+        "message"
       ],
       "properties": {
         "kind": {
@@ -454,8 +452,7 @@
       "required": [
         "kind",
         "source",
-        "result",
-        "text"
+        "result"
       ],
       "properties": {
         "kind": {
@@ -471,16 +468,6 @@
             },
             {
               "$ref": "#/$defs/fault"
-            }
-          ]
-        },
-        "text": {
-          "oneOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
             }
           ]
         }
@@ -576,7 +563,8 @@
         "kind",
         "source",
         "findings",
-        "lints"
+        "solver",
+        "verdict"
       ],
       "properties": {
         "kind": {
@@ -596,6 +584,21 @@
           "items": {
             "$ref": "#/$defs/diagnostic"
           }
+        },
+        "solver": {
+          "type": "string",
+          "enum": [
+            "clingo",
+            "clingcon"
+          ]
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "undecided"
+          ]
         }
       },
       "additionalProperties": false
@@ -604,8 +607,7 @@
       "type": "object",
       "required": [
         "kind",
-        "entries",
-        "notes"
+        "entries"
       ],
       "properties": {
         "kind": {

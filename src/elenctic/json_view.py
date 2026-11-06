@@ -10,7 +10,8 @@ from typing import Final, TypeIs, cast
 
 from elenctic.literals import Literal, Symbol
 from elenctic.patterns import Pattern
-from elenctic.report import Exit, Run
+from elenctic.report import Entry, Exit, Run
+from elenctic.verdicts import Report
 
 SCHEMA = 1
 
@@ -40,9 +41,15 @@ def _record(value: object) -> Json:
     if not is_dataclass(value) or isinstance(value, type):
         message = f"cannot encode {type(value).__name__}"
         raise TypeError(message)
-    return {"kind": kind_of(type(value))} | {
-        field.name: encode(getattr(value, field.name)) for field in fields(value)
+    encoded = {
+        field.name: encode(getattr(value, field.name))
+        for field in fields(value)
+        if not (isinstance(value, Entry) and field.name == "text")
     }
+    record: dict[str, Json] = {"kind": kind_of(type(value)), **encoded}
+    if isinstance(value, Report):
+        record["verdict"] = encode(value.verdict)
+    return record
 
 
 def encode(value: object) -> Json:
@@ -143,14 +150,30 @@ def _schema_alternative(hint: object) -> Json:
     raise TypeError(message)
 
 
+_OPTIONAL_FIELDS: Final = {
+    "diagnostic": frozenset({"label", "children"}),
+    "entry": frozenset({"text"}),
+    "report": frozenset({"lints"}),
+    "run": frozenset({"notes"}),
+}
+
+
 def _object_schema(type_: type) -> Json:
     """Describe a kind-tagged object: `kind` and each dataclass field, nothing else."""
     hints = typing.get_type_hints(type_)
-    properties: dict[str, Json] = {"kind": {"const": kind_of(type_)}}
+    kind = kind_of(type_)
+    optional = _OPTIONAL_FIELDS.get(kind, frozenset())
+    properties: dict[str, Json] = {"kind": {"const": kind}}
     required: list[Json] = ["kind"]
     for field in fields(type_):
+        if kind == "entry" and field.name == "text":
+            continue  # not encoded; kept only for snippets
         properties[field.name] = _schema_for(hints[field.name])
-        required.append(field.name)
+        if field.name not in optional:
+            required.append(field.name)
+    if kind == "report":
+        properties["verdict"] = {"type": "string", "enum": ["pass", "fail", "undecided"]}
+        required.append("verdict")
     return {
         "type": "object",
         "required": required,
@@ -171,7 +194,7 @@ def schema_document() -> dict[str, Json]:
     }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/GregoryGelfond/elenctic/docs/reference/output-v1.schema.json",
+        "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/main/docs/reference/output-v1.schema.json",
         "title": "elenctic output schema 1",
         "type": "object",
         "required": ["schema", "run", "exit_code"],

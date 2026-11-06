@@ -202,7 +202,7 @@ def world_view(found: Consistent[AnswerSets], *, shown: bool = False) -> WorldVi
 
 
 def optimal_view(found: Consistent[Optimized]) -> WorldView | Truncation:
-    """Close a proven optimum into the world view of its full optimal answer sets, or say what cut it."""
+    """Close a proven optimum into the world view of its full optimal sets, or say what cut it."""
     match found.evidence, found.conclusion:
         case Optimum(_, answer_sets), Exhausted.EXHAUSTED:
             return WorldView(frozenset(m.atoms for m in answer_sets.all), Range.OPTIMAL)

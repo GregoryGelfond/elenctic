@@ -409,3 +409,16 @@ def test_an_undecided_truncated_claim_has_an_ended_detail(
     findings = document["run"]["entries"][0]["result"]["findings"]
     undecided = next(f for f in findings if f["verdict"] == "undecided")
     assert undecided["detail"]["kind"] == "ended"
+
+
+def test_json_carries_verdict_and_solver_without_program_text(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "d.lp", "p.\n% @expect sat\n")
+    code, out = run(capsys, "--json", path)
+    assert code == Exit.CLAIMS_HOLD
+    document = json.loads(out)
+    entry = document["run"]["entries"][0]
+    assert "text" not in entry
+    assert entry["result"]["verdict"] == "pass"
+    assert entry["result"]["solver"] == "clingo"

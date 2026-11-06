@@ -172,4 +172,5 @@ def check(
         program.source,
         tuple(judged[claim] for claim in contract.claims),
         tuple(hidden_reads(contract.claims, grounded)),
+        contract.solver,
     )

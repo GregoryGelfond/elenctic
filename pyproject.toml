@@ -25,6 +25,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/elenctic"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"docs/reference/output-v1.schema.json" = "elenctic/output-v1.schema.json"
+
 [tool.mypy]
 python_version = "3.14"
 strict = true
