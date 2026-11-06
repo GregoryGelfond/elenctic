@@ -187,10 +187,17 @@ def _normalized(argv: Sequence[str]) -> list[str]:
     return [*arguments[:at], "test", *arguments[at:]]
 
 
-def _sources(paths: Iterable[Path]) -> list[tuple[Path, bool]]:
-    """Yield each `.lp` path with whether the user named it (not found by walking a directory)."""
+def _sources(paths: Iterable[Path]) -> list[tuple[Path, bool, Path]]:
+    """Yield each `.lp` path, whether the user named it, and the corpus root that contains it.
+
+    A walked directory is the root. A named file's own directory is the root.
+    """
     return [
-        (found, not path.is_dir())
+        (
+            found,
+            not path.is_dir(),
+            path.resolve() if path.is_dir() else found.parent.resolve(),
+        )
         for path in paths
         for found in (sorted(path.rglob("*.lp")) if path.is_dir() else [path])
     ]
@@ -220,10 +227,10 @@ def _not_a_case(path: Path, text: str) -> Fault:
     )
 
 
-def _walked_notes(sources: list[tuple[Path, bool]]) -> tuple[Diagnostic, ...]:
+def _walked_notes(sources: list[tuple[Path, bool, Path]]) -> tuple[Diagnostic, ...]:
     """Return notes for walked libraries whose `@tag` looks misspelled (forgotten cases)."""
     found: list[Diagnostic] = []
-    for path, named in sources:
+    for path, named, _root in sources:
         if named:
             continue
         try:
@@ -245,7 +252,9 @@ def _walked_notes(sources: list[tuple[Path, bool]]) -> tuple[Diagnostic, ...]:
     return tuple(found)
 
 
-def _entry(path: Path, limits: Limits, interrupt: Interrupt, *, named: bool) -> Entry | None:
+def _entry(
+    path: Path, limits: Limits, interrupt: Interrupt, *, named: bool, root: Path
+) -> Entry | None:
     try:
         program = Program.read(path)
     except (OSError, UnicodeDecodeError) as error:
@@ -260,7 +269,7 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt, *, named: bool) -> 
             return Entry(program.source, _not_a_case(path, program.text), program.text)
         return None
     try:
-        result = check(program, limits=limits, interrupt=interrupt)
+        result = check(program, limits=limits, interrupt=interrupt, root=root)
     except Exception as error:  # noqa: BLE001
         return Entry(program.source, Internal.of(error), program.text)
     return None if result is None else Entry(program.source, result, program.text)
@@ -299,7 +308,9 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     interrupt = Interrupt()
     signal.signal(signal.SIGINT, _sigint(interrupt))
     sources = _sources(arguments.paths)
-    entries = [_entry(path, limits, interrupt, named=named) for path, named in sources]
+    entries = [
+        _entry(path, limits, interrupt, named=named, root=root) for path, named, root in sources
+    ]
     run = Run(
         tuple(entry for entry in entries if entry is not None),
         notes=_walked_notes(sources),

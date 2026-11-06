@@ -447,3 +447,33 @@ def test_json_carries_verdict_and_solver_without_program_text(
     assert "text" not in entry
     assert entry["result"]["verdict"] == "pass"
     assert entry["result"]["solver"] == "clingo"
+
+
+def test_an_include_outside_the_corpus_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    outside = write(tmp_path, "outside.lp", "secret(42).\n")
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    case = (
+        f'#include "{outside}".\n'
+        "% @expect sat\n"
+        "% @cautious { secret(41) }\n"
+    )
+    write(corpus, "case.lp", case)
+    code, out, err = run_both(capsys, corpus)
+    assert code == Exit.FAULT
+    assert "outside the corpus" in err
+    assert "secret(42)" not in err
+    assert "secret(42)" not in out
+
+
+def test_an_include_under_the_corpus_root_is_allowed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path, "lib.lp", "p.\n")
+    deep = tmp_path / "a" / "b"
+    deep.mkdir(parents=True)
+    write(deep, "case.lp", '#include "../../lib.lp".\n% @expect sat\n')
+    assert run(capsys, tmp_path) == (Exit.CLAIMS_HOLD, "1/1 passed\n")
+

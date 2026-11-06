@@ -2,6 +2,7 @@
 
 from collections.abc import Callable, Iterable
 from dataclasses import replace
+from pathlib import Path
 
 from elenctic.contract import (
     Asks,
@@ -17,7 +18,7 @@ from elenctic.contract import (
     over,
 )
 from elenctic.determination import Consequences, Consistent, Determination, Mode, Range, Truncation
-from elenctic.engine import ground
+from elenctic.engine import containment, ground
 from elenctic.gates import hidden_reads, unsound
 from elenctic.grounded import Grounded
 from elenctic.judge import Found, judge
@@ -161,10 +162,22 @@ def check(
     *,
     limits: Limits = Limits(),
     interrupt: Interrupt | None = None,
+    root: Path | None = None,
 ) -> Report | Fault | None:
-    """Check the contract written in `program`; `None` if it carries none."""
+    """Check the contract written in `program`; `None` if it carries none.
+
+    `root` is the corpus containment boundary: every `#include` must resolve under it. When omitted
+    and the program has a path, the program's directory is the boundary (a named file's own dir).
+    """
     if not is_case(program.text):
         return None
+    boundary = (
+        root
+        if root is not None
+        else (program.path.parent.resolve() if program.path is not None else None)
+    )
+    if boundary is not None and (refused := containment(program, boundary)) is not None:
+        return refused
     contract = parse_contract(program.text, program.source)
     if contract.diagnostics:
         return Fault(Locus.REQUEST, contract.diagnostics)

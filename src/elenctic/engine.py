@@ -129,6 +129,48 @@ def _include_targets(text: str) -> tuple[str, ...]:
     )
 
 
+def included_sources(program: Program) -> frozenset[Path]:
+    """Resolved paths of the program and every `#include` it reaches that can be read."""
+    if program.path is None:
+        return frozenset()
+    found = {program.path.resolve()}
+    pending = [program.path.parent / target for target in _include_targets(program.text)]
+    while pending:
+        path = pending.pop().resolve()
+        if path in found:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue
+        found.add(path)
+        pending.extend(path.parent / target for target in _include_targets(text))
+    return frozenset(found)
+
+
+def containment(program: Program, root: Path) -> Fault | None:
+    """Refuse a program that `#include`s a file outside `root` (the corpus the run was pointed at).
+
+    The diagnostic names escaping paths only — never their contents — so a refused include cannot
+    publish another file through elenctic's own report.
+    """
+    root = root.resolve()
+    escaped = sorted(path for path in included_sources(program) if not path.is_relative_to(root))
+    if not escaped:
+        return None
+    named = ", ".join(str(path) for path in escaped)
+    return Fault(
+        Locus.REQUEST,
+        (
+            failure(
+                None,
+                f"this case loads {named}, which is outside the corpus at {root}",
+                notes=("a case may only include files from the corpus it belongs to",),
+            ),
+        ),
+    )
+
+
 def _lexable(program: Program) -> Fault | None:
     """Refuse program text (and `#include`d files) that would abort pyclingo's logger."""
     if (refused := first_unlexable(program.text, program.source)) is not None:
