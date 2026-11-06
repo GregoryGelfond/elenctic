@@ -317,7 +317,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 
 ## JSON
 
-`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1 or 2); see `elenctic.json_view.encode`. A
+`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1, 2, or 3); see `elenctic.json_view.encode`. A
 dataclass becomes `{"kind": type_name, field: …}`, the `kind` being the type's name in snake case (`Census` is `census`, `AnswerSet` is `answer_set`), an enum its value, a set a sorted list. Keys and enum values are snake_case (`max_answer_sets`);
 the command-line flags keep their hyphens (`--max-answer-sets`). The published JSON Schema of that document is [`output-v1.schema.json`](output-v1.schema.json), generated from the same types by `scripts/write_output_schema.py` (`elenctic.json_view.schema_document`); a test fails if it is stale.
 

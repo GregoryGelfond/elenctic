@@ -31,8 +31,8 @@ Pass an `Interrupt` to `check` or `solve` and call `pull()` from any thread. `so
 from elenctic import Limits, Literal, Program, Query, ground, solve, world_view, answer
 ```
 
-`solve` yields a `Determination`; `world_view` accepts only an exhausted one; `answer` evaluates a
-`Query` over it.
+`solve` yields a `Determination`; `world_view` turns an exhausted one into a `WorldView` and a
+truncated one into that `Truncation`; `answer` evaluates a `Query` over a world view.
 
 ## Check the optimum of a program
 

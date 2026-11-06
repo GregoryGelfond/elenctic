@@ -575,3 +575,14 @@ def test_a_refutation_core_shows_not() -> None:
     found = run("a.\n% @expect sat\n% @answer-set { a } assuming { not a }\n")
     assert found.findings[1].verdict is Verdict.FAIL
     assert "not a" in str(found.findings[1].detail)
+
+
+def test_a_hidden_contrary_is_noted_whatever_the_query_answer() -> None:
+    """The hidden-read lint covers the query's contrary, for yes, no, and unknown alike."""
+    program = "-p.\n#show p/0.\n% @expect sat\n"
+    for word in ("yes", "no", "unknown"):
+        text = program + f"% @query {word} {{ p }}\n"
+        assert notes(text) == [
+            "4: reads `-p/0`, which the program can derive and does not `#show`"
+        ]
+

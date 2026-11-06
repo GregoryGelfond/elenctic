@@ -30,10 +30,10 @@ def test_a_truncated_search_yields_no_world_view_only_what_cut_it_short() -> Non
     assert world_view(found) is Truncation.MAX_SECONDS
 
 
-def test_the_world_view_reads_the_shown_atoms_unless_told_otherwise() -> None:
+def test_the_world_view_reads_full_answer_sets_unless_shown_is_asked() -> None:
     found = Consistent(AnswerSets(answer_set(P, Q, shown=(P,))), Exhausted.EXHAUSTED)
-    assert world_view(found) == WorldView(frozenset({frozenset({P})}))
-    assert world_view(found, shown=False) == WorldView(frozenset({frozenset({P, Q})}))
+    assert world_view(found) == WorldView(frozenset({frozenset({P, Q})}))
+    assert world_view(found, shown=True) == WorldView(frozenset({frozenset({P})}))
 
 
 def test_the_cautious_consequences_are_the_intersection_and_the_brave_the_union() -> None:

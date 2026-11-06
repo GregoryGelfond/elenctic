@@ -38,14 +38,15 @@ seen.
 answer sets, and counts are of distinct shown sets. Order can change only whether a truncated search
 decides.
 
-**Claims sharing assumptions share a search.** A contract of only `@expect` claims reads one
-answer set.
+**Claims sharing assumptions share a search.** A contract of only `@expect` claims stops once
+satisfiability is decided (one answer set, or none).
 
 **An objective ranks answer sets; it never removes any.** AS(P) is every answer set of the program,
 whatever it says in `#minimize`, `#maximize` or `:~`. Opt(P) is the subset of AS(P) that no other
 answer set beats, so Opt(P) ⊆ AS(P). The unqualified claims (`@answer-set`, `@count`, `@assign`,
 `@cautious`, `@brave`) and unqualified `@query` read AS(P), with or without an objective in the
 program. Only the claims that say `optimal` (including `@query optimal`), and `@cost`, read Opt(P).
+A `#maximize` level is negated in `@cost` (clingo's minimized sums); see the reference.
 A consequence carries which set it ranges over, so `⋂ Opt(P)` is never read as `⋂ AS(P)`.
 
 **An optimum is proven or it is an incumbent.** A truncated search can have found a good answer set but
