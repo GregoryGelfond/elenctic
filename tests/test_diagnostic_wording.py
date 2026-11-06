@@ -12,9 +12,11 @@ from elenctic.body import span_of
 from elenctic.check import check
 from elenctic.human import render
 from elenctic.presentation import PLAIN
-from elenctic.program import Fault, Program
+from elenctic.program import Fault, Locus, Program
+from elenctic.reader import parse_contract
 from elenctic.report import Entry, Run
-from elenctic.spans import char_column
+from elenctic.spans import Diagnostic, Position, Severity, Span, char_column
+from elenctic.wellformed import wellformed
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "elenctic"
 HELPISH = re.compile(r"\b(declare|install|name it)\b", re.IGNORECASE)
@@ -142,3 +144,35 @@ def test_clingo_reports_byte_columns_and_we_convert_them_before_carets() -> None
     stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
     width = max(1, diagnostic.span.end.column - diagnostic.span.start.column)
     assert "^" * width in stderr
+
+
+def test_wellformed_reports_missing_expect_when_none_was_seen() -> None:
+    found = wellformed([], "x.lp")
+    assert [d.message for d in found] == ["missing `@expect`"]
+
+
+def test_a_count_with_no_integer_points_at_the_end_of_the_tag() -> None:
+    contract = parse_contract("% @expect sat\n% @count\n", "c.lp")
+    (found,) = [d for d in contract.diagnostics if d.span is not None]
+    assert found.message.startswith("expected a non-negative integer")
+    assert found.span is not None
+    assert found.span.start == found.span.end == Position(2, 9)
+
+
+def test_a_zero_width_primary_span_still_draws_one_caret() -> None:
+    text = "p.\n% @expect sat\n% @count\n"
+    result = check(Program(text, "t.lp"))
+    assert isinstance(result, Fault)
+    diagnostic = next(d for d in result.diagnostics if d.span is not None)
+    assert diagnostic.span is not None
+    assert diagnostic.span.start == diagnostic.span.end
+    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    assert "^" in stderr
+
+
+def test_a_snippet_is_omitted_when_the_span_line_is_outside_the_source() -> None:
+    where = Span("t.lp", Position(99, 1), Position(99, 2))
+    result = Fault(Locus.REQUEST, (Diagnostic(where, Severity.ERROR, "gone"),))
+    stderr = render(Run((Entry("t.lp", result, "one line\n"),)), PLAIN).stderr
+    assert "gone" in stderr
+    assert "99 |" not in stderr

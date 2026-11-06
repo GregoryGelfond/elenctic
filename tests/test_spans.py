@@ -1,4 +1,14 @@
-from elenctic.spans import Child, Diagnostic, Position, Severity, Span, diagnose, failure, note
+from elenctic.spans import (
+    Child,
+    Diagnostic,
+    Position,
+    Severity,
+    Span,
+    char_column,
+    diagnose,
+    failure,
+    note,
+)
 
 
 def test_a_located_error_becomes_a_diagnostic_with_its_span() -> None:
@@ -52,3 +62,13 @@ def test_a_note_is_a_diagnostic_that_does_not_fail() -> None:
     assert note(where, "reads a hidden literal") == Diagnostic(
         where, Severity.NOTE, "reads a hidden literal"
     )
+
+
+def test_char_column_maps_the_first_byte_and_zero_to_column_one() -> None:
+    assert char_column("café", 1) == 1
+    assert char_column("café", 0) == 1
+
+
+def test_char_column_past_the_encoded_line_is_one_past_the_end() -> None:
+    assert char_column("ab", 100) == 3
+    assert char_column("é", len("é".encode()) + 1) == 2

@@ -455,6 +455,21 @@ def test_a_misdeclared_solver_is_a_diagnostic_at_its_line(line: str, message: st
     assert (found.message, found.span.start.line) == (message, 2)
 
 
+def test_an_unknown_solver_name_is_the_primary_span() -> None:
+    found = only_diagnostic("% @elenctic solver cplex")
+    assert found.span is not None
+    assert found.span.start.column == found.span.end.column - len("cplex")
+    line = "% @elenctic solver cplex"
+    assert line[found.span.start.column - 1 : found.span.end.column - 1] == "cplex"
+
+
+def test_an_unknown_elenctic_directive_points_at_its_word() -> None:
+    found = only_diagnostic("% @elenctic mode fast")
+    assert found.span is not None
+    line = "% @elenctic mode fast"
+    assert line[found.span.start.column - 1 : found.span.end.column - 1] == "mode"
+
+
 def test_only_one_solver_may_be_declared() -> None:
     contract = parse("% @expect sat", "% @elenctic solver clingo", "% @elenctic solver clingcon")
     (found,) = contract.diagnostics
