@@ -1,15 +1,26 @@
 # elenctic
 
-Contracts and queries for answer set programs. Write claims in the program's own comments —
-`@expect`, `@count`, `@answer-set`, `@cautious`, `@brave`, `@query`, `@cost` — and check them
-with a library first and a thin command line over it. For authors of ASP (clingo / clingcon)
-programs who want regression tests and three-valued queries without leaving the `.lp` file.
-
-<!-- TODO(release): uncomment once 1.0.0 is on PyPI and the public repository URL is fixed.
-[![PyPI version](https://img.shields.io/pypi/v/elenctic.svg)](https://pypi.org/project/elenctic/)
-[![Python versions](https://img.shields.io/pypi/pyversions/elenctic.svg)](https://pypi.org/project/elenctic/)
-[![License: MIT](https://img.shields.io/pypi/l/elenctic.svg)](LICENSE)
+[![CI](https://github.com/GregoryGelfond/elenctic-exp/actions/workflows/ci.yml/badge.svg)](https://github.com/GregoryGelfond/elenctic-exp/actions/workflows/ci.yml)
+[![Python 3.14 | 3.15](https://img.shields.io/badge/python-3.14%20%7C%203.15-blue)](https://www.python.org/downloads/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Pixi](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+<!-- TODO(release): add once 1.0.0 is published.
+[![PyPI](https://img.shields.io/pypi/v/elenctic)](https://pypi.org/project/elenctic/)
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/elenctic)](https://anaconda.org/conda-forge/elenctic)
 -->
+
+A testing and analysis library for answer set programs, with a thin CLI. Claims about a program
+live in its own comments (`@expect`, `@count`, `@answer-set`, `@cautious`, `@brave`, `@query`,
+`@cost`) and are checked under clingo or clingcon.
+
+*Elenctic*, from Greek ἐλεγκτικός (ἔλεγχος, *elenchos*), "serving to refute by
+cross-examination": the Socratic elenchus. A contract is a thesis about the program; `FAIL` is
+its refutation, and `UNDECIDED` is aporia, an honest "cannot say" rather than a false "no".
+
+Status: pre-1.0.
 
 ## Install
 
@@ -61,7 +72,7 @@ podman run --rm -v "$PWD":/work:ro elenctic drinks.lp
 ```
 
 The image includes the `theory` extra (clingo and clingcon). The entrypoint is `elenctic`; pass
-the same arguments you would on the host. There is no CI image build.
+the same arguments you would on the host.
 
 ## Quick start
 
@@ -127,12 +138,6 @@ pixi run -e py314 test     # or -e py315
 `pixi run check` is the one gate; `./check.sh` runs it. `uv.lock` is tracked so
 `uv sync --locked` reproduces the same dependencies.
 
-Prose and identifiers use American spelling (`color`, `analyze`, `license`). A reading is named
-for its tag's verb (`Asks`, `Binds`, …). Free functions are verbs; a method that returns a changed
-copy is a verb too (`apply`, `rename`).
+## License
 
-## Links
-
-- [Documentation](docs/index.md)
-- [Changelog](CHANGELOG.md)
-- [License (MIT)](LICENSE)
+Licensed under the [MIT license](LICENSE). Changes are in the [changelog](CHANGELOG.md).
