@@ -550,7 +550,7 @@ def test_an_expect_only_case_never_converts_literals(monkeypatch: pytest.MonkeyP
     real = Literal.of
 
     @classmethod  # type: ignore[misc]
-    def counting(cls: type[Literal], symbol: object) -> Literal:
+    def counting(_cls: type[Literal], symbol: object) -> Literal:
         calls.append(symbol)
         return real(symbol)  # type: ignore[arg-type]
 

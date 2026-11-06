@@ -281,10 +281,23 @@ def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str])
     )
 
 
+def _sigint(interrupt: Interrupt) -> Callable[[int, object], None]:
+    """First SIGINT asks the search to stop; a second restores the default handler and re-raises."""
+
+    def handle(_signum: int, _frame: object) -> None:
+        if interrupt.pulled:
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            signal.raise_signal(signal.SIGINT)
+            return
+        interrupt.pull()
+
+    return handle
+
+
 def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     limits = Limits(max_seconds=arguments.max_seconds, max_answer_sets=arguments.max_answer_sets)
     interrupt = Interrupt()
-    signal.signal(signal.SIGINT, lambda _signal, _frame: interrupt.pull())
+    signal.signal(signal.SIGINT, _sigint(interrupt))
     sources = _sources(arguments.paths)
     entries = [_entry(path, limits, interrupt, named=named) for path, named in sources]
     run = Run(

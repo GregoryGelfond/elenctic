@@ -90,6 +90,8 @@ All notable changes are recorded here. The format follows
 - At most one `@count` per scenario and range.
 - `@expect` alone is admitted over a theory objective.
 
+- A second SIGINT restores the default handler so the process can exit 130.
+
 ### Changed
 - Consistency across docs, help and internals: truncation prose; reserved-command helps as imperatives; `--help` says "answer set programs"; `(default: …)` in the reference; "source" for a checked unit; stderr prefix rule; `render_run`, `holds_flag`, `Classes.merge`; CLI writes with `write` only; American-spelling and reading-name notes in the README; mechanical checks in `tests/test_consistency.py`.
 - Diagnostics follow the rustc model by default (`--format full`): `error: message`, ` --> path:line:col`, a source snippet with carets and a primary label, then `= note:` / `= help:` lines. `--format short` keeps today's one-line gcc form; `--json` is an alias of `--format json`. Messages are lowercase with no trailing period; fix-it wording stands only on `help`. Clingo's byte columns are converted to Unicode scalar columns so carets land. The JSON schema keeps `SCHEMA = 1` and adds optional `label`, `children`, and `code` on `diagnostic` (no codes in 1.0).
