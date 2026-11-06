@@ -68,7 +68,7 @@ from elenctic.query import (
     evaluate,
 )
 from elenctic.reader import parse_contract
-from elenctic.search import Cut, Interrupt, Limit, Limits, Request
+from elenctic.search import Cut, Interrupt, Keep, Limit, Limits, Request
 from elenctic.spans import Child, Diagnostic, Position, Severity, Span
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable
@@ -116,6 +116,7 @@ __all__ = [
     "Inconsistent",
     "Incumbent",
     "Interrupt",
+    "Keep",
     "Limit",
     "Limits",
     "Literal",

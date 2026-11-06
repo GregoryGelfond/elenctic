@@ -211,6 +211,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Limits` | how far a search may go, in seconds and in answer sets read, each a number or `Limit.UNBOUNDED` |
 | `Limit` | what a limit may be besides a number: `UNBOUNDED` |
 | `Interrupt` | a request to stop, made from any thread with `pull()` and heeded between answer sets |
+| `Keep` | which symbol sets of each answer set to retain for literal conversion (`atoms`, `shown`) |
 | `Cut` | the function a search asks whether to stop: a `Truncation`, or `None` to go on |
 | `Facts` | what the grounded program says about itself, against which a contract is checked |
 | `Shown` | the predicates an unconditional `#show` selects; with no `#show` every atom is shown; a conditional or variable `#show` names none |
