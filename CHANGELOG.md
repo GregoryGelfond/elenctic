@@ -7,6 +7,8 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- `Containerfile`: a local multi-stage recipe for the CLI (uv sync from the lockfile with the
+  theory extra). Build it yourself; there is no published image and no CI image build.
 - Pixi environments `py314` and `py315` for the test suite under those Pythons (`pixi run -e py314 test`).
 - JSON Schema for the `--json` document: `docs/reference/output-v1.schema.json`, generated from the
   result types `encode` walks (`elenctic.json_view.schema_document`); regenerate with
