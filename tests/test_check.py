@@ -495,7 +495,9 @@ def test_a_term_that_stands_for_no_one_term_is_a_fault_not_a_query_with_no_match
 def test_a_nested_binding_query_over_a_hidden_contrary_is_judged_not_refused() -> None:
     program = "{p(f(1))}. {-p(f(1))}. :- p(f(1)), -p(f(1)). #show p/1.\n% @expect sat\n"
     assert verdicts(program + "% @query unknown { p(f(X)) } = { 1 }\n") == [P, P]
-    assert notes(program + "% @query unknown { p(f(X)) } = { 1 }\n") == []
+    assert notes(program + "% @query unknown { p(f(X)) } = { 1 }\n") == [
+        "3: reads `-p/1`, which the program can derive and does not `#show`"
+    ]
 
 
 def test_a_ground_query_may_nest_functions_to_any_depth() -> None:

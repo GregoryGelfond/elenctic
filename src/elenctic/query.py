@@ -164,30 +164,16 @@ def _instance(query: Query, values: Substitution) -> Query:
             return Any(tuple(_instance(part, values) for part in parts))
 
 
-def bindings(query: Query, view: WorldView) -> Bindings:
-    """Partition the instances of `query` some answer set entertains by their answer.
+def bindings(pattern: Pattern, view: WorldView) -> Bindings:
+    """Partition the instances of `pattern` some answer set entertains by their answer.
 
-    The variables of a query are those of its parts, in order of first occurrence. An instance
-    is entertained when every part of a conjunction has an instance, or its contrary has, in
-    some answer set, and when some part of a disjunction has; an instance the world view says
-    nothing about is unknown to it, but is not listed, for there are infinitely many.
-
-    The cautious consequences are the facts a pattern is unified with: an instance is yes when it
-    is one of them and no when its contrary is. The brave consequences add only the instances
-    entertained and neither. A conjunction or disjunction can be false or true in every answer
-    set for a different part in each, so each of its instances is answered over the answer sets.
+    The cautious consequences are the facts the pattern is unified with: an instance is yes when
+    it is one of them and no when its contrary is. The brave consequences add only the instances
+    entertained and neither. Compound queries (conjunction, disjunction) are answered by `answer`;
+    their bindings are not listed here.
     """
+    cautious = Extension(view.cautious)
     brave = Extension(view.brave)
-    if isinstance(query, Pattern):
-        cautious = Extension(view.cautious)
-        yes = _unifiers(query, cautious).rows
-        no = _unifiers(query.contrary, cautious).rows
-        return Bindings(yes, no, _entertained(query, brave).rows - yes - no)
-    found = _entertained(query, brave)
-    answered = {
-        row: answer(
-            _instance(query, Substitution(dict(zip(found.columns, row, strict=True)))), view
-        )
-        for row in found.rows
-    }
-    return Bindings(*(frozenset(r for r, a in answered.items() if a is each) for each in Answer))
+    yes = _unifiers(pattern, cautious).rows
+    no = _unifiers(pattern.contrary, cautious).rows
+    return Bindings(yes, no, _entertained(pattern, brave).rows - yes - no)

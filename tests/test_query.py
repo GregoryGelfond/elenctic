@@ -138,47 +138,18 @@ def test_a_pattern_that_repeats_a_variable_beneath_a_function_binds_it_once() ->
     assert bindings(twice, view).yes == {(Number(1), Number(2)), (Number(5), Number(6))}
 
 
-def test_a_conjunction_of_patterns_joins_their_bindings_on_the_variables_they_share() -> None:
-    both = All((Pattern("p", (X,)), Pattern("q", (X, Y))))
-    view = world(lits("p(1)", "p(2)", "q(1,a)", "q(3,b)", "-q(2,c)"))
-    assert bindings(both, view) == Bindings(
-        yes=frozenset({(Number(1), sym("a"))}),
-        no=frozenset({(Number(2), sym("c"))}),
-        unknown=frozenset(),
-    )
+def test_bindings_takes_a_pattern_not_a_compound_query() -> None:
+    """Compound queries are answered by `answer`; `bindings` is for one pattern (1.0)."""
+    view = world(lits("p(1)", "q(1)"))
+    assert bindings(Pattern("p", (X,)), view).yes == frozenset({(Number(1),)})
+    with pytest.raises(AttributeError):
+        bindings(All((Pattern("p", (X,)), Pattern("q", (X,)))), view)  # type: ignore[arg-type]
 
 
-def test_an_instance_is_as_true_as_the_least_true_part_of_a_conjunction() -> None:
-    both = All((Pattern("p", (X,)), Pattern("q", (X,))))
-    view = world(
-        lits("p(1)", "q(1)", "p(2)", "p(3)", "-q(3)"),
-        lits("p(1)", "q(1)", "p(2)", "p(3)", "-q(3)", "q(2)"),
-    )
-    found = bindings(both, view)
-    assert (found.yes, found.no, found.unknown) == (
-        frozenset({(Number(1),)}),
-        frozenset({(Number(3),)}),
-        frozenset({(Number(2),)}),
-    )
-
-
-def test_a_disjunction_of_patterns_over_the_same_variables_unites_their_bindings() -> None:
-    either = Any((Pattern("p", (X,)), Pattern("q", (X,))))
-    view = world(lits("p(1)", "q(2)", "-q(1)"))
-    assert bindings(either, view) == Bindings(
-        yes=frozenset({(Number(1),), (Number(2),)}), no=frozenset(), unknown=frozenset()
-    )
-
-
-def test_a_disjunction_over_different_variables_is_refused() -> None:
-    with pytest.raises(ValueError, match="cannot unite"):
-        bindings(Any((Pattern("p", (X,)), Pattern("q", (Y,)))), world(lits("p(1)", "q(1)")))
-
-
-def test_an_empty_disjunction_entertains_nothing_and_an_empty_conjunction_one_instance() -> None:
-    view = world(lits("p"))
-    assert bindings(Any(()), view) == Bindings(frozenset(), frozenset(), frozenset())
-    assert bindings(All(()), view).yes == {()}
+def test_a_conjunction_is_answered_over_the_world_view() -> None:
+    both = All((Literal("p", (Number(1),)), Literal("q", (Number(1),))))
+    assert answer(both, world(lits("p(1)", "q(1)"))) is Answer.YES
+    assert answer(both, world(lits("p(1)"), lits("q(1)"))) is Answer.UNKNOWN
 
 
 def test_a_ground_pattern_is_evaluated_as_the_literal_it_is() -> None:
@@ -225,8 +196,11 @@ def test_unknown_bindings_are_the_brave_instances_neither_yes_nor_no(view: World
 
 
 @given(numbered_views)
-def test_a_pattern_alone_has_the_bindings_of_the_conjunction_of_it_alone(view: WorldView) -> None:
-    assert bindings(Pattern("p", (X,)), view) == bindings(All((Pattern("p", (X,)),)), view)
+def test_a_pattern_alone_has_yes_no_and_unknown_partitions(view: WorldView) -> None:
+    found = bindings(Pattern("p", (X,)), view)
+    assert found.yes.isdisjoint(found.no)
+    assert found.yes.isdisjoint(found.unknown)
+    assert found.no.isdisjoint(found.unknown)
 
 
 @given(numbered_views, numbered)
@@ -271,18 +245,9 @@ def test_a_string_argument_with_separators_is_one_argument() -> None:
     assert bindings(Pattern("p", (X, String("a,b"))), view).yes == {(Number(1),)}
 
 
-@pytest.mark.parametrize(
-    "query",
-    [
-        Pattern("p", (Variable("_"), X)),
-        All((Pattern("q", (X,)), Pattern("p", (Compound("f", (Variable("_"),)), X)))),
-    ],
-)
-def test_a_pattern_with_an_anonymous_variable_is_refused_for_it_has_no_binding_to_give(
-    query: Query,
-) -> None:
+def test_a_pattern_with_an_anonymous_variable_is_refused_for_it_has_no_binding_to_give() -> None:
     with pytest.raises(ValueError, match="has an anonymous variable"):
-        bindings(query, world(lits("p(1,2)", "p(f(1),2)", "q(2)")))
+        bindings(Pattern("p", (Variable("_"), X)), world(lits("p(1,2)", "p(f(1),2)", "q(2)")))
 
 
 def test_a_repeated_variable_takes_one_value() -> None:
@@ -300,11 +265,6 @@ def test_a_pattern_nested_a_hundred_thousand_deep_has_bindings_without_recursion
     assert bindings(Pattern("p", (pattern,)), view).yes == {(Number(7),)}
 
 
-def test_a_ground_part_of_a_conjunction_joins_the_bindings_of_the_others_without_binding() -> None:
-    both = All((Literal("p", (Number(1),)), Pattern("q", (X,))))
-    view = world(lits("p(1)", "q(1)", "q(2)", "-q(3)"))
-    assert bindings(both, view) == Bindings(
-        yes=frozenset({(Number(1),), (Number(2),)}),
-        no=frozenset({(Number(3),)}),
-        unknown=frozenset(),
-    )
+def test_a_ground_literal_conjunction_is_answered_not_bound() -> None:
+    both = All((Literal("p", (Number(1),)), Literal("q", (Number(1),))))
+    assert answer(both, world(lits("p(1)", "q(1)", "q(2)"))) is Answer.YES

@@ -358,10 +358,10 @@ def test_a_spanless_fault_names_its_source(
 ) -> None:
     write(tmp_path, "ok.lp", "a.\n% @expect sat\n")
     write(tmp_path, "bad.lp", "a.\n% @count 1\n")  # missing @expect
-    code, out, err = run_both(capsys, "--color", "never", tmp_path)
+    code, _out, err = run_both(capsys, "--color", "never", tmp_path)
     assert code == Exit.FAULT
     assert "bad.lp" in err
-    code, out, err = run_both(capsys, "--color", "never", "--format", "short", tmp_path)
+    code, _out, err = run_both(capsys, "--color", "never", "--format", "short", tmp_path)
     assert code == Exit.FAULT
     assert "bad.lp" in err
 
@@ -393,3 +393,19 @@ def test_an_include_fault_points_at_the_included_file(
     assert "lib.lp:3:" in err
     assert "p(X) :- q." in err
     assert "main line 3" not in err
+
+
+def test_an_undecided_truncated_claim_has_an_ended_detail(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(
+        tmp_path,
+        "trunc.lp",
+        "{ p(1..17) }.\n#show p/1.\n% @expect sat\n% @count 131072\n",
+    )
+    code, out = run(capsys, "--json", "--max-answer-sets", "50", path)
+    assert code == Exit.CLAIM_UNMET
+    document = json.loads(out)
+    findings = document["run"]["entries"][0]["result"]["findings"]
+    undecided = next(f for f in findings if f["verdict"] == "undecided")
+    assert undecided["detail"]["kind"] == "ended"

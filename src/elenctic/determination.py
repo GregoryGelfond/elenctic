@@ -192,8 +192,8 @@ class WorldView:
         return frozenset[Literal]().union(*self.members)
 
 
-def world_view(found: Consistent[AnswerSets], *, shown: bool = True) -> WorldView | Truncation:
-    """Close a consistent search over answer sets into its world view, or say what left it open."""
+def world_view(found: Consistent[AnswerSets], *, shown: bool = False) -> WorldView | Truncation:
+    """Close a consistent search into its world view over full answer sets (or shown, if asked)."""
     match found.conclusion:
         case Exhausted.EXHAUSTED:
             return WorldView(frozenset(m.shown if shown else m.atoms for m in found.evidence.all))
@@ -202,10 +202,10 @@ def world_view(found: Consistent[AnswerSets], *, shown: bool = True) -> WorldVie
 
 
 def optimal_view(found: Consistent[Optimized]) -> WorldView | Truncation:
-    """Close a proven optimum into the world view of its optimal answer sets, or say what cut it."""
+    """Close a proven optimum into the world view of its full optimal answer sets, or say what cut it."""
     match found.evidence, found.conclusion:
         case Optimum(_, answer_sets), Exhausted.EXHAUSTED:
-            return WorldView(frozenset(m.shown for m in answer_sets.all), Range.OPTIMAL)
+            return WorldView(frozenset(m.atoms for m in answer_sets.all), Range.OPTIMAL)
         case _, Truncation() as cut:
             return cut
         case _:

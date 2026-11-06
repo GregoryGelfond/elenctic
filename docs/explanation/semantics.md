@@ -8,8 +8,8 @@ every ground query).
 
 **Queries range over the full answer sets.** `@query` reads every atom of each answer set, not
 only those `#show` selects. `#show` still governs what `@answer-set`, `@count`, `@cautious` and
-`@brave` report, and those claims (when they need no full answer set) enumerate under projection onto `#show`. When a query reads a literal the program can derive and does not `#show`, the
-run records a note (a lint) on that claim; the note does not change the verdict or the exit. A
+`@brave` report, and those claims (when they need no full answer set) enumerate under projection onto `#show`. When a query reads a literal (or its contrary) the program can derive and does not `#show`,
+the run records a note (a lint) on that claim; the note does not change the verdict or the exit. A
 later `--strict` may promote such notes to faults; that flag is not built yet.
 
 **A query with variables has bindings, found by unification.** The cautious consequences

@@ -122,14 +122,21 @@ def from_answer_sets(reading: Reading, found: Consistent[AnswerSets]) -> tuple[V
         case Asks() | Binds():
             return _worldly(reading, found)
         case Satisfiable(expected):
-            return Verdict.when(holds=expected), "an answer set exists"
+            verdict_detail: tuple[Verdict, Detail] = (
+                Verdict.when(holds=expected),
+                "an answer set exists",
+            )
         case Census():
-            return _count(reading, answer_sets, closed=closed)
+            verdict_detail = _count(reading, answer_sets, closed=closed)
         case Witness() | Assigns():
-            return _witnessed(reading, answer_sets, closed=closed)
+            verdict_detail = _witnessed(reading, answer_sets, closed=closed)
         case Entails():
-            return _entails(
+            verdict_detail = _entails(
                 reading, WorldView(frozenset(m.shown for m in answer_sets)), closed=closed
             )
         case Costs():
-            return Verdict.UNDECIDED, "no optimum was sought"
+            verdict_detail = (Verdict.UNDECIDED, "no optimum was sought")
+    verdict, detail = verdict_detail
+    if verdict is Verdict.UNDECIDED and isinstance(found.conclusion, Truncation):
+        return verdict, Ended(found.conclusion)
+    return verdict, detail

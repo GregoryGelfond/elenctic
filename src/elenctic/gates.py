@@ -19,13 +19,23 @@ def _parts(query: Query) -> list[Literal | Pattern]:
             return [query]
 
 
+def _contrary(signature: Signature) -> Signature:
+    return Signature(signature.name, signature.arity, not signature.positive)
+
+
+def _signatures(part: Literal | Pattern) -> frozenset[Signature]:
+    """Return the signature a part reads, and its contrary (Gelfond-Kahl answers read both)."""
+    signature = part.signature
+    return frozenset({signature, _contrary(signature)})
+
+
 def _read(reading: Reading) -> frozenset[Signature]:
-    """Name the predicates a query reads, whatever its answer."""
+    """Name the predicates a query reads, including each contrary, whatever its answer."""
     match reading:
         case Asks(_, query):
-            return frozenset(part.signature for part in _parts(query))
+            return frozenset().union(*(_signatures(part) for part in _parts(query)))
         case Binds(_, pattern, _):
-            return frozenset({pattern.signature})
+            return _signatures(pattern)
         case _:
             return frozenset()
 

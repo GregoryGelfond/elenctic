@@ -273,7 +273,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `evaluate` | a query's `Truth` in one answer set |
 | `answer` | a query's `Answer` over a `WorldView` |
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
-| `bindings` | the `Bindings` of a pattern over a `WorldView`: its unifiers with the cautious consequences (yes, and no by the contrary), and with the brave ones for the rest it entertains (unknown) |
+| `bindings` | the `Bindings` of a `Pattern` over a `WorldView`: its unifiers with the cautious consequences (yes, and no by the contrary), and with the brave ones for the rest it entertains (unknown) |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |
