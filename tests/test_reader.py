@@ -212,9 +212,9 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
 @pytest.mark.parametrize(
     ("line", "message", "start", "end"),
     [
-        ("% @count x", "expected a non-negative integer, found `x`", P(2, 3), P(2, 11)),
-        ("%   @count   x  ", "expected a non-negative integer, found `x`", P(2, 5), P(2, 15)),
-        ("% @cautious p", "expected `{ literals }`, found `p`", P(2, 3), P(2, 14)),
+        ("% @count x", "expected a non-negative integer, found `x`", P(2, 10), P(2, 11)),
+        ("%   @count   x  ", "expected a non-negative integer, found `x`", P(2, 14), P(2, 15)),
+        ("% @cautious p", "expected `{ literals }`, found `p`", P(2, 13), P(2, 14)),
         ("% @cautious { not p }", "expected ground literals, found `not p`", P(2, 14), P(2, 21)),
         ("% @cautious { }", "expected at least one literal, found `{ }`", P(2, 14), P(2, 15)),
         (
@@ -232,7 +232,7 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
         (
             "% @query yes { p(X) } 1",
             "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
-            P(2, 3),
+            P(2, 10),
             P(2, 24),
         ),
         (
@@ -268,13 +268,13 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
         (
             "% @cautious { p } assuming p",
             "expected `assuming { literals }`, found `assuming p`",
-            P(2, 3),
+            P(2, 19),
             P(2, 29),
         ),
         (
             "% @cautious { p } assuming { q } extra",
             "expected `assuming { literals }`, found `assuming { q } extra`",
-            P(2, 3),
+            P(2, 19),
             P(2, 39),
         ),
         ("% @cautious { p", "unclosed brace", P(2, 3), P(2, 16)),
@@ -368,6 +368,11 @@ def test_more_optimal_answer_sets_than_answer_sets_is_a_contradiction() -> None:
 def test_an_expectation_is_sat_or_unsat() -> None:
     found = only_diagnostic("% @expect maybe")
     assert found.message == "expected `sat` or `unsat`, found `maybe`"
+    assert found.span == Span("c.lp", P(2, 11), P(2, 16))
+
+
+def test_a_malformed_expect_is_not_also_missing() -> None:
+    assert messages("% @expect maybe") == ["expected `sat` or `unsat`, found `maybe`"]
 
 
 X1, Y2 = Valuation(parse_term("x"), 1), Valuation(parse_term("y"), 2)

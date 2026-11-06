@@ -1,47 +1,49 @@
 """The `@elenctic` directives of a contract: which solver it asks for."""
 
 from elenctic.contract import Solver
+from elenctic.operands import pointing
 from elenctic.spans import Diagnostic, Parsed, failure
-from elenctic.tags import Block, elements
+from elenctic.tags import Block, Element, elements
 
 _KNOWN = " and ".join(f"`{name}`" for name in Solver)
 _HELP = (f"known solvers: {_KNOWN}",)
 
 
-def _words(block: Block) -> list[str]:
-    """Return the unbraced words of a directive."""
-    return [e.text for e in elements(block.payload) or [] if not e.braced]
+def _parts(block: Block) -> list[Element]:
+    """Return the unbraced words of a directive as elements."""
+    return [e for e in elements(block.payload) or [] if not e.braced]
 
 
 def _solver(block: Block) -> Parsed[Solver]:
     """Read `@elenctic solver NAME`, the one directive."""
-    match _words(block):
+    words = _parts(block)
+    match [e.text for e in words]:
         case ["solver", name] if name in Solver:
             return Solver(name)
         case ["solver", name]:
             return failure(
-                block.covering(),
+                pointing(block, words[1]),
                 f"unknown solver `{name}`",
                 label="not a known solver",
                 help=_HELP,
             )
         case ["solver"]:
             return failure(
-                block.covering(),
+                pointing(block),
                 "missing solver name",
                 label="expected a solver name",
                 help=_HELP,
             )
         case [name, *_] | [name]:
             return failure(
-                block.covering(),
+                pointing(block, words[0]),
                 f"unknown `@elenctic` directive `{name}`",
                 label="not a directive",
                 help=("the only directive is `solver`",),
             )
         case _:
             return failure(
-                block.covering(),
+                pointing(block),
                 "unknown `@elenctic` directive",
                 label="not a directive",
                 help=("the only directive is `solver`",),

@@ -2,7 +2,7 @@
 
 from elenctic.determination import Assignment, Range
 from elenctic.literals import Assumption, Atoms, Scenario
-from elenctic.spans import Diagnostic, Parsed, failure
+from elenctic.spans import Diagnostic, Parsed, Span, failure
 from elenctic.syntax import literals, positive, read_literals, read_valuations
 from elenctic.tags import Block, Element
 
@@ -22,6 +22,16 @@ def shown(elements: list[Element] | Element) -> str:
         else:
             parts.append(element.text)
     return " ".join(parts)
+
+
+def pointing(block: Block, found: list[Element] | Element | None = None) -> Span:
+    """Where an `expected …, found …` points: the found text, or the end when none."""
+    if isinstance(found, Element):
+        return block.covering(found)
+    if found:
+        return block.span(found[0].start, found[-1].end)
+    end = block.whole.end
+    return Span(block.source, end, end)
 
 
 def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[Atoms]:
@@ -108,7 +118,7 @@ def after(
     if len(tail) == 1 and tail[0].braced:
         return elements[:cut], tail[0]
     return failure(
-        block.covering(),
+        pointing(block, elements[cut:]),
         f"expected `{word} {{ {contents} }}`, found `{shown(elements[cut:])}`",
         label=f"expected `{word} {{ {contents} }}`",
     )

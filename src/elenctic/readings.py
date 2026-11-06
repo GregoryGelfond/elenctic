@@ -7,7 +7,7 @@ from typing import Final
 from elenctic.contract import Assigns, Census, Costs, Entails, Reading, Satisfiable, Witness
 from elenctic.determination import Mode, Range, Valuation
 from elenctic.literals import Atoms
-from elenctic.operands import after, ground, read_range, shown, valuations
+from elenctic.operands import after, ground, pointing, read_range, shown, valuations
 from elenctic.spans import Diagnostic, Parsed, failure
 from elenctic.tags import Block, Element
 
@@ -22,7 +22,7 @@ def expect(block: Block, head: list[Element]) -> Parsed[Reading]:
             return Satisfiable(expected=False)
         case _:
             return failure(
-                block.covering(),
+                pointing(block, head),
                 f"expected `sat` or `unsat`, found `{shown(head)}`",
                 label="expected `sat` or `unsat`",
             )
@@ -33,7 +33,7 @@ def count(block: Block, head: list[Element]) -> Parsed[Reading]:
     if len(rest) == 1 and not rest[0].braced and rest[0].text.isdecimal():
         return Census(int(rest[0].text), over)
     return failure(
-        block.covering(),
+        pointing(block, rest),
         f"expected a non-negative integer, found `{shown(rest)}`",
         label="expected a non-negative integer",
     )
@@ -44,7 +44,7 @@ def cost(block: Block, head: list[Element]) -> Parsed[Reading]:
     if levels and all(_INTEGER.fullmatch(level) for level in levels):
         return Costs(tuple(map(int, levels)))
     return failure(
-        block.covering(),
+        pointing(block, head),
         f"expected `{{ c1 c2 ... }}`, found `{shown(head)}`",
         label="expected one integer per priority level",
     )
@@ -59,7 +59,7 @@ def litset(
         chosen, rest = (over, head) if over is not None else read_range(head)
         if len(rest) != 1 or not rest[0].braced:
             return failure(
-                block.covering(),
+                pointing(block, rest),
                 f"expected `{{ literals }}`, found `{shown(rest)}`",
                 label="expected `{ literals }`",
             )
@@ -73,7 +73,7 @@ def assign(block: Block, head: list[Element]) -> Parsed[Reading]:
     over, rest = read_range(head)
     if len(rest) != 1 or not rest[0].braced:
         return failure(
-            block.covering(),
+            pointing(block, rest),
             f"expected `{{ term = integer, ... }}`, found `{shown(rest)}`",
             label="expected `{ term = integer, ... }`",
         )

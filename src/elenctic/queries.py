@@ -4,7 +4,7 @@ from typing import Final
 
 from elenctic.contract import Asks, Binds, Reading
 from elenctic.determination import Range
-from elenctic.operands import read_range
+from elenctic.operands import pointing, read_range
 from elenctic.query import All, Answer
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Parsed, failure
@@ -34,7 +34,7 @@ def query(block: Block, head: list[Element]) -> Parsed[Reading]:
     shape = [e.braced for e in rest]
     if shape not in (_ASKS, _BINDS):
         return failure(
-            block.covering(),
+            pointing(block, rest),
             "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
             label="expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
         )

@@ -127,6 +127,8 @@ def _schema_alternative(hint: object) -> Json:
     if origin in _SEQUENCE:
         return _sequence_schema(hint)
     primitives: dict[type, str] = {str: "string", bool: "boolean", int: "integer"}
+    if hint is type(None):
+        return {"type": "null"}
     named = cast("type[object]", hint)
     if named in _AS_STRING or named in primitives:
         return {"type": "string" if named in _AS_STRING else primitives[named]}

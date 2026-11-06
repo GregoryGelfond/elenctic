@@ -6,7 +6,7 @@ from elenctic.literals import Scenario
 from elenctic.spans import Diagnostic, failure
 
 
-def _expectations(claims: list[Claim]) -> list[Diagnostic]:
+def _expectations(claims: list[Claim], *, expect_seen: bool) -> list[Diagnostic]:
     expects = [c for c in claims if isinstance(c.reading, Satisfiable) and not c.scenario]
     absent = (
         [
@@ -16,7 +16,7 @@ def _expectations(claims: list[Claim]) -> list[Diagnostic]:
                 help=("add `% @expect sat` or `% @expect unsat`",),
             )
         ]
-        if not expects
+        if not expects and not expect_seen
         else []
     )
     return absent + [
@@ -78,10 +78,16 @@ def _nested(claims: list[Claim]) -> list[Diagnostic]:
     ]
 
 
-def wellformed(claims: list[Claim], source: str) -> list[Diagnostic]:
+def wellformed(claims: list[Claim], source: str, *, expect_seen: bool = False) -> list[Diagnostic]:
     """Find what no single claim shows wrong: a missing or doubled `@expect`, and claims at odds.
 
     `source` names the file; a missing `@expect` has no span, so the path comes from the entry.
+    `expect_seen` is true when an `@expect` tag was written, even if it did not read: then
+    `missing` is not emitted on top of that tag's own diagnostic.
     """
     _ = source
-    return [*_expectations(claims), *_exclusions(claims), *_nested(claims)]
+    return [
+        *_expectations(claims, expect_seen=expect_seen),
+        *_exclusions(claims),
+        *_nested(claims),
+    ]

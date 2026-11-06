@@ -270,17 +270,17 @@ def test_full_format_shows_a_snippet_with_carets_and_a_label() -> None:
     rendered = render(Run((entry(text, "c.lp"),)), PLAIN)
     assert rendered.stderr == (
         "error: expected a non-negative integer, found `x`\n"
-        " --> c.lp:3:3\n"
+        " --> c.lp:3:10\n"
         "  |\n"
         "3 | % @count x\n"
-        "  |   ^^^^^^^^ expected a non-negative integer\n"
+        "  |          ^ expected a non-negative integer\n"
     )
 
 
 def test_short_format_is_the_one_line_gcc_form() -> None:
     text = "p.\n% @expect sat\n% @count x\n"
     rendered = render(Run((entry(text, "c.lp"),)), PLAIN, form=Format.SHORT)
-    assert rendered.stderr == "c.lp:3:3-11: error: expected a non-negative integer, found `x`\n"
+    assert rendered.stderr == "c.lp:3:10-11: error: expected a non-negative integer, found `x`\n"
 
 
 def test_a_help_child_is_printed_under_the_snippet() -> None:

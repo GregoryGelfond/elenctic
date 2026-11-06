@@ -104,3 +104,41 @@ def test_carets_match_the_primary_span_width() -> None:
     width = diagnostic.span.end.column - diagnostic.span.start.column
     stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
     assert "^" * width in stderr
+
+
+def test_carets_sit_under_the_token_after_multibyte_text_on_the_same_line() -> None:
+    """Reader spans count Unicode scalars: carets must not drift after `é`."""
+    line = '% @cautious { p("café") } assuming x'
+    text = "p.\n% @expect sat\n" + line + "\n"
+    result = check(Program(text, "t.lp"))
+    assert isinstance(result, Fault)
+    diagnostic = next(d for d in result.diagnostics if d.span is not None)
+    assert diagnostic.span is not None
+    assert line[diagnostic.span.start.column - 1 : diagnostic.span.end.column - 1] == "assuming x"
+    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    width = diagnostic.span.end.column - diagnostic.span.start.column
+    pad = " " * (diagnostic.span.start.column - 1)
+    assert f"| {pad}{'^' * width}" in stderr
+
+
+def test_clingo_reports_byte_columns_and_we_convert_them_before_carets() -> None:
+    """Clingo's Location columns are UTF-8 bytes; span_of maps them to scalars for carets."""
+    source = 'p("café").'
+    found: list[object] = []
+    parse_string(source, found.append)
+    function = found[1].head.atom.symbol  # type: ignore[attr-defined]
+    argument = function.arguments[0]
+    location = tree.location(argument)
+    assert location.end.column - location.begin.column == len('"café"'.encode())
+    assert char_column(source, location.begin.column) == source.index('"') + 1
+    text = 'q.\n% @expect sat\n% @query yes { p("café", 1..2) }\n'
+    result = check(Program(text, "t.lp"))
+    assert isinstance(result, Fault)
+    diagnostic = next(d for d in result.diagnostics if d.span is not None)
+    assert diagnostic.span is not None
+    src_line = text.split("\n")[2]
+    marked = src_line[diagnostic.span.start.column - 1 : diagnostic.span.end.column - 1]
+    assert "1..2" in marked
+    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    width = max(1, diagnostic.span.end.column - diagnostic.span.start.column)
+    assert "^" * width in stderr
