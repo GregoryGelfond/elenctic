@@ -280,3 +280,46 @@ def test_a_nested_tuple_in_an_n_ary_binding_is_accepted(
     code, out = run(capsys, "--color", "never", path)
     assert code == Exit.CLAIMS_HOLD
     assert "1/1 passed" in out
+
+
+def test_a_named_file_without_a_contract_is_a_fault(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "lib.lp", "a.\n")
+    code, out, err = run_both(capsys, "--color", "never", path)
+    assert code == Exit.FAULT
+    assert "carries no contract tag" in err
+    assert "1 error" in out
+
+
+def test_a_named_file_with_a_bom_is_a_loud_fault(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "bom.lp"
+    path.write_bytes("\ufeff% @expect sat\na.\n".encode("utf-8"))
+    code, _out, err = run_both(capsys, "--color", "never", path)
+    assert code == Exit.FAULT
+    assert "byte order mark" in err or "BOM" in err
+
+
+def test_a_walked_near_miss_is_a_note_and_does_not_fail(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path, "ok.lp", "a.\n% @expect sat\n")
+    write(tmp_path, "miss.lp", "{a}.\n% @expct sat\n% @cout 3\n")
+    code, out, err = run_both(capsys, "--color", "never", tmp_path)
+    assert code == Exit.CLAIMS_HOLD
+    assert "1/1 passed" in out
+    assert "miss.lp" in err
+    assert "@expct" in err or "expct" in err
+
+
+def test_a_walked_library_without_near_miss_is_silent(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path, "ok.lp", "a.\n% @expect sat\n")
+    write(tmp_path, "lib.lp", "helper(1).\n")
+    code, out, err = run_both(capsys, "--color", "never", tmp_path)
+    assert code == Exit.CLAIMS_HOLD
+    assert err == ""
+    assert "1/1 passed" in out

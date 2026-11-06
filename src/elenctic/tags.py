@@ -118,6 +118,15 @@ def is_case(text: str) -> bool:
     )
 
 
+def near_misses(text: str) -> tuple[str, ...]:
+    """Return unknown `@tag` names that look like misspelled contract tags."""
+    return tuple(
+        found["tag"]
+        for line in text.split("\n")
+        if (found := _TAG.fullmatch(line)) and found["tag"] not in KNOWN
+    )
+
+
 def elements(payload: str) -> list[Element] | None:
     """Split a payload into words and brace groups; `None` if a brace is never closed."""
     found: list[Element] = []

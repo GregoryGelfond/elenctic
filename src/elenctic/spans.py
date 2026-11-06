@@ -193,6 +193,13 @@ def first_unlexable(text: str, source: str) -> Diagnostic | None:
     for index, character in enumerate(text):
         if code[index] and ord(character) > _ASCII_MAX:
             where = Span(source, Position(line, column), Position(line, column + 1))
+            if character == "\ufeff":
+                return failure(
+                    where,
+                    "byte order mark at the start of the file",
+                    label="unexpected BOM",
+                    help=("save the file as UTF-8 without a BOM",),
+                )
             shown = character if character.isprintable() else f"U+{ord(character):04X}"
             return failure(
                 where,

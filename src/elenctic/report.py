@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from elenctic.program import Fault
+from elenctic.spans import Diagnostic
 from elenctic.verdicts import Report, Verdict
 
 
@@ -35,6 +36,8 @@ class Run:
     """The outcome of checking each source."""
 
     entries: tuple[Entry, ...]
+    notes: tuple[Diagnostic, ...] = ()
+    """Corpus notes that do not change the exit (near-miss tags on walked libraries)."""
 
     @property
     def exit_code(self) -> Exit:

@@ -604,7 +604,8 @@
       "type": "object",
       "required": [
         "kind",
-        "entries"
+        "entries",
+        "notes"
       ],
       "properties": {
         "kind": {
@@ -614,6 +615,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/entry"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
           }
         }
       },

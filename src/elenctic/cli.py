@@ -18,7 +18,8 @@ from elenctic.presentation import Environment, Presentation, Stream, When, resol
 from elenctic.program import Fault, Locus, Program
 from elenctic.report import Entry, Exit, Run
 from elenctic.search import Interrupt, Limit, Limits
-from elenctic.spans import failure
+from elenctic.spans import Diagnostic, failure, first_unlexable, note
+from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
 
 DEFAULT_MAX_SECONDS: Final = 30.0
@@ -186,9 +187,10 @@ def _normalized(argv: Sequence[str]) -> list[str]:
     return [*arguments[:at], "test", *arguments[at:]]
 
 
-def _sources(paths: Iterable[Path]) -> list[Path]:
+def _sources(paths: Iterable[Path]) -> list[tuple[Path, bool]]:
+    """Yield each `.lp` path with whether the user named it (not found by walking a directory)."""
     return [
-        found
+        (found, not path.is_dir())
         for path in paths
         for found in (sorted(path.rglob("*.lp")) if path.is_dir() else [path])
     ]
@@ -202,7 +204,48 @@ def _unreadable_note(error: OSError | UnicodeDecodeError) -> str:
             return str(error)
 
 
-def _entry(path: Path, limits: Limits, interrupt: Interrupt) -> Entry | None:
+def _not_a_case(path: Path, text: str) -> Fault:
+    """Refuse a named path that carries no contract tag."""
+    if (refused := first_unlexable(text, str(path))) is not None:
+        return Fault(Locus.PROGRAM, (refused,))
+    return Fault(
+        Locus.REQUEST,
+        (
+            failure(
+                None,
+                f"`{path}` carries no contract tag",
+                help=("a contract-free `.lp` is a library; name a case, or walk a directory",),
+            ),
+        ),
+    )
+
+
+def _walked_notes(sources: list[tuple[Path, bool]]) -> tuple[Diagnostic, ...]:
+    """Return notes for walked libraries whose `@tag` looks misspelled (forgotten cases)."""
+    found: list[Diagnostic] = []
+    for path, named in sources:
+        if named:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue
+        if is_case(text):
+            continue
+        missed = near_misses(text)
+        if not missed:
+            continue
+        shown = ", ".join(f"`@{name}`" for name in missed)
+        found.append(
+            note(
+                None,
+                f"`{path}` carries no contract tag; did you mean a claim rather than {shown}?",
+            )
+        )
+    return tuple(found)
+
+
+def _entry(path: Path, limits: Limits, interrupt: Interrupt, *, named: bool) -> Entry | None:
     try:
         program = Program.read(path)
     except (OSError, UnicodeDecodeError) as error:
@@ -212,6 +255,10 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt) -> Entry | None:
             notes=(_unreadable_note(error),),
         )
         return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
+    if not is_case(program.text):
+        if named:
+            return Entry(program.source, _not_a_case(path, program.text), program.text)
+        return None
     result = check(program, limits=limits, interrupt=interrupt)
     return None if result is None else Entry(program.source, result, program.text)
 
@@ -235,8 +282,12 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     limits = Limits(max_seconds=arguments.max_seconds, max_answer_sets=arguments.max_answer_sets)
     interrupt = Interrupt()
     signal.signal(signal.SIGINT, lambda _signal, _frame: interrupt.pull())
-    entries = [_entry(path, limits, interrupt) for path in _sources(arguments.paths)]
-    run = Run(tuple(entry for entry in entries if entry is not None))
+    sources = _sources(arguments.paths)
+    entries = [_entry(path, limits, interrupt, named=named) for path, named in sources]
+    run = Run(
+        tuple(entry for entry in entries if entry is not None),
+        notes=_walked_notes(sources),
+    )
     fmt = "json" if arguments.json else arguments.format
     if fmt == "json":
         sys.stdout.write(to_json(run))

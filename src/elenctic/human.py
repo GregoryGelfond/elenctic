@@ -222,6 +222,11 @@ def render_run(
         for lint in entry.result.lints
         for line in _diagnostic_lines(lint, entry.text, stderr, form)
     ]
+    notes += [
+        line
+        for diagnostic in run.notes
+        for line in _diagnostic_lines(diagnostic, None, stderr, form)
+    ]
     faults = [
         line
         for entry in run.entries
