@@ -218,7 +218,8 @@ def test_an_internal_error_is_painted_by_the_style_of_stderr(
     monkeypatch.setattr("elenctic.cli.check", broken)
     shown = written(capsys, "--color=always", unmet)
     assert shown.code == Exit.INTERNAL_ERROR
-    assert "0/1 passed" in shown.out and "1 error" in shown.out
+    assert "0/1 passed" in shown.out
+    assert "1 error" in shown.out
     assert shown.err == ("\x1b[1;31melenctic: internal error: RecursionError: no \\x1b[2J\x1b[0m\n")
 
 

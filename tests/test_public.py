@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import elenctic
+from elenctic.determination import AnswerSets, Consistent
 
 ROOT = Path(__file__).parent.parent
 
@@ -145,7 +146,5 @@ def test_the_reference_has_a_row_for_every_exported_name() -> None:
 
 
 def test_a_generic_annotation_yields_its_origin() -> None:
-    from elenctic.determination import AnswerSets, Consistent
-
     names = {t.__name__ for t in _elenctic_types(Consistent[AnswerSets]) if isinstance(t, type)}
     assert names == {"Consistent", "AnswerSets"}

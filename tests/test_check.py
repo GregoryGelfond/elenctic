@@ -582,7 +582,4 @@ def test_a_hidden_contrary_is_noted_whatever_the_query_answer() -> None:
     program = "-p.\n#show p/0.\n% @expect sat\n"
     for word in ("yes", "no", "unknown"):
         text = program + f"% @query {word} {{ p }}\n"
-        assert notes(text) == [
-            "4: reads `-p/0`, which the program can derive and does not `#show`"
-        ]
-
+        assert notes(text) == ["4: reads `-p/0`, which the program can derive and does not `#show`"]

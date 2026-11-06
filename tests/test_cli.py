@@ -455,11 +455,7 @@ def test_an_include_outside_the_corpus_is_refused(
     outside = write(tmp_path, "outside.lp", "secret(42).\n")
     corpus = tmp_path / "corpus"
     corpus.mkdir()
-    case = (
-        f'#include "{outside}".\n'
-        "% @expect sat\n"
-        "% @cautious { secret(41) }\n"
-    )
+    case = f'#include "{outside}".\n% @expect sat\n% @cautious {{ secret(41) }}\n'
     write(corpus, "case.lp", case)
     code, out, err = run_both(capsys, corpus)
     assert code == Exit.FAULT
@@ -476,4 +472,3 @@ def test_an_include_under_the_corpus_root_is_allowed(
     deep.mkdir(parents=True)
     write(deep, "case.lp", '#include "../../lib.lp".\n% @expect sat\n')
     assert run(capsys, tmp_path) == (Exit.CLAIMS_HOLD, "1/1 passed\n")
-
