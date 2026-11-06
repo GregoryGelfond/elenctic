@@ -45,7 +45,7 @@ class Compound:
 
     @property
     def shape(self) -> tuple[str, bool, int]:
-        """What must agree for two compound terms to be unified: functor, sign and arity."""
+        """The functor, sign and arity that must agree for two compound terms to be unified."""
         return self.name, self.positive, len(self.arguments)
 
     @override

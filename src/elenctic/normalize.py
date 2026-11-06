@@ -46,7 +46,7 @@ def function_of(term: AST) -> tuple[AST, bool] | None:
         and tree.number(term, "operator_type") == UnaryOperator.Minus
     )
     function = tree.child(term, "argument") if negated else term
-    plain = tree.kind(function) is ASTType.Function and not tree.flag(function, "external")
+    plain = tree.kind(function) is ASTType.Function and not tree.holds_flag(function, "external")
     return (function, not negated) if plain else None
 
 

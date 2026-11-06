@@ -12,7 +12,7 @@ from typing import Final
 from elenctic.about import VersionExit, package
 from elenctic.check import check
 from elenctic.determination import Truncation, option
-from elenctic.human import Format, internal_error, render, reserved, version
+from elenctic.human import Format, internal_error, render_run, reserved, version
 from elenctic.json_view import to_json
 from elenctic.presentation import Environment, Presentation, Stream, When, resolve
 from elenctic.program import Fault, Locus, Program
@@ -33,10 +33,10 @@ BARE: Final = frozenset({*VERSION_FLAGS, "-h", "--help"})
 """The options of the main parser that take no value."""
 
 RESERVED = {
-    "repl": "an interactive session over a live program",
-    "why": "the support of an atom, or why it is absent",
-    "ask": "one query, answered over the answer sets",
-    "explain": "the evidence behind a verdict",
+    "repl": "start an interactive session over a live program",
+    "why": "show the support of an atom, or why it is absent",
+    "ask": "answer one query over the answer sets",
+    "explain": "show the evidence behind a verdict",
 }
 """The subcommands kept for later; each exits as a fault, with a note, until it is built."""
 
@@ -102,7 +102,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="elenctic",
         parents=[_output_options(defaults=True)],
-        description="Test, debug and analyze ASP programs. "
+        description="Test, debug and analyze answer set programs. "
         "With no command, the paths are tested: `elenctic PATH...` is `elenctic test PATH...`. "
         "`elenctic --version` and `elenctic -V` are `elenctic version`; they stand before "
         "the command, which does not take them.",
@@ -217,9 +217,10 @@ def _entry(path: Path, limits: Limits, interrupt: Interrupt) -> Entry | None:
 
 
 def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str]) -> Presentation:
-    """Decide once how each stream is written: the one place that asks the environment and streams.
+    """Decide once how each stream is written: the one place that reads the environment.
 
-    It governs elenctic's own report and diagnostics; the parser's help and usage are its own.
+    `Stream.of` asks each stream. It governs elenctic's own report and diagnostics; the
+    parser's help and usage are its own.
     """
     return resolve(
         When(arguments.color),
@@ -238,9 +239,9 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     run = Run(tuple(entry for entry in entries if entry is not None))
     fmt = "json" if arguments.json else arguments.format
     if fmt == "json":
-        print(to_json(run))
+        sys.stdout.write(to_json(run))
     else:
-        rendered = render(
+        rendered = render_run(
             run,
             presentation,
             verbose=arguments.verbose,
@@ -257,7 +258,7 @@ def _version(presentation: Presentation) -> VersionExit:
 
 
 def _reserved(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
-    print(reserved(arguments.command, presentation.stderr), file=sys.stderr)
+    sys.stderr.write(reserved(arguments.command, presentation.stderr))
     return Exit.FAULT
 
 
@@ -268,7 +269,7 @@ def _guarded[Outcome](
     try:
         return run()
     except Exception as error:  # noqa: BLE001
-        print(internal_error(error, presentation.stderr), file=sys.stderr)
+        sys.stderr.write(internal_error(error, presentation.stderr))
         return failed
 
 

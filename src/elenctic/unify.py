@@ -52,7 +52,7 @@ def unify_terms(left: Iterable[Term], right: Iterable[Term]) -> Substitution | N
     """
     classes = Classes()
     pairs = [(classes.add(a), classes.add(b)) for a, b in zip(left, right, strict=True)]
-    solved = all(classes.unify(a, b) for a, b in pairs)
+    solved = all(classes.merge(a, b) for a, b in pairs)
     return classes.solution() if solved and classes.acyclic() else None
 
 

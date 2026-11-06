@@ -40,7 +40,7 @@ class Shown:
 
 @dataclass(frozen=True, slots=True)
 class Facts:
-    """What the grounded program says about itself, which a contract is checked against.
+    """Facts the grounded program states about itself, which a contract is checked against.
 
     `theory` is where the first statement with a theory atom is, if the program has any, and
     `objective` where the first with a theory objective, `&minimize` or `&maximize`, is.
@@ -98,7 +98,7 @@ def _shown(statement: AST) -> Shown:
             signature = Signature(
                 tree.name(statement),
                 tree.number(statement, "arity"),
-                tree.flag(statement, "positive"),
+                tree.holds_flag(statement, "positive"),
             )
             return Shown(frozenset({signature}), restricted=True)
         case ASTType.ShowTerm:

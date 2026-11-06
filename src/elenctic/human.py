@@ -200,7 +200,7 @@ def _lines(lines: list[str]) -> str:
     return "".join(f"{line}\n" for line in lines)
 
 
-def render(
+def render_run(
     run: Run,
     presentation: Presentation,
     *,
@@ -233,12 +233,16 @@ def render(
 
 def reserved(command: str, style: Style) -> str:
     """Write the note on a command kept for later."""
-    return paint(style.color, Role.HELP, f"elenctic: `{command}` is reserved and not yet built")
+    return (
+        paint(style.color, Role.HELP, f"elenctic: `{command}` is reserved and not yet built") + "\n"
+    )
 
 
 def internal_error(error: Exception, style: Style) -> str:
     """Write the one line for a failure of elenctic itself."""
-    return _say(style, Role.ERROR, f"elenctic: internal error: {type(error).__name__}: {error}")
+    return (
+        _say(style, Role.ERROR, f"elenctic: internal error: {type(error).__name__}: {error}") + "\n"
+    )
 
 
 def version(package: Package, solvers: Solvers, style: Style) -> str:

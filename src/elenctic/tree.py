@@ -53,8 +53,8 @@ def location(node: AST) -> Location:
     return _field(node, "location", Location)
 
 
-def flag(node: AST, key: str) -> bool:
-    """Return whether `node` holds a set flag under `key`: the `external` of a function."""
+def holds_flag(node: AST, key: str) -> bool:
+    """Say whether `node` holds a set flag under `key`: the `external` of a function."""
     return bool(getattr(node, key))
 
 

@@ -14,7 +14,7 @@ from elenctic.literals import Symbol
 
 
 class Theory(ABC):
-    """What a theory does to a program and to a search: the steps clingcon's API takes in order."""
+    """The steps a theory takes on a program and a search: clingcon's API in order."""
 
     @abstractmethod
     def register(self, control: Control) -> None:

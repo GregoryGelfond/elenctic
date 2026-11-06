@@ -64,7 +64,10 @@ def encode(value: object) -> Json:
 
 def to_json(run: Run) -> str:
     """Write a run as one JSON document."""
-    return json.dumps({"schema": SCHEMA, "run": encode(run), "exit_code": run.exit_code}, indent=2)
+    return (
+        json.dumps({"schema": SCHEMA, "run": encode(run), "exit_code": run.exit_code}, indent=2)
+        + "\n"
+    )
 
 
 def _unwrap(hint: object) -> object:

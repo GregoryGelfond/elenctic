@@ -55,7 +55,7 @@ def _entailing(
 
 
 def _cut_by_count(found: Found) -> bool:
-    """Say whether a search stopped for want of nothing but the most answer sets it was allowed."""
+    """Say whether a search was truncated only by the answer-set limit."""
     return isinstance(found, Consistent) and found.conclusion is Truncation.MAX_ANSWER_SETS
 
 

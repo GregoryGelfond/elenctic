@@ -22,7 +22,7 @@ class Exit(IntEnum):
 
 @dataclass(frozen=True, slots=True)
 class Entry:
-    """What checking one source came to."""
+    """The outcome of checking one source."""
 
     source: str
     result: Report | Fault
@@ -32,7 +32,7 @@ class Entry:
 
 @dataclass(frozen=True, slots=True)
 class Run:
-    """What checking each source came to."""
+    """The outcome of checking each source."""
 
     entries: tuple[Entry, ...]
 

@@ -13,7 +13,7 @@ class Exhausted(StrEnum):
 
 
 class Truncation(StrEnum):
-    """The search was cut short, and by what."""
+    """The search was truncated, and by what."""
 
     MAX_ANSWER_SETS = auto()
     MAX_SECONDS = auto()
@@ -56,7 +56,7 @@ class Valuation:
 
 
 type Assignment = frozenset[Valuation]
-"""What a constraint theory assigns in an answer set, kept apart from its literal atoms."""
+"""A constraint theory's assignment in an answer set, kept apart from its literal atoms."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +74,7 @@ class AnswerSet:
 
     @property
     def identity(self) -> tuple[Atoms, Assignment]:
-        """What tells answer sets apart: the atoms shown and the assignment, not the hidden ones."""
+        """The atoms shown and the assignment, which tell answer sets apart, not the hidden ones."""
         return self.shown, self.assignment
 
 
@@ -144,7 +144,7 @@ class Inconsistent:
 
 @dataclass(frozen=True, slots=True)
 class Inconclusive:
-    """The search was cut short before it decided."""
+    """The search was truncated before it decided."""
 
     truncation: Truncation
 

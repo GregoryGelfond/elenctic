@@ -11,7 +11,7 @@ from elenctic.spans import Diagnostic, Span
 
 
 class Solver(StrEnum):
-    """What a contract is checked with: clingo alone, or clingo with the clingcon theory."""
+    """The solver a contract is checked with: clingo alone, or clingo with the clingcon theory."""
 
     CLINGO = auto()
     CLINGCON = auto()

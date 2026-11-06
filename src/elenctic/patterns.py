@@ -31,7 +31,7 @@ class Pattern:
 
     @property
     def anonymous(self) -> bool:
-        """Whether some argument has an anonymous variable, `_`, beneath it."""
+        """Say whether some argument has an anonymous variable, `_`, beneath it."""
         return any(
             isinstance(leaf, Variable) and leaf.anonymous
             for argument in self.arguments

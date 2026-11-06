@@ -38,7 +38,7 @@ _REMEMBERED: Final = 2**16
 
 
 class Limit(Enum):
-    """What a limit may be besides a number: none, so a search goes on until it ends."""
+    """A limit besides a number: none, so a search goes on until it ends."""
 
     UNBOUNDED = "all"
 
@@ -85,7 +85,7 @@ class Interrupt:
 
 @dataclass(frozen=True, slots=True)
 class Request:
-    """What a search is asked: the scenario its answer sets satisfy, and how far it may go."""
+    """A search request: the scenario its answer sets satisfy, and how far it may go."""
 
     scenario: Scenario = frozenset()
     limits: Limits = field(default_factory=Limits)
@@ -147,7 +147,7 @@ def seen(answer_set: ClingoModel, theory: Theory) -> Seen:
 
 @dataclass(frozen=True, slots=True)
 class Run:
-    """What one clingo solve call found, and how it ended; `core` only when it found nothing."""
+    """The result of one clingo solve call, and how it ended; `core` only when it found nothing."""
 
     found: tuple[Seen, ...]
     conclusion: Exhausted | Truncation
@@ -155,7 +155,7 @@ class Run:
 
     @property
     def refuted(self) -> bool:
-        """Whether the whole space was searched and held nothing."""
+        """Say whether the whole space was searched and held nothing."""
         return self.conclusion is Exhausted.EXHAUSTED and not self.found
 
 

@@ -56,7 +56,7 @@ def _optimal(
 def _core_text(refutation: These) -> str:
     core = ", ".join(sorted(str(a.literal) for a in refutation.core))
     caveat = (
-        "" if refutation.minimal else "; the search was cut short, so the core may not be minimal"
+        "" if refutation.minimal else "; the search was truncated, so the core may not be minimal"
     )
     return f"no answer set satisfies the assumptions ({core}){caveat}"
 

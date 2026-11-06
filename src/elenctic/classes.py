@@ -36,12 +36,12 @@ class Shape:
 
     @property
     def kind(self) -> tuple[str, bool, int]:
-        """What must agree for two shapes to merge: functor, sign and arity."""
+        """The functor, sign and arity that must agree for two shapes to merge."""
         return self.name, self.positive, len(self.arguments)
 
 
 type Cell = Bare | Atom | Shape
-"""What is known of the terms in one class of the unification graph."""
+"""Knowledge of the terms in one class of the unification graph."""
 
 
 class Shade(Enum):
@@ -128,8 +128,8 @@ class Classes:
             case _:
                 return None
 
-    def unify(self, first: int, second: int) -> bool:
-        """Unify two nodes, and say whether their classes could be merged.
+    def merge(self, first: int, second: int) -> bool:
+        """Say whether two nodes' classes could be merged, and merge them if so.
 
         Each pair of classes is merged once however many times it is met, and the pairs wait in a
         list, so sharing costs nothing and depth is no limit.

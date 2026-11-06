@@ -10,7 +10,7 @@ from elenctic.paint import Color
 
 
 class When(StrEnum):
-    """What `--color` and `--icons` ask for."""
+    """The choice `--color` and `--icons` ask for."""
 
     AUTO = auto()
     """On a terminal, unless `NO_COLOR` or `TERM=dumb` says otherwise."""
@@ -39,7 +39,7 @@ class Stream(Enum):
 
 @dataclass(frozen=True, slots=True)
 class Environment:
-    """What the environment says about color."""
+    """Color cues from the environment."""
 
     no_color: bool
     """`NO_COLOR` is not empty."""

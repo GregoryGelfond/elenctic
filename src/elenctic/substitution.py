@@ -9,7 +9,7 @@ from elenctic.terms import Term, Variable, substitute_with
 
 @dataclass(frozen=True, slots=True)
 class Substitution:
-    """What some variables stand for, as the unifying of patterns found.
+    """Bindings for some variables, as the unifying of patterns found.
 
     It is *triangular*: a binding may mention variables that are bound in turn (`X` to `f(Y)` with
     `Y` bound to `a`), which is what lets a unifier produce it in near-linear space, where the
