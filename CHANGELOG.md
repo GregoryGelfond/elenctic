@@ -100,6 +100,10 @@ All notable changes are recorded here. The format follows
 - The theory-atom error points at the first theory atom, not at line 1.
 
 ### Fixed
+- A binding query with an anonymous variable, `@query yes { p(_, X) } = { … }`, is refused where it
+  is read (`FAULT`, 2: "an anonymous variable has no binding to state: name it") instead of
+  failing inside elenctic (`INTERNAL_ERROR`, 3); `bindings` raises `ValueError` for it. An instance
+  of such a pattern is not ground, so it has no answer to give.
 - Documented that an objective only ranks answer sets and never removes any: unqualified claims and
   every `@query` read all answer sets, and only `optimal` claims and `@cost` read the optimal ones
   (`docs/explanation/semantics.md`, which the reference and the guides point to). The behavior is unchanged.

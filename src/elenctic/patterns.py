@@ -10,7 +10,7 @@ from elenctic.extension import Extension
 from elenctic.literals import Literal, Signature
 from elenctic.matching import match
 from elenctic.substitution import Substitution
-from elenctic.terms import Term, Variable, rename, render, variables
+from elenctic.terms import Term, Variable, leaves, rename, render, variables
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +30,15 @@ class Pattern:
     def variables(self) -> tuple[Variable, ...]:
         """The distinct named variables, in order of first occurrence."""
         return tuple(dict.fromkeys(v for argument in self.arguments for v in variables(argument)))
+
+    @property
+    def anonymous(self) -> bool:
+        """Whether some argument has an anonymous variable, `_`, beneath it."""
+        return any(
+            isinstance(leaf, Variable) and leaf.anonymous
+            for argument in self.arguments
+            for leaf in leaves(argument)
+        )
 
     @property
     def contrary(self) -> Pattern:

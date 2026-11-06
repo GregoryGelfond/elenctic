@@ -97,12 +97,19 @@ def _closed(pattern: Pattern) -> Literal:
     return literal
 
 
+def _named(pattern: Pattern) -> None:
+    if pattern.anonymous:
+        message = f"`{pattern}` has an anonymous variable, which no binding can name"
+        raise ValueError(message)
+
+
 def _entertained(query: Query, brave: Extension) -> Relation:
     """Join what each part of `query` entertains: the values its variables take in some part."""
     match query:
         case Literal():
             return _entertained(Pattern.of(query), brave)
         case Pattern():
+            _named(query)
             found = query.bindings_in(brave) | query.contrary.bindings_in(brave)
             return Relation(query.variables, found)
         case All(parts):

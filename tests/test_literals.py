@@ -6,7 +6,7 @@ from hypothesis import strategies as st
 from elenctic.extension import Extension
 from elenctic.literals import Literal
 from elenctic.patterns import Pattern
-from elenctic.terms import Variable
+from elenctic.terms import Compound, Variable
 
 X, Y = Variable("X"), Variable("Y")
 
@@ -75,6 +75,13 @@ def test_an_anonymous_variable_binds_nothing_and_matches_anything() -> None:
     pattern = Pattern("p", (Variable("_"), X, Variable("_")))
     assert pattern.variables == (X,)
     assert pattern.match(lit("p(1,2,3)")) == (Number(2),)
+
+
+def test_a_pattern_knows_whether_an_anonymous_variable_is_beneath_any_argument() -> None:
+    nested = Pattern("p", (X, Compound("f", (parse_term("a"), Variable("_")))))
+    assert nested.anonymous
+    assert not Pattern("p", (X, Compound("f", (Y,)), parse_term("a"))).anonymous
+    assert not Pattern("p", ()).anonymous
 
 
 def test_the_contrary_of_a_pattern_flips_its_sign() -> None:

@@ -245,6 +245,18 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
             P(2, 15),
             P(2, 21),
         ),
+        (
+            "% @query yes { p(_, X) } = { 1 }",
+            "an anonymous variable has no binding to state: name it",
+            P(2, 15),
+            P(2, 24),
+        ),
+        (
+            "% @query yes { p(_) } = { }",
+            "an anonymous variable has no binding to state: name it",
+            P(2, 15),
+            P(2, 21),
+        ),
         ("% @cautious { p } assuming p", "expected `assuming { literals }`", P(2, 3), P(2, 29)),
         (
             "% @cautious { p } assuming { q } extra",

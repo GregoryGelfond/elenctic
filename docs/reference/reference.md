@@ -105,7 +105,7 @@ of the same kind are independent claims: two `@answer-set` claims are two existe
 | `@cautious { L }` | `L` is in every answer set (⋂ AS(P)); computed by the solver |
 | `@brave { L }` | `L` is in some answer set (∪ AS(P)); computed by the solver |
 | `@query A { L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`) |
-| `@query A { p(X, b) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these |
+| `@query A { p(X, b) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these; every variable is named (`_` is refused) |
 | `@answer-set optimal { L }`, `@cautious optimal { L }`, `@brave optimal { L }` | the same, over the optimal answer sets Opt(P); `@optimal { L }` is `@answer-set optimal { L }` |
 | `@assign optimal { x=1, … }` | the same, over the optimal answer sets |
 | `@count optimal n` | exactly `n` distinct shown optimal answer sets |

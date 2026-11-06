@@ -61,6 +61,10 @@ def _binds(
     if head[2].text != "=" or len(items) != 1 or items[0].negated:
         return failure(block.covering(head[1]), "expected one positive pattern before `=`")
     pattern = items[0].pattern
+    if pattern.anonymous:
+        return failure(
+            block.covering(head[1]), "an anonymous variable has no binding to state: name it"
+        )
     if not pattern.variables:
         return failure(block.covering(head[1]), "a pattern with no variables is a ground query")
     found = read_bindings(
