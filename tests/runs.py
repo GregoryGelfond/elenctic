@@ -16,4 +16,4 @@ PROGRAM_WITH_ESCAPE_CODES = 'p("\x1b[2J\x1b[31mRED\r").\n% @expect sat\n% @cauti
 def entry(text: str, source: str, limits: Limits = Limits()) -> Entry:
     result = check(Program(text, source), limits=limits)
     assert isinstance(result, Report | Fault)
-    return Entry(source, result)
+    return Entry(source, result, text)

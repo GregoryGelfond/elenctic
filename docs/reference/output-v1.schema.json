@@ -233,6 +233,32 @@
       },
       "additionalProperties": false
     },
+    "child": {
+      "type": "object",
+      "required": [
+        "kind",
+        "severity",
+        "message"
+      ],
+      "properties": {
+        "kind": {
+          "const": "child"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning",
+            "note",
+            "help"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "claim": {
       "type": "object",
       "required": [
@@ -310,25 +336,55 @@
         "kind",
         "span",
         "severity",
-        "message"
+        "message",
+        "label",
+        "children",
+        "code"
       ],
       "properties": {
         "kind": {
           "const": "diagnostic"
         },
         "span": {
-          "$ref": "#/$defs/span"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/span"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "severity": {
           "type": "string",
           "enum": [
             "error",
             "warning",
-            "note"
+            "note",
+            "help"
           ]
         },
         "message": {
           "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/child"
+          }
+        },
+        "code": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -398,7 +454,8 @@
       "required": [
         "kind",
         "source",
-        "result"
+        "result",
+        "text"
       ],
       "properties": {
         "kind": {
@@ -414,6 +471,16 @@
             },
             {
               "$ref": "#/$defs/fault"
+            }
+          ]
+        },
+        "text": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
             }
           ]
         }

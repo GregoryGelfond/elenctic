@@ -44,26 +44,28 @@ def test_a_term_with_a_variable_beneath_a_function_is_part_of_a_pattern() -> Non
 
 
 @pytest.mark.parametrize(
-    ("text", "message"),
+    ("text", "message", "label"),
     [
-        ("p(1..3)", "`(1..3)` is not a pattern: an interval stands for several terms"),
-        ("p(a, (b;c))", "`(b;c)` is not a pattern: a pool stands for several terms"),
+        ("p(1..3)", "`(1..3)` is not a pattern", "an interval stands for several terms"),
+        ("p(a, (b;c))", "`(b;c)` is not a pattern", "a pool stands for several terms"),
         (
             "p(f(@g(X)))",
-            "`@g(X)` is not a pattern: a call to an external function is not made",
+            "`@g(X)` is not a pattern",
+            "a call to an external function is not made",
         ),
         (
             "p(X+1)",
-            "`(X+1)` is not a pattern: arithmetic over a variable or undefined has no value",
+            "`(X+1)` is not a pattern",
+            "arithmetic over a variable or undefined has no value",
         ),
     ],
 )
 def test_a_term_that_is_no_pattern_is_refused_with_the_reason_not_read_as_a_mismatch(
-    text: str, message: str
+    text: str, message: str, label: str
 ) -> None:
     found = read_literals(text, WHERE)
     assert isinstance(found, Diagnostic)
-    assert found.message == message
+    assert (found.message, found.label) == (message, label)
 
 
 def test_each_item_knows_its_place_in_the_enclosing_source() -> None:
@@ -96,6 +98,7 @@ def test_a_later_line_keeps_its_own_columns() -> None:
 def test_what_is_not_a_literal_list_is_a_diagnostic_in_the_enclosing_source(text: str) -> None:
     found = read_literals(text, WHERE)
     assert isinstance(found, Diagnostic)
+    assert found.span is not None
     assert found.span.source == "c.lp"
     assert found.span.start.line >= 7
 
@@ -103,6 +106,7 @@ def test_what_is_not_a_literal_list_is_a_diagnostic_in_the_enclosing_source(text
 def test_a_syntax_error_is_placed_where_it_was_written() -> None:
     found = read_literals("p(1,\n  ;", WHERE)
     assert isinstance(found, Diagnostic)
+    assert found.span is not None
     assert found.span.start == Position(8, 3)
 
 
@@ -168,7 +172,9 @@ def test_a_valuation_that_is_not_a_term_equal_to_an_integer_is_a_diagnostic(
 ) -> None:
     found = read_valuations(text, WHERE)
     assert isinstance(found, Diagnostic)
-    assert (found.message, found.span.start) == ("expected `term = integer`", start)
+    assert found.message.startswith("expected `term = integer`, found `")
+    assert found.span is not None
+    assert found.span.start == start
 
 
 def test_a_valuation_list_that_does_not_parse_is_a_diagnostic() -> None:

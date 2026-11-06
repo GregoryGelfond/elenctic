@@ -273,18 +273,18 @@ def faults(text: str) -> list[str]:
     found = check(Program(text, "t.lp"))
     assert isinstance(found, Fault), found
     assert found.locus is Locus.REQUEST
-    return [f"{d.span.start.line}: {d.message}" for d in found.diagnostics]
+    return [f"{d.span.start.line if d.span else '?'}: {d.message}" for d in found.diagnostics]
 
 
 def test_an_optimal_claim_needs_an_objective_in_the_program() -> None:
     (message,) = faults("{p}.\n% @expect sat\n% @cost { 0 }\n")
-    assert message.startswith("3: needs an objective")
+    assert message.startswith("3: optimal claim, but the program has no objective")
     assert len(faults("{p}.\n% @expect sat\n% @optimal { p }\n% @count optimal 1\n")) == 2
 
 
 def test_an_optimal_query_needs_an_objective_in_the_program() -> None:
     (message,) = faults("{p}.\n% @expect sat\n% @query optimal yes { p }\n")
-    assert message.startswith("3: needs an objective")
+    assert message.startswith("3: optimal claim, but the program has no objective")
 
 
 def test_an_optimal_query_reads_opt_not_all_answer_sets() -> None:
@@ -356,7 +356,7 @@ HIDDEN_LITERAL_NOTE = "4: reads `-b/0`, which the program can derive and does no
 
 def notes(text: str) -> list[str]:
     report = run(text)
-    return [f"{d.span.start.line}: {d.message}" for d in report.lints]
+    return [f"{d.span.start.line if d.span else '?'}: {d.message}" for d in report.lints]
 
 
 @pytest.mark.parametrize("answer", ["yes", "no", "unknown"])
@@ -375,7 +375,9 @@ def test_a_hidden_literal_is_found_inside_a_conjunction_or_a_disjunction() -> No
     claim = run(HIDDEN_LITERAL + "% @query yes { b }\n").findings[1].claim
     nested = Asks(Answer.YES, All((Any((Literal("b", positive=False), Literal("b"))),)))
     noted = hidden_reads([replace(claim, reading=nested)], grounded)
-    assert [f"{d.span.start.line}: {d.message}" for d in noted] == [HIDDEN_LITERAL_NOTE]
+    assert [f"{d.span.start.line if d.span else '?'}: {d.message}" for d in noted] == [
+        HIDDEN_LITERAL_NOTE
+    ]
 
 
 def test_a_binding_query_that_reads_a_hidden_pattern_is_noted() -> None:
@@ -407,18 +409,16 @@ def test_a_conditional_show_does_not_count_as_showing_the_predicate() -> None:
 def test_a_theory_atom_is_not_checked_as_though_it_were_interpreted() -> None:
     text = "#theory t { c { }; &k/0 : c, any }.\n{p}. &k { 1 }.\n% @expect sat\n"
     (message,) = faults(text)
-    assert message.startswith(
-        "2: the program has theory atoms, which clingo would ground and ignore"
-    )
-    assert "`% @elenctic solver clingcon`" in message
+    assert message.startswith("2: clingo ignores theory atoms")
     found = check(Program(text, "t.lp"))
     assert isinstance(found, Fault)
-    assert found.diagnostics[0].span == Span("t.lp", Position(2, 6), Position(2, 15))
+    assert found.diagnostics[0].span == Span("t.lp", Position(2, 6), Position(2, 15))  # located
+    assert "`% @elenctic solver clingcon`" in found.diagnostics[0].children[-1].message
 
 
 def test_an_objective_that_grounds_away_is_no_objective() -> None:
     (message,) = faults("#minimize { 1,a : a }.\n% @expect sat\n% @cost { 0 }\n")
-    assert "its elements ground away" in message
+    assert message.startswith("3: optimal claim, but the program has no objective")
     assert verdicts("{a}. #minimize { 1,a : a }.\n% @expect sat\n% @cost { 0 }\n") == [P, P]
 
 
@@ -487,7 +487,7 @@ def test_arithmetic_in_a_query_is_evaluated_before_it_is_matched() -> None:
 
 def test_a_term_that_stands_for_no_one_term_is_a_fault_not_a_query_with_no_match() -> None:
     (message,) = faults(NESTED_PROGRAM + "% @query yes { p(f(1..2), a) } = { }\n")
-    assert message.endswith("is not a pattern: an interval stands for several terms")
+    assert message.endswith("is not a pattern")
     (message,) = faults(NESTED_PROGRAM + "% @query yes { p(f(X+1), a) } = { }\n")
     assert "is not a pattern" in message
 
@@ -535,7 +535,7 @@ def test_native_consequences_settle_a_claim_that_an_answer_set_limit_leaves_open
 def test_a_deeply_nested_term_beside_a_theory_atom_is_a_fault_not_an_exception() -> None:
     theory = "#theory t { c { }; &k/0 : c, any }.\n"
     (message,) = faults(theory + f"p({nested()}) :- &k {{ 1 }}.\n% @expect sat\n")
-    assert message.startswith("2: the program has theory atoms")
+    assert message.startswith("2: clingo ignores theory atoms")
 
 
 def test_a_deeply_nested_term_in_a_show_is_read() -> None:

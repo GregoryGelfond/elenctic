@@ -53,7 +53,7 @@ def test_a_missing_file_exits_as_a_fault(
 ) -> None:
     code, out, err = run_both(capsys, tmp_path / "absent.lp")
     assert code == Exit.FAULT
-    assert err.splitlines()[0].startswith(f"{tmp_path / 'absent.lp'}:1:1-1: error: ")
+    assert err.splitlines()[0] == f"error: cannot read `{tmp_path / 'absent.lp'}`"
     assert out == "0/1 passed, 1 error\n"
 
 
@@ -154,7 +154,8 @@ def test_a_file_that_is_not_utf8_is_an_error_of_the_request(
     path.write_bytes(b'p("\xff").\n% @expect sat\n')
     code, out, err = run_both(capsys, path)
     assert code == Exit.FAULT
-    assert err == f"{path}:1:1-1: error: not valid UTF-8: invalid start byte at byte 3\n"
+    assert "error: cannot read" in err
+    assert "not valid UTF-8 at byte 3" in err
     assert out == "0/1 passed, 1 error\n"
 
 

@@ -1,4 +1,4 @@
-from elenctic.spans import Diagnostic, Position, Severity, Span, diagnose, failure, note
+from elenctic.spans import Child, Diagnostic, Position, Severity, Span, diagnose, failure, note
 
 
 def test_a_located_error_becomes_a_diagnostic_with_its_span() -> None:
@@ -12,14 +12,15 @@ def test_a_located_error_becomes_a_diagnostic_with_its_span() -> None:
     )
 
 
-def test_a_note_line_is_its_own_diagnostic() -> None:
+def test_a_note_line_is_a_child_of_the_error_it_follows() -> None:
     message = (
         "f.lp:1:1-14: error: unsafe variables in:\n  p(X):-q(Y).\nf.lp:1:3-4: note: 'X' is unsafe\n"
     )
     first, second = diagnose(message)
     assert (first.severity, second.severity) == (Severity.ERROR, Severity.NOTE)
     assert second.span == Span("f.lp", Position(1, 3), Position(1, 4))
-    assert first.message == "unsafe variables in:\n  p(X):-q(Y)."
+    assert first.message == "unsafe variables in:"
+    assert first.children == (Child(Severity.NOTE, "  p(X):-q(Y)."),)
 
 
 def test_a_span_across_lines_reads_both_ends() -> None:
@@ -30,7 +31,7 @@ def test_a_span_across_lines_reads_both_ends() -> None:
 
 def test_an_unlocated_message_is_kept_whole() -> None:
     (found,) = diagnose("something went wrong")
-    assert found.span == Span("", Position(1, 1), Position(1, 1))
+    assert found.span is None
     assert found.message == "something went wrong"
 
 

@@ -46,7 +46,8 @@ def test_by_default_a_redirected_stream_is_plain(unmet: Path, missing: Path) -> 
     assert code == Exit.FAULT
     assert "\x1b" not in out + err
     assert "[FAIL]" in out
-    assert "absent.lp:1:1-1: error: " in err
+    assert "cannot read" in err
+    assert "absent.lp" in err
 
 
 def test_always_colors_both_streams_by_their_roles(
@@ -58,7 +59,8 @@ def test_always_colors_both_streams_by_their_roles(
     assert shown.out.endswith(
         "\x1b[1m0/2 passed\x1b[0m, \x1b[1;31m1 fail\x1b[0m, \x1b[1;31m1 error\x1b[0m\n"
     )
-    assert f"\x1b[1m{missing}:1:1-1\x1b[0m: \x1b[1;31merror\x1b[0m: " in shown.err
+    assert "\x1b[1;31merror\x1b[0m: " in shown.err
+    assert "cannot read" in shown.err
 
 
 # (environment, arguments) -> colored? Every stream here is redirected, so only an explicit
@@ -143,13 +145,13 @@ def test_a_bare_icons_does_not_take_the_next_path_as_its_value(
 def test_a_value_after_a_space_is_a_path(capsys: pytest.CaptureFixture[str], unmet: Path) -> None:
     shown = written(capsys, "--icons", "always", unmet)
     assert shown.code == Exit.FAULT
-    assert "always:1:1-1: error: " in shown.err
+    assert "cannot read `always`" in shown.err
 
 
 def test_after_the_double_dash_icons_is_a_path(capsys: pytest.CaptureFixture[str]) -> None:
     shown = written(capsys, "test", "--", "--icons")
     assert shown.code == Exit.FAULT
-    assert "--icons:1:1-1: error: " in shown.err
+    assert "cannot read `--icons`" in shown.err
 
 
 def test_a_bad_icons_value_is_a_usage_error(
@@ -188,8 +190,8 @@ def test_verdicts_and_summary_are_on_stdout_and_diagnostics_on_stderr(
     assert shown.out.splitlines()[0] == f"{unmet} — FAIL"
     assert shown.out.splitlines()[-1] == "0/2 passed, 1 fail, 1 error"
     assert "absent.lp" not in shown.out
-    assert shown.err.startswith(f"{missing}:1:1-1: error: ")
-    assert shown.err.count("\n") == 1
+    assert shown.err.startswith("error: cannot read")
+    assert "absent.lp" in shown.err
 
 
 def test_json_keeps_the_whole_document_on_stdout_and_never_colors_it(
@@ -297,7 +299,8 @@ def test_each_stream_is_colored_by_its_own_terminal(unmet: Path, missing: Path) 
     code, out, err = on_terminals([str(unmet), str(missing)], terminal={"err"})
     assert code == Exit.FAULT
     assert "\x1b" not in out
-    assert f"\x1b[1m{missing}:1:1-1\x1b[0m: \x1b[1;31merror\x1b[0m: " in err
+    assert "\x1b[1;31merror\x1b[0m: " in err
+    assert "cannot read" in err
     code, out, err = on_terminals([str(unmet), str(missing)], terminal={"out"})
     assert code == Exit.FAULT
     assert "\x1b[1;31m[FAIL]\x1b[0m" in out

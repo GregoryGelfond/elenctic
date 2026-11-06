@@ -8,7 +8,8 @@ like a command is written `./why`.
 
 | Option | Meaning |
 |---|---|
-| `--json` | write the run as JSON |
+| `--format full\|short\|json` | how to write the run: rustc multi-line diagnostics (default), one-line short, or JSON |
+| `--json` | write the run as JSON (same as `--format json`) |
 | `-V`, `--version` | print the version and exit; stands before the command (below) |
 | `-v`, `--verbose` | list the claims that passed |
 | `--color WHEN` | color the text: `auto` (default), `always` or `never` |
@@ -65,6 +66,15 @@ colored or marked, so a program cannot write escape sequences.
 Colors by role: error `1;31` (a `FAIL`, an error, an internal error), warning `1;33`
 (`UNDECIDED`), note `1;32` (`PASS`), help `1;36` (the reserved-command note), margin `1;34` (line
 numbers) and emphasis `1` (sources and the summary).
+
+## Diagnostics
+
+A diagnostic names what is wrong. Its message is lowercase and has no trailing period. How to fix
+it stands only on a `help` line; context stands on a `note`. The default (`--format full`) is the
+rustc form: `error: message`, then ` --> path:line:col`, a source snippet with carets and a primary
+label, then `= note:` and `= help:` lines. `--format short` prints one line per diagnostic in the
+gcc form `path:line:col-col: error: message`. Columns count Unicode scalars; clingo's byte columns
+are converted at the boundary. Syntax errors read `expected X, found Y`.
 
 ## Exit codes
 
@@ -298,8 +308,9 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 |---|---|
 | `Position` | a point in a source; line and column both count from 1 |
 | `Span` | the half-open stretch of a source from `start` to `end` |
-| `Diagnostic` | a message about a `Span`, with its `Severity` |
-| `Severity` | `ERROR`, `WARNING` or `NOTE` |
+| `Diagnostic` | a message about a `Span` (or the whole source when `span` is none), with its `Severity`, optional `label`, `children` (`note`/`help`), and optional `code` (unused in 1.0) |
+| `Child` | a `note` or `help` attached to a diagnostic |
+| `Severity` | `ERROR`, `WARNING`, `NOTE` or `HELP` |
 
 ## JSON
 

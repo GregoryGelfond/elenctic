@@ -13,14 +13,11 @@ from elenctic.contract import Solver
 from elenctic.engine import ground
 from elenctic.program import Fault, Program
 from elenctic.report import Exit
-from elenctic.spans import Position, Span
 from elenctic.theory import Clingcon, Plain, loaded_solvers
 
 CLINGCON = "% @elenctic solver clingcon\n"
-ABSENT = (
-    "the contract declares `% @elenctic solver clingcon`, which is not installed; "
-    "install `elenctic[theory]`, or use the pixi `theory` environment"
-)
+ABSENT = "solver `clingcon` is not installed"
+ABSENT_HELP = "install `elenctic[theory]`, or use the pixi `theory` environment"
 
 
 @pytest.fixture
@@ -52,7 +49,8 @@ def test_a_program_that_asks_for_clingcon_without_it_is_a_fault_of_the_request()
     assert isinstance(fault, Fault)
     (diagnostic,) = fault.diagnostics
     assert diagnostic.message == ABSENT
-    assert diagnostic.span == Span("t.lp", Position(1, 1), Position(1, 1))
+    assert diagnostic.children[-1].message == ABSENT_HELP
+    assert diagnostic.span is None
     found = check(Program(CLINGCON + "p.\n% @expect sat\n", "t.lp"))
     assert isinstance(found, Fault)
     assert found.diagnostics[0].message == ABSENT

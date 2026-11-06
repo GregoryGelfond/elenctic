@@ -137,15 +137,16 @@ def test_unknown_unsupported_and_malformed_tags_are_each_a_diagnostic_where_they
         "% @query yes { p(X) }",
         "% @brave { p } assuming { X }",
     )
-    assert [d.span.start.line for d in contract.diagnostics] == [2, 3, 4, 5, 6, 7, 8, 9]
+    assert all(d.span is not None for d in contract.diagnostics)
+    assert [d.span.start.line for d in contract.diagnostics if d.span] == [2, 3, 4, 5, 6, 7, 8, 9]
     assert len(contract.claims) == 1
 
 
 def test_a_contract_needs_exactly_one_expect_and_unsat_admits_no_answer_set_claim() -> None:
     assert messages("% @count 1")[0].startswith("missing")
-    assert "more than one" in messages("% @expect sat", "% @expect unsat")[0]
+    assert "more than once" in messages("% @expect sat", "% @expect unsat")[0]
     clash = messages("% @expect unsat", "% @cautious { p }")
-    assert "no answer set" in clash[0]
+    assert "answer-set claim under" in clash[0]
     assert not messages("% @expect unsat", "% @count 0")
     assert not messages("% @expect unsat", "% @cautious { p } assuming { q }")
 
@@ -182,20 +183,19 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
 
 def test_a_count_of_zero_contradicts_expecting_sat() -> None:
     contract = parse("% @expect sat", "% @count 0")
-    assert [d.message for d in contract.diagnostics] == [
-        "`@count 0` is `@expect unsat`, not `@expect sat`"
-    ]
+    assert [d.message for d in contract.diagnostics] == ["`@count 0` contradicts `@expect sat`"]
     assert not parse("% @expect unsat", "% @count 0").diagnostics
 
 
 def only_diagnostic(*lines: str) -> Diagnostic:
     (found,) = parse("% @expect sat", *lines).diagnostics
+    assert found.span is not None
     return found
 
 
 def test_the_answer_set_tag_has_a_hyphen_and_the_old_spelling_is_not_a_tag() -> None:
     assert only("% @answer-set { p }").reading == Witness(frozenset({Literal("p")}))
-    assert "`@model` is not a tag" in only_diagnostic("% @model { p }").message
+    assert "unknown tag `@model`" in only_diagnostic("% @model { p }").message
 
 
 def test_a_string_may_hold_escaped_quotes_commas_and_braces() -> None:
@@ -205,72 +205,83 @@ def test_a_string_may_hold_escaped_quotes_commas_and_braces() -> None:
 
 def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> None:
     found = only_diagnostic("% @cautious { p,", "%   q(X) }")
+    assert found.span is not None
     assert (found.span.start, found.span.end) == (P(2, 14), P(3, 10))
 
 
 @pytest.mark.parametrize(
     ("line", "message", "start", "end"),
     [
-        ("% @count x", "expected a non-negative integer", P(2, 3), P(2, 11)),
-        ("%   @count   x  ", "expected a non-negative integer", P(2, 5), P(2, 15)),
-        ("% @cautious p", "expected `{ literals }`", P(2, 3), P(2, 14)),
-        ("% @cautious { not p }", "expected ground literals, without `not`", P(2, 14), P(2, 21)),
-        ("% @cautious { }", "expected at least one literal", P(2, 14), P(2, 15)),
-        ("% @query maybe { p }", "expected `yes`, `no` or `unknown`", P(2, 10), P(2, 15)),
+        ("% @count x", "expected a non-negative integer, found `x`", P(2, 3), P(2, 11)),
+        ("%   @count   x  ", "expected a non-negative integer, found `x`", P(2, 5), P(2, 15)),
+        ("% @cautious p", "expected `{ literals }`, found `p`", P(2, 3), P(2, 14)),
+        ("% @cautious { not p }", "expected ground literals, found `not p`", P(2, 14), P(2, 21)),
+        ("% @cautious { }", "expected at least one literal, found `{ }`", P(2, 14), P(2, 15)),
+        (
+            "% @query maybe { p }",
+            "expected `yes`, `no`, or `unknown`, found `maybe`",
+            P(2, 10),
+            P(2, 15),
+        ),
         (
             "% @query yes { p(X) }",
-            "a query with variables states its bindings: `{ q(X) } = { ... }`",
+            "query with variables states no bindings",
             P(2, 15),
             P(2, 21),
         ),
         (
             "% @query yes { p(X) } 1",
-            "expected `answer { query }`, or `answer { q(X) } = { bindings }`",
+            "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
             P(2, 3),
             P(2, 24),
         ),
         (
             "% @query yes { p(X), q(Y) } = { 1 }",
-            "expected one positive pattern before `=`",
+            "expected one positive pattern before `=`, found `{ p(X), q(Y) }`",
             P(2, 15),
             P(2, 27),
         ),
         (
             "% @query yes { not p(X) } = { 1 }",
-            "expected one positive pattern before `=`",
+            "expected one positive pattern before `=`, found `{ not p(X) }`",
             P(2, 15),
             P(2, 25),
         ),
         (
             "% @query yes { p(1) } = { 1 }",
-            "a pattern with no variables is a ground query",
+            "binding pattern has no variables",
             P(2, 15),
             P(2, 21),
         ),
         (
             "% @query yes { p(_, X) } = { 1 }",
-            "an anonymous variable has no binding to state: name it",
+            "anonymous variable in a binding pattern",
             P(2, 15),
             P(2, 24),
         ),
         (
             "% @query yes { p(_) } = { }",
-            "an anonymous variable has no binding to state: name it",
+            "anonymous variable in a binding pattern",
             P(2, 15),
             P(2, 21),
         ),
-        ("% @cautious { p } assuming p", "expected `assuming { literals }`", P(2, 3), P(2, 29)),
+        (
+            "% @cautious { p } assuming p",
+            "expected `assuming { literals }`, found `assuming p`",
+            P(2, 3),
+            P(2, 29),
+        ),
         (
             "% @cautious { p } assuming { q } extra",
-            "expected `assuming { literals }`",
+            "expected `assuming { literals }`, found `assuming {  q  } extra`",
             P(2, 3),
             P(2, 39),
         ),
-        ("% @cautious { p", "a brace is never closed", P(2, 3), P(2, 16)),
-        ("% @query yes { p. q }", "expected a list of literals", P(2, 15), P(2, 21)),
+        ("% @cautious { p", "unclosed brace", P(2, 3), P(2, 16)),
+        ("% @query yes { p. q }", "expected a list of literals, found `p. q`", P(2, 15), P(2, 21)),
         (
             "% @query yes { p(1..2) }",
-            "`(1..2)` is not a pattern: an interval stands for several terms",
+            "`(1..2)` is not a pattern",
             P(2, 16),
             P(2, 23),
         ),
@@ -280,20 +291,23 @@ def test_a_bad_tag_is_one_diagnostic_at_the_text_that_is_wrong(
     line: str, message: str, start: Position, end: Position
 ) -> None:
     found = only_diagnostic(line)
+    assert found.span is not None
     assert (found.message, found.span.start, found.span.end) == (message, start, end)
 
 
-def test_a_missing_expect_is_reported_at_the_start_of_the_source() -> None:
+def test_a_missing_expect_is_reported_without_a_span() -> None:
     (found,) = parse("% @count 1").diagnostics
-    assert found.span == Span("c.lp", Position(1, 1), Position(1, 1))
+    assert found.span is None
     assert [d.message for d in parse("% @expect sat", "% @expect sat").diagnostics] == [
-        "more than one `@expect`"
+        "`@expect` given more than once"
     ]
 
 
 def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None:
     found = only_diagnostic("% @brave { p,", "%      q(1..2),", "%   r }")
-    assert found.message == "`(1..2)` is not a pattern: an interval stands for several terms"
+    assert found.message == "`(1..2)` is not a pattern"
+    assert found.label == "an interval stands for several terms"
+    assert found.span is not None
     assert (found.span.start, found.span.end) == (P(3, 8), P(3, 15))
 
 
@@ -316,20 +330,20 @@ def test_optimal_is_a_range_a_claim_may_name_and_the_tag_is_sugar_for_it() -> No
 @pytest.mark.parametrize(
     ("line", "message"),
     [
-        ("% @cost { }", "expected `{ c1 c2 ... }`, an integer for each level"),
-        ("% @cost { 1 x }", "expected `{ c1 c2 ... }`, an integer for each level"),
-        ("% @cost 3", "expected `{ c1 c2 ... }`, an integer for each level"),
-        ("% @optimal optimal { p }", "expected `{ literals }`"),
-        ("% @answer-set optimal", "expected `{ literals }`"),
-        ("% @count optimal", "expected a non-negative integer"),
-        ("% @count optimal { 1 }", "expected a non-negative integer"),
+        ("% @cost { }", "expected `{ c1 c2 ... }`, found `{ }`"),
+        ("% @cost { 1 x }", "expected `{ c1 c2 ... }`, found `{ 1 x }`"),
+        ("% @cost 3", "expected `{ c1 c2 ... }`, found `3`"),
+        ("% @optimal optimal { p }", "expected `{ literals }`, found `optimal { p }`"),
+        ("% @answer-set optimal", "expected `{ literals }`, found `{ }`"),
+        ("% @count optimal", "expected a non-negative integer, found `{ }`"),
+        ("% @count optimal { 1 }", "expected a non-negative integer, found `{ 1 }`"),
         (
             "% @query optimal",
-            "expected `answer { query }`, or `answer { q(X) } = { bindings }`",
+            "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
         ),
         (
             "% @query yes optimal { p }",
-            "expected `answer { query }`, or `answer { q(X) } = { bindings }`",
+            "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
         ),
     ],
 )
@@ -339,15 +353,13 @@ def test_a_malformed_optimal_or_cost_claim_is_a_diagnostic(line: str, message: s
 
 def test_no_optimal_answer_sets_follows_the_same_rule_as_no_answer_sets() -> None:
     assert not messages("% @expect unsat", "% @count optimal 0")
-    assert "no answer set" in messages("% @expect unsat", "% @cost { 1 }")[0]
-    assert "not `@expect sat`" in messages("% @expect sat", "% @count optimal 0")[0]
+    assert "answer-set claim under" in messages("% @expect unsat", "% @cost { 1 }")[0]
+    assert "contradicts `@expect sat`" in messages("% @expect sat", "% @count optimal 0")[0]
 
 
 def test_more_optimal_answer_sets_than_answer_sets_is_a_contradiction() -> None:
     (message,) = messages("% @expect sat", "% @count 1", "% @count optimal 2")
-    assert message == (
-        "`@count optimal 2` exceeds `@count 1`: the optimal answer sets are among the answer sets"
-    )
+    assert message == "`@count optimal 2` exceeds `@count 1`"
     assert not messages("% @expect sat", "% @count 2", "% @count optimal 2")
     assert not messages("% @expect sat", "% @count optimal 5")
     assert not messages("% @expect sat", "% @count 1", "% @count optimal 2 assuming { p }")
@@ -355,7 +367,7 @@ def test_more_optimal_answer_sets_than_answer_sets_is_a_contradiction() -> None:
 
 def test_an_expectation_is_sat_or_unsat() -> None:
     found = only_diagnostic("% @expect maybe")
-    assert found.message == "expected `sat` or `unsat`"
+    assert found.message == "expected `sat` or `unsat`, found `maybe`"
 
 
 X1, Y2 = Valuation(parse_term("x"), 1), Valuation(parse_term("y"), 2)
@@ -382,18 +394,30 @@ def test_a_witness_may_bind_the_assignment_of_the_same_answer_set_with_where() -
 @pytest.mark.parametrize(
     ("line", "message"),
     [
-        ("% @assign { }", "expected at least one `term = integer`"),
-        ("% @assign { x=1, x=2 }", "a term is given two different integers"),
-        ("% @assign { x }", "expected `term = integer`"),
-        ("% @assign x=1", "expected `{ term = integer, ... }`"),
-        ("% @assign", "expected `{ term = integer, ... }`"),
-        ("% @assign { x=1 } { y=2 }", "expected `{ term = integer, ... }`"),
-        ("% @assign optimal optimal { x=1 }", "expected `{ term = integer, ... }`"),
-        ("% @answer-set { p } where { }", "expected at least one `term = integer`"),
-        ("% @answer-set { p } where x=1", "expected `where { term = integer, ... }`"),
-        ("% @answer-set { p } where { x=1 } extra", "expected `where { term = integer, ... }`"),
-        ("% @answer-set { } where { x=1 }", "expected at least one literal"),
-        ("% @answer-set { p } where { x=a }", "expected `term = integer`"),
+        ("% @assign { }", "expected at least one `term = integer`, found `{ }`"),
+        ("% @assign { x=1, x=2 }", "a term is assigned more than once"),
+        ("% @assign { x }", "expected `term = integer`, found `x`"),
+        ("% @assign x=1", "expected `{ term = integer, ... }`, found `x = 1`"),
+        ("% @assign", "expected `{ term = integer, ... }`, found `{ }`"),
+        (
+            "% @assign { x=1 } { y=2 }",
+            "expected `{ term = integer, ... }`, found `{ x=1 } { y=2 }`",
+        ),
+        (
+            "% @assign optimal optimal { x=1 }",
+            "expected `{ term = integer, ... }`, found `optimal { x=1 }`",
+        ),
+        ("% @answer-set { p } where { }", "expected at least one `term = integer`, found `{ }`"),
+        (
+            "% @answer-set { p } where x=1",
+            "expected `where { term = integer, ... }`, found `where x = 1`",
+        ),
+        (
+            "% @answer-set { p } where { x=1 } extra",
+            "expected `where { term = integer, ... }`, found `where {  x=1  } extra`",
+        ),
+        ("% @answer-set { } where { x=1 }", "expected at least one literal, found `{ }`"),
+        ("% @answer-set { p } where { x=a }", "expected `term = integer`, found `x = a`"),
     ],
 )
 def test_a_malformed_assignment_is_a_diagnostic(line: str, message: str) -> None:
@@ -414,21 +438,23 @@ def test_a_contract_declares_its_solver_and_defaults_to_clingo() -> None:
 @pytest.mark.parametrize(
     ("line", "message"),
     [
-        ("% @elenctic solver cplex", "unknown solver; known: clingo, clingcon"),
-        ("% @elenctic solver", "`@elenctic solver` needs a solver name; known: clingo, clingcon"),
-        ("% @elenctic mode fast", "unknown `@elenctic` directive; known: `solver`"),
-        ("% @elenctic", "unknown `@elenctic` directive; known: `solver`"),
+        ("% @elenctic solver cplex", "unknown solver `cplex`"),
+        ("% @elenctic solver", "missing solver name"),
+        ("% @elenctic mode fast", "unknown `@elenctic` directive `mode`"),
+        ("% @elenctic", "unknown `@elenctic` directive"),
     ],
 )
 def test_a_misdeclared_solver_is_a_diagnostic_at_its_line(line: str, message: str) -> None:
     found = only_diagnostic(line)
+    assert found.span is not None
     assert (found.message, found.span.start.line) == (message, 2)
 
 
 def test_only_one_solver_may_be_declared() -> None:
     contract = parse("% @expect sat", "% @elenctic solver clingo", "% @elenctic solver clingcon")
     (found,) = contract.diagnostics
-    assert (found.message, found.span.start.line) == ("at most one `@elenctic solver`", 3)
+    assert found.span is not None
+    assert (found.message, found.span.start.line) == ("solver declared more than once", 3)
     assert contract.solver is Solver.CLINGO
 
 

@@ -10,14 +10,16 @@ from elenctic.glyphs import MARKS, Glyphs
 from elenctic.human import (
     SEVERITY_ROLES,
     VERDICT_ROLES,
+    Format,
     internal_error,
     render,
     reserved,
     version,
 )
+from elenctic.json_view import encode
 from elenctic.paint import Color
 from elenctic.presentation import PLAIN, Presentation, Style
-from elenctic.program import Program
+from elenctic.program import Fault, Program
 from elenctic.report import Entry, Run
 from elenctic.search import Limits
 from elenctic.spans import Position, Severity, Span
@@ -54,7 +56,9 @@ def test_an_undecided_claim_is_counted_apart() -> None:
 
 
 def test_a_fault_is_a_diagnostic_on_stderr_and_a_count_on_stdout() -> None:
-    rendered = render(Run((entry(PASSING, "a.lp"), entry(FAULTY, "c.lp"))), PLAIN)
+    rendered = render(
+        Run((entry(PASSING, "a.lp"), entry(FAULTY, "c.lp"))), PLAIN, form=Format.SHORT
+    )
     assert rendered.stdout == "1/2 passed, 1 error\n"
     assert rendered.stderr.startswith("c.lp:2:")
     assert ": error: " in rendered.stderr
@@ -100,12 +104,12 @@ def test_a_passed_claim_is_a_note_and_an_undecided_one_a_warning() -> None:
 
 def test_a_fault_is_painted_on_stderr_by_the_style_of_stderr() -> None:
     presentation = Presentation(PLAIN.stdout, COLORED.stderr)
-    rendered = render(Run((entry(FAULTY, "c.lp"),)), presentation)
+    rendered = render(Run((entry(FAULTY, "c.lp"),)), presentation, form=Format.SHORT)
     assert rendered.stdout == "0/1 passed, 1 error\n"
     assert rendered.stderr.startswith("\x1b[1mc.lp:2:")
     assert "\x1b[0m: \x1b[1;31merror\x1b[0m: " in rendered.stderr
     presentation = Presentation(COLORED.stdout, PLAIN.stderr)
-    rendered = render(Run((entry(FAULTY, "c.lp"),)), presentation)
+    rendered = render(Run((entry(FAULTY, "c.lp"),)), presentation, form=Format.SHORT)
     assert rendered.stdout == "\x1b[1m0/1 passed\x1b[0m, \x1b[1;31m1 error\x1b[0m\n"
     assert "\x1b" not in rendered.stderr
 
@@ -140,7 +144,7 @@ def test_text_from_a_program_cannot_steer_the_terminal() -> None:
 
 def test_a_diagnostic_is_as_legible_as_a_verdict() -> None:
     run = Run((entry('p :- "\x1b[2J\x07". q(.\n% @expect sat\n', "c.lp"),))
-    stderr = render(run, PLAIN).stderr
+    stderr = render(run, PLAIN, form=Format.SHORT).stderr
     assert stderr.startswith("c.lp:1:")
     assert "\x1b" not in stderr
     assert "\x07" not in stderr
@@ -157,7 +161,7 @@ def test_text_is_made_legible_before_it_is_painted() -> None:
 
 def test_a_diagnostic_is_made_legible_before_it_is_painted() -> None:
     run = Run((entry('p :- "\x1b[2J\x07". q(.\n% @expect sat\n', "c\x1b[2J.lp"),))
-    stderr = render(run, COLORED).stderr
+    stderr = render(run, COLORED, form=Format.SHORT).stderr
     assert stderr.startswith("\x1b[1mc\\x1b[2J.lp:1:")
     assert stderr.count("\x1b") == len(SEQUENCE.findall(stderr))
     assert "\x07" not in stderr
@@ -259,3 +263,45 @@ def test_a_lint_is_a_note_on_stderr_even_when_every_claim_passed() -> None:
     rendered = render(Run((Entry("t.lp", found),)), PLAIN, verbose=True)
     assert "note: reads `-b/0`" in rendered.stderr
     assert "PASS" in rendered.stdout
+
+
+def test_full_format_shows_a_snippet_with_carets_and_a_label() -> None:
+    text = "p.\n% @expect sat\n% @count x\n"
+    rendered = render(Run((entry(text, "c.lp"),)), PLAIN)
+    assert rendered.stderr == (
+        "error: expected a non-negative integer, found `x`\n"
+        " --> c.lp:3:3\n"
+        "  |\n"
+        "3 | % @count x\n"
+        "  |   ^^^^^^^^ expected a non-negative integer\n"
+    )
+
+
+def test_short_format_is_the_one_line_gcc_form() -> None:
+    text = "p.\n% @expect sat\n% @count x\n"
+    rendered = render(Run((entry(text, "c.lp"),)), PLAIN, form=Format.SHORT)
+    assert rendered.stderr == "c.lp:3:3-11: error: expected a non-negative integer, found `x`\n"
+
+
+def test_a_help_child_is_printed_under_the_snippet() -> None:
+    text = "p.\n% @count 1\n"
+    rendered = render(Run((entry(text, "m.lp"),)), PLAIN)
+    assert rendered.stderr.startswith("error: missing `@expect`\n")
+    assert "= help: add `% @expect sat` or `% @expect unsat`\n" in rendered.stderr
+    assert " --> " not in rendered.stderr
+
+
+def test_human_and_json_share_the_same_diagnostic_fields() -> None:
+    run = Run((entry("p.\n% @expect sat\n% @count x\n", "c.lp"),))
+    short = render(run, PLAIN, form=Format.SHORT).stderr
+    full = render(run, PLAIN).stderr
+    (entry_,) = run.entries
+    assert isinstance(entry_.result, Fault)
+    (diagnostic,) = entry_.result.diagnostics
+    data = encode(diagnostic)
+    assert isinstance(data, dict)
+    assert data["message"] == "expected a non-negative integer, found `x`"
+    assert data["label"] == "expected a non-negative integer"
+    assert short == f"{diagnostic.span}: error: {diagnostic.message}\n"
+    assert diagnostic.message in full
+    assert diagnostic.label in full

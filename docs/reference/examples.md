@@ -68,7 +68,11 @@ Exit code 1.
 
 ```
 $ elenctic -v docs/examples/hidden-contrary.lp
-docs/examples/hidden-contrary.lp:6:3-20: note: reads `-b/0`, which the program can derive and does not `#show`
+note: reads `-b/0`, which the program can derive and does not `#show`
+ --> docs/examples/hidden-contrary.lp:6:3
+  |
+6 | % @query yes { -b }
+  |   ^^^^^^^^^^^^^^^^^
 docs/examples/hidden-contrary.lp — PASS
   [PASS] @expect sat (line 5): an answer set exists
   [PASS] @query yes { -b } (line 6): yes expected, answer is yes
@@ -90,8 +94,20 @@ Exit code 0.
 
 ```
 $ elenctic -v docs/examples/no-objective.lp
-docs/examples/no-objective.lp:4:3-14: error: needs an objective, but the ground program has none: it declares no `#minimize`, `#maximize` or `:~`, or its elements ground away
-docs/examples/no-objective.lp:5:3-19: error: needs an objective, but the ground program has none: it declares no `#minimize`, `#maximize` or `:~`, or its elements ground away
+error: optimal claim, but the program has no objective
+ --> docs/examples/no-objective.lp:4:3
+  |
+4 | % @cost { 0 }
+  |   ^^^^^^^^^^^ needs an objective
+  |
+  = note: the program declares no `#minimize`, `#maximize`, or `:~`, or its elements ground away
+error: optimal claim, but the program has no objective
+ --> docs/examples/no-objective.lp:5:3
+  |
+5 | % @count optimal 1
+  |   ^^^^^^^^^^^^^^^^ needs an objective
+  |
+  = note: the program declares no `#minimize`, `#maximize`, or `:~`, or its elements ground away
 0/1 passed, 1 error
 ```
 
@@ -164,7 +180,13 @@ Exit code 0.
 
 ```
 $ elenctic -v docs/examples/theory-atoms.lp
-docs/examples/theory-atoms.lp:3:8-17: error: the program has theory atoms, which clingo would ground and ignore; declare `% @elenctic solver clingcon` to check them with clingcon
+error: clingo ignores theory atoms
+ --> docs/examples/theory-atoms.lp:3:8
+  |
+3 | { p }. &k { 1 }.
+  |        ^^^^^^^^^ theory atom
+  |
+  = help: declare `% @elenctic solver clingcon` to check them with clingcon
 0/1 passed, 1 error
 ```
 

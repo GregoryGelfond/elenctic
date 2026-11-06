@@ -195,9 +195,10 @@ def test_a_theory_atom_with_no_theory_defined_is_said_to_have_none() -> None:
     fault = ground(Program("p.\n&sum { x } >= 1 :- p.\n", "t.lp"))
     assert isinstance(fault, Fault)
     (diagnostic,) = fault.diagnostics
+    assert diagnostic.span is not None
     assert diagnostic.span.start.line == 2
-    assert diagnostic.message == (
-        "the theory atom `&sum/0` has no `#theory` definition, so it cannot be grounded; "
+    assert diagnostic.message == "theory atom `&sum/0` has no `#theory` definition"
+    assert diagnostic.children[-1].message == (
         "define the theory, or declare `% @elenctic solver clingcon` for clingcon's"
     )
 

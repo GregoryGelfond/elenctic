@@ -123,11 +123,12 @@ def test_a_claim_over_assignments_without_the_solver_says_which_to_declare() -> 
     found = check(Program("{p}.\n% @expect sat\n% @assign { x=1 }\n", "t.lp"))
     assert isinstance(found, Fault)
     (diagnostic,) = found.diagnostics
+    assert diagnostic.span is not None
     assert diagnostic.span.start.line == 3
     assert diagnostic.message == (
-        "reads a theory assignment, but the contract declares no theory solver: "
-        "declare `% @elenctic solver clingcon`"
+        "claim reads a theory assignment, but no theory solver is declared"
     )
+    assert diagnostic.children[0].message == "declare `% @elenctic solver clingcon`"
 
 
 def test_a_theory_objective_is_a_fault_since_no_search_can_switch_it_off() -> None:
@@ -136,8 +137,9 @@ def test_a_theory_objective_is_a_fault_since_no_search_can_switch_it_off() -> No
     )
     assert isinstance(found, Fault)
     (diagnostic,) = found.diagnostics
+    assert diagnostic.span is not None
     assert diagnostic.span.start.line == 3
-    assert diagnostic.message.startswith("the program has a theory objective")
+    assert diagnostic.message == "theory objective is not seen by the cost"
 
 
 def test_the_optimum_found_beside_a_theory_is_proven_and_its_answer_sets_carry_assignments() -> (
