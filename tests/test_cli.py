@@ -253,3 +253,30 @@ def test_python_m_elenctic_runs_the_same_cli() -> None:
     )
     assert version.returncode == 0
     assert version.stdout.startswith("elenctic ")
+
+
+def test_a_tuple_valued_one_variable_binding_is_not_flattened(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`{ (1,2) }` for p(X) must FAIL when the answer sets are p(1) and p(2)."""
+    path = write(
+        tmp_path,
+        "flat.lp",
+        "p(1). p(2).\n#show p/1.\n% @expect sat\n% @query yes { p(X) } = { (1,2) }\n",
+    )
+    code, out = run(capsys, "--color", "never", "-v", path)
+    assert code == Exit.CLAIM_UNMET
+    assert "[FAIL]" in out
+
+
+def test_a_nested_tuple_in_an_n_ary_binding_is_accepted(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(
+        tmp_path,
+        "nested.lp",
+        "p((1,2),3).\n#show p/2.\n% @expect sat\n% @query yes { p(X,Y) } = { ((1,2),3) }\n",
+    )
+    code, out = run(capsys, "--color", "never", path)
+    assert code == Exit.CLAIMS_HOLD
+    assert "1/1 passed" in out

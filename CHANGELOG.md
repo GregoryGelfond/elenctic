@@ -69,6 +69,7 @@ All notable changes are recorded here. The format follows
 - Non-ASCII outside strings and comments is refused with a located diagnostic before clingo sees
   it (program text, `#include`d files, and tag payloads), so a bad character never aborts the
   process; `--json` still emits a document.
+- Binding sets keep tuple structure: `{ (1,2) }` for one variable is one binding, and `{ ((1,2),3) }` for two is accepted; a bare `{ a, 1 }` for arity 2 is refused.
 
 
 ### Changed

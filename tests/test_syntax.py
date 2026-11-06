@@ -1,5 +1,7 @@
 import pytest
 from clingo import Number, String, parse_term
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from elenctic.determination import Valuation
 from elenctic.patterns import Pattern
@@ -132,8 +134,8 @@ def test_bindings_of_the_wrong_arity_or_shape_are_a_diagnostic(text: str) -> Non
     assert isinstance(read_bindings(text, 2, WHERE), Diagnostic)
 
 
-def test_several_variables_bound_once_read_as_one_row_of_bare_terms() -> None:
-    assert read_bindings("a, 1", 2, WHERE) == ((parse_term("a"), Number(1)),)
+def test_several_variables_need_a_tuple_even_for_one_binding() -> None:
+    assert isinstance(read_bindings("a, 1", 2, WHERE), Diagnostic)
 
 
 def test_rows_of_the_right_arity_are_each_a_binding() -> None:
@@ -145,6 +147,15 @@ def test_rows_of_the_right_arity_are_each_a_binding() -> None:
 
 def test_a_row_mixed_with_a_bare_term_is_a_diagnostic() -> None:
     assert isinstance(read_bindings("(1,2), 3", 2, WHERE), Diagnostic)
+
+
+def test_a_tuple_valued_binding_of_one_variable_is_one_element() -> None:
+    """`{ (1,2) }` is one binding whose term is the tuple, not two bindings 1 and 2."""
+    assert read_bindings("(1,2)", 1, WHERE) == ((parse_term("(1,2)"),),)
+
+
+def test_a_nested_tuple_component_of_an_n_ary_binding_is_kept() -> None:
+    assert read_bindings("((1,2),3)", 2, WHERE) == ((parse_term("(1,2)"), Number(3)),)
 
 
 def test_valuations_read_a_term_and_the_integer_it_equals() -> None:
@@ -179,3 +190,36 @@ def test_a_valuation_that_is_not_a_term_equal_to_an_integer_is_a_diagnostic(
 
 def test_a_valuation_list_that_does_not_parse_is_a_diagnostic() -> None:
     assert isinstance(read_valuations("x=", WHERE), Diagnostic)
+
+
+def _written(rows: tuple[tuple[object, ...], ...], arity: int) -> str:
+    if arity == 1:
+        return ", ".join(str(row[0]) for row in rows)
+    return ", ".join("(" + ",".join(map(str, row)) + ")" for row in rows)
+
+
+@given(st.lists(st.integers(min_value=-5, max_value=5), min_size=0, max_size=4))
+@settings(max_examples=30)
+def test_one_variable_bindings_round_trip_through_the_reader(values: list[int]) -> None:
+    rows = tuple((Number(v),) for v in values)
+    assert read_bindings(_written(rows, 1), 1, WHERE) == rows
+
+
+@given(
+    st.lists(
+        st.tuples(st.integers(min_value=-3, max_value=3), st.integers(min_value=-3, max_value=3)),
+        min_size=0,
+        max_size=3,
+    )
+)
+@settings(max_examples=30)
+def test_two_variable_bindings_round_trip_through_the_reader(
+    pairs: list[tuple[int, int]],
+) -> None:
+    rows = tuple((Number(a), Number(b)) for a, b in pairs)
+    assert read_bindings(_written(rows, 2), 2, WHERE) == rows
+
+
+def test_a_tuple_valued_one_variable_binding_round_trips() -> None:
+    row = ((parse_term("(1,2)"),),)
+    assert read_bindings(_written(row, 1), 1, WHERE) == row
