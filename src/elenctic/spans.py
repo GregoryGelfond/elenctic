@@ -66,7 +66,6 @@ class Diagnostic:
     message: str
     label: str = ""
     children: tuple[Child, ...] = ()
-    code: str | None = None
 
 
 type Parsed[T] = T | Diagnostic

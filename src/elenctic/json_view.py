@@ -157,6 +157,13 @@ def _object_schema(type_: type) -> Json:
 def schema_document() -> dict[str, Json]:
     """Build the JSON Schema of a `--json` document from the result types `encode` walks."""
     types = sorted(_object_types(set(), Run), key=kind_of)
+    defs = {kind_of(each): _object_schema(each) for each in types}
+    diagnostic = cast("dict[str, Json]", defs["diagnostic"])
+    properties = cast("dict[str, Json]", diagnostic["properties"])
+    properties["code"] = {
+        "oneOf": [{"type": "string"}, {"type": "null"}],
+        "description": "Reserved; unused in schema 1.",
+    }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://github.com/GregoryGelfond/elenctic/docs/reference/output-v1.schema.json",
@@ -173,5 +180,5 @@ def schema_document() -> dict[str, Json]:
             },
         },
         "additionalProperties": False,
-        "$defs": {kind_of(each): _object_schema(each) for each in types},
+        "$defs": defs,
     }

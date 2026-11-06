@@ -7,6 +7,23 @@ from elenctic.syntax import literals, positive, read_literals, read_valuations
 from elenctic.tags import Block, Element
 
 
+def shown(elements: list[Element] | Element) -> str:
+    """Show what was written, for an `expected …, found …` message."""
+    if isinstance(elements, Element):
+        text = elements.text.strip()
+        return text or "{ }"
+    if not elements:
+        return "{ }"
+    parts: list[str] = []
+    for element in elements:
+        if element.braced:
+            inner = element.text.strip()
+            parts.append("{ }" if not inner else f"{{ {inner} }}")
+        else:
+            parts.append(element.text)
+    return " ".join(parts)
+
+
 def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[Atoms]:
     where = block.span(element.start, element.end)
     items = read_literals(element.text, where) if element.text.strip() else ()
@@ -14,11 +31,10 @@ def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[A
         return items
     grounds = positive(items)
     if grounds is None:
-        shown = element.text.strip() or "{ }"
         notes = ("`not` is not allowed here",) if "not" in element.text.split() else ()
         return failure(
             block.covering(element),
-            f"expected ground literals, found `{shown}`",
+            f"expected ground literals, found `{shown(element)}`",
             label="expected ground literals",
             notes=notes,
         )
@@ -89,11 +105,10 @@ def after(
     if cut is None:
         return elements, None
     tail = elements[cut + 1 :]
-    if len(tail) != 1 or not tail[0].braced:
-        shown = " ".join(e.text if not e.braced else f"{{ {e.text} }}" for e in elements[cut:])
-        return failure(
-            block.covering(),
-            f"expected `{word} {{ {contents} }}`, found `{shown}`",
-            label=f"expected `{word} {{ {contents} }}`",
-        )
-    return elements[:cut], tail[0]
+    if len(tail) == 1 and tail[0].braced:
+        return elements[:cut], tail[0]
+    return failure(
+        block.covering(),
+        f"expected `{word} {{ {contents} }}`, found `{shown(elements[cut:])}`",
+        label=f"expected `{word} {{ {contents} }}`",
+    )

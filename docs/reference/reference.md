@@ -308,7 +308,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 |---|---|
 | `Position` | a point in a source; line and column both count from 1 |
 | `Span` | the half-open stretch of a source from `start` to `end` |
-| `Diagnostic` | a message about a `Span` (or the whole source when `span` is none), with its `Severity`, optional `label`, `children` (`note`/`help`), and optional `code` (unused in 1.0) |
+| `Diagnostic` | a message about a `Span` (or the whole source when `span` is none), with its `Severity`, optional `label`, and `children` (`note`/`help`); the JSON schema also declares an optional `code` (unused in 1.0) |
 | `Child` | a `note` or `help` attached to a diagnostic |
 | `Severity` | `ERROR`, `WARNING`, `NOTE` or `HELP` |
 
