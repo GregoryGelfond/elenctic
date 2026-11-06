@@ -221,6 +221,41 @@ def _lines(lines: list[str]) -> str:
     return "".join(f"{line}\n" for line in lines)
 
 
+def _report_notes(run: Run, style: Style, form: Format) -> list[str]:
+    """Lines for per-report lints and run-level notes."""
+    lines = [
+        line
+        for entry in run.entries
+        if isinstance(entry.result, Report)
+        for lint in entry.result.lints
+        for line in _diagnostic_lines(lint, entry.text, style, form)
+    ]
+    return lines + [
+        line
+        for diagnostic in run.notes
+        for line in _diagnostic_lines(diagnostic, None, style, form)
+    ]
+
+
+def _fault_lines(run: Run, style: Style, form: Format) -> list[str]:
+    """Lines for per-entry faults."""
+    return [
+        line
+        for entry in run.entries
+        if isinstance(entry.result, Fault)
+        for line in _fault(entry.result, entry.text, style, form, entry.source)
+    ]
+
+
+def _internal_lines(run: Run, style: Style) -> list[str]:
+    """One-line reports for failures of elenctic itself."""
+    return [
+        internal_error(entry.result, style).rstrip("\n")
+        for entry in run.entries
+        if isinstance(entry.result, Internal)
+    ]
+
+
 def render_run(
     run: Run,
     presentation: Presentation,
@@ -236,30 +271,9 @@ def render_run(
     """
     stdout, stderr = presentation.stdout, presentation.stderr
     shown = [line for entry in run.entries for line in _entry(entry, stdout, verbose=verbose)]
-    notes = [
-        line
-        for entry in run.entries
-        if isinstance(entry.result, Report)
-        for lint in entry.result.lints
-        for line in _diagnostic_lines(lint, entry.text, stderr, form)
-    ]
-    notes += [
-        line
-        for diagnostic in run.notes
-        for line in _diagnostic_lines(diagnostic, None, stderr, form)
-    ]
-    faults = [
-        line
-        for entry in run.entries
-        if isinstance(entry.result, Fault)
-        for line in _fault(entry.result, entry.text, stderr, form, entry.source)
-    ]
-    internals = [
-        internal_error(entry.result, stderr).rstrip("\n")
-        for entry in run.entries
-        if isinstance(entry.result, Internal)
-    ]
-    return Rendered(_lines([*shown, _summary(run, stdout)]), _lines([*notes, *faults, *internals]))
+    stderr_lines = _report_notes(run, stderr, form) + _fault_lines(run, stderr, form)
+    stderr_lines += _internal_lines(run, stderr)
+    return Rendered(_lines([*shown, _summary(run, stdout)]), _lines(stderr_lines))
 
 
 def reserved(command: str, style: Style) -> str:

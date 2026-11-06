@@ -10,6 +10,7 @@ from elenctic.contract import (
     Binds,
     Census,
     Claim,
+    Contract,
     Costs,
     Entails,
     Satisfiable,
@@ -161,6 +162,31 @@ def _natively(
     return [decided.get(claim, finding) for claim, finding in zip(group, findings, strict=True)]
 
 
+def _corpus_root(program: Program, root: Path | None) -> Path | None:
+    """Return the containment boundary: `root`, else the program's directory, else none."""
+    if root is not None:
+        return root
+    return None if program.path is None else program.path.parent.resolve()
+
+
+def _prepared(program: Program, root: Path | None) -> tuple[Contract, Grounded] | Fault | None:
+    """Parse, contain, ground and soundness-check `program`; `None` if it is not a case."""
+    if not is_case(program.text):
+        return None
+    boundary = _corpus_root(program, root)
+    if boundary is not None and (refused := containment(program, boundary)) is not None:
+        return refused
+    contract = parse_contract(program.text, program.source)
+    if contract.diagnostics:
+        return Fault(Locus.REQUEST, contract.diagnostics)
+    grounded = ground(program, contract.solver)
+    if isinstance(grounded, Fault):
+        return grounded
+    if unsafe := unsound(contract, grounded):
+        return Fault(Locus.REQUEST, tuple(unsafe))
+    return contract, grounded
+
+
 def check(
     program: Program,
     *,
@@ -173,23 +199,10 @@ def check(
     `root` is the corpus containment boundary: every `#include` must resolve under it. When omitted
     and the program has a path, the program's directory is the boundary (a named file's own dir).
     """
-    if not is_case(program.text):
-        return None
-    boundary = (
-        root
-        if root is not None
-        else (program.path.parent.resolve() if program.path is not None else None)
-    )
-    if boundary is not None and (refused := containment(program, boundary)) is not None:
-        return refused
-    contract = parse_contract(program.text, program.source)
-    if contract.diagnostics:
-        return Fault(Locus.REQUEST, contract.diagnostics)
-    grounded = ground(program, contract.solver)
-    if isinstance(grounded, Fault):
-        return grounded
-    if unsafe := unsound(contract, grounded):
-        return Fault(Locus.REQUEST, tuple(unsafe))
+    opened = _prepared(program, root)
+    if opened is None or isinstance(opened, Fault):
+        return opened
+    contract, grounded = opened
     judged = {
         claim: finding
         for key, group in _by_search(contract.claims).items()

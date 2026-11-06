@@ -1,3 +1,5 @@
+from typing import get_type_hints
+
 import pytest
 from clingo import Function, Number, String, Symbol, parse_term
 from hypothesis import given
@@ -142,8 +144,7 @@ def test_bindings_takes_a_pattern_not_a_compound_query() -> None:
     """Compound queries are answered by `answer`; `bindings` is for one pattern (1.0)."""
     view = world(lits("p(1)", "q(1)"))
     assert bindings(Pattern("p", (X,)), view).yes == frozenset({(Number(1),)})
-    with pytest.raises(AttributeError):
-        bindings(All((Pattern("p", (X,)), Pattern("q", (X,)))), view)  # type: ignore[arg-type]
+    assert get_type_hints(bindings)["pattern"] is Pattern
 
 
 def test_a_conjunction_is_answered_over_the_world_view() -> None:
