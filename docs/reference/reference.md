@@ -14,8 +14,8 @@ like a command is written `./why`.
 | `-v`, `--verbose` | list the claims that passed |
 | `--color WHEN` | color the text: `auto` (default), `always` or `never` |
 | `--icons[=WHEN]` | mark claims with Nerd Font glyphs: `auto`, `always` or `never`; given bare it is `auto`, left out it is `never`. A value takes an equals sign: `--icons always` names a path |
-| `--max-seconds SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default 30) |
-| `--max-answer-sets N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default 100,000) |
+| `--max-seconds SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default: 30) |
+| `--max-answer-sets N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default: 100,000) |
 
 Zero and negative values of `--max-seconds` and `--max-answer-sets` are a usage error (`FAULT`, 2). In the library the same
 choice is `Limits(max_seconds=…, max_answer_sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has default limits.
@@ -86,7 +86,7 @@ values are fixed. `elenctic test` (and the refusal of a reserved command) return
 |---|---|---|
 | `CLAIMS_HOLD` | 0 | every claim passed |
 | `CLAIM_UNMET` | 1 | some claim failed or was undecided |
-| `FAULT` | 2 | some file could not be checked, or the command was refused |
+| `FAULT` | 2 | some source could not be checked, or the command was refused |
 | `INTERNAL_ERROR` | 3 | elenctic itself failed; one line on stderr, no traceback |
 
 `elenctic version` returns `elenctic.about.VersionExit`, a different type that shares codes with
@@ -98,6 +98,8 @@ values are fixed. `elenctic test` (and the refusal of a reserved command) return
 | `INTERNAL_ERROR` | 3 | the metadata or the solvers could not be read; one line on stderr |
 
 A usage error is argparse's, status 2, before any command runs.
+
+Stderr lines use one of two prefixes: `elenctic: …` for a failure of the command (a reserved-command note, or an internal error), and `path:line:col: error: …` (or the rustc multi-line form) for a fault in a source.
 
 ## Contract syntax
 
@@ -141,7 +143,7 @@ negated: `@cost { -5 }` claims that the optimum of a `#maximize` is 5.
 
 ### Preconditions
 
-A contract that would be misread is not judged; the file is reported as an error (`FAULT`, 2):
+A contract that would be misread is not judged; the source is reported as an error (`FAULT`, 2):
 
 - the program has theory atoms and the contract does not declare `% @elenctic solver clingcon`
   (clingo would ground them and ignore their constraints);
@@ -156,10 +158,10 @@ A contract that would be misread is not judged; the file is reported as an error
 ## Verdicts
 
 `pass`, `fail`, `undecided`. A report's verdict is the worst, with `fail` over `undecided`. A
-search cut short by `--max-seconds` or `--max-answer-sets` can pass an existential claim (a witness was seen) or
+search truncated by `--max-seconds` or `--max-answer-sets` can pass an existential claim (a witness was seen) or
 fail a universal one (a counter-example was seen); anything else it leaves `undecided`.
 
-When a cut leaves a claim open, the text says what cut the search: `search ended: answer-set limit reached
+When a truncation leaves a claim open, the text says what truncated the search: `search ended: answer-set limit reached
 (--max-answer-sets)`, `time limit reached (--max-seconds)` or `interrupted`. In JSON the finding's `detail`
 is then an object, `{"kind": "ended", "cut": "max_seconds", "optimum_unproven": false}`.
 
@@ -220,15 +222,15 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Determination` | a search's result: `Consistent`, `Inconsistent` or `Inconclusive`, over its evidence |
 | `Consistent` | an answer set exists; `evidence` is what the search found and `conclusion` how it ended |
 | `Inconsistent` | the search covered everything and no answer set satisfies the request; `refutation` says why |
-| `Inconclusive` | the search was cut short before it decided |
+| `Inconclusive` | the search was truncated before it decided |
 | `Conclusion` | how a consistent search ended: `Exhausted` or a `Truncation` |
 | `Exhausted` | the search covered every answer set under the request |
-| `Truncation` | the search was cut short, and by what |
+| `Truncation` | the search was truncated, and by what |
 | `AnswerSets` | at least one answer set, in the order the solver found them |
 | `Consequences` | the atoms true in every (cautious) or some (brave) answer set, among those shown |
 | `Optimized` | the evidence of an optimization: an `Optimum` or an `Incumbent` |
 | `Optimum` | a proven optimum: its cost and the optimal answer sets found (all, if exhausted) |
-| `Incumbent` | the best answer set found before the search was cut: not proven optimal |
+| `Incumbent` | the best answer set found before the search was truncated: not proven optimal |
 | `Refutation` | why there is no answer set: `These`, `NotThese` or `NoAssumptions` |
 | `These` | these assumptions, no fewer when `minimal`, admit no answer set |
 | `NotThese` | no answer set whatever is assumed, and something is assumed |
@@ -274,7 +276,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `bindings` | the `Bindings` of a pattern over a `WorldView`: its unifiers with the cautious consequences (yes, and no by the contrary), and with the brave ones for the rest it entertains (unknown) |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
-| `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give what cut it |
+| `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |
 
 ### Contracts and verdicts
 
@@ -297,7 +299,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Binds` | `@query [optimal] A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B` |
 | `Finding` | a claim, the verdict on it, and its `Detail`: what was expected against what was found |
 | `Detail` | text, or an `Ended` when the search ended before it could settle the claim |
-| `Ended` | the `Truncation` that cut the search short, and whether an optimum went unproven; the text view words it, and in JSON it is the finding's `detail` |
+| `Ended` | the `Truncation` that truncated the search, and whether an optimum went unproven; the text view words it, and in JSON it is the finding's `detail` |
 | `Found` | a search `judge` can read: a `Determination` over `AnswerSets`, `Consequences` or `Optimized` |
 | `Report` | the findings for one source, and `lints` (notes on queries that read a hidden literal); `verdict` is `FAIL` if any fails, else `UNDECIDED` if any is, else `PASS` |
 | `Verdict` | `PASS`, `FAIL` or `UNDECIDED` |

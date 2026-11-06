@@ -48,7 +48,7 @@ answer set beats, so Opt(P) ⊆ AS(P). The unqualified claims (`@answer-set`, `@
 program. Only the claims that say `optimal` (including `@query optimal`), and `@cost`, read Opt(P).
 A consequence carries which set it ranges over, so `⋂ Opt(P)` is never read as `⋂ AS(P)`.
 
-**An optimum is proven or it is an incumbent.** A search cut short can have found a good answer set but
+**An optimum is proven or it is an incumbent.** A truncated search can have found a good answer set but
 not shown it is best. `@cost` and the `optimal` claims are `undecided` then, never `pass`.
 
 **Consequences are atoms.** `@cautious` and `@brave` range over shown atoms; under clingcon an

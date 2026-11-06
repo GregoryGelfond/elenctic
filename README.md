@@ -48,4 +48,8 @@ pixi run -e py314 test     # or -e py315; same suite under that Python
 `pixi run check` is the one gate; `./check.sh` runs it. `uv.lock` is tracked so that
 `uv sync --locked` reproduces the same dependencies, which CI checks on Python 3.14 and 3.15.
 
+Prose and identifiers use American spelling (`color`, `analyze`, `license`). A reading is
+named for its tag's verb (`Asks`, `Binds`, …). Free functions are verbs; a method that
+returns a changed copy is a verb too (`apply`, `rename`).
+
 MIT licensed.

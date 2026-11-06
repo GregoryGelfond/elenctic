@@ -59,7 +59,7 @@ reads no answer set and is decided whatever `--max-answer-sets` says.
 A claim `assuming { … }` that no answer set satisfies fails with a minimal set of assumptions
 that clash: `no answer set satisfies the assumptions (p, q)`. In the library, the `Inconsistent`
 result's `refutation` is `These(core)`; `core` is minimal unless `minimal` is false (the search was
-cut short while shrinking it).
+truncated while shrinking it).
 
 ## Read the optimum from the library
 
