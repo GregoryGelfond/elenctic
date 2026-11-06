@@ -16,7 +16,7 @@ from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
 from elenctic.program import Fault, Locus, Program
 from elenctic.search import Interrupt, Limits
-from elenctic.spans import UNLOCATED, Diagnostic, Position, Span, diagnose, failure
+from elenctic.spans import Diagnostic, diagnose, failure
 from elenctic.theory import Clingcon, Plain, Theory
 
 _EXTRA: Final = "theory"
@@ -25,25 +25,28 @@ _UNDEFINED: Final = re.compile(r"no definition found for theory atom:\s+(?P<atom
 
 def _clarified(diagnostic: Diagnostic) -> Diagnostic:
     """Say in elenctic's terms what clingo says of a theory atom that has no `#theory`."""
-    if (found := _UNDEFINED.fullmatch(diagnostic.message)) is None:
+    joined = "\n".join((diagnostic.message, *(child.message for child in diagnostic.children)))
+    if (found := _UNDEFINED.search(joined)) is None:
         return diagnostic
-    message = (
-        f"the theory atom `&{found['atom']}` has no `#theory` definition, so it cannot be "
-        "grounded; define the theory, or declare `% @elenctic solver clingcon` for clingcon's"
+    return failure(
+        diagnostic.span,
+        f"theory atom `&{found['atom']}` has no `#theory` definition",
+        label="cannot be grounded",
+        help=("define the theory, or declare `% @elenctic solver clingcon` for clingcon's",),
     )
-    return replace(diagnostic, message=message)
+
+
+def _relocated(diagnostic: Diagnostic, source: str) -> Diagnostic:
+    if diagnostic.span is None or diagnostic.span.source != "<string>":
+        return diagnostic
+    return replace(diagnostic, span=replace(diagnostic.span, source=source))
 
 
 def _fault(messages: list[str], error: RuntimeError, program: Program) -> Fault:
     diagnostics = tuple(
-        _clarified(
-            replace(d, span=replace(d.span, source=program.source))
-            if d.span.source == "<string>"
-            else d
-        )
-        for d in diagnose("".join(messages))
+        _clarified(_relocated(d, program.source)) for d in diagnose("".join(messages), program.text)
     )
-    return Fault(Locus.PROGRAM, diagnostics or (failure(UNLOCATED, str(error)),))
+    return Fault(Locus.PROGRAM, diagnostics or (failure(None, str(error)),))
 
 
 def _parse(program: Program, add: Callable[[AST], None], logger: Callable[..., None]) -> None:
@@ -71,14 +74,18 @@ _THEORIES: Final[Mapping[Solver, Callable[[], Theory | None]]] = {
 }
 
 
-def _absent(solver: Solver, program: Program) -> Fault:
+def _absent(solver: Solver, _program: Program) -> Fault:
     """Say the contract names a solver that is not installed, and what installs it."""
-    here = Span(program.source, Position(1, 1), Position(1, 1))
-    message = (
-        f"the contract declares `% @elenctic solver {solver}`, which is not installed; "
-        f"install `elenctic[{_EXTRA}]`, or use the pixi `{_EXTRA}` environment"
+    return Fault(
+        Locus.REQUEST,
+        (
+            failure(
+                None,
+                f"solver `{solver}` is not installed",
+                help=(f"install `elenctic[{_EXTRA}]`, or use the pixi `{_EXTRA}` environment",),
+            ),
+        ),
     )
-    return Fault(Locus.REQUEST, (failure(here, message),))
 
 
 def ground(program: Program, solver: Solver = Solver.CLINGO) -> Grounded | Fault:

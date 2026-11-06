@@ -16,7 +16,11 @@ def _answer(block: Block, word: Element) -> Parsed[Answer]:
     try:
         return Answer(word.text)
     except ValueError:
-        return failure(block.covering(word), "expected `yes`, `no` or `unknown`")
+        return failure(
+            block.covering(word),
+            f"expected `yes`, `no`, or `unknown`, found `{word.text}`",
+            label="expected `yes`, `no`, or `unknown`",
+        )
 
 
 _ASKS: Final = [False, True]
@@ -30,7 +34,9 @@ def query(block: Block, head: list[Element]) -> Parsed[Reading]:
     shape = [e.braced for e in rest]
     if shape not in (_ASKS, _BINDS):
         return failure(
-            block.covering(), "expected `answer { query }`, or `answer { q(X) } = { bindings }`"
+            block.covering(),
+            "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
+            label="expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
         )
     answer = _answer(block, rest[0])
     if isinstance(answer, Diagnostic):
@@ -53,7 +59,9 @@ def _asks(
     if not grounds:
         return failure(
             block.covering(element),
-            "a query with variables states its bindings: `{ q(X) } = { ... }`",
+            "query with variables states no bindings",
+            label="has variables",
+            help=("state its bindings: `{ q(X) } = { ... }`",),
         )
     return Asks(answer, All(tuple(grounds)), over)
 
@@ -62,14 +70,27 @@ def _binds(
     block: Block, answer: Answer, items: tuple[Item, ...], head: list[Element], over: Range
 ) -> Parsed[Reading]:
     if head[2].text != "=" or len(items) != 1 or items[0].negated:
-        return failure(block.covering(head[1]), "expected one positive pattern before `=`")
+        return failure(
+            block.covering(head[1]),
+            f"expected one positive pattern before `=`, found `{{{head[1].text}}}`",
+            label="expected one positive pattern before `=`",
+        )
     pattern = items[0].pattern
     if pattern.anonymous:
         return failure(
-            block.covering(head[1]), "an anonymous variable has no binding to state: name it"
+            block.covering(head[1]),
+            "anonymous variable in a binding pattern",
+            label="`_` has no binding to state",
+            help=("name the variable",),
         )
     if not pattern.variables:
-        return failure(block.covering(head[1]), "a pattern with no variables is a ground query")
+        return failure(
+            block.covering(head[1]),
+            "binding pattern has no variables",
+            label="no variables",
+            notes=("a pattern with no variables is a ground query",),
+            help=("ask it as `@query yes { … }` without `= { … }`",),
+        )
     found = read_bindings(
         head[3].text, len(pattern.variables), block.span(head[3].start, head[3].end)
     )

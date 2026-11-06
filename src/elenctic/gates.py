@@ -7,20 +7,7 @@ from elenctic.grounded import Grounded
 from elenctic.literals import Literal, Signature
 from elenctic.patterns import Pattern
 from elenctic.query import All, Any, Query
-from elenctic.spans import Diagnostic, Span, failure, note
-
-_IGNORED = (
-    "the program has theory atoms, which clingo would ground and ignore; "
-    "declare `% @elenctic solver clingcon` to check them with clingcon"
-)
-_OBJECTIVE = (
-    "the program has a theory objective, which clingcon applies in every search and clingo's "
-    "cost does not see; state the objective with `#minimize` or `#maximize`"
-)
-_UNASSIGNED = (
-    "reads a theory assignment, but the contract declares no theory solver: "
-    "declare `% @elenctic solver clingcon`"
-)
+from elenctic.spans import Diagnostic, failure, note
 
 
 def _parts(query: Query) -> list[Literal | Pattern]:
@@ -45,13 +32,13 @@ def _read(reading: Reading) -> frozenset[Signature]:
 
 def unsound(contract: Contract, grounded: Grounded) -> list[Diagnostic]:
     """Find what would make a verdict untrustworthy: a claim asks what the program lacks."""
-    at_program = [
-        failure(span, message) for span, message in _theoretical(contract.solver, grounded.facts)
-    ]
-    return at_program + [
-        failure(claim.span, message)
-        for claim in contract.claims
-        for message in _lacks(claim.reading, grounded, contract.solver)
+    return [
+        *_theoretical(contract.solver, grounded.facts),
+        *(
+            diagnostic
+            for claim in contract.claims
+            for diagnostic in _lacks(claim, grounded, contract.solver)
+        ),
     ]
 
 
@@ -73,12 +60,27 @@ def hidden_reads(claims: list[Claim] | tuple[Claim, ...], grounded: Grounded) ->
     ]
 
 
-def _theoretical(solver: Solver, facts: Facts) -> list[tuple[Span, str]]:
+def _theoretical(solver: Solver, facts: Facts) -> list[Diagnostic]:
     """Find theory atoms clingo would ignore, or a theory objective clingcon cannot switch off."""
     if facts.theory is not None and solver is Solver.CLINGO:
-        return [(facts.theory, _IGNORED)]
+        return [
+            failure(
+                facts.theory,
+                "clingo ignores theory atoms",
+                label="theory atom",
+                help=("declare `% @elenctic solver clingcon` to check them with clingcon",),
+            )
+        ]
     if facts.objective is not None:
-        return [(facts.objective, _OBJECTIVE)]
+        return [
+            failure(
+                facts.objective,
+                "theory objective is not seen by the cost",
+                label="theory objective",
+                notes=("clingcon applies it in every search",),
+                help=("state the objective with `#minimize` or `#maximize`",),
+            )
+        ]
     return []
 
 
@@ -88,12 +90,27 @@ def _assigning(reading: Reading) -> bool:
     )
 
 
-def _lacks(reading: Reading, grounded: Grounded, solver: Solver) -> list[str]:
+def _lacks(claim: Claim, grounded: Grounded, solver: Solver) -> list[Diagnostic]:
+    reading = claim.reading
     objective = [
-        (
-            "needs an objective, but the ground program has none: it declares no `#minimize`, "
-            "`#maximize` or `:~`, or its elements ground away"
+        failure(
+            claim.span,
+            "optimal claim, but the program has no objective",
+            label="needs an objective",
+            notes=(
+                (
+                    "the program declares no `#minimize`, `#maximize`, or `:~`, "
+                    "or its elements ground away"
+                ),
+            ),
         )
     ] * (over(reading) is Range.OPTIMAL and not grounded.facts.optimizes)
-    assigned = [_UNASSIGNED] * (solver is Solver.CLINGO and _assigning(reading))
+    assigned = [
+        failure(
+            claim.span,
+            "claim reads a theory assignment, but no theory solver is declared",
+            label="reads an assignment",
+            help=("declare `% @elenctic solver clingcon`",),
+        )
+    ] * (solver is Solver.CLINGO and _assigning(reading))
     return objective + assigned

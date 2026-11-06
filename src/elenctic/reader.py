@@ -1,6 +1,7 @@
 """Read a contract from the `% @tag` comment lines of a program."""
 
 from collections.abc import Callable
+from difflib import get_close_matches
 from typing import Final
 
 from elenctic.contract import Claim, Contract, Reading
@@ -11,7 +12,7 @@ from elenctic.operands import after, assumptions
 from elenctic.queries import query
 from elenctic.readings import assign, brave, cautious, cost, count, expect, witness
 from elenctic.spans import Diagnostic, Parsed, failure
-from elenctic.tags import Block, Element, blocks, elements
+from elenctic.tags import KNOWN, Block, Element, blocks, elements
 from elenctic.wellformed import wellformed
 
 _READERS: Final[dict[str, Callable[[Block, list[Element]], Parsed[Reading]]]] = {
@@ -39,13 +40,24 @@ def _split(block: Block, elements: list[Element]) -> Parsed[tuple[list[Element],
 _DIRECTIVES: Final = frozenset({"elenctic", "note"})
 
 
+def _unknown_tag(block: Block) -> Diagnostic:
+    tip = get_close_matches(block.tag, sorted(KNOWN - _DIRECTIVES), n=1, cutoff=0.6)
+    help_ = (f"there is a tag with a similar name: `@{tip[0]}`",) if tip else ()
+    return failure(
+        block.covering(),
+        f"unknown tag `@{block.tag}`",
+        label="not a tag",
+        help=help_,
+    )
+
+
 def _claim(block: Block) -> Parsed[Claim] | None:
     if block.tag in _DIRECTIVES:
         return None
     if block.tag not in _READERS:
-        return failure(block.covering(), f"`@{block.tag}` is not a tag")
+        return _unknown_tag(block)
     if (words := elements(block.payload)) is None:
-        return failure(block.covering(), "a brace is never closed")
+        return failure(block.covering(), "unclosed brace", label="unclosed brace")
     split = _split(block, words)
     if isinstance(split, Diagnostic):
         return split

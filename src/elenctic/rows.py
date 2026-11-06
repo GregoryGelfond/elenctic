@@ -12,7 +12,11 @@ def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symb
         return ()
     term = evaluate(f"({text})")
     if term is None:
-        return failure(where, "expected a set of terms")
+        return failure(
+            where,
+            f"expected a set of terms, found `{text.strip()}`",
+            label="expected a set of terms",
+        )
     return _bindings(tuple(term.arguments) if _is_tuple(term) else (term,), arity, where)
 
 
@@ -20,7 +24,13 @@ def _bindings(
     raw: tuple[Symbol, ...], arity: int, where: Span
 ) -> Parsed[tuple[tuple[Symbol, ...], ...]]:
     shaped = _shaped(raw, arity)
-    return failure(where, f"expected bindings of {arity} terms each") if shaped is None else shaped
+    if shaped is not None:
+        return shaped
+    return failure(
+        where,
+        f"expected {arity} terms in each binding",
+        label=f"this binding has {len(raw)}",
+    )
 
 
 def _shaped(raw: tuple[Symbol, ...], arity: int) -> tuple[tuple[Symbol, ...], ...] | None:

@@ -3,14 +3,26 @@
 from elenctic.contract import Census, Claim, Satisfiable, denies_answer_sets
 from elenctic.determination import Range
 from elenctic.literals import Scenario
-from elenctic.spans import Diagnostic, Position, Span, failure
+from elenctic.spans import Diagnostic, failure
 
 
-def _expectations(claims: list[Claim], source: str) -> list[Diagnostic]:
+def _expectations(claims: list[Claim]) -> list[Diagnostic]:
     expects = [c for c in claims if isinstance(c.reading, Satisfiable) and not c.scenario]
-    start = Span(source, Position(1, 1), Position(1, 1))
-    absent = [failure(start, "missing `@expect`")] if not expects else []
-    return absent + [failure(c.span, "more than one `@expect`") for c in expects[1:]]
+    absent = (
+        [
+            failure(
+                None,
+                "missing `@expect`",
+                help=("add `% @expect sat` or `% @expect unsat`",),
+            )
+        ]
+        if not expects
+        else []
+    )
+    return absent + [
+        failure(c.span, "`@expect` given more than once", label="given again here")
+        for c in expects[1:]
+    ]
 
 
 def _expecting(claims: list[Claim], *, satisfiable: bool) -> frozenset[Scenario]:
@@ -20,21 +32,30 @@ def _expecting(claims: list[Claim], *, satisfiable: bool) -> frozenset[Scenario]
 
 def _contradiction(
     claim: Claim, unsat: frozenset[Scenario], sat: frozenset[Scenario]
-) -> str | None:
+) -> Diagnostic | None:
     """Say how a claim contradicts the `@expect` of its own scenario, if it does."""
     reading = claim.reading
     admitted = isinstance(reading, Satisfiable) or denies_answer_sets(reading)
     if claim.scenario in unsat and not admitted:
-        return "`@expect unsat` admits no answer set claim"
+        return failure(
+            claim.span,
+            "answer-set claim under `@expect unsat`",
+            label="claims an answer set",
+        )
     if claim.scenario in sat and denies_answer_sets(reading):
-        return "`@count 0` is `@expect unsat`, not `@expect sat`"
+        return failure(
+            claim.span,
+            "`@count 0` contradicts `@expect sat`",
+            label="claims no answer set",
+            help=("use `@expect unsat`",),
+        )
     return None
 
 
 def _exclusions(claims: list[Claim]) -> list[Diagnostic]:
     """Find claims that contradict the `@expect` of their own scenario."""
     unsat, sat = _expecting(claims, satisfiable=False), _expecting(claims, satisfiable=True)
-    return [failure(c.span, message) for c in claims if (message := _contradiction(c, unsat, sat))]
+    return [d for c in claims if (d := _contradiction(c, unsat, sat)) is not None]
 
 
 def _nested(claims: list[Claim]) -> list[Diagnostic]:
@@ -47,8 +68,8 @@ def _nested(claims: list[Claim]) -> list[Diagnostic]:
     return [
         failure(
             c.span,
-            f"`@count optimal {c.reading.count}` exceeds `@count {counts[c.scenario, Range.ALL]}`: "
-            "the optimal answer sets are among the answer sets",
+            f"`@count optimal {c.reading.count}` exceeds `@count {counts[c.scenario, Range.ALL]}`",
+            notes=("the optimal answer sets are among the answer sets",),
         )
         for c in claims
         if isinstance(c.reading, Census)
@@ -58,5 +79,9 @@ def _nested(claims: list[Claim]) -> list[Diagnostic]:
 
 
 def wellformed(claims: list[Claim], source: str) -> list[Diagnostic]:
-    """Find what no single claim shows wrong: a missing or doubled `@expect`, and claims at odds."""
-    return [*_expectations(claims, source), *_exclusions(claims), *_nested(claims)]
+    """Find what no single claim shows wrong: a missing or doubled `@expect`, and claims at odds.
+
+    `source` names the file; a missing `@expect` has no span, so the path comes from the entry.
+    """
+    _ = source
+    return [*_expectations(claims), *_exclusions(claims), *_nested(claims)]

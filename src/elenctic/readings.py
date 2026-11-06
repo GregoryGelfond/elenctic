@@ -14,6 +14,19 @@ from elenctic.tags import Block, Element
 _INTEGER: Final = re.compile(r"-?\d+")
 
 
+def _shown(head: list[Element]) -> str:
+    if not head:
+        return "{ }"
+    parts: list[str] = []
+    for element in head:
+        if element.braced:
+            inner = element.text.strip()
+            parts.append("{ }" if not inner else f"{{ {inner} }}")
+        else:
+            parts.append(element.text)
+    return " ".join(parts)
+
+
 def expect(block: Block, head: list[Element]) -> Parsed[Reading]:
     match [e.text for e in head if not e.braced]:
         case ["sat"] if len(head) == 1:
@@ -21,21 +34,33 @@ def expect(block: Block, head: list[Element]) -> Parsed[Reading]:
         case ["unsat"] if len(head) == 1:
             return Satisfiable(expected=False)
         case _:
-            return failure(block.covering(), "expected `sat` or `unsat`")
+            return failure(
+                block.covering(),
+                f"expected `sat` or `unsat`, found `{_shown(head)}`",
+                label="expected `sat` or `unsat`",
+            )
 
 
 def count(block: Block, head: list[Element]) -> Parsed[Reading]:
     over, rest = read_range(head)
     if len(rest) == 1 and not rest[0].braced and rest[0].text.isdecimal():
         return Census(int(rest[0].text), over)
-    return failure(block.covering(), "expected a non-negative integer")
+    return failure(
+        block.covering(),
+        f"expected a non-negative integer, found `{_shown(rest)}`",
+        label="expected a non-negative integer",
+    )
 
 
 def cost(block: Block, head: list[Element]) -> Parsed[Reading]:
     levels = head[0].text.split() if len(head) == 1 and head[0].braced else []
     if levels and all(_INTEGER.fullmatch(level) for level in levels):
         return Costs(tuple(map(int, levels)))
-    return failure(block.covering(), "expected `{ c1 c2 ... }`, an integer for each level")
+    return failure(
+        block.covering(),
+        f"expected `{{ c1 c2 ... }}`, found `{_shown(head)}`",
+        label="expected one integer per priority level",
+    )
 
 
 def litset(
@@ -46,7 +71,11 @@ def litset(
     def read(block: Block, head: list[Element]) -> Parsed[Reading]:
         chosen, rest = (over, head) if over is not None else read_range(head)
         if len(rest) != 1 or not rest[0].braced:
-            return failure(block.covering(), "expected `{ literals }`")
+            return failure(
+                block.covering(),
+                f"expected `{{ literals }}`, found `{_shown(rest)}`",
+                label="expected `{ literals }`",
+            )
         literals = ground(block, rest[0])
         return literals if isinstance(literals, Diagnostic) else make(literals, chosen)
 
@@ -56,7 +85,11 @@ def litset(
 def assign(block: Block, head: list[Element]) -> Parsed[Reading]:
     over, rest = read_range(head)
     if len(rest) != 1 or not rest[0].braced:
-        return failure(block.covering(), "expected `{ term = integer, ... }`")
+        return failure(
+            block.covering(),
+            f"expected `{{ term = integer, ... }}`, found `{_shown(rest)}`",
+            label="expected `{ term = integer, ... }`",
+        )
     assignment = valuations(block, rest[0])
     return assignment if isinstance(assignment, Diagnostic) else Assigns(assignment, over)
 

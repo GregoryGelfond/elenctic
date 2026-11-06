@@ -14,9 +14,20 @@ def ground(block: Block, element: Element, *, nonempty: bool = True) -> Parsed[A
         return items
     grounds = positive(items)
     if grounds is None:
-        return failure(block.covering(element), "expected ground literals, without `not`")
+        shown = element.text.strip() or "{ }"
+        notes = ("`not` is not allowed here",) if "not" in element.text.split() else ()
+        return failure(
+            block.covering(element),
+            f"expected ground literals, found `{shown}`",
+            label="expected ground literals",
+            notes=notes,
+        )
     if nonempty and not grounds:
-        return failure(block.covering(element), "expected at least one literal")
+        return failure(
+            block.covering(element),
+            "expected at least one literal, found `{ }`",
+            label="empty set",
+        )
     return frozenset(grounds)
 
 
@@ -26,7 +37,12 @@ def assumptions(block: Block, element: Element) -> Parsed[Scenario]:
         return items
     grounds = literals(items)
     if grounds is None:
-        return failure(block.covering(element), "an assumption is a ground literal")
+        return failure(
+            block.covering(element),
+            "assumption is not ground",
+            label="has a variable",
+            notes=("an assumption is a ground literal",),
+        )
     return frozenset(
         Assumption(literal, holds=not item.negated)
         for literal, item in zip(grounds, items, strict=True)
@@ -46,9 +62,17 @@ def valuations(block: Block, element: Element) -> Parsed[Assignment]:
     if isinstance(read, Diagnostic):
         return read
     if not read:
-        return failure(block.covering(element), "expected at least one `term = integer`")
+        return failure(
+            block.covering(element),
+            "expected at least one `term = integer`, found `{ }`",
+            label="empty set",
+        )
     if len({v.variable for v in read}) < len(set(read)):
-        return failure(block.covering(element), "a term is given two different integers")
+        return failure(
+            block.covering(element),
+            "a term is assigned more than once",
+            label="assigned again here",
+        )
     return frozenset(read)
 
 
@@ -66,5 +90,10 @@ def after(
         return elements, None
     tail = elements[cut + 1 :]
     if len(tail) != 1 or not tail[0].braced:
-        return failure(block.covering(), f"expected `{word} {{ {contents} }}`")
+        shown = " ".join(e.text if not e.braced else f"{{ {e.text} }}" for e in elements[cut:])
+        return failure(
+            block.covering(),
+            f"expected `{word} {{ {contents} }}`, found `{shown}`",
+            label=f"expected `{word} {{ {contents} }}`",
+        )
     return elements[:cut], tail[0]
