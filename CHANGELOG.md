@@ -31,6 +31,8 @@ All notable changes are recorded here. The format follows
 - Minimal unsatisfiable cores over assumptions: `Refutation` is `These | NotThese | NoAssumptions`.
 - Optimization: `Grounded.optimize` returns `Optimum` or `Incumbent`; claims `@answer-set optimal`,
   `@cautious optimal`, `@brave optimal`, `@optimal { L }`, `@count optimal n` and `@cost { … }`.
+- `@query optimal …`: the same three-valued query path over Opt(P); unqualified `@query` still reads
+  AS(P).
 - Preconditions that make a misreadable contract an error: theory atoms, an objective that grounds
   away, a nested `@count optimal`.
 - `Report.lints`: notes when a query reads a literal the program can derive and does not `#show`.

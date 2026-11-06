@@ -3,6 +3,8 @@
 from typing import Final
 
 from elenctic.contract import Asks, Binds, Reading
+from elenctic.determination import Range
+from elenctic.operands import read_range
 from elenctic.query import All, Answer
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Parsed, failure
@@ -24,27 +26,28 @@ _BINDS: Final = [False, True, False, True]
 
 
 def query(block: Block, head: list[Element]) -> Parsed[Reading]:
-    shape = [e.braced for e in head]
+    over, rest = read_range(head)
+    shape = [e.braced for e in rest]
     if shape not in (_ASKS, _BINDS):
         return failure(
             block.covering(), "expected `answer { query }`, or `answer { q(X) } = { bindings }`"
         )
-    answer = _answer(block, head[0])
+    answer = _answer(block, rest[0])
     if isinstance(answer, Diagnostic):
         return answer
-    where = block.span(head[1].start, head[1].end)
-    items = read_literals(head[1].text, where)
+    where = block.span(rest[1].start, rest[1].end)
+    items = read_literals(rest[1].text, where)
     if isinstance(items, Diagnostic):
         return items
     return (
-        _asks(block, answer, items, head[1])
+        _asks(block, answer, items, rest[1], over)
         if shape == _ASKS
-        else _binds(block, answer, items, head)
+        else _binds(block, answer, items, rest, over)
     )
 
 
 def _asks(
-    block: Block, answer: Answer, items: tuple[Item, ...], element: Element
+    block: Block, answer: Answer, items: tuple[Item, ...], element: Element, over: Range
 ) -> Parsed[Reading]:
     grounds = positive(items)
     if not grounds:
@@ -52,11 +55,11 @@ def _asks(
             block.covering(element),
             "a query with variables states its bindings: `{ q(X) } = { ... }`",
         )
-    return Asks(answer, All(tuple(grounds)))
+    return Asks(answer, All(tuple(grounds)), over)
 
 
 def _binds(
-    block: Block, answer: Answer, items: tuple[Item, ...], head: list[Element]
+    block: Block, answer: Answer, items: tuple[Item, ...], head: list[Element], over: Range
 ) -> Parsed[Reading]:
     if head[2].text != "=" or len(items) != 1 or items[0].negated:
         return failure(block.covering(head[1]), "expected one positive pattern before `=`")
@@ -70,4 +73,6 @@ def _binds(
     found = read_bindings(
         head[3].text, len(pattern.variables), block.span(head[3].start, head[3].end)
     )
-    return found if isinstance(found, Diagnostic) else Binds(answer, pattern, frozenset(found))
+    return (
+        found if isinstance(found, Diagnostic) else Binds(answer, pattern, frozenset(found), over)
+    )

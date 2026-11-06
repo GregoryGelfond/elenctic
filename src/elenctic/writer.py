@@ -67,10 +67,15 @@ def _reading(reading: Reading) -> str:
             return f"@expect {'sat' if expected else 'unsat'}"
         case Census() | Witness() | Assigns() | Entails() | Costs():
             return _of_answer_sets(reading)
-        case Asks(answer, All(parts)):
-            return f"@query {answer} {braces(p for p in parts if isinstance(p, Literal))}"
-        case Binds(answer, pattern, found):
-            return f"@query {answer} {{ {pattern} }} = {_bindings(pattern, found)}"
+        case Asks(answer, All(parts), over):
+            return (
+                f"@query {_optimally(over)}{answer} "
+                f"{braces(p for p in parts if isinstance(p, Literal))}"
+            )
+        case Binds(answer, pattern, found, over):
+            return (
+                f"@query {_optimally(over)}{answer} {{ {pattern} }} = {_bindings(pattern, found)}"
+            )
 
 
 def render(claim: Claim) -> str:

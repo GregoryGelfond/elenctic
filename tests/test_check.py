@@ -4,7 +4,15 @@ import pytest
 
 from elenctic.check import check
 from elenctic.contract import Asks, Claim, Costs, Witness
-from elenctic.determination import AnswerSet, Consistent, Inconsistent, Incumbent, These, Truncation
+from elenctic.determination import (
+    AnswerSet,
+    Consistent,
+    Inconsistent,
+    Incumbent,
+    Range,
+    These,
+    Truncation,
+)
 from elenctic.engine import ground
 from elenctic.gates import hidden_reads
 from elenctic.judge import judge
@@ -164,6 +172,11 @@ KNAPSACK = """
 """
 
 
+CHOICE = (
+    "{a;b}=1. -a :- b. -b :- a. #minimize{1,a:a}. #show a/0. #show b/0. #show -a/0. #show -b/0.\n"
+)
+
+
 def test_a_claim_about_the_optimal_answer_sets_reads_those_and_only_those() -> None:
     text = KNAPSACK + (
         "% @expect sat\n"
@@ -267,6 +280,41 @@ def test_an_optimal_claim_needs_an_objective_in_the_program() -> None:
     (message,) = faults("{p}.\n% @expect sat\n% @cost { 0 }\n")
     assert message.startswith("3: needs an objective")
     assert len(faults("{p}.\n% @expect sat\n% @optimal { p }\n% @count optimal 1\n")) == 2
+
+
+def test_an_optimal_query_needs_an_objective_in_the_program() -> None:
+    (message,) = faults("{p}.\n% @expect sat\n% @query optimal yes { p }\n")
+    assert message.startswith("3: needs an objective")
+
+
+def test_an_optimal_query_reads_opt_not_all_answer_sets() -> None:
+    """AS(P) = {{a,-b},{b,-a}}; Opt(P) = {{b,-a}}."""
+    base = CHOICE + "% @expect sat\n"
+    assert verdicts(base + "% @query yes { b }\n") == [P, F]
+    assert verdicts(base + "% @query optimal yes { b }\n") == [P, P]
+    assert verdicts(base + "% @query optimal no { a }\n") == [P, P]
+    assert verdicts(
+        "{p(1);p(2)}=1. #minimize{1,x:p(1)}. #show p/1.\n"
+        "% @expect sat\n"
+        "% @query unknown { p(X) } = { 1, 2 }\n"
+        "% @query optimal yes { p(X) } = { 2 }\n"
+        "% @query yes { p(X) } = { }\n"
+    ) == [P, P, P, P]
+
+
+def test_an_optimal_query_is_undecided_when_the_optimum_is_unproven() -> None:
+    claim = Claim(
+        Asks(Answer.YES, All((Literal("b"),)), Range.OPTIMAL),
+        frozenset(),
+        Span("t.lp", Position(1, 1), Position(1, 2)),
+    )
+    found = Consistent(
+        Incumbent(AnswerSet(frozenset({Literal("b")}), frozenset(), cost=(0,))),
+        Truncation.MAX_SECONDS,
+    )
+    finding = judge(claim, found)
+    assert finding.verdict is U
+    assert finding.detail == Ended(Truncation.MAX_SECONDS, optimum_unproven=True)
 
 
 def test_a_no_query_over_full_answer_sets_sees_a_hidden_contrary() -> None:

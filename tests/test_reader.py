@@ -162,6 +162,8 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
         "@query no { p(X,Y) } = { (a,1), (b,2) }",
         "@query yes { p(f(X),b) } = { 1, 2 }",
         "@query no { p(f(g(X,1),a),(Y,-h(X))) } = { (1,2) }",
+        "@query optimal yes { b }",
+        "@query optimal no { p(X) } = { 1 }",
         "@expect unsat assuming { p }",
         "@count optimal 2",
         "@answer-set optimal { p, -q }",
@@ -303,6 +305,12 @@ def test_optimal_is_a_range_a_claim_may_name_and_the_tag_is_sugar_for_it() -> No
     assert only("% @brave optimal { p }").reading == Entails(Mode.BRAVE, p, Range.OPTIMAL)
     assert only("% @count optimal 3").reading == Census(3, Range.OPTIMAL)
     assert only("% @cost { 2 -1 }").reading == Costs((2, -1))
+    assert only("% @query optimal yes { p }").reading == Asks(
+        Answer.YES, All((Literal("p"),)), Range.OPTIMAL
+    )
+    assert only("% @query optimal no { p(X) } = { 1 }").reading == Binds(
+        Answer.NO, Pattern("p", (X,)), frozenset({(Number(1),)}), Range.OPTIMAL
+    )
 
 
 @pytest.mark.parametrize(
@@ -315,6 +323,14 @@ def test_optimal_is_a_range_a_claim_may_name_and_the_tag_is_sugar_for_it() -> No
         ("% @answer-set optimal", "expected `{ literals }`"),
         ("% @count optimal", "expected a non-negative integer"),
         ("% @count optimal { 1 }", "expected a non-negative integer"),
+        (
+            "% @query optimal",
+            "expected `answer { query }`, or `answer { q(X) } = { bindings }`",
+        ),
+        (
+            "% @query yes optimal { p }",
+            "expected `answer { query }`, or `answer { q(X) } = { bindings }`",
+        ),
     ],
 )
 def test_a_malformed_optimal_or_cost_claim_is_a_diagnostic(line: str, message: str) -> None:

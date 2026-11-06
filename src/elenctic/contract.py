@@ -80,19 +80,21 @@ class Costs:
 
 @dataclass(frozen=True, slots=True)
 class Asks:
-    """`@query A { L, ... }`: over all answer sets, the conjunction of literals has answer `A`."""
+    """`@query [optimal] A { L, ... }`: over AS(P) or Opt(P), the conjunction has answer `A`."""
 
     answer: Answer
     query: All
+    over: Range = Range.ALL
 
 
 @dataclass(frozen=True, slots=True)
 class Binds:
-    """`@query A { q(X, ...) } = { B }`: the bindings giving answer `A` are exactly `B`."""
+    """`@query [optimal] A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B`."""
 
     answer: Answer
     pattern: Pattern
     bindings: frozenset[tuple[Symbol, ...]]
+    over: Range = Range.ALL
 
 
 type Reading = Satisfiable | Census | Witness | Assigns | Entails | Costs | Asks | Binds
@@ -116,7 +118,7 @@ class Contract:
 
 def over(reading: Reading) -> Range:
     """Name the range of answer sets a claim is about: only the optimal-set claims say otherwise."""
-    if isinstance(reading, Census | Witness | Assigns | Entails | Costs):
+    if isinstance(reading, Census | Witness | Assigns | Entails | Costs | Asks | Binds):
         return reading.over
     return Range.ALL
 

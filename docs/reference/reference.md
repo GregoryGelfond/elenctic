@@ -104,19 +104,20 @@ of the same kind are independent claims: two `@answer-set` claims are two existe
 | `@assign { x=1, … }` | some answer set assigns each variable that integer (clingcon) |
 | `@cautious { L }` | `L` is in every answer set (⋂ AS(P)); computed by the solver |
 | `@brave { L }` | `L` is in some answer set (∪ AS(P)); computed by the solver |
-| `@query A { L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`) |
+| `@query A { L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`), over AS(P) |
 | `@query A { p(X, b) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these; every variable is named (`_` is refused) |
+| `@query optimal A { L, … }`, `@query optimal A { p(X) } = { … }` | the same, over the optimal answer sets Opt(P) |
 | `@answer-set optimal { L }`, `@cautious optimal { L }`, `@brave optimal { L }` | the same, over the optimal answer sets Opt(P); `@optimal { L }` is `@answer-set optimal { L }` |
 | `@assign optimal { x=1, … }` | the same, over the optimal answer sets |
 | `@count optimal n` | exactly `n` distinct shown optimal answer sets |
 | `@cost { c1 c2 … }` | the optimum's cost, highest priority first, is exactly this (see below) |
 | any of the above `assuming { l, not l }` | the claim is judged under those assumptions |
 
-An objective ranks answer sets and never removes any: every claim above without `optimal`, and every
-`@query`, reads all the answer sets AS(P) whatever the program optimizes; only the `optimal` claims
-and `@cost` read the optimal ones, Opt(P) ⊆ AS(P). `@query` evaluates over the full answer sets
-(every atom), not only those `#show` selects; a query that reads a derivable unshown literal gets a
-note in the report, which does not change the exit
+An objective ranks answer sets and never removes any: every claim above without `optimal`, and
+unqualified `@query`, reads all the answer sets AS(P) whatever the program optimizes; only the
+`optimal` claims (including `@query optimal`) and `@cost` read the optimal ones, Opt(P) ⊆ AS(P).
+`@query` evaluates over the full answer sets (every atom), not only those `#show` selects; a query
+that reads a derivable unshown literal gets a note in the report, which does not change the exit
 ([Semantics](../explanation/semantics.md)).
 
 `@note` is ignored. `% @elenctic solver clingcon` (or `clingo`, the default) names the solver the
@@ -282,8 +283,8 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Assigns` | `@assign [optimal] { A }` |
 | `Entails` | `@cautious [optimal] { L }` and `@brave [optimal] { L }` |
 | `Costs` | `@cost { c1 c2 ... }` |
-| `Asks` | `@query A { L, ... }`: a conjunction of ground literals has the answer `A` |
-| `Binds` | `@query A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B` |
+| `Asks` | `@query [optimal] A { L, ... }`: a conjunction of ground literals has the answer `A` |
+| `Binds` | `@query [optimal] A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B` |
 | `Finding` | a claim, the verdict on it, and its `Detail`: what was expected against what was found |
 | `Detail` | text, or an `Ended` when the search ended before it could settle the claim |
 | `Ended` | the `Truncation` that cut the search short, and whether an optimum went unproven; the text view words it, and in JSON it is the finding's `detail` |
