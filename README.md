@@ -42,9 +42,10 @@ Start with `docs/`: a tutorial, how-to guides, a reference, and an explanation o
 ```
 pixi install -e theory
 pixi run -e theory check   # format, lint, strict types, import contracts, tests
+pixi run -e py314 test     # or -e py315; same suite under that Python
 ```
 
 `pixi run check` is the one gate; `./check.sh` runs it. `uv.lock` is tracked so that
-`uv sync --locked` reproduces the same dependencies, which CI checks.
+`uv sync --locked` reproduces the same dependencies, which CI checks on Python 3.14 and 3.15.
 
 MIT licensed.

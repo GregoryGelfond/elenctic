@@ -163,9 +163,17 @@ hypothesis = ">=6.170"
 [tool.pixi.feature.theory.dependencies]
 clingcon = ">=5.2.1,<5.3"
 
+[tool.pixi.feature.py314.dependencies]
+python = "3.14.*"
+
+[tool.pixi.feature.py315.dependencies]
+python = "3.15.*"
+
 [tool.pixi.environments]
 default = { features = ["dev"], solve-group = "default" }
 theory = { features = ["dev", "theory"], solve-group = "theory" }
+py314 = { features = ["dev", "theory", "py314"], solve-group = "py314" }
+py315 = { features = ["dev", "theory", "py315"], solve-group = "py315" }
 
 [tool.pixi.feature.dev.tasks]
 check = "ruff format --check src tests scripts && ruff check --no-fix src tests scripts && mypy && pyright && lint-imports && pytest"

@@ -7,6 +7,7 @@ All notable changes are recorded here. The format follows
 ## [Unreleased]
 
 ### Added
+- Pixi environments `py314` and `py315` for the test suite under those Pythons (`pixi run -e py314 test`).
 - JSON Schema for the `--json` document: `docs/reference/output-v1.schema.json`, generated from the
   result types `encode` walks (`elenctic.json_view.schema_document`); regenerate with
   `scripts/write_output_schema.py`. A test fails if the committed file is stale.
@@ -65,6 +66,8 @@ All notable changes are recorded here. The format follows
   section of the reference.
 
 ### Changed
+- CI cancels superseded pull-request runs (`concurrency` with `cancel-in-progress` on pull requests only).
+- `uv.lock` pins clingo 5.8.3 and clingcon 5.2.2 so Python 3.15 installs from wheels.
 - The bindings of a query pattern are its most general unifiers with the cautious consequences of
   the full answer sets: yes where it unifies with one, no where its contrary does. The brave
   consequences give only the unknown instances (entertained, neither yes nor no). A ground literal

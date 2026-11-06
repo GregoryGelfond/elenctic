@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   pull_request:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   # A secondary check that the package installs and its tests pass under uv, on Python 3.14 and 3.15,
   # from the tracked uv.lock. The gate itself is the pixi job below.
