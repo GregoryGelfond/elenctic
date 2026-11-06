@@ -82,20 +82,20 @@ def _parts(hint: object) -> tuple[object, ...]:
 
 def _object_types(found: set[type], hint: object) -> set[type]:
     """Collect the dataclasses a run encodes as kind-tagged objects."""
-    for raw in _parts(hint):
-        part = _unwrap(raw)
-        origin = typing.get_origin(part)
-        if origin is not None:
-            for arg in typing.get_args(part):
-                _object_types(found, arg)
-            continue
-        if not isinstance(part, type) or part in _AS_STRING or part is type(None):
-            continue
-        if is_dataclass(part) and part not in found:
-            found.add(part)
-            for field in typing.get_type_hints(part).values():
-                _object_types(found, field)
+    for part in _parts(hint):
+        _collect(found, _unwrap(part))
     return found
+
+
+def _collect(found: set[type], part: object) -> None:
+    """Collect one non-union hint: the arguments of a generic, or a dataclass and its fields."""
+    if typing.get_origin(part) is not None:
+        for arg in typing.get_args(part):
+            _object_types(found, arg)
+    elif isinstance(part, type) and is_dataclass(part) and part not in {*_AS_STRING, *found}:
+        found.add(part)
+        for field in typing.get_type_hints(part).values():
+            _object_types(found, field)
 
 
 def _schema_for(hint: object) -> Json:
