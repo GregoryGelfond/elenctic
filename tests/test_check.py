@@ -607,7 +607,6 @@ def test_binding_queries_enumerate_hidden_variation() -> None:
 
 def test_optimal_counts_project_before_applying_the_answer_set_limit() -> None:
     text = (
-        "{ h(1..5) }. { a }. #minimize { 1 : a }. #show a/0.\n"
-        "% @expect sat\n% @count optimal 1\n"
+        "{ h(1..5) }. { a }. #minimize { 1 : a }. #show a/0.\n% @expect sat\n% @count optimal 1\n"
     )
     assert verdicts(text, limits=Limits(max_answer_sets=2)) == [P, P]
