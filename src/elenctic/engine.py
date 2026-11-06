@@ -130,7 +130,7 @@ def _include_targets(text: str) -> tuple[str, ...]:
 
 
 def included_sources(program: Program) -> frozenset[Path]:
-    """Resolved paths of the program and every `#include` it reaches that can be read."""
+    """Return this program's path and every readable `#include` it reaches."""
     if program.path is None:
         return frozenset()
     found = {program.path.resolve()}

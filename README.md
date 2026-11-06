@@ -20,6 +20,8 @@ uv tool install .            # or: pixi install
 uv tool install '.[theory]'  # with clingcon; pixi: pixi install -e theory
 ```
 
+Container image: `docker run --rm -v "$PWD":/work:ro elenctic [elenctic arguments]` (see `Containerfile`).
+
 Python 3.14 and clingo 5.8 are required; clingcon 5.2 only for contracts that declare
 `% @elenctic solver clingcon`, which are otherwise reported as an error.
 
