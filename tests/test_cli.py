@@ -351,3 +351,45 @@ def test_absent_answer_set_fails_under_shown_projection(
     code, out = run(capsys, "--color", "never", "-v", path)
     assert code == Exit.CLAIM_UNMET
     assert "[FAIL] @answer-set { b }" in out
+
+
+def test_a_spanless_fault_names_its_source(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path, "ok.lp", "a.\n% @expect sat\n")
+    write(tmp_path, "bad.lp", "a.\n% @count 1\n")  # missing @expect
+    code, out, err = run_both(capsys, "--color", "never", tmp_path)
+    assert code == Exit.FAULT
+    assert "bad.lp" in err
+    code, out, err = run_both(capsys, "--color", "never", "--format", "short", tmp_path)
+    assert code == Exit.FAULT
+    assert "bad.lp" in err
+
+
+def test_a_script_without_runtime_support_names_the_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(
+        tmp_path,
+        "script.lp",
+        "#script (python)\ndef f():\n    return 1\n#end.\na.\n% @expect sat\n",
+    )
+    code, _out, err = run_both(capsys, "--color", "never", path)
+    assert code == Exit.FAULT
+    assert "python support not available" in err
+
+
+def test_an_include_fault_points_at_the_included_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path, "lib.lp", "q.\n% lib line 2\np(X) :- q.\n")
+    path = write(
+        tmp_path,
+        "main.lp",
+        '#include "lib.lp".\n% @expect sat\n% main line 3 -- not the faulty line\n',
+    )
+    code, _out, err = run_both(capsys, "--color", "never", path)
+    assert code == Exit.FAULT
+    assert "lib.lp:3:" in err
+    assert "p(X) :- q." in err
+    assert "main line 3" not in err

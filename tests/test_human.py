@@ -288,7 +288,7 @@ def test_a_help_child_is_printed_under_the_snippet() -> None:
     rendered = render_run(Run((entry(text, "m.lp"),)), PLAIN)
     assert rendered.stderr.startswith("error: missing `@expect`\n")
     assert "= help: add `% @expect sat` or `% @expect unsat`\n" in rendered.stderr
-    assert " --> " not in rendered.stderr
+    assert " --> m.lp" in rendered.stderr
 
 
 def test_human_and_json_share_the_same_diagnostic_fields() -> None:

@@ -7,6 +7,7 @@ terminal, and the styling that follows is never escaped.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum, auto
+from pathlib import Path
 from typing import Final
 
 from elenctic.about import Package, Solvers
@@ -80,11 +81,13 @@ def _header(diagnostic: Diagnostic, style: Style) -> str:
     return f"{severity}: {_say(style, Role.EMPHASIS, diagnostic.message)}"
 
 
-def _short(diagnostic: Diagnostic, style: Style) -> str:
+def _short(diagnostic: Diagnostic, style: Style, source: str | None = None) -> str:
     """Today's one-line form: `path:l:c-c: level: message` when located."""
     severity = paint(style.color, SEVERITY_ROLES[diagnostic.severity], diagnostic.severity.value)
     message = legible(diagnostic.message)
     if diagnostic.span is None:
+        if source:
+            return f"{_say(style, Role.EMPHASIS, legible(source))}: {severity}: {message}"
         return f"{severity}: {message}"
     where = _say(style, Role.EMPHASIS, str(diagnostic.span))
     return f"{where}: {severity}: {message}"
@@ -104,17 +107,31 @@ def _caret_line(span: Span, label: str, style: Style, role: Role) -> str:
     return f"{_margin(style, '  |')} {marked} {legible(label)}"
 
 
-def _snippet(diagnostic: Diagnostic, text: str, style: Style) -> list[str]:
+def _file_text(span: Span, text: str | None) -> str | None:
+    """Return text for `span.source`, reading the file when it is on disk."""
+    try:
+        path = Path(span.source)
+        if path.is_file():
+            return path.read_text(encoding="utf-8")
+    except OSError:
+        pass
+    return text
+
+
+def _snippet(diagnostic: Diagnostic, text: str | None, style: Style) -> list[str]:
     span = diagnostic.span
     if span is None:
         return []
-    lines = text.split("\n")
+    arrow = _margin(style, f" --> {legible(span.source)}:{span.start.line}:{span.start.column}")
+    source_text = _file_text(span, text)
+    if source_text is None:
+        return [arrow]
+    lines = source_text.split("\n")
     if not (1 <= span.start.line <= len(lines)):
-        return []
+        return [arrow]
     source_line = lines[span.start.line - 1]
     number = str(span.start.line)
     gutter = _margin(style, f"{number} |")
-    arrow = _margin(style, f" --> {legible(span.source)}:{span.start.line}:{span.start.column}")
     role = SEVERITY_ROLES[diagnostic.severity]
     return [
         arrow,
@@ -134,36 +151,38 @@ def _child_lines(children: tuple[Child, ...], style: Style) -> list[str]:
     return lines
 
 
-def _full(diagnostic: Diagnostic, text: str | None, style: Style) -> list[str]:
+def _full(
+    diagnostic: Diagnostic, text: str | None, style: Style, source: str | None = None
+) -> list[str]:
     """Render the rustc multi-line form: header, location, snippet, notes and help."""
     lines = [_header(diagnostic, style)]
-    if text is not None and diagnostic.span is not None:
+    if diagnostic.span is not None:
         lines.extend(_snippet(diagnostic, text, style))
-    elif diagnostic.span is not None:
-        span = diagnostic.span
-        lines.append(
-            _margin(
-                style,
-                f" --> {legible(span.source)}:{span.start.line}:{span.start.column}",
-            )
-        )
+    elif source:
+        lines.append(_margin(style, f" --> {legible(source)}"))
     lines.extend(_child_lines(diagnostic.children, style))
     return lines
 
 
 def _diagnostic_lines(
-    diagnostic: Diagnostic, text: str | None, style: Style, form: Format
+    diagnostic: Diagnostic,
+    text: str | None,
+    style: Style,
+    form: Format,
+    source: str | None = None,
 ) -> list[str]:
     if form is Format.SHORT:
-        return [_short(diagnostic, style)]
-    return _full(diagnostic, text, style)
+        return [_short(diagnostic, style, source)]
+    return _full(diagnostic, text, style, source)
 
 
-def _fault(fault: Fault, text: str | None, style: Style, form: Format) -> list[str]:
+def _fault(
+    fault: Fault, text: str | None, style: Style, form: Format, source: str | None = None
+) -> list[str]:
     lines = [
         line
         for diagnostic in fault.diagnostics
-        for line in _diagnostic_lines(diagnostic, text, style, form)
+        for line in _diagnostic_lines(diagnostic, text, style, form, source)
     ]
     return lines or [str(fault.locus)]
 
@@ -231,7 +250,7 @@ def render_run(
         line
         for entry in run.entries
         if isinstance(entry.result, Fault)
-        for line in _fault(entry.result, entry.text, stderr, form)
+        for line in _fault(entry.result, entry.text, stderr, form, entry.source)
     ]
     return Rendered(_lines([*shown, _summary(run, stdout)]), _lines([*notes, *faults]))
 

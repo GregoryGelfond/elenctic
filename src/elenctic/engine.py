@@ -43,11 +43,37 @@ def _relocated(diagnostic: Diagnostic, source: str) -> Diagnostic:
     return replace(diagnostic, span=replace(diagnostic.span, source=source))
 
 
+def _source_texts(program: Program) -> dict[str, str]:
+    """Map each source name to its text: the program and every `#include` it reaches."""
+    texts = {program.source: program.text}
+    if program.path is None:
+        return texts
+    seen = {program.path.resolve()}
+    pending = [program.path.parent / target for target in _include_targets(program.text)]
+    while pending:
+        path = pending.pop().resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            included = path.read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue
+        texts[str(path)] = included
+        # Also under the relative name clingo may report.
+        texts[path.name] = included
+        pending.extend(path.parent / target for target in _include_targets(included))
+    return texts
+
+
 def _fault(messages: list[str], error: RuntimeError, program: Program) -> Fault:
+    # The logger may be silent (e.g. missing python/lua support); the exception text still locates.
+    joined = "".join(messages) or str(error)
     diagnostics = tuple(
-        _clarified(_relocated(d, program.source)) for d in diagnose("".join(messages), program.text)
+        _clarified(_relocated(d, program.source))
+        for d in diagnose(joined, texts=_source_texts(program))
     )
-    return Fault(Locus.PROGRAM, diagnostics or (failure(None, str(error)),))
+    return Fault(Locus.PROGRAM, diagnostics or (failure(None, str(error).strip()),))
 
 
 def _parse(program: Program, add: Callable[[AST], None], logger: Callable[..., None]) -> None:

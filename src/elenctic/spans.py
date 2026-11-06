@@ -223,15 +223,44 @@ _HEADER: Final = re.compile(
 _SEVERITY: Final = {"error": Severity.ERROR, "warning": Severity.WARNING}
 
 
-def _diagnostic(header: re.Match[str], continuation: list[str], text: str | None) -> Diagnostic:
+def diagnose(
+    message: str, text: str | None = None, *, texts: dict[str, str] | None = None
+) -> tuple[Diagnostic, ...]:
+    """Read clingo's text for a problem as one diagnostic per located line.
+
+    Clingo counts columns in UTF-8 bytes. Pass `texts` (source name → file text) so each span is
+    converted with its own file; `text` alone still converts every span (single-file callers).
+    Continuation lines become `note` children of the header they follow. An empty message yields
+    no diagnostic.
+    """
+    if not message.strip():
+        return ()
+    lines = message.rstrip("\n").split("\n")
+    heads = [(i, found) for i, line in enumerate(lines) if (found := _HEADER.fullmatch(line))]
+    bounds = [*(i for i, _ in heads), len(lines)]
+    found_all = tuple(
+        _located(found, lines[i + 1 : end], text=text, texts=texts)
+        for (i, found), end in zip(heads, bounds[1:], strict=True)
+    )
+    return found_all or (failure(None, message.strip()),)
+
+
+def _located(
+    header: re.Match[str],
+    continuation: list[str],
+    *,
+    text: str | None,
+    texts: dict[str, str] | None,
+) -> Diagnostic:
     start = Position(int(header["line"]), int(header["column"]))
     end = Position(
         int(header["end_line"] or start.line),
         int(header["end_column_far"] or header["end_column"] or start.column),
     )
     span = Span(header["source"], start, end)
-    if text is not None:
-        span = in_characters(span, text)
+    source_text = (texts or {}).get(header["source"], text)
+    if source_text is not None:
+        span = in_characters(span, source_text)
     children = tuple(Child(Severity.NOTE, line) for line in continuation if line.strip())
     return Diagnostic(
         span,
@@ -239,19 +268,3 @@ def _diagnostic(header: re.Match[str], continuation: list[str], text: str | None
         header["message"],
         children=children,
     )
-
-
-def diagnose(message: str, text: str | None = None) -> tuple[Diagnostic, ...]:
-    """Read clingo's text for a problem as one diagnostic per located line.
-
-    Clingo counts columns in UTF-8 bytes; pass `text` so they become Unicode scalar columns.
-    Continuation lines become `note` children of the header they follow.
-    """
-    lines = message.rstrip("\n").split("\n")
-    heads = [(i, found) for i, line in enumerate(lines) if (found := _HEADER.fullmatch(line))]
-    bounds = [*(i for i, _ in heads), len(lines)]
-    found_all = tuple(
-        _diagnostic(found, lines[i + 1 : end], text)
-        for (i, found), end in zip(heads, bounds[1:], strict=True)
-    )
-    return found_all or (failure(None, message.strip()),)
