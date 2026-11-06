@@ -3,7 +3,7 @@
 from clingo import Symbol, SymbolType
 
 from elenctic.normalize import evaluate
-from elenctic.spans import Parsed, Span, failure
+from elenctic.spans import Parsed, Span, failure, one_line
 
 
 def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symbol, ...], ...]]:
@@ -14,7 +14,7 @@ def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symb
     if term is None:
         return failure(
             where,
-            f"expected a set of terms, found `{text.strip()}`",
+            f"expected a set of terms, found `{one_line(text)}`",
             label="expected a set of terms",
         )
     return _bindings(tuple(term.arguments) if _is_tuple(term) else (term,), arity, where)

@@ -91,6 +91,11 @@ def note(where: Span | None, message: str) -> Diagnostic:
     return Diagnostic(where, Severity.NOTE, message)
 
 
+def one_line(text: str) -> str:
+    """Put text written over several comment lines on one line, single-spaced."""
+    return " ".join(text.split())
+
+
 def char_column(line: str, byte_column: int) -> int:
     """Map a 1-based UTF-8 byte column to a 1-based Unicode scalar column."""
     if byte_column <= 1:

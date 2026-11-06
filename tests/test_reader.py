@@ -497,6 +497,10 @@ def test_an_assumption_with_a_variable_is_refused_as_not_ground() -> None:
             ("% @query yes { p(X),", "%   q(Y) } = { 1 }"),
             "expected one positive pattern before `=`, found `{ p(X), q(Y) }`",
         ),
+        (
+            ("% @query yes { p(X) } = { 1 +,", "%   2 }"),
+            "expected a set of terms, found `1 +, 2`",
+        ),
     ],
 )
 def test_found_text_written_over_lines_is_shown_on_one(

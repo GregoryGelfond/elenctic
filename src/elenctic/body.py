@@ -5,7 +5,16 @@ from typing import Final
 from clingo.ast import AST, ASTType, Location, parse_string
 
 from elenctic import tree
-from elenctic.spans import Diagnostic, Parsed, Position, Span, diagnose, failure, in_characters
+from elenctic.spans import (
+    Diagnostic,
+    Parsed,
+    Position,
+    Span,
+    diagnose,
+    failure,
+    in_characters,
+    one_line,
+)
 
 PREFIX: Final = ":- "
 
@@ -50,6 +59,6 @@ def read_body(text: str, where: Span) -> Parsed[tuple[AST, ...]]:
         return _first_error(where, errors, source)
     statements = [s for s in statements if tree.kind(s) is not ASTType.Program]
     if len(statements) != 1:
-        shown = " ".join(text.split()) or "{ }"
+        shown = one_line(text) or "{ }"
         return failure(where, f"expected a list of literals, found `{shown}`")
     return tree.children(statements[0], "body")
