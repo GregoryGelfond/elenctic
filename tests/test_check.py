@@ -598,3 +598,16 @@ def test_witness_search_stops_reading_when_every_witness_holds(
     report = run("a. { b(1..8) }.\n% @expect sat\n% @answer-set { a }\n")
     assert report.verdict is P
     assert reads <= 4
+
+
+def test_binding_queries_enumerate_hidden_variation() -> None:
+    text = "{ b(1) }. a. #show a/0.\n% @expect sat\n% @query unknown { b(X) } = { 1 }\n"
+    assert verdicts(text) == [P, P]
+
+
+def test_optimal_counts_project_before_applying_the_answer_set_limit() -> None:
+    text = (
+        "{ h(1..5) }. { a }. #minimize { 1 : a }. #show a/0.\n"
+        "% @expect sat\n% @count optimal 1\n"
+    )
+    assert verdicts(text, limits=Limits(max_answer_sets=2)) == [P, P]
