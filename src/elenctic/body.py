@@ -1,5 +1,6 @@
 """The text of a tag read as the body of a rule: the literals of a comma-separated list."""
 
+from dataclasses import replace
 from typing import Final
 
 from clingo.ast import AST, ASTType, Location, parse_string
@@ -12,6 +13,7 @@ from elenctic.spans import (
     Span,
     diagnose,
     failure,
+    first_unlexable,
     in_characters,
     one_line,
 )
@@ -50,6 +52,10 @@ def _first_error(where: Span, messages: list[str], source: str) -> Diagnostic:
 
 def read_body(text: str, where: Span) -> Parsed[tuple[AST, ...]]:
     """Read `text` as the body of a rule, the literals of a comma-separated list."""
+    if (refused := first_unlexable(text, where.source)) is not None:
+        if refused.span is None:
+            return refused
+        return replace(refused, span=refused.span.shifted(where.start))
     statements: list[AST] = []
     errors: list[str] = []
     source = prefixed(text)

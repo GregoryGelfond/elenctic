@@ -1,15 +1,21 @@
 """Sets of bindings as a tag writes them: bare terms for one variable, tuples for several."""
 
+from dataclasses import replace
+
 from clingo import Symbol, SymbolType
 
 from elenctic.normalize import evaluate
-from elenctic.spans import Parsed, Span, failure, one_line
+from elenctic.spans import Parsed, Span, failure, first_unlexable, one_line
 
 
 def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symbol, ...], ...]]:
     """Read a set of binding tuples; one variable lists bare terms, several list tuples."""
     if not text.strip():
         return ()
+    if (refused := first_unlexable(text, where.source)) is not None:
+        if refused.span is None:
+            return refused
+        return replace(refused, span=refused.span.shifted(where.start))
     term = evaluate(f"({text})")
     if term is None:
         return failure(

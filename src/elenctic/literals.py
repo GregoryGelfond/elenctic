@@ -47,7 +47,7 @@ class Literal:
         """Read `p(1,"a")` or `-p`; raises `ValueError` for anything else, as does `of`."""
         try:
             return cls.of(parse_term(text))
-        except RuntimeError as error:
+        except (RuntimeError, UnicodeDecodeError) as error:
             raise ValueError(str(error)) from error
 
     @property

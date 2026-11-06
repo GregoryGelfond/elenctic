@@ -3,6 +3,7 @@
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import Final, override
 
 from clingo import Control
@@ -16,7 +17,7 @@ from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
 from elenctic.program import Fault, Locus, Program
 from elenctic.search import Interrupt, Limits
-from elenctic.spans import Diagnostic, diagnose, failure
+from elenctic.spans import Diagnostic, diagnose, failure, first_unlexable, in_code
 from elenctic.theory import Clingcon, Plain, Theory
 
 _EXTRA: Final = "theory"
@@ -88,8 +89,47 @@ def _absent(solver: Solver, _program: Program) -> Fault:
     )
 
 
+_INCLUDE = re.compile(r"#include\s*(?:\"([^\"]+)\"|<([^>]+)>)")
+
+
+def _include_targets(text: str) -> tuple[str, ...]:
+    """Return the paths named by `#include` directives outside strings and comments."""
+    code = in_code(text)
+    return tuple(
+        quoted or angled
+        for match in _INCLUDE.finditer(text)
+        if code[match.start()]
+        for quoted, angled in [match.groups()]
+    )
+
+
+def _lexable(program: Program) -> Fault | None:
+    """Refuse program text (and `#include`d files) that would abort pyclingo's logger."""
+    if (refused := first_unlexable(program.text, program.source)) is not None:
+        return Fault(Locus.PROGRAM, (refused,))
+    if program.path is None:
+        return None
+    seen: set[Path] = {program.path.resolve()}
+    pending = [program.path.parent / target for target in _include_targets(program.text)]
+    while pending:
+        path = pending.pop().resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        try:
+            included = path.read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue  # clingo will report the missing or unreadable include
+        if (refused := first_unlexable(included, str(path))) is not None:
+            return Fault(Locus.PROGRAM, (refused,))
+        pending.extend(path.parent / target for target in _include_targets(included))
+    return None
+
+
 def ground(program: Program, solver: Solver = Solver.CLINGO) -> Grounded | Fault:
     """Ground `program` for `solver`, or say why it cannot be."""
+    if (refused := _lexable(program)) is not None:
+        return refused
     theory = _THEORIES[solver]()
     if theory is None:
         return _absent(solver, program)

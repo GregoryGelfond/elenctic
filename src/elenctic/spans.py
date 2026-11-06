@@ -123,6 +123,91 @@ def in_characters(span: Span, text: str) -> Span:
     return Span(span.source, start, end)
 
 
+_ASCII_MAX = 127
+
+
+def _skip_block_comment(text: str, start: int, mask: list[bool]) -> int:
+    mask[start] = mask[start + 1] = False
+    index = start + 2
+    length = len(text)
+    while index < length:
+        mask[index] = False
+        if text[index] == "*" and index + 1 < length and text[index + 1] == "%":
+            mask[index + 1] = False
+            return index + 2
+        index += 1
+    return index
+
+
+def _skip_line_comment(text: str, start: int, mask: list[bool]) -> int:
+    index = start
+    length = len(text)
+    while index < length and text[index] != "\n":
+        mask[index] = False
+        index += 1
+    return index
+
+
+def _skip_string(text: str, start: int, mask: list[bool]) -> int:
+    mask[start] = False
+    index = start + 1
+    length = len(text)
+    while index < length:
+        mask[index] = False
+        current = text[index]
+        if current == "\\" and index + 1 < length:
+            mask[index + 1] = False
+            index += 2
+            continue
+        index += 1
+        if current == '"':
+            break
+    return index
+
+
+def in_code(text: str) -> list[bool]:
+    """Mark each character that sits outside strings and comments."""
+    mask = [True] * len(text)
+    index, length = 0, len(text)
+    while index < length:
+        character = text[index]
+        if character == "%" and index + 1 < length and text[index + 1] == "*":
+            index = _skip_block_comment(text, index, mask)
+        elif character == "%":
+            index = _skip_line_comment(text, index, mask)
+        elif character == '"':
+            index = _skip_string(text, index, mask)
+        else:
+            index += 1
+    return mask
+
+
+def first_unlexable(text: str, source: str) -> Diagnostic | None:
+    """Return a diagnostic for the first non-ASCII outside a string or comment.
+
+    Clingo's lexer accepts only ASCII there. With a Python logger, a rejected character makes
+    pyclingo abort the process; elenctic refuses the text first so that never happens.
+    """
+    code = in_code(text)
+    line, column = 1, 1
+    for index, character in enumerate(text):
+        if code[index] and ord(character) > _ASCII_MAX:
+            where = Span(source, Position(line, column), Position(line, column + 1))
+            shown = character if character.isprintable() else f"U+{ord(character):04X}"
+            return failure(
+                where,
+                f"expected an ASCII character, found `{shown}`",
+                label="outside strings and comments",
+                help=("clingo's lexer rejects non-ASCII here; keep it in a string or a comment",),
+            )
+        if character == "\n":
+            line += 1
+            column = 1
+        else:
+            column += 1
+    return None
+
+
 _HEADER: Final = re.compile(
     r"(?P<source>.+?):(?P<line>\d+):(?P<column>\d+)"
     r"(?:-(?P<end_line>\d+):(?P<end_column_far>\d+)|-(?P<end_column>\d+))?"

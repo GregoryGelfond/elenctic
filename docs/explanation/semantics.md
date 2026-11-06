@@ -54,8 +54,9 @@ not shown it is best. `@cost` and the `optimal` claims are `undecided` then, nev
 **Consequences are atoms.** `@cautious` and `@brave` range over shown atoms; under clingcon an
 assignment is never reported as a consequence.
 
-**Programs are not isolated.** An untrusted program can crash or exhaust the process; elenctic
-limits time and answer sets, not memory.
+**Programs are not isolated.** An untrusted program can exhaust memory; elenctic limits time and
+answer sets, not memory. Non-ASCII outside strings and comments is refused with a diagnostic
+before clingo sees it, so a bad character never aborts the process.
 
 **A contract that would be misread is an error, not a verdict.** See the preconditions in the
 reference.
