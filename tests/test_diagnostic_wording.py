@@ -167,6 +167,15 @@ def test_a_zero_width_primary_span_still_draws_one_caret() -> None:
     assert diagnostic.span is not None
     assert diagnostic.span.start == diagnostic.span.end
     stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    assert "  |         ^ expected a non-negative integer" in stderr
+
+
+def test_a_snippet_includes_the_last_line_of_the_source() -> None:
+    text = "p.\n% @expect sat\n% @count x\n"
+    result = check(Program(text, "t.lp"))
+    assert isinstance(result, Fault)
+    stderr = render(Run((Entry("t.lp", result, text),)), PLAIN).stderr
+    assert "3 | % @count x" in stderr
     assert "^" in stderr
 
 

@@ -7,6 +7,7 @@ from elenctic.spans import (
     char_column,
     diagnose,
     failure,
+    in_characters,
     note,
 )
 
@@ -72,3 +73,9 @@ def test_char_column_maps_the_first_byte_and_zero_to_column_one() -> None:
 def test_char_column_past_the_encoded_line_is_one_past_the_end() -> None:
     assert char_column("ab", 100) == 3
     assert char_column("é", len("é".encode()) + 1) == 2
+
+
+def test_in_characters_reads_the_named_line_not_a_neighbour() -> None:
+    raw = Span("t.lp", Position(2, 1), Position(2, 2))
+    converted = in_characters(raw, "aé\ny\n")
+    assert converted == Span("t.lp", Position(2, 1), Position(2, 2))
