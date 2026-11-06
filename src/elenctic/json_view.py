@@ -75,7 +75,7 @@ def _parts(hint: object) -> tuple[object, ...]:
     """Name the alternatives of a union, or the hint alone."""
     hint = _unwrap(hint)
     origin = typing.get_origin(hint)
-    if origin is UnionType or origin is typing.Union:
+    if origin is UnionType:
         return typing.get_args(hint)
     return (hint,)
 
@@ -110,9 +110,7 @@ def _schema_for(hint: object) -> Json:
 
 def _sequence_schema(hint: object) -> Json:
     """Describe a list or set: an array whose items follow the element hint."""
-    args = typing.get_args(hint)
-    items: Json = _schema_for(args[0]) if args and args[0] is not Ellipsis else True
-    return {"type": "array", "items": items}
+    return {"type": "array", "items": _schema_for(typing.get_args(hint)[0])}
 
 
 def _enum_schema(type_: type[Enum]) -> Json:
@@ -129,8 +127,6 @@ def _schema_alternative(hint: object) -> Json:
     if origin in _SEQUENCE:
         return _sequence_schema(hint)
     primitives: dict[type, str] = {str: "string", bool: "boolean", int: "integer"}
-    if not isinstance(hint, type) or hint is type(None):
-        return {"type": "null"}
     named = cast("type[object]", hint)
     if named in _AS_STRING or named in primitives:
         return {"type": "string" if named in _AS_STRING else primitives[named]}
