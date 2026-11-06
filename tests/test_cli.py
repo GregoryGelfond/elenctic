@@ -323,3 +323,31 @@ def test_a_walked_library_without_near_miss_is_silent(
     assert code == Exit.CLAIMS_HOLD
     assert err == ""
     assert "1/1 passed" in out
+
+
+def test_count_over_hidden_variation_uses_shown_projection(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`@count` reads distinct shown sets; hidden atoms must not inflate the census."""
+    path = write(
+        tmp_path,
+        "projection.lp",
+        "{ h(1..17) }.\na.\n#show a/0.\n% @expect sat\n% @count 1\n",
+    )
+    code, out = run(capsys, "--color", "never", "-v", path)
+    assert code == Exit.CLAIMS_HOLD
+    assert "[PASS] @count 1" in out
+
+
+def test_absent_answer_set_fails_under_shown_projection(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(
+        tmp_path,
+        "absent.lp",
+        "{ h(1..17) }.\na.\nb :- not a.\n#show a/0.\n#show b/0.\n"
+        "% @expect sat\n% @answer-set { b }\n",
+    )
+    code, out = run(capsys, "--color", "never", "-v", path)
+    assert code == Exit.CLAIM_UNMET
+    assert "[FAIL] @answer-set { b }" in out

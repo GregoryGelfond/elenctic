@@ -71,6 +71,7 @@ All notable changes are recorded here. The format follows
   process; `--json` still emits a document.
 - Binding sets keep tuple structure: `{ (1,2) }` for one variable is one binding, and `{ ((1,2),3) }` for two is accepted; a bare `{ a, 1 }` for arity 2 is refused.
 - A named `.lp` with no contract tag is a fault (exit 2), not a silent `0/0 passed`; a UTF-8 BOM is refused with a located diagnostic; a walked library whose `@tag` looks misspelled is a note.
+- Search groups that read only shown identities project onto `#show`, so `@count` and `@answer-set` no longer enumerate hidden variation; optimal groups prove the cost first, then enumerate at that bound; witness-only groups stop once every claim is decided.
 
 
 ### Changed

@@ -3,7 +3,19 @@
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 
-from elenctic.contract import Claim, Costs, Entails, Satisfiable, over
+from elenctic.contract import (
+    Asks,
+    Assigns,
+    Binds,
+    Census,
+    Claim,
+    Costs,
+    Entails,
+    Satisfiable,
+    Solver,
+    Witness,
+    over,
+)
 from elenctic.determination import Consequences, Consistent, Determination, Mode, Range, Truncation
 from elenctic.engine import ground
 from elenctic.gates import hidden_reads, unsound
@@ -12,9 +24,34 @@ from elenctic.judge import Found, judge
 from elenctic.literals import Scenario
 from elenctic.program import Fault, Locus, Program
 from elenctic.reader import parse_contract
-from elenctic.search import Interrupt, Limits
+from elenctic.search import Interrupt, Limits, Seen
 from elenctic.tags import is_case
 from elenctic.verdicts import Finding, Report
+
+
+def _enough(group: list[Claim]) -> Callable[[list[Seen]], bool] | None:
+    """Return a stop condition once every existential witness claim is upheld, or none."""
+    if not group or not all(isinstance(c.reading, Witness | Assigns) for c in group):
+        return None
+
+    def enough(found: list[Seen]) -> bool:
+        sets = [seen.answer_set for seen in found]
+        return all(any(c.reading.upheld_by(answer) for answer in sets) for c in group)
+
+    return enough
+
+
+def _projects(group: list[Claim], solver: Solver) -> bool:
+    """Say whether the group reads only shown identities, so enumeration may project."""
+    full = any(
+        isinstance(c.reading, Asks | Binds | Assigns)
+        or (isinstance(c.reading, Witness) and c.reading.assignment)
+        for c in group
+    )
+    clingcon_census = solver is Solver.CLINGCON and any(
+        isinstance(c.reading, Census | Witness | Assigns) for c in group
+    )
+    return not full and not clingcon_census
 
 
 def _by_search(claims: Iterable[Claim]) -> dict[tuple[Scenario, Range], list[Claim]]:
@@ -59,26 +96,35 @@ def _cut_by_count(found: Found) -> bool:
     return isinstance(found, Consistent) and found.conclusion is Truncation.MAX_ANSWER_SETS
 
 
-def _judge_group(
+def _judge_group(  # noqa: PLR0913
     grounded: Grounded,
     key: tuple[Scenario, Range],
     group: list[Claim],
     limits: Limits,
     interrupt: Interrupt | None,
+    *,
+    solver: Solver,
 ) -> list[Finding]:
     scenario, over = key
+    project = _projects(group, solver)
 
     def native(mode: Mode) -> Determination[Consequences]:
         return grounded.consequences(mode, scenario, limits=limits, interrupt=interrupt)
 
     if over is Range.OPTIMAL:
         found: Found = grounded.optimize(
-            scenario, limits=_limits(group, limits), interrupt=interrupt
+            scenario, limits=_limits(group, limits), interrupt=interrupt, project=project
         )
     elif _closes(group):
         return _entailing(group, native)
     else:
-        found = grounded.solve(scenario, limits=_limits(group, limits), interrupt=interrupt)
+        found = grounded.solve(
+            scenario,
+            limits=_limits(group, limits),
+            interrupt=interrupt,
+            project=project,
+            enough=_enough(group),
+        )
     findings = [judge(claim, found) for claim in group]
     if over is Range.ALL and _cut_by_count(found):
         return _natively(group, findings, native)
@@ -117,7 +163,9 @@ def check(
         claim: finding
         for key, group in _by_search(contract.claims).items()
         for claim, finding in zip(
-            group, _judge_group(grounded, key, group, limits, interrupt), strict=True
+            group,
+            _judge_group(grounded, key, group, limits, interrupt, solver=contract.solver),
+            strict=True,
         )
     }
     return Report(

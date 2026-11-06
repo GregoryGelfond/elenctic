@@ -175,6 +175,10 @@ class Plan:
     modes: tuple[str, str]
     counted: Callable[[Seen], bool] = _always
     max_answer_sets: int | Limit = Limit.UNBOUNDED
+    project: bool = False
+    """Enumerate distinct `#show` projections when the claims read only shown identities."""
+    enough: Callable[[list[Seen]], bool] | None = None
+    """Stop once every claim the group cares about is decided from `found` (existential groups)."""
 
     def allows(self, counted: int) -> bool:
         """Say whether `counted` answer sets are within the most allowed."""
@@ -223,6 +227,9 @@ def drain(
         if not plan.allows(counted):
             handle.cancel()
             return found[:-1], Truncation.MAX_ANSWER_SETS
+        if plan.enough is not None and plan.enough(found):
+            handle.cancel()
+            return found, Exhausted.EXHAUSTED
         handle.resume()
     return found, truncation
 

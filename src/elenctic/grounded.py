@@ -12,6 +12,7 @@ from elenctic.determination import (
     Consequences,
     Determination,
     Exhausted,
+    Inconclusive,
     Mode,
     NoAssumptions,
     NotThese,
@@ -27,6 +28,7 @@ from elenctic.search import (
     OPTIMIZATION,
     Cut,
     Interrupt,
+    Limit,
     Limits,
     Plan,
     Request,
@@ -97,6 +99,7 @@ class Grounded:
         section = _solve_section(self._control)
         section.models = "0"
         section.enum_mode, section.opt_mode = plan.modes
+        section.project = "auto" if plan.project else "no"
         with self._control.solve(assumptions=list(assumed), yield_=True, async_=True) as handle:
             found, conclusion = drain(handle, plan, cut, self._read)
             run = Run(tuple(found), conclusion, frozenset())
@@ -156,11 +159,18 @@ class Grounded:
         *,
         limits: Limits = Limits(),
         interrupt: Interrupt | None = None,
+        project: bool = False,
+        enough: Callable[[list[Seen]], bool] | None = None,
     ) -> Determination[AnswerSets]:
         """Enumerate the answer sets satisfying `scenario`, whatever the program optimizes."""
         return self._search(
             Request(scenario, limits, interrupt),
-            Plan(ENUMERATION, max_answer_sets=limits.max_answer_sets),
+            Plan(
+                ENUMERATION,
+                max_answer_sets=limits.max_answer_sets,
+                project=project,
+                enough=enough,
+            ),
             answer_sets,
         )
 
@@ -188,13 +198,50 @@ class Grounded:
         *,
         limits: Limits = Limits(),
         interrupt: Interrupt | None = None,
+        project: bool = False,
     ) -> Determination[Optimized]:
         """Find the optimum under `scenario` and the answer sets that attain it.
 
         `limits.max_answer_sets` bounds the optimal answer sets, not the improving ones on the way.
+        When `project` is set, prove the optimum first, then enumerate at that cost with projection
+        (clingo's optN interacts badly with `--project` across improving levels).
         """
-        return self._search(
-            Request(scenario, limits, interrupt),
-            Plan(OPTIMIZATION, proven, limits.max_answer_sets),
-            optimized,
+        request = Request(scenario, limits, interrupt)
+        if not project:
+            return self._search(
+                request,
+                Plan(OPTIMIZATION, proven, limits.max_answer_sets),
+                optimized,
+            )
+        return self._optimize_projected(request)
+
+    def _optimize_projected(self, request: Request) -> Determination[Optimized]:
+        """Prove the optimum, then enumerate at that cost with `#show` projection."""
+        cut = request.cutter()
+        prove = self._run(
+            request.scenario,
+            Plan(("auto", "opt"), max_answer_sets=Limit.UNBOUNDED),
+            cut,
         )
+        if prove.refuted:
+            return decide(prove, self._shrunk(request.scenario, prove.core, cut), optimized)
+        if not prove.found:
+            return decide(prove, None, optimized)
+        if isinstance(prove.conclusion, Truncation):
+            return Inconclusive(prove.conclusion)
+        bound = ",".join(str(level) for level in prove.found[-1].cost)
+        enumerated = self._run(
+            request.scenario,
+            Plan(
+                ("auto", f"enum,{bound}"),
+                max_answer_sets=request.limits.max_answer_sets,
+                project=True,
+            ),
+            cut,
+        )
+        # enum-at-cost yields only optimal answer sets; clingo may not set optimality_proven.
+        marked = replace(
+            enumerated,
+            found=tuple(replace(seen, proven=True) for seen in enumerated.found),
+        )
+        return decide(marked, None, optimized)
