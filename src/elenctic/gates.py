@@ -44,7 +44,7 @@ def _read(reading: Reading) -> frozenset[Signature]:
     """Name the predicates a query reads, including each contrary, whatever its answer."""
     match reading:
         case Asks(_, query):
-            return frozenset().union(*(_signatures(part) for part in _parts(query)))
+            return frozenset[Signature]().union(*(_signatures(part) for part in _parts(query)))
         case Binds(_, pattern, _):
             return _signatures(pattern)
         case _:

@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 # Minimal image whose only purpose is running elenctic (CLI entrypoint; clingo and clingcon included).
 #
-# Usage: docker run --rm -v "$PWD":/work:ro elenctic [elenctic arguments]
+# Build:  docker build -f Containerfile -t elenctic .
+# Run:    docker run --rm -v "$PWD":/work:ro elenctic [elenctic arguments]
+# No published image; no CI build — ship the recipe only.
 
 FROM docker.io/library/python:3.14-slim-trixie@sha256:af8a5aa14780025dbfbcfbc81bd8a91ebd87711dd5b0f48ed71090949dd7cb1d AS build
 COPY --from=docker.io/astral/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /bin/uv
