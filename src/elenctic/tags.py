@@ -79,6 +79,10 @@ KNOWN: Final = frozenset(
 )
 
 
+RENAMED: Final = {"model": "answer-set"}
+"""Spellings that are not tags, each with the tag a reader who writes it means."""
+
+
 def _block(lines: list[str], index: int, head: re.Match[str], source: str) -> tuple[Block, int]:
     """Read the tag matched by `head` on `lines[index]` and the comment lines its brace spans."""
     column = len(head["lead"]) + 1

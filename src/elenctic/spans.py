@@ -86,9 +86,16 @@ def failure(
     return Diagnostic(where, Severity.ERROR, message, label, children)
 
 
-def note(where: Span | None, message: str) -> Diagnostic:
+def note(
+    where: Span | None,
+    message: str,
+    *,
+    help: tuple[str, ...] = (),  # noqa: A002
+) -> Diagnostic:
     """Say something about `where` that does not fail the run."""
-    return Diagnostic(where, Severity.NOTE, message)
+    return Diagnostic(
+        where, Severity.NOTE, message, "", tuple(Child(Severity.HELP, tip) for tip in help)
+    )
 
 
 def one_line(text: str) -> str:

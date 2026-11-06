@@ -313,7 +313,8 @@ def test_a_named_file_without_a_contract_is_a_fault(
     path = write(tmp_path, "lib.lp", "a.\n")
     code, out, err = run_both(capsys, "--color", "never", path)
     assert code == Exit.FAULT
-    assert "carries no contract tag" in err
+    assert f"error: `{path}` carries no contract tag\n" in err
+    assert "help: a contract-free `.lp` is a library; name a case, or walk a directory" in err
     assert "1 error" in out
 
 
@@ -641,3 +642,51 @@ def test_a_symbolic_link_loop_is_unreadable_not_a_crash(
         assert code == Exit.FAULT
         assert "cannot read" in err
         assert "error" in out
+
+
+def test_a_walked_note_on_a_renamed_tag_gives_its_spelling(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path, "ok.lp", "a.\n% @expect sat\n")
+    write(tmp_path, "old.lp", "a.\n% @model { a }\n% @expct sat\n")
+    code, _out, err = run_both(capsys, "--color", "never", tmp_path)
+    assert code == Exit.CLAIMS_HOLD
+    assert (
+        f"`{tmp_path / 'old.lp'}` carries no contract tag; `@model`, `@expct` are not tags" in err
+    )
+    assert "help: the tag is spelled `@answer-set`" in err
+    assert "help: there is a tag with a similar name: `@expect`" in err
+    assert "did you mean" not in err
+
+
+def test_a_walked_note_on_one_unknown_tag_says_it_is_not_a_tag(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path, "ok.lp", "a.\n% @expect sat\n")
+    write(tmp_path, "old.lp", "a.\n% @model { a }\n% @model { b }\n")
+    _code, _out, err = run_both(capsys, "--color", "never", tmp_path)
+    assert f"`{tmp_path / 'old.lp'}` carries no contract tag; `@model` is not a tag\n" in err
+    assert err.count("the tag is spelled `@answer-set`") == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "shown", "tip"),
+    [
+        ("a.\n% @model { a }\n", "`@model` is not a tag", "the tag is spelled `@answer-set`"),
+        (
+            "a.\n% @expct sat\n",
+            "`@expct` is not a tag",
+            "there is a tag with a similar name: `@expect`",
+        ),
+    ],
+)
+def test_a_named_file_with_only_a_mistaken_tag_is_told_the_tag(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], text: str, shown: str, tip: str
+) -> None:
+    path = write(tmp_path, "old.lp", text)
+    code, _out, err = run_both(capsys, "--color", "never", path)
+    assert code == Exit.FAULT
+    assert f"error: `{path}` carries no contract tag\n" in err
+    assert f"= note: {shown}\n" in err
+    assert f"= help: {tip}\n" in err
+    assert "a contract-free `.lp` is a library" not in err

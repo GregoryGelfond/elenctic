@@ -12,7 +12,7 @@ from elenctic.operands import after, assumptions
 from elenctic.queries import query
 from elenctic.readings import assign, brave, cautious, cost, count, expect, witness
 from elenctic.spans import Diagnostic, Parsed, failure
-from elenctic.tags import KNOWN, Block, Element, blocks, elements
+from elenctic.tags import KNOWN, RENAMED, Block, Element, blocks, elements
 from elenctic.wellformed import wellformed
 
 _READERS: Final[dict[str, Callable[[Block, list[Element]], Parsed[Reading]]]] = {
@@ -40,14 +40,20 @@ def _split(block: Block, elements: list[Element]) -> Parsed[tuple[list[Element],
 _DIRECTIVES: Final = frozenset({"elenctic", "note"})
 
 
+def suggestion(tag: str) -> tuple[str, ...]:
+    """Name the tag that `tag` most likely means: its own spelling, else a similar name."""
+    if (spelled := RENAMED.get(tag)) is not None:
+        return (f"the tag is spelled `@{spelled}`",)
+    tip = get_close_matches(tag, sorted(KNOWN - _DIRECTIVES), n=1, cutoff=0.6)
+    return (f"there is a tag with a similar name: `@{tip[0]}`",) if tip else ()
+
+
 def _unknown_tag(block: Block) -> Diagnostic:
-    tip = get_close_matches(block.tag, sorted(KNOWN - _DIRECTIVES), n=1, cutoff=0.6)
-    help_ = (f"there is a tag with a similar name: `@{tip[0]}`",) if tip else ()
     return failure(
         block.covering(),
         f"unknown tag `@{block.tag}`",
         label="not a tag",
-        help=help_,
+        help=suggestion(block.tag),
     )
 
 

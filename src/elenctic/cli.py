@@ -16,6 +16,7 @@ from elenctic.human import Format, internal_error, render_run, reserved, version
 from elenctic.json_view import to_json
 from elenctic.presentation import Environment, Presentation, Stream, When, resolve
 from elenctic.program import Fault, Locus, Program
+from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.spans import Diagnostic, failure, first_unlexable, note
@@ -244,20 +245,28 @@ def _unreadable_note(error: OSError | UnicodeDecodeError) -> str:
             return str(error)
 
 
+def _mistaken(text: str) -> tuple[str, tuple[str, ...]] | None:
+    """Say which `@tag`s of `text` are not tags, with what each likely means; `None` if none."""
+    missed = tuple(dict.fromkeys(near_misses(text)))
+    if not missed:
+        return None
+    shown = ", ".join(f"`@{name}`" for name in missed)
+    verb = "is not a tag" if len(missed) == 1 else "are not tags"
+    return f"{shown} {verb}", tuple(tip for name in missed for tip in suggestion(name))
+
+
 def _not_a_case(path: Path, text: str) -> Fault:
     """Refuse a named path that carries no contract tag."""
     if (refused := first_unlexable(text, str(path))) is not None:
         return Fault(Locus.PROGRAM, (refused,))
-    return Fault(
-        Locus.REQUEST,
-        (
-            failure(
-                None,
-                f"`{path}` carries no contract tag",
-                help=("a contract-free `.lp` is a library; name a case, or walk a directory",),
-            ),
-        ),
+    mistaken = _mistaken(text)
+    notes, helps = (
+        ((), ("a contract-free `.lp` is a library; name a case, or walk a directory",))
+        if mistaken is None
+        else ((mistaken[0],), mistaken[1])
     )
+    problem = failure(None, f"`{path}` carries no contract tag", notes=notes, help=helps)
+    return Fault(Locus.REQUEST, (problem,))
 
 
 def _walked_notes(sources: list[_Source]) -> tuple[Diagnostic, ...]:
@@ -272,16 +281,10 @@ def _walked_notes(sources: list[_Source]) -> tuple[Diagnostic, ...]:
             continue
         if is_case(text):
             continue
-        missed = near_misses(text)
-        if not missed:
+        if (mistaken := _mistaken(text)) is None:
             continue
-        shown = ", ".join(f"`@{name}`" for name in missed)
-        found.append(
-            note(
-                None,
-                f"`{path}` carries no contract tag; did you mean a claim rather than {shown}?",
-            )
-        )
+        shown, helps = mistaken
+        found.append(note(None, f"`{path}` carries no contract tag; {shown}", help=helps))
     return tuple(found)
 
 

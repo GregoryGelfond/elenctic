@@ -195,7 +195,9 @@ def only_diagnostic(*lines: str) -> Diagnostic:
 
 def test_the_answer_set_tag_has_a_hyphen_and_the_old_spelling_is_not_a_tag() -> None:
     assert only("% @answer-set { p }").reading == Witness(frozenset({Literal("p")}))
-    assert "unknown tag `@model`" in only_diagnostic("% @model { p }").message
+    found = only_diagnostic("% @model { p }")
+    assert found.message == "unknown tag `@model`"
+    assert [c.message for c in found.children] == ["the tag is spelled `@answer-set`"]
 
 
 def test_an_unknown_tag_names_a_close_one_as_help() -> None:

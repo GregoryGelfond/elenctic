@@ -23,7 +23,7 @@ HELPISH = re.compile(r"\b(declare|install|name it)\b", re.IGNORECASE)
 BANNED = re.compile(r"did you mean|illegal", re.IGNORECASE)
 
 
-def _failure_messages() -> list[tuple[str, str]]:
+def _messages(maker: str) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
     for path in sorted(SRC.rglob("*.py")):
         module = ast.parse(path.read_text(), filename=str(path))
@@ -38,7 +38,7 @@ def _failure_messages() -> list[tuple[str, str]]:
                 if isinstance(callee, ast.Name)
                 else None
             )
-            if name != "failure" or len(node.args) < 2:
+            if name != maker or len(node.args) < 2:
                 continue
             message = node.args[1]
             if isinstance(message, ast.Constant) and isinstance(message.value, str):
@@ -54,7 +54,13 @@ def _failure_messages() -> list[tuple[str, str]]:
     return found
 
 
-@pytest.mark.parametrize(("where", "message"), _failure_messages())
+@pytest.mark.parametrize(("where", "message"), _messages("note"))
+def test_no_note_asks_the_reader_a_question(where: str, message: str) -> None:
+    assert not BANNED.search(message), (where, message)
+    assert "?" not in message, (where, message)
+
+
+@pytest.mark.parametrize(("where", "message"), _messages("failure"))
 def test_every_failure_message_follows_the_rustc_shape(where: str, message: str) -> None:
     assert message, where
     assert not message.endswith("."), (where, message)
