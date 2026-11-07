@@ -194,7 +194,7 @@ def schema_document() -> dict[str, Json]:
     }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/main/docs/reference/output-v1.schema.json",
+        "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/v1.0.0/docs/reference/output-v1.schema.json",
         "title": "elenctic output schema 1",
         "type": "object",
         "required": ["schema", "run", "exit_code"],

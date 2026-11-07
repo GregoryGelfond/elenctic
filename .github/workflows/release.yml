@@ -1,0 +1,66 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          python-version: "3.14"
+      - run: uv sync --locked --no-dev
+      - name: Check the tag and schema
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          uv run --locked --no-dev python - <<'PY'
+          import os
+          import runpy
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          if os.environ["RELEASE_TAG"] != f"v{version}":
+              raise SystemExit("tag must match the package version")
+          schema = runpy.run_path("scripts/write_output_schema.py")
+          if schema["TARGET"].read_text() != schema["render"]():
+              raise SystemExit("regenerate the output schema")
+          PY
+      - run: uv build --python 3.14
+      - name: Check the shipped schema
+        run: |
+          uv run --locked --no-dev python - <<'PYTHON'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          with ZipFile(next(Path("dist").glob("*.whl"))) as wheel:
+              if wheel.read("elenctic/output-v1.schema.json") != Path(
+                  "docs/reference/output-v1.schema.json"
+              ).read_bytes():
+                  raise SystemExit("wheel must ship the output schema")
+          PYTHON
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: distributions
+          path: dist/
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/elenctic
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1

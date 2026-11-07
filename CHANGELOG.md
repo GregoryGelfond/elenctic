@@ -4,7 +4,7 @@ All notable changes are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-11-06
 
 ### Added
 - `--root DIR`: one root for every path and `#include` of a run, so a subtree whose cases include
@@ -189,3 +189,5 @@ All notable changes are recorded here. The format follows
   write terminal control sequences; JSON is unchanged.
 - A file that is not UTF-8 is a refusal of the request (`FAULT`, 2), not a traceback.
 - `pixi run check` prints the number of tests: pytest was given `-q` twice.
+
+[1.0.0]: https://github.com/GregoryGelfond/elenctic/releases/tag/v1.0.0

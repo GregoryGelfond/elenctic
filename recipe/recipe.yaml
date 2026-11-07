@@ -2,7 +2,7 @@ schema_version: 1
 
 context:
   name: elenctic
-  version: 0.0.0
+  version: "1.0.0"
   python_min: "3.14"
 
 package:
@@ -10,9 +10,12 @@ package:
   version: ${{ version }}
 
 source:
-  path: ..
+  url: https://pypi.org/packages/source/e/elenctic/elenctic-${{ version }}.tar.gz
+  # Replace with the SHA256 of the published PyPI sdist before building.
+  sha256: "REPLACE_WITH_PYPI_SDIST_SHA256"
 
 build:
+  number: 0
   noarch: python
   script: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
   python:
@@ -41,3 +44,7 @@ about:
   license: MIT
   license_file: LICENSE
   summary: Contracts and queries for answer set programs
+
+extra:
+  recipe-maintainers:
+    - GregoryGelfond

@@ -1,14 +1,14 @@
 # elenctic
 
-[![CI](https://github.com/GregoryGelfond/elenctic-exp/actions/workflows/ci.yml/badge.svg)](https://github.com/GregoryGelfond/elenctic-exp/actions/workflows/ci.yml)
+[![CI](https://github.com/GregoryGelfond/elenctic/actions/workflows/ci.yml/badge.svg)](https://github.com/GregoryGelfond/elenctic/actions/workflows/ci.yml)
 [![Python 3.14 | 3.15](https://img.shields.io/badge/python-3.14%20%7C%203.15-blue)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Pixi](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-<!-- TODO(release): add once 1.0.0 is published.
 [![PyPI](https://img.shields.io/pypi/v/elenctic)](https://pypi.org/project/elenctic/)
+<!-- TODO(conda-forge): enable once the package is available on conda-forge.
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/elenctic)](https://anaconda.org/conda-forge/elenctic)
 -->
 
@@ -20,14 +20,10 @@ live in its own comments (`@expect`, `@count`, `@answer-set`, `@cautious`, `@bra
 cross-examination": the Socratic elenchus. A contract is a thesis about the program; `FAIL` is
 its refutation, and `UNDECIDED` is aporia, an honest "cannot say" rather than a false "no".
 
-Status: pre-1.0.
-
 ## Install
 
 Requires Python 3.14+ and clingo 5.8. The optional `theory` extra pulls in clingcon 5.2 for
 contracts that declare `% @elenctic solver clingcon`.
-
-<!-- TODO(release): the PyPI and conda-forge lines apply once 1.0.0 is published. -->
 
 ```bash
 # pip
@@ -40,22 +36,28 @@ uv add 'elenctic[theory]'
 uv tool install elenctic
 uv tool install 'elenctic[theory]'
 
-# pixi — from conda-forge once the feedstock exists, or from PyPI
-pixi add elenctic
+# pixi — from PyPI
 pixi add --pypi elenctic
 pixi add --pypi 'elenctic[theory]'
+```
+
+<!-- TODO(conda-forge): enable once the package is available on conda-forge.
+```bash
+# pixi — from conda-forge
+pixi add elenctic
 
 # conda / mamba (conda-forge)
 conda install -c conda-forge elenctic
 mamba install -c conda-forge elenctic
 ```
+-->
 
 From source, straight from Git or from a clone:
 
 ```bash
-pip install 'elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic-exp'
+pip install 'elenctic[theory] @ git+https://github.com/GregoryGelfond/elenctic'
 
-git clone https://github.com/GregoryGelfond/elenctic-exp && cd elenctic-exp
+git clone https://github.com/GregoryGelfond/elenctic && cd elenctic
 pip install '.[theory]'
 uv tool install '.[theory]'
 pixi install -e theory     # the locked environment
