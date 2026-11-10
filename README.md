@@ -8,9 +8,7 @@
 [![Pixi](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/prefix-dev/pixi/main/assets/badge/v0.json)](https://pixi.sh)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/elenctic)](https://pypi.org/project/elenctic/)
-<!-- TODO(conda-forge): enable once the package is available on conda-forge.
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/elenctic)](https://anaconda.org/conda-forge/elenctic)
--->
 
 A testing and analysis library for answer set programs, with a thin CLI. Claims about a program
 live in its own comments (`@expect`, `@count`, `@answer-set`, `@cautious`, `@brave`, `@query`,
@@ -36,21 +34,17 @@ uv add 'elenctic[theory]'
 uv tool install elenctic
 uv tool install 'elenctic[theory]'
 
+# pixi — from conda-forge
+pixi add elenctic
+
 # pixi — from PyPI
 pixi add --pypi elenctic
 pixi add --pypi 'elenctic[theory]'
-```
-
-<!-- TODO(conda-forge): enable once the package is available on conda-forge.
-```bash
-# pixi — from conda-forge
-pixi add elenctic
 
 # conda / mamba (conda-forge)
 conda install -c conda-forge elenctic
 mamba install -c conda-forge elenctic
 ```
--->
 
 From source, straight from Git or from a clone:
 
