@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from elenctic.cli import main
-from elenctic.glyphs import MARKS
+from elenctic.legend import MARKS
 from elenctic.report import Exit
 from elenctic.verdicts import Verdict
 from test_cli import DRINKS, write

@@ -13,6 +13,8 @@ SGR = [
     (Role.HELP, "1;36"),
     (Role.MARGIN, "1;34"),
     (Role.EMPHASIS, "1"),
+    (Role.ASIDE, "3"),
+    (Role.REFERENCE, "2"),
 ]
 
 

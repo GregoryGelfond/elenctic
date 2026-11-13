@@ -19,15 +19,20 @@ from elenctic.program import Fault, Locus, Program
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
+from elenctic.session import evidenced
 from elenctic.spans import Diagnostic, failure, first_unlexable, note
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
+from elenctic.verdicts import Report
 
 DEFAULT_MAX_SECONDS: Final = 30.0
 DEFAULT_MAX_ANSWER_SETS: Final = 100_000
 
 
-DECIDED: Final = frozenset({"test", "version"})
+DEFAULT_MAX_DEPTH: Final = 3
+
+
+DECIDED: Final = frozenset({"test", "explain", "version"})
 """The subcommands that are built: a first argument that names one is a command, not a path."""
 VERSION_FLAGS: Final = ("-V", "--version")
 """The option of the main parser that asks for `version`: valid before the command, never after."""
@@ -38,7 +43,6 @@ RESERVED = {
     "repl": "start an interactive session over a live program",
     "why": "show the support of an atom, or why it is absent",
     "ask": "answer one query over the answer sets",
-    "explain": "show the evidence behind a verdict",
 }
 """The subcommands kept for later; each exits as a fault, with a note, until it is built."""
 
@@ -78,6 +82,7 @@ def _directory(text: str) -> Path:
 
 _seconds_limit = _limit_reader(float, "a positive number of seconds")
 _answer_sets_limit = _limit_reader(int, "a positive integer")
+_depth_limit = _limit_reader(int, "a positive integer")
 
 
 def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
@@ -108,6 +113,44 @@ def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
     return options
 
 
+def _checking(command: argparse.ArgumentParser, written: str) -> None:
+    """Give a command that checks programs the options of `test`."""
+    command.add_argument(
+        "paths", nargs="+", type=Path, help=".lp files, or directories searched for them"
+    )
+    command.add_argument(
+        "--format",
+        choices=("full", "short", "json"),
+        default="full",
+        help=f"how to write {written}: rustc form (default), one-line short, or JSON",
+    )
+    command.add_argument(
+        "--json", action="store_true", help=f"write {written} as JSON (same as --format json)"
+    )
+    command.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
+    command.add_argument(
+        "--root",
+        type=_directory,
+        metavar="DIR",
+        help="the directory every path and every `#include` must lie under (default: each "
+        "directory searched, or a named file's own directory)",
+    )
+    command.add_argument(
+        option(Truncation.MAX_SECONDS),
+        type=_seconds_limit,
+        default=DEFAULT_MAX_SECONDS,
+        metavar="SECONDS|all",
+        help="time allowed per search, or `all` for no limit (default: %(default)s)",
+    )
+    command.add_argument(
+        option(Truncation.MAX_ANSWER_SETS),
+        type=_answer_sets_limit,
+        default=DEFAULT_MAX_ANSWER_SETS,
+        metavar="N|all",
+        help="most answer sets read per search, or `all` for no limit (default: %(default)s)",
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     """Make the parser; its help and usage are colored as `argparse` does by default."""
     parser = argparse.ArgumentParser(
@@ -129,39 +172,25 @@ def _parser() -> argparse.ArgumentParser:
     test = commands.add_parser(
         "test", parents=options, help="check programs against their contracts"
     )
-    test.add_argument(
-        "paths", nargs="+", type=Path, help=".lp files, or directories searched for them"
+    _checking(test, "the run")
+    explain = commands.add_parser(
+        "explain", parents=options, help="check programs, and show why each failed claim fails"
     )
-    test.add_argument(
-        "--format",
-        choices=("full", "short", "json"),
-        default="full",
-        help="how to write the run: rustc form (default), one-line short, or JSON",
-    )
-    test.add_argument(
-        "--json", action="store_true", help="write the run as JSON (same as --format json)"
-    )
-    test.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
-    test.add_argument(
-        "--root",
-        type=_directory,
-        metavar="DIR",
-        help="the directory every path and every `#include` must lie under (default: each "
-        "directory searched, or a named file's own directory)",
-    )
-    test.add_argument(
-        option(Truncation.MAX_SECONDS),
-        type=_seconds_limit,
-        default=DEFAULT_MAX_SECONDS,
-        metavar="SECONDS|all",
-        help="time allowed per search, or `all` for no limit (default: %(default)s)",
-    )
-    test.add_argument(
-        option(Truncation.MAX_ANSWER_SETS),
-        type=_answer_sets_limit,
-        default=DEFAULT_MAX_ANSWER_SETS,
+    _checking(explain, "the run, with the evidence")
+    explain.add_argument(
+        "--max-depth",
+        type=_depth_limit,
+        default=DEFAULT_MAX_DEPTH,
         metavar="N|all",
-        help="most answer sets read per search, or `all` for no limit (default: %(default)s)",
+        help=(
+            "how many absent atoms deep an explanation goes, or `all` for no limit "
+            "(default: %(default)s)"
+        ),
+    )
+    explain.add_argument(
+        "--spans",
+        action="store_true",
+        help="show each rule as written, its place and its substitution, beneath its instance",
     )
     commands.add_parser(
         "version",
@@ -288,8 +317,14 @@ def _walked_notes(sources: list[_Source]) -> tuple[Diagnostic, ...]:
     return tuple(found)
 
 
-def _entry(
-    path: Path, limits: Limits, interrupt: Interrupt, *, named: bool, root: Path
+def _entry(  # noqa: PLR0913
+    path: Path,
+    limits: Limits,
+    interrupt: Interrupt,
+    *,
+    named: bool,
+    root: Path,
+    max_depth: int | Limit | None = None,
 ) -> Entry | None:
     try:
         program = Program.read(path)
@@ -306,17 +341,26 @@ def _entry(
         return None
     try:
         result = check(program, limits=limits, interrupt=interrupt, root=root)
+        if isinstance(result, Report) and max_depth is not None:
+            result = evidenced(
+                result, program, limits=limits, interrupt=interrupt, max_depth=max_depth
+            )
     except Exception as error:  # noqa: BLE001
         return Entry(program.source, Internal.of(error), program.text)
     return None if result is None else Entry(program.source, result, program.text)
 
 
-def _checked(item: _Source | Entry, limits: Limits, interrupt: Interrupt) -> Entry | None:
-    """Check a planned source; a refusal stands as it is."""
+def _checked(
+    item: _Source | Entry,
+    limits: Limits,
+    interrupt: Interrupt,
+    max_depth: int | Limit | None = None,
+) -> Entry | None:
+    """Check a planned source, and explain it if `max_depth` is given; a refusal stands as it is."""
     if isinstance(item, Entry):
         return item
     path, named, root = item
-    return _entry(path, limits, interrupt, named=named, root=root)
+    return _entry(path, limits, interrupt, named=named, root=root, max_depth=max_depth)
 
 
 def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str]) -> Presentation:
@@ -348,11 +392,13 @@ def _sigint(interrupt: Interrupt) -> Callable[[int, object], None]:
 
 
 def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
+    """Check the paths; for `explain`, give each failed claim its evidence."""
     limits = Limits(max_seconds=arguments.max_seconds, max_answer_sets=arguments.max_answer_sets)
     interrupt = Interrupt()
     signal.signal(signal.SIGINT, _sigint(interrupt))
     plan = _plan(arguments.paths, arguments.root)
-    entries = [_checked(item, limits, interrupt) for item in plan]
+    max_depth = arguments.max_depth if arguments.command == "explain" else None
+    entries = [_checked(item, limits, interrupt, max_depth) for item in plan]
     run = Run(
         tuple(entry for entry in entries if entry is not None),
         notes=_walked_notes([item for item in plan if not isinstance(item, Entry)]),
@@ -366,6 +412,7 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
             presentation,
             verbose=arguments.verbose,
             form=Format.SHORT if fmt == "short" else Format.FULL,
+            spans=getattr(arguments, "spans", False),
         )
         sys.stderr.write(rendered.stderr)
         sys.stdout.write(rendered.stdout)
@@ -401,7 +448,7 @@ def main(argv: Sequence[str] | None = None) -> Exit | VersionExit:
         parser.error("the following arguments are required: COMMAND")
     presentation = _presentation(arguments, os.environ)
     match "version" if arguments.show_version else arguments.command:
-        case "test":
+        case "test" | "explain":
             return _guarded(
                 lambda: _test(arguments, presentation), Exit.INTERNAL_ERROR, presentation
             )

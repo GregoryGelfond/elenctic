@@ -9,26 +9,33 @@ from elenctic.cli import main
 ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES = ROOT / "docs" / "examples"
 TARGET = ROOT / "docs" / "reference" / "examples.md"
+EXPLAINED = frozenset({"absent.lp", "chain.lp", "laptop.lp", "late.lp", "team.lp"})
+"""The examples shown with `explain`, which adds the evidence for each failed claim."""
+
+
+def command(path: Path) -> list[str]:
+    """Name the command an example is shown with: `explain -v` or `-v`, then its path."""
+    words = ["explain", "-v"] if path.name in EXPLAINED else ["-v"]
+    return [*words, str(path.relative_to(ROOT))]
 
 
 def capture(path: Path) -> tuple[int, str]:
-    """Run `elenctic -v PATH` from the repository root; its exit code and what it wrote.
+    """Run an example's command from the repository root; its exit code and what it wrote.
 
     Diagnostics come first, as a terminal shows them.
     """
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        code = main(["-v", str(path.relative_to(ROOT))])
+        code = main(command(path))
     return code, err.getvalue() + out.getvalue()
 
 
 def section(path: Path) -> str:
     """Render one example: its source, the command, the output and the exit code."""
     code, output = capture(path)
-    name = path.relative_to(ROOT)
     return (
         f"## `{path.name}`\n\n```\n{path.read_text()}```\n\n"
-        f"```\n$ elenctic -v {name}\n{output}```\n\nExit code {code}.\n"
+        f"```\n$ elenctic {' '.join(command(path))}\n{output}```\n\nExit code {code}.\n"
     )
 
 

@@ -70,9 +70,12 @@ class Literal:
 type Atoms = frozenset[Literal]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, order=True)
 class Assumption:
-    """A literal taken to hold, or, when not `holds`, taken not to."""
+    """A literal taken to hold, or, when not `holds`, taken not to.
+
+    Ordered by literal, then sign, which is the order a claim writes its assumptions in.
+    """
 
     literal: Literal
     holds: bool = True

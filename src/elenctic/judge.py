@@ -18,6 +18,7 @@ from elenctic.determination import (
     These,
     Truncation,
 )
+from elenctic.legend import refuted
 from elenctic.verdicts import Detail, Ended, Finding, Verdict
 
 
@@ -53,18 +54,10 @@ def _optimal(
     return from_answer_sets(reading, Consistent(found.answer_sets, conclusion))
 
 
-def _core_text(refutation: These) -> str:
-    core = ", ".join(sorted(str(a) for a in refutation.core))
-    caveat = (
-        "" if refutation.minimal else "; the search was truncated, so the core may not be minimal"
-    )
-    return f"no answer set satisfies the assumptions ({core}){caveat}"
-
-
 def _inconsistent(reading: Reading, refutation: Refutation) -> tuple[Verdict, str]:
-    why = _core_text(refutation) if isinstance(refutation, These) else "AS(P) = ∅"
-    refuted = reading == Satisfiable(expected=False) or denies_answer_sets(reading)
-    return Verdict.when(holds=refuted), why
+    why = refuted(refutation) if isinstance(refutation, These) else "AS(P) = ∅"
+    holds = reading == Satisfiable(expected=False) or denies_answer_sets(reading)
+    return Verdict.when(holds=holds), why
 
 
 type Found = Determination[AnswerSets] | Determination[Consequences] | Determination[Optimized]

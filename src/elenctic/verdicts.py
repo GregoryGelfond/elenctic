@@ -5,6 +5,7 @@ from enum import StrEnum, auto
 
 from elenctic.contract import Claim, Solver
 from elenctic.determination import Truncation
+from elenctic.explanation import Evidence
 from elenctic.spans import Diagnostic
 from elenctic.writer import render
 
@@ -33,11 +34,13 @@ type Detail = str | Ended
 
 @dataclass(frozen=True, slots=True)
 class Finding:
-    """A claim, the verdict on it, and what was expected against what was found."""
+    """A claim, the verdict on it, what was expected against what was found, and the evidence."""
 
     claim: Claim
     verdict: Verdict
     detail: Detail
+    evidence: Evidence | Ended | None = None
+    """Why a failed claim fails, when `explain` was asked; `None` otherwise, and for any other."""
 
     @property
     def claim_text(self) -> str:

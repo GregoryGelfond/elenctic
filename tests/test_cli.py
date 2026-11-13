@@ -82,7 +82,7 @@ def test_bare_paths_are_the_test_command(
     assert run(capsys, "--json", path) == run(capsys, "test", "--json", path)
 
 
-@pytest.mark.parametrize("command", ["repl", "why", "ask", "explain"])
+@pytest.mark.parametrize("command", ["repl", "why", "ask"])
 def test_a_reserved_command_says_so_and_exits_as_a_fault(
     command: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -690,3 +690,82 @@ def test_a_named_file_with_only_a_mistaken_tag_is_told_the_tag(
     assert f"= note: {shown}\n" in err
     assert f"= help: {tip}\n" in err
     assert "a contract-free `.lp` is a library" not in err
+
+
+ABSENT = (
+    "flagged(ann). role(ann,admin).\n"
+    "access(U) :- role(U,admin), not suspended(U).\n"
+    "suspended(U) :- flagged(U).\n"
+    "% @expect sat\n% @cautious { access(ann) }\n"
+)
+
+
+def test_explain_shows_the_evidence_and_exits_as_test_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "a.lp", ABSENT)
+    code, out = run(capsys, "explain", path)
+    assert code == Exit.CLAIM_UNMET
+    assert "evidence: @cautious { access(ann) }" in out
+    assert "blocked by not suspended(ann)" in out
+    tested, plain = run(capsys, "test", path)
+    assert tested == code
+    assert "evidence" not in plain
+
+
+def test_explain_with_spans_shows_each_rule_as_written(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "a.lp", ABSENT)
+    _, out = run(capsys, "explain", "--spans", path)
+    assert f"= {path}:2: access(U) :- role(U,admin), not suspended(U). {{U=ann}}" in out
+
+
+def test_explain_as_json_adds_the_evidence_to_the_run_test_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "a.lp", ABSENT)
+    _, explained = run(capsys, "explain", "--json", path)
+    _, tested = run(capsys, "test", "--json", path)
+    with_evidence, without = json.loads(explained), json.loads(tested)
+    (finding,) = [
+        f for f in with_evidence["run"]["entries"][0]["result"]["findings"] if "evidence" in f
+    ]
+    assert finding["evidence"]["max_depth"] == 3
+    del finding["evidence"]
+    assert with_evidence == without
+
+
+def test_explain_takes_a_depth_or_all_and_refuses_anything_else(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "a.lp", ABSENT)
+    _, out = run(capsys, "explain", "--max-depth", "all", "--json", path)
+    assert '"max_depth": "all"' in out
+    for refused in ("0", "-1", "x"):
+        with pytest.raises(SystemExit) as stopped:
+            main(["explain", "--max-depth", refused, str(path)])
+        assert stopped.value.code == Exit.FAULT
+    capsys.readouterr()
+
+
+def test_explain_of_a_passing_case_is_its_test(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "d.lp", DRINKS + "% @expect sat\n% @count 2\n")
+    assert run(capsys, "explain", path) == run(capsys, "test", path)
+
+
+def test_the_explain_options_are_described_as_the_reference_describes_them(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        main(["explain", "--help"])
+    words = " ".join(capsys.readouterr().out.split())
+    assert (
+        "how many absent atoms deep an explanation goes, or `all` for no limit (default: 3)"
+        in words
+    )
+    assert (
+        "show each rule as written, its place and its substitution, beneath its instance" in words
+    )

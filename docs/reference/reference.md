@@ -40,8 +40,16 @@ the installed package, the holder is its author. The second is the versions of c
 loaded, such as `clingo 5.8.2 | clingcon 5.2.1`, or `clingcon not installed`. With `--icons` the
 copyright sign is the Nerd Font glyph `fa-copyright`; the text takes no color.
 
-`repl`, `why`, `ask` and `explain` are reserved: each writes a note on stderr and exits `FAULT` (2).
-`--color` and `--icons` apply to every command; the other options belong to `test`.
+`elenctic explain PATH…` is `test`, with the evidence for each failed claim after its source's
+verdicts. It takes the options of `test` and two of its own; its exit codes are those of `test`.
+
+| Option | Meaning |
+|---|---|
+| `--max-depth N\|all` | how many absent atoms deep an explanation goes (a positive integer), or `all` for no limit (default: 3) |
+| `--spans` | beneath each rule instance, the rule as written, its place, and its substitution |
+
+`repl`, `why` and `ask` are reserved: each writes a note on stderr and exits `FAULT` (2).
+`--color` and `--icons` apply to every command; the other options belong to `test` and `explain`.
 
 ## Output
 
@@ -73,7 +81,43 @@ colored or marked, so a program cannot write escape sequences.
 
 Colors by role: error `1;31` (a `FAIL`, an error, an internal error), warning `1;33`
 (`UNDECIDED`), note `1;32` (`PASS`), help `1;36` (the reserved-command note), margin `1;34` (line
-numbers) and emphasis `1` (sources and the summary).
+numbers) and emphasis `1` (sources and the summary). Evidence adds aside `3`, italic (substitutions,
+guards, counts) and reference `2`, dim (a rule's line).
+
+### Evidence
+
+`explain` writes a block for each failed claim: `evidence:` and the claim, its place, the
+counterexample (`answer set K of N`, or `answer set K` when the search did not read them all), then
+a tree with one line for each atom. A line that a rule instance accounts for shows the instance, its
+variables replaced by their values, and the rule's line:
+
+| Line | Says |
+|---|---|
+| `p(a) :- q(a), not r(a).  line 5` | `p(a)` holds by this instance |
+| `q(a)  fact, line 2` | a fact |
+| `2 <= { t(a): c(a); … } <= 3.  chosen, line 4 (2 of 2..3 chosen)` | a choice made |
+| `not p(a)  no rule fires (N candidates)` | absent; one line below for each instance that could derive it |
+| `p(a) :- q(a).  line 5: blocked by q(a)` | this instance does not fire: its first literal that fails |
+| `… line 4: not chosen (2 of 2..3 chosen)` | the choice could have made it and did not |
+| `not N = #count { … }  aggregate, line 6: is 1, needs = 2` | an aggregate, its value and its guard |
+| `&sum { s } >= 7  the theory holds under { s=7 }` | a theory atom, and the assignment of its variables |
+| `not p  no rule instance can derive it` | no instance's body can ever hold |
+| `^ p(a)  shown above [1/p(a)]` | a node drawn once already, by its handle |
+| `... not p  not expanded (depth 3)` | the tree stops at `--max-depth` |
+| `p  not explained: …` | a rule with a construct no reason covers yet (`#min`, `#max`, a conditional literal, a head aggregate) |
+
+A step with more than one child branches with `├──` and `└──`. The only child of a step that is not
+a root sits at that step's indent with no branch, so a chain of single reasons keeps one indent
+however long it is.
+
+An outranked result first shows the costs with and without the claim's literals, by priority, and
+the weak-constraint instances paid differently, each at its place in the source. A refuted `@expect
+sat` shows its refutation. A search cut short shows what ended it. The block ends with
+`= note: support is sound, not minimal`. With `--icons` each line starts with a Nerd Font 3.5.1
+glyph: `fa-database` (fact), `cod-symbol_method` (derived), `fa-random` (chosen, not chosen),
+`fa-ban` (absent, blocked), `md-sigma` (aggregate), `fa-calculator` (theory atom),
+`cod-references` (shown above, `^` without icons), `fa-ellipsis_h` (not expanded, `...`),
+`fa-balance_scale` (outranked) and `fa-eye` (the counterexample).
 
 ## Diagnostics
 
@@ -87,7 +131,7 @@ are converted at the boundary. Syntax errors read `expected X, found Y`. Non-ASC
 ## Exit codes
 
 Each command returns an outcome of its own, an `IntEnum` that states its process code once; the
-values are fixed. `elenctic test` (and the refusal of a reserved command) returns
+values are fixed. `elenctic test`, `elenctic explain` (and the refusal of a reserved command) return
 `elenctic.report.Exit`:
 
 | Name | Value | Meaning |
@@ -188,6 +232,9 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 | What is optimal, at what cost? | `Grounded.optimize(scenario)` | `Determination[Optimized]` |
 | Over which solver? | `solve(program, solver=Solver.CLINGCON)`, `ground(program, solver)` | the same; an `AnswerSet` carries its `assignment` |
 | Why is there none? | the `Inconsistent` result's `refutation` | `These`, `NotThese` or `NoAssumptions` |
+| Why does a claim fail? | `evidenced(report, program)`, or `Session.evidence(finding)` | each failed `Finding` with its `evidence` |
+| Why does an atom hold, or not, in an answer set? | `session(program).explain(literals, counterexample)` | an `Explanation` |
+| How does the objective rank some literals? | `Session.outrank(literals, scenario)` | `Outranked`, `Ended`, or `None` |
 | Do two patterns have a common instance? | `mgu(first, second)` | a `Unifier`, or `None` |
 | The same, their variables shared by name? | `unify(first, second)` | a `Substitution`, or `None` |
 
@@ -258,7 +305,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Literal` | a ground classical literal: `p(t, ...)`, or `-p(t, ...)` when not `positive` |
 | `Signature` | a predicate with its arity and sign: `p/1`, or `-p/1` |
 | `Atoms` | a set of `Literal` |
-| `Assumption` | a literal taken to hold, or, when not `holds`, taken not to |
+| `Assumption` | a literal taken to hold, or, when not `holds`, taken not to; ordered by literal, then sign |
 | `Scenario` | a set of `Assumption` under which a search is made |
 | `Term` | a clingo symbol, a `Variable` or a `Compound` |
 | `Variable` | a named variable; `_` is anonymous, and each of its occurrences is a different variable |
@@ -306,12 +353,41 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Costs` | `@cost { c1 c2 ... }` |
 | `Asks` | `@query [optimal] A { L, ... }`: a conjunction of ground literals has the answer `A` |
 | `Binds` | `@query [optimal] A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B` |
-| `Finding` | a claim, the verdict on it, and its `Detail`: what was expected against what was found |
+| `Finding` | a claim, the verdict on it, its `Detail`: what was expected against what was found, and its `evidence`, `None` unless `explain` found some |
 | `Detail` | text, or an `Ended` when the search ended before it could settle the claim |
 | `Ended` | the `Truncation` that truncated the search, and whether an optimum went unproven; the text view words it, and in JSON it is the finding's `detail` |
 | `Found` | a search `judge` can read: a `Determination` over `AnswerSets`, `Consequences` or `Optimized` |
 | `Report` | the findings for one source, and `lints` (notes on queries that read a hidden literal); `verdict` is `FAIL` if any fails, else `UNDECIDED` if any is, else `PASS` |
 | `Verdict` | `PASS`, `FAIL` or `UNDECIDED` |
+
+### Evidence
+
+| Name | What it is |
+|---|---|
+| `session` | ground a program for a `Solver` into a `Session`, or a `Fault` saying why not |
+| `Session` | a `Grounded` that can explain what it finds: `explain`, `outrank`, `evidence` |
+| `evidenced` | a `Report` with the `evidence` of each failed finding, or a `Fault` |
+| `Evidence` | why a claim fails: an `Explanation`, a `Refutation` or an `Outranked` |
+| `Explanation` | why each root holds or not in a `Counterexample`: its `nodes` in first-visit order, each once; `minimality`, `max_depth`, and `complete` when no node is `Unexpanded` |
+| `Counterexample` | the answer set a claim fails in: the `index`-th found, of `read` (`None` when the search did not read them all) |
+| `Node` | a `handle`, an `atom`, whether it `holds`, its `Reason`, and its `children` by handle |
+| `Handle` | a node's name, built from what it says: `1/p(a)`, `1/not p(a)`, and `1/not p(a)#r8(a)` for the instance of statement 8 with its variables' values `(a)`; `1/` is the counterexample's index |
+| `Reason` | why a node holds or not: one of the eleven below |
+| `Fact` | holds: a fact, its `rule` |
+| `Derived` | holds: a rule instance, its `substitution`, the ground `instance`, and its `conditions` (the literals not expanded) |
+| `Chosen` | holds: a choice made, its bounds and how many were `chosen` |
+| `NotChosen` | could hold: the choice could have made it, and did not |
+| `Aggregate` | an aggregate, its ground `atom`, its `value` and its `guard`; its children are the elements counted, and those missing when it fails |
+| `TheoryAtom` | a theory atom and the `assignment` of its variables |
+| `Unsupported` | absent: `candidates` instances could derive it, each a child |
+| `Blocked` | an instance that does not fire, and its first `literal` that fails |
+| `NoRule` | absent: no instance's body can ever hold |
+| `Unexpanded` | the explanation stops here, at its `max_depth` |
+| `Unexplained` | a construct no reason covers yet; its `rule`, if any |
+| `Rule` | a statement of the source: its index, `span` and `text` |
+| `Minimality` | what an explanation promises: `NONE`, sound support that may not be minimal |
+| `Outranked` | literals some answer set holds and the objective ranks below the optimum: the costs by `priorities`, the first `priority` that differs, the instances paid only by each side, and the `explanation` of their absence from the optimum |
+| `Paid` | a weak-constraint instance an answer set pays: its `rule`, `weight`, `priority`, `terms` and `substitution` |
 
 ### Sources
 
@@ -327,7 +403,9 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 
 `{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1, 2, or 3); see `elenctic.json_view.encode`. A
 dataclass becomes `{"kind": type_name, field: …}`, the `kind` being the type's name in snake case (`Census` is `census`, `AnswerSet` is `answer_set`), an enum its value, a set a sorted list. Keys and enum values are snake_case (`max_answer_sets`);
-the command-line flags keep their hyphens (`--max-answer-sets`). The published JSON Schema of that document is [`output-v1.schema.json`](output-v1.schema.json), generated from the same types by `scripts/write_output_schema.py` (`elenctic.json_view.schema_document`); a test fails if it is stale.
+the command-line flags keep their hyphens (`--max-answer-sets`). A `Substitution` is a string,
+`"{X=b, Y=c}"`, as a literal is. A finding has an `evidence` key only when it has evidence, so a
+`test` run is written as before. The published JSON Schema of that document is [`output-v1.schema.json`](output-v1.schema.json), generated from the same types by `scripts/write_output_schema.py` (`elenctic.json_view.schema_document`); a test fails if it is stale.
 
 ## Examples
 

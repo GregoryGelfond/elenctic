@@ -28,6 +28,42 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "aggregate": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule",
+        "substitution",
+        "instance",
+        "atom",
+        "value",
+        "guard"
+      ],
+      "properties": {
+        "kind": {
+          "const": "aggregate"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        },
+        "substitution": {
+          "type": "string"
+        },
+        "instance": {
+          "type": "string"
+        },
+        "atom": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer"
+        },
+        "guard": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "all": {
       "type": "object",
       "required": [
@@ -52,6 +88,46 @@
                 "$ref": "#/$defs/any"
               }
             ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "answer_set": {
+      "type": "object",
+      "required": [
+        "kind",
+        "atoms",
+        "shown",
+        "assignment",
+        "cost"
+      ],
+      "properties": {
+        "kind": {
+          "const": "answer_set"
+        },
+        "atoms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "shown": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assignment": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/valuation"
+          }
+        },
+        "cost": {
+          "type": "array",
+          "items": {
+            "type": "integer"
           }
         }
       },
@@ -209,6 +285,34 @@
       },
       "additionalProperties": false
     },
+    "blocked": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule",
+        "substitution",
+        "instance",
+        "literal"
+      ],
+      "properties": {
+        "kind": {
+          "const": "blocked"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        },
+        "substitution": {
+          "type": "string"
+        },
+        "instance": {
+          "type": "string"
+        },
+        "literal": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "census": {
       "type": "object",
       "required": [
@@ -255,6 +359,56 @@
         },
         "message": {
           "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "chosen": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule",
+        "substitution",
+        "instance",
+        "lower",
+        "upper",
+        "chosen"
+      ],
+      "properties": {
+        "kind": {
+          "const": "chosen"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        },
+        "substitution": {
+          "type": "string"
+        },
+        "instance": {
+          "type": "string"
+        },
+        "lower": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upper": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chosen": {
+          "type": "integer"
         }
       },
       "additionalProperties": false
@@ -325,6 +479,68 @@
           "type": "array",
           "items": {
             "type": "integer"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "counterexample": {
+      "type": "object",
+      "required": [
+        "kind",
+        "answer_set",
+        "index",
+        "read"
+      ],
+      "properties": {
+        "kind": {
+          "const": "counterexample"
+        },
+        "answer_set": {
+          "$ref": "#/$defs/answer_set"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "read": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "derived": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule",
+        "substitution",
+        "instance",
+        "conditions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "derived"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        },
+        "substitution": {
+          "type": "string"
+        },
+        "instance": {
+          "type": "string"
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       },
@@ -477,6 +693,77 @@
       },
       "additionalProperties": false
     },
+    "explanation": {
+      "type": "object",
+      "required": [
+        "kind",
+        "counterexample",
+        "roots",
+        "nodes",
+        "minimality",
+        "max_depth",
+        "complete"
+      ],
+      "properties": {
+        "kind": {
+          "const": "explanation"
+        },
+        "counterexample": {
+          "$ref": "#/$defs/counterexample"
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "minimality": {
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        },
+        "max_depth": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "all"
+              ]
+            }
+          ]
+        },
+        "complete": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "fact": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule"
+      ],
+      "properties": {
+        "kind": {
+          "const": "fact"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        }
+      },
+      "additionalProperties": false
+    },
     "fault": {
       "type": "object",
       "required": [
@@ -536,6 +823,31 @@
               "$ref": "#/$defs/ended"
             }
           ]
+        },
+        "evidence": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/explanation"
+            },
+            {
+              "$ref": "#/$defs/these"
+            },
+            {
+              "$ref": "#/$defs/not_these"
+            },
+            {
+              "$ref": "#/$defs/no_assumptions"
+            },
+            {
+              "$ref": "#/$defs/outranked"
+            },
+            {
+              "$ref": "#/$defs/ended"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -555,6 +867,258 @@
           "type": "string"
         },
         "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "no_assumptions": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "no_assumptions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "no_rule": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "no_rule"
+        }
+      },
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "required": [
+        "kind",
+        "handle",
+        "atom",
+        "holds",
+        "reason",
+        "children"
+      ],
+      "properties": {
+        "kind": {
+          "const": "node"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "atom": {
+          "type": "string"
+        },
+        "holds": {
+          "type": "boolean"
+        },
+        "reason": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/fact"
+            },
+            {
+              "$ref": "#/$defs/derived"
+            },
+            {
+              "$ref": "#/$defs/chosen"
+            },
+            {
+              "$ref": "#/$defs/not_chosen"
+            },
+            {
+              "$ref": "#/$defs/aggregate"
+            },
+            {
+              "$ref": "#/$defs/theory_atom"
+            },
+            {
+              "$ref": "#/$defs/blocked"
+            },
+            {
+              "$ref": "#/$defs/unsupported"
+            },
+            {
+              "$ref": "#/$defs/no_rule"
+            },
+            {
+              "$ref": "#/$defs/unexpanded"
+            },
+            {
+              "$ref": "#/$defs/unexplained"
+            }
+          ]
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "not_chosen": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule",
+        "substitution",
+        "instance",
+        "lower",
+        "upper",
+        "chosen"
+      ],
+      "properties": {
+        "kind": {
+          "const": "not_chosen"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        },
+        "substitution": {
+          "type": "string"
+        },
+        "instance": {
+          "type": "string"
+        },
+        "lower": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "upper": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chosen": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "not_these": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "not_these"
+        }
+      },
+      "additionalProperties": false
+    },
+    "outranked": {
+      "type": "object",
+      "required": [
+        "kind",
+        "literals",
+        "priorities",
+        "optimum",
+        "assuming",
+        "priority",
+        "optimum_only",
+        "assuming_only",
+        "explanation"
+      ],
+      "properties": {
+        "kind": {
+          "const": "outranked"
+        },
+        "literals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "priorities": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "optimum": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "assuming": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "optimum_only": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/paid"
+          }
+        },
+        "assuming_only": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/paid"
+          }
+        },
+        "explanation": {
+          "$ref": "#/$defs/explanation"
+        }
+      },
+      "additionalProperties": false
+    },
+    "paid": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule",
+        "weight",
+        "priority",
+        "terms",
+        "substitution"
+      ],
+      "properties": {
+        "kind": {
+          "const": "paid"
+        },
+        "rule": {
+          "$ref": "#/$defs/rule"
+        },
+        "weight": {
+          "type": "integer"
+        },
+        "priority": {
+          "type": "integer"
+        },
+        "terms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "substitution": {
           "type": "string"
         }
       },
@@ -626,6 +1190,30 @@
       },
       "additionalProperties": false
     },
+    "rule": {
+      "type": "object",
+      "required": [
+        "kind",
+        "statement",
+        "span",
+        "text"
+      ],
+      "properties": {
+        "kind": {
+          "const": "rule"
+        },
+        "statement": {
+          "type": "integer"
+        },
+        "span": {
+          "$ref": "#/$defs/span"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "run": {
       "type": "object",
       "required": [
@@ -687,6 +1275,107 @@
         },
         "end": {
           "$ref": "#/$defs/position"
+        }
+      },
+      "additionalProperties": false
+    },
+    "theory_atom": {
+      "type": "object",
+      "required": [
+        "kind",
+        "atom",
+        "assignment"
+      ],
+      "properties": {
+        "kind": {
+          "const": "theory_atom"
+        },
+        "atom": {
+          "type": "string"
+        },
+        "assignment": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/valuation"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "these": {
+      "type": "object",
+      "required": [
+        "kind",
+        "core",
+        "minimal"
+      ],
+      "properties": {
+        "kind": {
+          "const": "these"
+        },
+        "core": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assumption"
+          }
+        },
+        "minimal": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "unexpanded": {
+      "type": "object",
+      "required": [
+        "kind",
+        "depth"
+      ],
+      "properties": {
+        "kind": {
+          "const": "unexpanded"
+        },
+        "depth": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "unexplained": {
+      "type": "object",
+      "required": [
+        "kind",
+        "rule"
+      ],
+      "properties": {
+        "kind": {
+          "const": "unexplained"
+        },
+        "rule": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "unsupported": {
+      "type": "object",
+      "required": [
+        "kind",
+        "candidates"
+      ],
+      "properties": {
+        "kind": {
+          "const": "unsupported"
+        },
+        "candidates": {
+          "type": "integer"
         }
       },
       "additionalProperties": false

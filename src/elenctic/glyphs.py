@@ -1,11 +1,7 @@
-"""The glyph table: each Nerd Font glyph beside the plain text it stands for."""
+"""A glyph: a Nerd Font glyph beside the plain text it stands for; the legend says which to show."""
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final
-
-from elenctic.verdicts import Verdict
 
 
 class Glyphs(Enum):
@@ -24,18 +20,3 @@ class Glyph:
 
     def shown(self, glyphs: Glyphs) -> str:
         return self.nerd if glyphs is Glyphs.NERD else self.plain
-
-
-MARKS: Final[Mapping[Verdict, Glyph]] = {
-    verdict: Glyph(nerd, f"[{verdict.name}]")
-    for verdict, nerd in (
-        (Verdict.PASS, "\uf058"),
-        (Verdict.FAIL, "\uf057"),
-        (Verdict.UNDECIDED, "\uf059"),
-    )
-}
-"""The mark of a verdict on a claim: Nerd Fonts 3.5.1 `fa-check_circle`, `fa-times_circle`,
-`fa-question_circle`."""
-
-COPYRIGHT: Final = Glyph("\uf1f9", "\u00a9")
-"""The mark of the copyright line: Nerd Fonts 3.5.1 `fa-copyright`, and the copyright sign."""

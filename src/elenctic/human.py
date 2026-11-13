@@ -4,39 +4,21 @@ Everything a program contributes is made legible before it is styled, so no prog
 terminal, and the styling that follows is never escaped.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Final
 
 from elenctic.about import Package, Solvers
-from elenctic.determination import Truncation, option
 from elenctic.display import legible
-from elenctic.glyphs import COPYRIGHT, MARKS
+from elenctic.evidence_view import evidence_lines
+from elenctic.legend import COPYRIGHT, MARKS, SEVERITY_ROLES, VERDICT_ROLES, judged, reported, tally
 from elenctic.paint import Role, paint
 from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
 from elenctic.report import Entry, Internal, Run
-from elenctic.spans import Child, Diagnostic, Severity, Span
-from elenctic.verdicts import Ended, Finding, Report, Verdict
-
-VERDICT_ROLES: Final[Mapping[Verdict, Role]] = {
-    Verdict.PASS: Role.NOTE,
-    Verdict.FAIL: Role.ERROR,
-    Verdict.UNDECIDED: Role.WARNING,
-}
-SEVERITY_ROLES: Final[Mapping[Severity, Role]] = {
-    Severity.ERROR: Role.ERROR,
-    Severity.WARNING: Role.WARNING,
-    Severity.NOTE: Role.NOTE,
-    Severity.HELP: Role.HELP,
-}
-CUT_WORDS: Final[Mapping[Truncation, str]] = {
-    Truncation.MAX_ANSWER_SETS: f"answer-set limit reached ({option(Truncation.MAX_ANSWER_SETS)})",
-    Truncation.MAX_SECONDS: f"time limit reached ({option(Truncation.MAX_SECONDS)})",
-    Truncation.INTERRUPTED: "interrupted",
-}
+from elenctic.spans import Child, Diagnostic, Span
+from elenctic.verdicts import Finding, Report, Verdict
 
 
 class Format(StrEnum):
@@ -59,21 +41,10 @@ def _say(style: Style, role: Role, text: str) -> str:
     return paint(style.color, role, legible(text))
 
 
-def _detail(detail: str | Ended) -> str:
-    """Word what was found, or what cut the search short."""
-    match detail:
-        case Ended(cut, optimum_unproven):
-            unproven = "no optimum proven: " if optimum_unproven else ""
-            return f"{unproven}search ended: {CUT_WORDS[cut]}"
-        case _:
-            return legible(detail)
-
-
 def _line(finding: Finding, style: Style) -> str:
     verdict = finding.verdict
     mark = paint(style.color, VERDICT_ROLES[verdict], MARKS[verdict].shown(style.glyphs))
-    line = paint(style.color, Role.MARGIN, f"(line {finding.claim.span.start.line})")
-    return f"  {mark} {legible(finding.claim_text)} {line}: {_detail(finding.detail)}"
+    return f"  {mark} {style.text(judged(finding))}"
 
 
 def _header(diagnostic: Diagnostic, style: Style) -> str:
@@ -187,34 +158,36 @@ def _fault(
     return lines or [str(fault.locus)]
 
 
-def _entry(entry: Entry, style: Style, *, verbose: bool) -> list[str]:
+def _source_lines(text: str | None) -> Callable[[Span], list[str] | None]:
+    def lines_of(span: Span) -> list[str] | None:
+        found = _file_text(span, text)
+        return None if found is None else found.split("\n")
+
+    return lines_of
+
+
+def _entry(entry: Entry, style: Style, *, verbose: bool, spans: bool) -> list[str]:
     match entry.result:
-        case Report(source=source, findings=findings) as report if (
-            verbose or report.verdict is not Verdict.PASS
-        ):
+        case Report(findings=findings) as report if verbose or report.verdict is not Verdict.PASS:
             shown = [f for f in findings if verbose or f.verdict is not Verdict.PASS]
-            verdict = paint(style.color, VERDICT_ROLES[report.verdict], report.verdict.name)
+            lines_of = _source_lines(entry.text)
+            evidence = [
+                line
+                for finding in shown
+                for line in evidence_lines(finding, style, lines_of, spans=spans)
+            ]
             return [
-                f"{_say(style, Role.EMPHASIS, source)} — {verdict}",
+                style.text(reported(report)),
                 *(_line(finding, style) for finding in shown),
                 "",
+                *evidence,
             ]
         case _:
             return []
 
 
 def _summary(run: Run, style: Style) -> str:
-    reports = [e.result for e in run.entries if isinstance(e.result, Report)]
-    counts = {v: sum(r.verdict is v for r in reports) for v in Verdict}
-    faults = len(run.entries) - len(reports)
-    tail = [
-        (VERDICT_ROLES[v], f"{counts[v]} {v.value}")
-        for v in (Verdict.FAIL, Verdict.UNDECIDED)
-        if counts[v]
-    ]
-    tail += [(Role.ERROR, f"{faults} error")] if faults else []
-    passed = paint(style.color, Role.EMPHASIS, f"{counts[Verdict.PASS]}/{len(run.entries)} passed")
-    return passed + "".join(f", {paint(style.color, role, text)}" for role, text in tail)
+    return style.text(tally(run))
 
 
 def _lines(lines: list[str]) -> str:
@@ -262,15 +235,21 @@ def render_run(
     *,
     verbose: bool = False,
     form: Format = Format.FULL,
+    spans: bool = False,
 ) -> Rendered:
     """Write a run as text: each source that did not pass, with its claims that did not.
 
     The faults, which keep a source from being checked, are the diagnostics. Notes on queries
     that read a hidden literal are diagnostics too, and do not change the exit. `form` chooses
-    the rustc multi-line form or today's one-line short form.
+    the rustc multi-line form or today's one-line short form. A finding's evidence follows its
+    source's verdicts; `spans` adds each rule as written beneath its instance.
     """
     stdout, stderr = presentation.stdout, presentation.stderr
-    shown = [line for entry in run.entries for line in _entry(entry, stdout, verbose=verbose)]
+    shown = [
+        line
+        for entry in run.entries
+        for line in _entry(entry, stdout, verbose=verbose, spans=spans)
+    ]
     stderr_lines = _report_notes(run, stderr, form) + _fault_lines(run, stderr, form)
     stderr_lines += _internal_lines(run, stderr)
     return Rendered(_lines([*shown, _summary(run, stdout)]), _lines(stderr_lines))

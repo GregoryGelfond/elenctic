@@ -269,6 +269,13 @@ def test_a_refutation_names_a_minimal_set_of_assumptions() -> None:
     assert finding.detail == "no answer set satisfies the assumptions (p, q)"
 
 
+def test_a_refutation_lists_its_assumptions_in_the_order_its_claim_writes_them() -> None:
+    text = "{ b; c }. :- c, not b.\n% @expect sat\n% @answer-set { c } assuming { c, not b }\n"
+    (finding,) = run(text).findings[1:]
+    assert finding.claim_text.endswith("assuming { not b, c }")
+    assert finding.detail == "no answer set satisfies the assumptions (not b, c)"
+
+
 def faults(text: str) -> list[str]:
     found = check(Program(text, "t.lp"))
     assert isinstance(found, Fault), found
@@ -339,7 +346,7 @@ def test_an_empty_no_binding_is_not_vacuously_true_when_a_contrary_holds() -> No
     program = "-p(1). #show p/1.\n% @expect sat\n"
     report = run(program + "% @query no { p(X) } = { }\n")
     assert [f.verdict for f in report.findings] == [P, F]
-    assert "found { (1) }" in str(report.findings[1].detail)
+    assert "found { 1 }" in str(report.findings[1].detail)
     assert verdicts(program + "% @query no { p(X) } = { 1 }\n") == [P, P]
     assert verdicts(program + "% @query yes { p(X) } = { }\n") == [P, P]
 
@@ -473,7 +480,26 @@ def test_a_binding_query_may_nest_its_variables_beneath_a_function() -> None:
 def test_a_nested_binding_query_that_is_wrong_fails_and_says_what_was_found() -> None:
     (finding,) = run(NESTED_PROGRAM + "% @query yes { p(f(X), a) } = { 2 }\n").findings[1:]
     assert finding.verdict is F
-    assert "yes bindings expected { (2) }, found { (1) }" in str(finding.detail)
+    assert "yes bindings expected { 2 }, found { 1 }" in str(finding.detail)
+
+
+ROWS = "p(1..3). p(10). q(a,1). q(b,10). q(b,2).\n% @expect sat\n"
+
+
+def test_found_bindings_are_written_as_the_claim_writes_them_in_numeric_order() -> None:
+    single, double, empty = run(
+        ROWS
+        + "% @query yes { p(X) } = { 10, 2 }\n"
+        + "% @query yes { q(X,Y) } = { (b,10), (b,2) }\n"
+        + "% @query no { p(X) } = { }\n"
+    ).findings[1:]
+    assert single.claim_text == "@query yes { p(X) } = { 2, 10 }"
+    assert single.detail == "yes bindings expected { 2, 10 }, found { 1, 2, 3, 10 }"
+    assert double.claim_text == "@query yes { q(X,Y) } = { (b,2), (b,10) }"
+    assert (
+        double.detail == "yes bindings expected { (b,2), (b,10) }, found { (a,1), (b,2), (b,10) }"
+    )
+    assert empty.claim_text == "@query no { p(X) } = { }"
 
 
 def test_a_binding_query_may_name_a_tuple_and_its_ground_part() -> None:

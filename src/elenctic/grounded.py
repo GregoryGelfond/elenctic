@@ -94,6 +94,10 @@ class Grounded:
     def _impossible(self, scenario: Iterable[Assumption]) -> frozenset[Assumption]:
         return frozenset(a for a in scenario if a.holds and not self._derivable(a.literal))
 
+    def _seen(self, answer_set: ClingoModel, keep: Keep) -> Seen:
+        """Take note of an answer set clingo reports; a subclass may read more of it."""
+        return seen(answer_set, self._theory, keep)
+
     def _run(self, scenario: Scenario, plan: Plan, cut: Cut) -> Run:
         assumed = self._assumed(scenario)
         if impossible := self._impossible(scenario):
@@ -104,7 +108,7 @@ class Grounded:
         section.project = "auto" if plan.project else "no"
 
         def read(answer_set: ClingoModel) -> Seen:
-            return seen(answer_set, self._theory, plan.keep)
+            return self._seen(answer_set, plan.keep)
 
         with self._control.solve(assumptions=list(assumed), yield_=True, async_=True) as handle:
             found, conclusion = drain(handle, plan, cut, read)

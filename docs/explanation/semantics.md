@@ -61,3 +61,42 @@ before clingo sees it, so a bad character never aborts the process.
 
 **A contract that would be misread is an error, not a verdict.** See the preconditions in the
 reference.
+
+**Evidence is a counterexample, explained.** `explain` re-runs a failed claim's search in a session
+of its own and picks the answer set it fails in: for `@cautious`, the first without a literal; for
+`@brave`, the first, once the search has read them all and none has it; for `@query yes`, the first
+where the query is false, else the first where it is unknown, and the reverse for `@query no`. Its
+roots are the literals that make it fail there: those absent, or the contrary that holds. A failed
+`@expect sat` has its refutation as evidence, and a failed `@expect unsat` an answer set with nothing
+to explain. Claims about counts, witnesses, assignments, costs and bindings have no evidence yet, and
+neither has an undecided claim. `test` computes none, so it is as fast as it was.
+
+**Presence is well-founded support; it is sound, not minimal.** An atom that holds gets one ground
+rule instance whose body holds, each of whose positive atoms got its own before it, so the support
+has no cycle. Negative literals and comparisons are listed as the instance's conditions, not
+explained. Another support may be smaller; none is sought. `max_depth` bounds absences only;
+a support is shown in full.
+
+**Absence is complete over the candidates.** The candidates for an atom are the ground instances of
+a positive relaxation of the program, which drops negative literals, theory atoms and constraints
+and grounds what is left; every instance whose body could hold in some answer set is one, and an
+atom with none has no rule instance that can derive it. Each candidate is shown with the first
+literal of its body, in the order written, that fails, or as a choice not made. An absence can lead
+back to itself, which is an unfounded loop; each node appears once and is pointed back to. The
+explanation goes as many absences deep as `max_depth` allows and is `complete` only if no branch
+stopped there.
+
+**An outranked result is three solver calls.** For an optimal claim whose literals some answer set
+holds, the evidence compares the optimum with the best answer set under the literals, priority by
+priority, and names the weak-constraint instances each pays and the other does not. When no answer
+set holds the literals, or the best that does is optimal too, the evidence is the absence of the
+literals from the optimum.
+
+**Every view renders one representation.** The text and JSON views, and any later one, show the
+same model, and each mark, style, word and order comes from one legend; a view decides only where
+things go. So both list an answer set in one order, and a finding and its evidence word a refutation
+alike. A difference between two views is a fault in a view, not in what was found.
+
+**The session does not change what it explains.** It adds rules that record the weak-constraint
+instances each answer set pays and the truth of each theory atom of a body, under names the program
+does not use; they derive no atom of the program and add no answer set.

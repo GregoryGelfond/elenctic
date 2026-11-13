@@ -1,14 +1,19 @@
 import pytest
 from capture_examples import EXAMPLES, TARGET, capture, render
 
-NEEDS_CLINGCON = {"clingcon.lp"}
+NEEDS_CLINGCON = {"clingcon.lp", "late.lp"}
 EXIT_CODES = {
+    "absent.lp": 1,
+    "chain.lp": 1,
     "clingcon.lp": 0,
     "consequences.lp": 1,
     "hidden-contrary.lp": 0,
+    "laptop.lp": 1,
+    "late.lp": 1,
     "no-objective.lp": 2,
     "optimum-wrong.lp": 1,
     "optimum.lp": 0,
+    "team.lp": 1,
     "theory-atoms.lp": 2,
     "why-not.lp": 1,
 }

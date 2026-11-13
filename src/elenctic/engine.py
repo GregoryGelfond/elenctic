@@ -1,12 +1,12 @@
-"""The one place that owns a clingo `Control`: it grounds a program and runs searches over it."""
+"""The one place that makes a clingo `Control`: it grounds a program to run searches over."""
 
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Final, override
 
-from clingo import Control
+from clingo import Control, Symbol
 from clingo.ast import AST, ProgramBuilder, parse_files, parse_string
 from clingo.backend import Observer
 
@@ -43,7 +43,7 @@ def _relocated(diagnostic: Diagnostic, source: str) -> Diagnostic:
     return replace(diagnostic, span=replace(diagnostic.span, source=source))
 
 
-def _source_texts(program: Program) -> dict[str, str]:
+def source_texts(program: Program) -> dict[str, str]:
     """Map each source name to its text: the program and every `#include` it reaches."""
     texts = {program.source: program.text}
     if program.path is None:
@@ -71,7 +71,7 @@ def _fault(messages: list[str], error: RuntimeError, program: Program) -> Fault:
     joined = "".join(messages) or str(error)
     diagnostics = tuple(
         _clarified(_relocated(d, program.source))
-        for d in diagnose(joined, texts=_source_texts(program))
+        for d in diagnose(joined, texts=source_texts(program))
     )
     return Fault(Locus.PROGRAM, diagnostics or (failure(None, str(error).strip()),))
 
@@ -87,12 +87,16 @@ class _Objective(Observer):
     """Observe the grounding for an objective: one that grounds away never reaches the solver."""
 
     def __init__(self) -> None:
-        self.seen = False
+        self.priorities: set[int] = set()
+
+    @property
+    def seen(self) -> bool:
+        return bool(self.priorities)
 
     @override
     def minimize(self, priority: int, literals: Sequence[tuple[int, int]]) -> None:
         """Record that a priority level has weighted literals (the observer's callback)."""
-        self.seen = True
+        self.priorities.add(priority)
 
 
 _THEORIES: Final[Mapping[Solver, Callable[[], Theory | None]]] = {
@@ -202,8 +206,30 @@ def _lexable(program: Program) -> Fault | None:
     return None
 
 
-def ground(program: Program, solver: Solver = Solver.CLINGO) -> Grounded | Fault:
-    """Ground `program` for `solver`, or say why it cannot be."""
+type Extension = Callable[[Sequence[AST]], Sequence[AST]]
+"""What adds statements to a program, from the statements it has: none, for `ground`."""
+
+
+def _nothing(_statements: Sequence[AST]) -> Sequence[AST]:
+    return ()
+
+
+@dataclass(frozen=True, slots=True)
+class Controlled:
+    """A grounded control, its theory, and what the grounding showed: facts and priorities."""
+
+    control: Control
+    facts: Facts
+    theory: Theory
+    statements: tuple[AST, ...]
+    priorities: tuple[int, ...] = field(default=())
+    """The priority of each level of the objective, highest first."""
+
+
+def controlled(
+    program: Program, solver: Solver, extend: Extension = _nothing
+) -> Controlled | Fault:
+    """Ground `program` and what `extend` adds to it for `solver`, or say why it cannot be."""
     if (refused := _lexable(program)) is not None:
         return refused
     theory = _THEORIES[solver]()
@@ -220,13 +246,10 @@ def ground(program: Program, solver: Solver = Solver.CLINGO) -> Grounded | Fault
     control.register_observer(objective)
     statements: list[AST] = []
     try:
+        _parse(program, statements.append, log)
         with ProgramBuilder(control) as builder:
-
-            def add(statement: AST) -> None:
-                statements.append(statement)
+            for statement in (*statements, *extend(statements)):
                 theory.rewrite(statement, builder.add)
-
-            _parse(program, add, log)
         control.ground([("base", [])])
         theory.prepare(control)
     except RuntimeError as error:
@@ -237,7 +260,32 @@ def ground(program: Program, solver: Solver = Solver.CLINGO) -> Grounded | Fault
         theory_at(control, statements, program),
         objective_at(statements, program) if solver is Solver.CLINGCON else None,
     )
-    return Grounded(control, facts, theory)
+    priorities = tuple(sorted(objective.priorities, reverse=True))
+    return Controlled(control, facts, theory, tuple(statements), priorities)
+
+
+def ground(program: Program, solver: Solver = Solver.CLINGO) -> Grounded | Fault:
+    """Ground `program` for `solver`, or say why it cannot be."""
+    grounded = controlled(program, solver)
+    if isinstance(grounded, Fault):
+        return grounded
+    return Grounded(grounded.control, grounded.facts, grounded.theory)
+
+
+def possible_atoms(text: str) -> tuple[Symbol, ...]:
+    """Ground program text on its own and name every atom the grounding holds."""
+    control = Control(["--warn=none"], logger=lambda _code, _message: None)
+    with ProgramBuilder(control) as builder:
+        parse_string(text, builder.add)
+    control.ground([("base", [])])
+    return tuple(atom.symbol for atom in control.symbolic_atoms)
+
+
+def parsed(text: str) -> tuple[AST, ...]:
+    """Read program text that elenctic wrote into statements."""
+    statements: list[AST] = []
+    parse_string(text, statements.append)
+    return tuple(statements)
 
 
 def solve(

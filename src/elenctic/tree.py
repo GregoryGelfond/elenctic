@@ -1,6 +1,7 @@
-"""Reading clingo's syntax trees with their types known: the one place its loose attributes end."""
+"""Reading and renaming clingo's syntax trees, types known: the one place loose attributes end."""
 
 from collections.abc import Callable, Iterator
+from copy import copy
 from typing import TypeGuard
 
 from clingo import Symbol
@@ -87,3 +88,39 @@ def holds_somewhere(root: AST, holds: Callable[[AST], bool]) -> bool:
         lambda node: tuple(subtrees(node)),
         lambda node, below: holds(node) or any(below),
     )
+
+
+def renamed(node: AST, rename: Callable[[str], str]) -> AST:
+    """Copy `node`, giving each of its variables the name `rename` gives it, in the order written.
+
+    The copy is changed in place, never rebuilt: clingo builds a node through its one variadic C
+    function, which conda-forge's cffi on Apple arm64 calls wrongly, crashing the process.
+    """
+    root = copy(node)
+    pending = [root]
+    while pending:
+        each = pending.pop()
+        if kind(each) is ASTType.Variable:
+            each.name = rename(name(each))
+        pending.extend(reversed(_copied_beneath(each)))
+    return root
+
+
+def _copied_beneath(node: AST) -> list[AST]:
+    """Put a copy in place of each node directly beneath `node`, and give the copies in order.
+
+    A copy is of the one node, still holding the nodes beneath it; clingo's deep copy is not
+    used, because it leaves a guard shared with the original.
+    """
+    copies: list[AST] = []
+    for key in node.child_keys:
+        held: object = getattr(node, key)
+        if isinstance(held, AST):
+            fresh = copy(held)
+            setattr(node, key, fresh)
+            copies.append(fresh)
+        elif isinstance(held, ASTSequence):
+            each = [copy(item) for item in _nodes(held)]
+            setattr(node, key, each)
+            copies.extend(each)
+    return copies

@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum, auto
 from typing import Final, Protocol, Self, runtime_checkable
 
+from elenctic.display import legible
 from elenctic.glyphs import Glyphs
-from elenctic.paint import Color
+from elenctic.paint import Color, Phrase, paint
 
 
 class When(StrEnum):
@@ -60,6 +61,16 @@ class Style:
 
     color: Color
     glyphs: Glyphs
+
+    def text(self, phrase: Phrase) -> str:
+        """Write a phrase for this stream: each piece made legible, then styled by its role."""
+        return "".join(
+            legible(piece.text)
+            if piece.role is None
+            else paint(self.color, piece.role, legible(piece.text))
+            for piece in phrase
+            if piece.text
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,7 +8,7 @@ import pytest
 
 import elenctic
 from elenctic.glyphs import Glyphs
-from elenctic.paint import Color
+from elenctic.paint import Color, Piece, Role
 from elenctic.presentation import (
     PLAIN,
     Environment,
@@ -184,3 +184,9 @@ def test_only_the_adapters_ask_the_environment_or_a_stream() -> None:
         "cli.py": {"environ"},
         "presentation.py": {"isatty"},
     }
+
+
+def test_a_phrase_is_made_legible_piece_by_piece_and_styled_by_role() -> None:
+    phrase = (Piece("p(\x1b)", Role.ERROR), Piece(""), Piece(" and q"))
+    assert Style(Color.OFF, Glyphs.PLAIN).text(phrase) == "p(\\x1b) and q"
+    assert Style(Color.ON, Glyphs.PLAIN).text(phrase) == "\x1b[1;31mp(\\x1b)\x1b[0m and q"

@@ -1,5 +1,5 @@
 import pytest
-from clingo import Number, String, parse_term
+from clingo import Number, String, Symbol, parse_term
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -9,6 +9,7 @@ from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Position, Span
 from elenctic.syntax import Item, read_literals, read_valuations
 from elenctic.terms import Compound, Variable
+from elenctic.writer import rows as rows_written
 
 WHERE = Span("c.lp", Position(7, 12), Position(7, 40))
 X = Variable("X")
@@ -192,17 +193,17 @@ def test_a_valuation_list_that_does_not_parse_is_a_diagnostic() -> None:
     assert isinstance(read_valuations("x=", WHERE), Diagnostic)
 
 
-def _written(rows: tuple[tuple[object, ...], ...], arity: int) -> str:
-    if arity == 1:
-        return ", ".join(str(row[0]) for row in rows)
-    return ", ".join("(" + ",".join(map(str, row)) + ")" for row in rows)
+def _written(rows: tuple[tuple[Symbol, ...], ...], arity: int) -> str:
+    """Write rows with the writer claims and details use, without the braces around them."""
+    pattern = Pattern("p", tuple(Variable(f"V{at}") for at in range(arity)))
+    return rows_written(pattern, frozenset(rows)).removeprefix("{").removesuffix("}").strip()
 
 
 @given(st.lists(st.integers(min_value=-5, max_value=5), min_size=0, max_size=4))
 @settings(max_examples=30)
 def test_one_variable_bindings_round_trip_through_the_reader(values: list[int]) -> None:
     rows = tuple((Number(v),) for v in values)
-    assert read_bindings(_written(rows, 1), 1, WHERE) == rows
+    assert read_bindings(_written(rows, 1), 1, WHERE) == tuple(sorted(set(rows)))
 
 
 @given(
@@ -217,7 +218,7 @@ def test_two_variable_bindings_round_trip_through_the_reader(
     pairs: list[tuple[int, int]],
 ) -> None:
     rows = tuple((Number(a), Number(b)) for a, b in pairs)
-    assert read_bindings(_written(rows, 2), 2, WHERE) == rows
+    assert read_bindings(_written(rows, 2), 2, WHERE) == tuple(sorted(set(rows)))
 
 
 def test_a_tuple_valued_one_variable_binding_round_trips() -> None:

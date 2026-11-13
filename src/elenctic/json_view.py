@@ -8,16 +8,18 @@ from enum import Enum, IntEnum
 from types import UnionType
 from typing import Final, TypeIs, cast
 
+from elenctic.legend import listed
 from elenctic.literals import Literal, Symbol
 from elenctic.patterns import Pattern
 from elenctic.report import Entry, Exit, Run
-from elenctic.verdicts import Report
+from elenctic.substitution import Substitution
+from elenctic.verdicts import Finding, Report, Verdict
 
 SCHEMA = 1
 
 type Json = bool | int | str | list[Json] | dict[str, Json] | None
 
-_AS_STRING: Final = (Symbol, Literal, Pattern)
+_AS_STRING: Final = (Symbol, Literal, Pattern, Substitution)
 """Types `encode` writes as a string rather than as a kind-tagged object."""
 
 _SEQUENCE: Final = (tuple, list, set, frozenset)
@@ -45,11 +47,25 @@ def _record(value: object) -> Json:
         field.name: encode(getattr(value, field.name))
         for field in fields(value)
         if not (isinstance(value, Entry) and field.name == "text")
+        and not _unasked(value, field.name)
     }
     record: dict[str, Json] = {"kind": kind_of(type(value)), **encoded}
     if isinstance(value, Report):
         record["verdict"] = encode(value.verdict)
     return record
+
+
+def _unasked(value: object, name: str) -> bool:
+    """Say whether a field is left out: a finding's evidence, when none was asked for or found."""
+    return isinstance(value, Finding) and name == "evidence" and value.evidence is None
+
+
+def _listed(items: frozenset[object] | set[object]) -> Json:
+    """Encode a set in the legend's order, or, if its elements have none, by their encoding."""
+    ordered = listed(items)
+    if ordered is not None:
+        return [encode(item) for item in ordered]
+    return sorted((encode(item) for item in items), key=json.dumps)
 
 
 def encode(value: object) -> Json:
@@ -59,12 +75,12 @@ def encode(value: object) -> Json:
             return encode(value.value)
         case None | bool() | int() | str():
             return value
-        case Symbol() | Literal() | Pattern():
+        case Symbol() | Literal() | Pattern() | Substitution():
             return str(value)
         case _ if _is_ordered(value):
             return [encode(item) for item in value]
         case _ if _is_unordered(value):
-            return sorted((encode(item) for item in value), key=json.dumps)
+            return _listed(value)
         case _:
             return _record(value)
 
@@ -82,11 +98,10 @@ def _unwrap(hint: object) -> object:
 
 
 def _parts(hint: object) -> tuple[object, ...]:
-    """Name the alternatives of a union, or the hint alone."""
+    """Name the alternatives of a union, those of any union among them too, or the hint alone."""
     hint = _unwrap(hint)
-    origin = typing.get_origin(hint)
-    if origin is UnionType:
-        return typing.get_args(hint)
+    if typing.get_origin(hint) is UnionType:
+        return tuple(part for arg in typing.get_args(hint) for part in _parts(arg))
     return (hint,)
 
 
@@ -153,6 +168,7 @@ def _schema_alternative(hint: object) -> Json:
 _OPTIONAL_FIELDS: Final = {
     "diagnostic": frozenset({"label", "children"}),
     "entry": frozenset({"text"}),
+    "finding": frozenset({"evidence"}),
     "report": frozenset({"lints"}),
     "run": frozenset({"notes"}),
 }
@@ -172,7 +188,7 @@ def _object_schema(type_: type) -> Json:
         if field.name not in optional:
             required.append(field.name)
     if kind == "report":
-        properties["verdict"] = {"type": "string", "enum": ["pass", "fail", "undecided"]}
+        properties["verdict"] = {"type": "string", "enum": [member.value for member in Verdict]}
         required.append("verdict")
     return {
         "type": "object",

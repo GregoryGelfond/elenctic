@@ -6,10 +6,8 @@ from elenctic.about import Package, Solvers
 from elenctic.check import check
 from elenctic.contract import Claim, Satisfiable
 from elenctic.determination import Truncation
-from elenctic.glyphs import MARKS, Glyphs
+from elenctic.glyphs import Glyphs
 from elenctic.human import (
-    SEVERITY_ROLES,
-    VERDICT_ROLES,
     Format,
     internal_error,
     render_run,
@@ -17,6 +15,7 @@ from elenctic.human import (
     version,
 )
 from elenctic.json_view import encode
+from elenctic.legend import MARKS, SEVERITY_ROLES, VERDICT_ROLES
 from elenctic.paint import Color
 from elenctic.presentation import PLAIN, Presentation, Style
 from elenctic.program import Fault, Program

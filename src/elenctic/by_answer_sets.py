@@ -25,10 +25,10 @@ from elenctic.determination import (
     WorldView,
     world_view,
 )
-from elenctic.literals import Atoms, Symbol
+from elenctic.literals import Atoms
 from elenctic.query import answer, bindings
 from elenctic.verdicts import Detail, Ended, Verdict, existential, universal
-from elenctic.writer import bound, braces, where
+from elenctic.writer import bound, braces, rows, where
 
 _INTERSECTION: Final = "\N{N-ARY INTERSECTION}"
 _UNION: Final = "\N{UNION}"
@@ -100,12 +100,9 @@ def _asked(claim: Asks | Binds, view: WorldView) -> tuple[Verdict, str]:
             )
         case Binds():
             got = bindings(claim.pattern, view).giving(claim.answer)
-            detail = f"{claim.answer} bindings expected {_rows(claim.bindings)}, found {_rows(got)}"
+            wanted, seen = rows(claim.pattern, claim.bindings), rows(claim.pattern, got)
+            detail = f"{claim.answer} bindings expected {wanted}, found {seen}"
             return Verdict.when(holds=got == claim.bindings), detail
-
-
-def _rows(found: frozenset[tuple[Symbol, ...]]) -> str:
-    return "{ " + ", ".join(sorted("(" + ",".join(map(str, row)) + ")" for row in found)) + " }"
 
 
 def _worldly(reading: Asks | Binds, found: Consistent[AnswerSets]) -> tuple[Verdict, Detail]:

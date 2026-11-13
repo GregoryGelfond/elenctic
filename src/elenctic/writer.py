@@ -26,11 +26,14 @@ def braces(literals: Iterable[Literal]) -> str:
     return "{ }" if not parts else "{ " + parts + " }"
 
 
-def _bindings(pattern: Pattern, found: frozenset[tuple[Symbol, ...]]) -> str:
-    rows = sorted(",".join(map(str, row)) for row in found)
-    return (
-        "{ " + ", ".join(rows if len(pattern.variables) == 1 else [f"({r})" for r in rows]) + " }"
-    )
+def rows(pattern: Pattern, found: Iterable[tuple[Symbol, ...]]) -> str:
+    """Write bindings of a pattern as the `{ ... }` the contract syntax uses, in symbol order.
+
+    A binding of one variable is written bare, `2`; of several, as a tuple, `(b,2)`.
+    """
+    terms = [",".join(map(str, row)) for row in sorted(found)]
+    written = terms if len(pattern.variables) == 1 else [f"({each})" for each in terms]
+    return "{ }" if not written else "{ " + ", ".join(written) + " }"
 
 
 def _optimally(over: Range) -> str:
@@ -74,14 +77,11 @@ def _reading(reading: Reading) -> str:
                 f"{braces(p for p in parts if isinstance(p, Literal))}"
             )
         case Binds(answer, pattern, bindings, over):
-            return (
-                f"@query {_optimally(over)}{answer} {{ {pattern} }} = "
-                f"{_bindings(pattern, bindings)}"
-            )
+            return f"@query {_optimally(over)}{answer} {{ {pattern} }} = {rows(pattern, bindings)}"
 
 
 def render(claim: Claim) -> str:
     """Write a claim as the tag line that reads back to it."""
-    assumed = sorted(claim.scenario, key=lambda a: (a.literal, a.holds))
+    assumed = sorted(claim.scenario)
     assuming = ", ".join(("" if a.holds else "not ") + str(a.literal) for a in assumed)
     return _reading(claim.reading) + (f" assuming {{ {assuming} }}" if assumed else "")

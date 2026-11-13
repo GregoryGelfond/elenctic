@@ -8,7 +8,7 @@ import pytest
 
 from elenctic.about import Package, Solvers, VersionExit
 from elenctic.cli import main
-from elenctic.glyphs import COPYRIGHT
+from elenctic.legend import COPYRIGHT
 from elenctic.report import Exit
 from test_cli import DRINKS, write
 from test_cli_output import on_terminals

@@ -62,6 +62,25 @@ that clash: `no answer set satisfies the assumptions (p, q)`. In the library, th
 result's `refutation` is `These(core)`; `core` is minimal unless `minimal` is false (the search was
 truncated while shrinking it).
 
+## See why a claim fails
+
+`elenctic explain PATH` checks as `test` does and, for each failed claim, shows the answer set it
+fails in and the tree of rule instances behind it, each with its variables filled in:
+
+```
+  not access(ann,db)                no rule fires (1 candidate)
+  └── access(ann,db) :- role(ann,admin), permits(admin,db), not suspended(ann).  line 6: blocked by not suspended(ann)
+      └── suspended(ann) :- flagged(ann), not cleared(ann).  line 5
+          └── flagged(ann)          fact, line 4
+```
+
+`--spans` adds each rule as written beneath its instance, with its place and substitution;
+`--max-depth N` lets an absence go deeper than 3; `--json` adds the same evidence to the run `test`
+writes. In the library, `evidenced(report, program)` gives each failed finding its `evidence`,
+and `session(program).explain(literals, counterexample)` explains any literals in an answer set the
+session found. [Every example](../reference/examples.md) from `absent.lp` to `team.lp` shows one
+kind of evidence.
+
 ## Read the optimum from the library
 
 ```python

@@ -4,6 +4,40 @@ All notable changes are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `elenctic explain PATH…`: `test`, then the evidence for each failed claim: the counterexample,
+  and a tree in which each step shows its ground rule instance and line. `--spans` adds each rule as
+  written with its substitution; `--max-depth N|all` bounds how many absences deep it goes
+  (default 3). `why`, `ask` and `repl` stay reserved.
+- Library: `session(program, solver)` and `Session`, a `Grounded` with `explain(literals,
+  counterexample)`, `outrank(literals, scenario)` and `evidence(finding)`; `evidenced(report,
+  program)`; the model: `Explanation`, `Counterexample`, `Node`, `Handle`, `Rule`, `Minimality`,
+  the `Reason` kinds (`Fact`, `Derived`, `Chosen`, `NotChosen`, `Aggregate`, `TheoryAtom`,
+  `Unsupported`, `Blocked`, `NoRule`, `Unexpanded`, `Unexplained`), `Outranked`, `Paid` and
+  `Evidence`.
+- `Finding.evidence`, `None` unless `explain` found some. In JSON a finding has an `evidence` key
+  only then, so a `test` run is written as before; a `Substitution` is written as a string. The
+  schema gains the new kinds and nothing else changes.
+- Text roles `aside` (italic) and `reference` (dim), and a Nerd Font glyph for each kind of evidence
+  line, shown with `--icons`.
+- Five examples of evidence: `absent.lp`, `chain.lp`, `laptop.lp`, `late.lp`, `team.lp`.
+
+### Changed
+- JSON lists a set of literals or valuations in their own order, `p(2)` before `p(10)`, as the text
+  does; it sorted them by their encoding. The schema is unchanged.
+- A refutation lists its assumptions in the order the claim writes them, `(not b, c)`; it sorted
+  them as text. `Assumption` is ordered by literal, then sign.
+- A binding claim's detail writes its rows as the claim does: bare for one variable (`{ 2, 10 }`),
+  tuples for several (`{ (b,2), (b,10) }`), each in symbol order, so `2` comes before `10`; it wrote
+  every row in parentheses, in text order. Claims, details and JSON share that order, and no
+  bindings is written `{ }` (it was `{  }`).
+- The glyph, role and wording tables move to one module, `legend` (from `glyphs` and `human`), which
+  every view reads.
+- Six more modules read and run programs and import clingo: `clauses`, `relaxation`, `instances`,
+  `holding`, `written` and `session`; `support` and `failures`, which explain, do not.
+
 ## [1.0.0] - 2026-11-06
 
 ### Added

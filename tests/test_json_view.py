@@ -5,15 +5,21 @@ import json
 import pkgutil
 import re
 import typing
+from pathlib import Path
 
 import pytest
+from clingo import Number
 from write_output_schema import TARGET, render
 
 import elenctic
+from elenctic.check import check
 from elenctic.contract import Census, Entails
 from elenctic.determination import AnswerSet, Incumbent, Truncation, WorldView
 from elenctic.json_view import SCHEMA, encode, kind_of, schema_document, to_json
+from elenctic.literals import Literal
+from elenctic.program import Program
 from elenctic.report import Entry, Exit, Run
+from elenctic.session import evidenced
 from elenctic.spans import Position
 from elenctic.verdicts import Ended, Report
 from runs import FAILING, PROGRAM_WITH_ESCAPE_CODES, entry
@@ -144,3 +150,101 @@ def test_the_schema_document_names_schema_one_and_the_run_kinds() -> None:
     assert "literal" not in defs
     assert "pattern" not in defs
     assert render().endswith("\n")
+
+
+def _explained(name: str) -> Run:
+    program = Program.read(Path(__file__).parent.parent / "docs" / "examples" / name)
+    report = check(program)
+    assert isinstance(report, Report)
+    found = evidenced(report, program, max_depth=3)
+    assert isinstance(found, Report)
+    return Run((Entry(program.source, found, program.text),))
+
+
+def _objects(value: object) -> list[dict[str, object]]:
+    """Every kind-tagged object in a decoded document, depth first."""
+    found: list[dict[str, object]] = []
+    pending = [value]
+    while pending:
+        each = pending.pop()
+        if isinstance(each, dict):
+            found.append(each)
+            pending.extend(each.values())
+        elif isinstance(each, list):
+            pending.extend(each)
+    return [each for each in found if "kind" in each and isinstance(each["kind"], str)]
+
+
+@pytest.mark.parametrize("name", ["absent.lp", "chain.lp", "laptop.lp", "team.lp"])
+def test_each_object_of_an_explained_run_has_the_keys_its_schema_names(name: str) -> None:
+    defs = schema_document()["$defs"]
+    assert isinstance(defs, dict)
+    document = json.loads(to_json(_explained(name)))
+    for each in _objects(document["run"]):
+        schema = defs[str(each["kind"])]
+        assert isinstance(schema, dict)
+        properties, required = schema["properties"], schema["required"]
+        assert isinstance(properties, dict)
+        assert isinstance(required, list)
+        assert set(each) <= set(properties), each["kind"]
+        assert set(required) <= set(each), each["kind"]
+
+
+def test_a_finding_without_evidence_has_no_evidence_key() -> None:
+    document = json.loads(to_json(Run((entry(FAILING, "b.lp"),))))
+    (only,) = document["run"]["entries"]
+    assert all("evidence" not in finding for finding in only["result"]["findings"])
+
+
+def test_evidence_writes_a_substitution_as_a_string_and_handles_as_text() -> None:
+    document = json.loads(to_json(_explained("absent.lp")))
+    (only,) = document["run"]["entries"]
+    evidence = only["result"]["findings"][1]["evidence"]
+    assert evidence["kind"] == "explanation"
+    assert evidence["roots"] == ["1/not access(ann,db)"]
+    assert (evidence["minimality"], evidence["max_depth"], evidence["complete"]) == (
+        "none",
+        3,
+        True,
+    )
+    blocked = evidence["nodes"][1]["reason"]
+    assert blocked["kind"] == "blocked"
+    assert blocked["substitution"] == "{R=db, U=ann, X=admin}"
+    assert blocked["literal"] == "not suspended(ann)"
+
+
+def test_an_outranked_result_is_one_kind_with_its_explanation_as_a_field() -> None:
+    document = json.loads(to_json(_explained("laptop.lp")))
+    (only,) = document["run"]["entries"]
+    evidence = only["result"]["findings"][1]["evidence"]
+    assert evidence["kind"] == "outranked"
+    assert (evidence["optimum"], evidence["assuming"], evidence["priorities"]) == (
+        [0, 230],
+        [0, 380],
+        [2, 1],
+    )
+    assert evidence["explanation"]["kind"] == "explanation"
+    assert evidence["assuming_only"][0]["terms"] == ["ram"]
+
+
+def test_the_schema_adds_to_schema_one_and_makes_evidence_optional() -> None:
+    defs = schema_document()["$defs"]
+    assert isinstance(defs, dict)
+    finding = defs["finding"]
+    assert isinstance(finding, dict)
+    assert finding["required"] == ["kind", "claim", "verdict", "detail"]
+    assert {"explanation", "outranked", "node", "counterexample", "blocked"} <= set(defs)
+    assert "substitution" not in defs
+
+
+def test_a_set_of_literals_is_listed_in_the_order_the_text_lists_it() -> None:
+    literals = frozenset(Literal.parse(f"p({n})") for n in (10, 2, 1))
+    assert encode(literals) == ["p(1)", "p(2)", "p(10)"]
+    encoded = encode(AnswerSet(literals, literals))
+    assert isinstance(encoded, dict)
+    assert encoded["shown"] == ["p(1)", "p(2)", "p(10)"]
+
+
+def test_bindings_are_listed_in_the_order_the_text_writes_them() -> None:
+    rows = frozenset({(Number(10),), (Number(2),)})
+    assert encode(rows) == [["2"], ["10"]]
