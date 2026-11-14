@@ -3,9 +3,10 @@
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-from clingo import Function, Number, Symbol, SymbolType, Tuple_
+from clingo import Function, Number, Symbol, Tuple_
 
 from elenctic.clauses import Instance, Kind, Weak, tuple_text
+from elenctic.literals import integer, is_function
 from elenctic.relaxation import Reading
 
 
@@ -74,19 +75,14 @@ class Instances:
         """Read the weak-constraint instances an answer set pays from its recorded atoms."""
         found: set[Payment] = set()
         for atom in atoms:
-            if atom.type is not SymbolType.Function or atom.name != self.reading.paid:
+            if not is_function(atom) or atom.name != self.reading.paid:
                 continue
-            number, values, weight, priority, terms = _arguments(atom)
-            if weight.type is SymbolType.Number and priority.type is SymbolType.Number:
+            number, values, weight_term, priority_term, terms = _arguments(atom)
+            weight, priority = integer(weight_term), integer(priority_term)
+            if weight is not None and priority is not None:
                 weak = self.reading.weak[number.number]
                 found.add(
-                    Payment(
-                        weak,
-                        tuple(values.arguments),
-                        weight.number,
-                        priority.number,
-                        tuple(terms.arguments),
-                    )
+                    Payment(weak, tuple(values.arguments), weight, priority, tuple(terms.arguments))
                 )
         return frozenset(found)
 
@@ -100,7 +96,7 @@ type _Key = tuple[int, tuple[Symbol, ...], int]
 
 def _recorded(reading: Reading, atom: Symbol) -> Instance | tuple[_Key, Element] | None:
     """Read the instance, or the element with its key, that one atom of the relaxation records."""
-    if atom.type is not SymbolType.Function:
+    if not is_function(atom):
         return None
     if atom.name == reading.rule:
         number, values, head, body, condition, bounds = _arguments(atom)

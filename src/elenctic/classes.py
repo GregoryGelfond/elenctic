@@ -4,8 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from clingo import Symbol, SymbolType
-
+from elenctic.literals import Symbol, is_function
 from elenctic.partition import Partition
 from elenctic.substitution import Substitution
 from elenctic.terms import Compound, Term, Variable, build
@@ -60,7 +59,7 @@ def _below(term: Term) -> tuple[Term, ...] | list[Symbol]:
         case Variable():
             return ()
         case _:
-            return term.arguments if term.type is SymbolType.Function else ()
+            return term.arguments if is_function(term) else ()
 
 
 class Classes:
@@ -98,7 +97,7 @@ class Classes:
                     return self._variable(node)
                 case Compound(name, _, positive):
                     return self._node(Shape(name, positive, tuple(arguments)))
-                case _ if node.type is SymbolType.Function:
+                case _ if is_function(node):
                     return self._node(Shape(node.name, node.positive, tuple(arguments)))
                 case _:
                     return self._node(Atom(node))

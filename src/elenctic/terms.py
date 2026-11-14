@@ -5,8 +5,7 @@ from dataclasses import dataclass
 from itertools import zip_longest
 from typing import Final, override
 
-from clingo import Function, Symbol
-
+from elenctic.literals import Function, Symbol
 from elenctic.traversal import fold
 
 ANONYMOUS: Final = "_"

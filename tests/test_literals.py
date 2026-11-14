@@ -1,9 +1,9 @@
 import pytest
-from clingo import Function, Number, String, parse_term
+from clingo import Function, Infimum, Number, String, Supremum, Symbol, parse_term
 from hypothesis import given
 from hypothesis import strategies as st
 
-from elenctic.literals import Literal
+from elenctic.literals import Literal, integer, is_function
 from elenctic.patterns import Pattern
 from elenctic.terms import Compound, Variable
 
@@ -32,6 +32,28 @@ def test_the_contrary_of_the_contrary_is_the_literal(literal: Literal) -> None:
 @given(literals)
 def test_a_literal_survives_the_round_trip_through_a_clingo_symbol(literal: Literal) -> None:
     assert Literal.of(literal.symbol) == literal
+
+
+@given(st.integers(-(2**31), 2**31 - 1))
+def test_a_number_reads_as_its_integer(value: int) -> None:
+    assert integer(Number(value)) == value
+
+
+@pytest.mark.parametrize(
+    "symbol", [String("1"), Function("a"), Function("", [Number(1)]), Infimum, Supremum]
+)
+def test_a_symbol_that_is_not_a_number_reads_as_no_integer(symbol: Symbol) -> None:
+    assert integer(symbol) is None
+
+
+@pytest.mark.parametrize("symbol", [Function("a"), Function("f", [Number(1)]), Function("", [])])
+def test_a_constant_a_compound_and_a_tuple_are_functions(symbol: Symbol) -> None:
+    assert is_function(symbol)
+
+
+@pytest.mark.parametrize("symbol", [Number(1), String("a"), Infimum, Supremum])
+def test_a_number_a_string_and_the_extremes_are_not_functions(symbol: Symbol) -> None:
+    assert not is_function(symbol)
 
 
 def test_a_literal_prints_as_the_asp_it_stands_for() -> None:

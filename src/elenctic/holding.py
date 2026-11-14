@@ -5,11 +5,9 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
-from clingo import Number, SymbolType
-
 from elenctic.clauses import Instance, Kind, Part
 from elenctic.instances import Element, Instances
-from elenctic.literals import Symbol
+from elenctic.literals import Number, Symbol, integer
 
 _COMPARE: Final[Mapping[str, Callable[[Symbol, Symbol], bool]]] = {
     "=": operator.eq,
@@ -107,5 +105,5 @@ def _aggregate_value(function: str, counted: Sequence[Element]) -> int:
     tuples = {element.terms for element in counted}
     if function == "count":
         return len(tuples)
-    weights = [t[0].number for t in tuples if t and t[0].type is SymbolType.Number]
+    weights = [w for t in tuples if t and (w := integer(t[0])) is not None]
     return sum(w for w in weights if function == "sum" or w > 0)

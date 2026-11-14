@@ -45,8 +45,12 @@ All notable changes are recorded here. The format follows
   bindings is written `{ }` (it was `{  }`).
 - The glyph, role and wording tables move to one module, `legend` (from `glyphs` and `human`), which
   every view reads.
-- Six more modules read and run programs and import clingo: `clauses`, `relaxation`, `instances`,
-  `holding`, `written` and `session`; `support` and `failures`, which explain, do not.
+- Four more modules parse, ground or solve with clingo and import it: `clauses`, `relaxation`,
+  `instances` and `session`; `support`, `failures`, `holding` and `written`, which explain, do not.
+  `classes`, `patterns`, `relation`, `rows` and `terms` no longer do: they meet clingo's terms
+  through `literals`, so fourteen modules import clingo (fifteen in 1.0.0). The clingo contract is
+  named for that: only the modules that parse, ground or solve with clingo import it; judging and
+  reporting never do.
 
 ## [1.0.0] - 2026-11-06
 

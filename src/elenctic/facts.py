@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from functools import reduce
 from typing import Final
 
-from clingo import Control, SymbolType
+from clingo import Control
 from clingo.ast import AST, ASTType, Location, UnaryOperator
 
 from elenctic import tree
-from elenctic.literals import Signature
+from elenctic.literals import Signature, is_function
 from elenctic.program import Program
 from elenctic.spans import Position, Span
 
@@ -57,7 +57,7 @@ def _unnegated_signature(term: AST) -> Signature | None:
     match tree.kind(term):
         case ASTType.Function:
             return Signature(tree.name(term), len(tree.children(term, "arguments")))
-        case ASTType.SymbolicTerm if tree.symbol(term).type is SymbolType.Function:
+        case ASTType.SymbolicTerm if is_function(tree.symbol(term)):
             symbol = tree.symbol(term)
             return Signature(symbol.name, len(symbol.arguments), symbol.positive)
         case _:

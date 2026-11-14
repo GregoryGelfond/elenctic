@@ -2,8 +2,7 @@
 
 from dataclasses import replace
 
-from clingo import Symbol, SymbolType
-
+from elenctic.literals import Symbol, is_function
 from elenctic.normalize import evaluate
 from elenctic.spans import Parsed, Span, failure, first_unlexable, one_line
 
@@ -51,4 +50,4 @@ def _shaped(raw: tuple[Symbol, ...], arity: int) -> tuple[tuple[Symbol, ...], ..
 
 
 def _is_tuple(term: Symbol) -> bool:
-    return term.type is SymbolType.Function and term.name == "" and bool(term.arguments)
+    return is_function(term) and term.name == "" and bool(term.arguments)

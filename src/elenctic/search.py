@@ -10,7 +10,7 @@ from time import monotonic
 from typing import Final, Protocol, runtime_checkable
 
 from clingo import Model as ClingoModel
-from clingo import SolveResult, Symbol, SymbolType
+from clingo import SolveResult, Symbol
 
 from elenctic.determination import (
     AnswerSet,
@@ -28,7 +28,7 @@ from elenctic.determination import (
     Refutation,
     Truncation,
 )
-from elenctic.literals import Assumption, Atoms, Literal, Scenario
+from elenctic.literals import Assumption, Atoms, Literal, Scenario, is_function
 from elenctic.theory import Theory
 
 type Cut = Callable[[], Truncation | None]
@@ -106,7 +106,7 @@ class Request:
 @lru_cache(maxsize=_REMEMBERED)
 def _literal(symbol: Symbol) -> Literal | None:
     """Read `symbol` as a classical literal; `#show` may also select numbers or strings."""
-    return Literal.of(symbol) if symbol.type is SymbolType.Function and symbol.name else None
+    return Literal.of(symbol) if is_function(symbol) and symbol.name else None
 
 
 def _literals(symbols: Iterable[Symbol]) -> Atoms:

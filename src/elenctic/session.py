@@ -10,7 +10,6 @@ from dataclasses import dataclass, replace
 from typing import override
 
 from clingo import Model as ClingoModel
-from clingo import SymbolType
 from clingo.ast import AST
 
 from elenctic import failures
@@ -33,7 +32,7 @@ from elenctic.engine import controlled, parsed, possible_atoms, source_texts
 from elenctic.explanation import Counterexample, Evidence, Explanation, Outranked, Paid
 from elenctic.grounded import Grounded
 from elenctic.instances import Instances, Payment, instances
-from elenctic.literals import Assumption, Atoms, Literal, Scenario, Symbol
+from elenctic.literals import Assumption, Atoms, Literal, Scenario, Symbol, is_function
 from elenctic.program import Fault, Program
 from elenctic.query import Answer, Answered, Query, Truth, answered, evaluate
 from elenctic.relaxation import Reading, Source, read
@@ -87,7 +86,7 @@ class Session(Grounded):
         return kept
 
     def _added(self, symbol: Symbol) -> bool:
-        return symbol.type is SymbolType.Function and symbol.name.startswith(self._prefix)
+        return is_function(symbol) and symbol.name.startswith(self._prefix)
 
     def _atoms(self, answer_set: AnswerSet) -> frozenset[Symbol]:
         """Return the atoms an answer set holds, with those the session records in it."""

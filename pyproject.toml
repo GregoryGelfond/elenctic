@@ -65,7 +65,7 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["CPY001", "TC001", "TC002", "TC003", "D100", "D101", "D102", "D103", "D104", "D105", "D107", "D203", "D213", "COM812", "ISC001"]
+ignore = ["CPY001", "TC001", "TC002", "TC003", "D100", "D101", "D102", "D103", "D105", "D107", "D203", "D213", "COM812"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["elenctic.search.Limits"]
@@ -73,7 +73,6 @@ extend-immutable-calls = ["elenctic.search.Limits"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S311", "PLR2004", "INP001", "FBT001"]
 "scripts/**" = ["INP001", "PLR2004", "T201", "S603", "S311"]
-"src/elenctic/cli.py" = ["S603", "S311"]
 
 [tool.importlinter]
 root_package = "elenctic"
@@ -107,33 +106,26 @@ layers = [
 
 [[tool.importlinter.contracts]]
 id = "clingo-boundary"
-name = "only the modules that read and run programs import clingo; judging, reading contracts and reporting never do"
+name = "only the modules that parse, ground or solve with clingo import it; judging and reporting never do"
 type = "forbidden"
 source_modules = ["elenctic"]
 forbidden_modules = ["clingo"]
 allow_indirect_imports = true
 ignore_imports = [
     "elenctic.body -> clingo",
-    "elenctic.classes -> clingo",
     "elenctic.clauses -> clingo",
     "elenctic.engine -> clingo",
     "elenctic.facts -> clingo",
     "elenctic.grounded -> clingo",
-    "elenctic.holding -> clingo",
     "elenctic.instances -> clingo",
     "elenctic.literals -> clingo",
     "elenctic.normalize -> clingo",
-    "elenctic.patterns -> clingo",
     "elenctic.relaxation -> clingo",
-    "elenctic.relation -> clingo",
-    "elenctic.rows -> clingo",
     "elenctic.search -> clingo",
     "elenctic.session -> clingo",
     "elenctic.syntax -> clingo",
-    "elenctic.terms -> clingo",
     "elenctic.theory -> clingo",
     "elenctic.tree -> clingo",
-    "elenctic.written -> clingo",
 ]
 
 [[tool.importlinter.contracts]]

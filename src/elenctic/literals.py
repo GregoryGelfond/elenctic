@@ -3,16 +3,34 @@
 from dataclasses import dataclass
 from typing import NamedTuple, override
 
-from clingo import Function, Symbol, SymbolType, parse_term
+from clingo import Function, Number, Symbol, SymbolType, parse_term
 
-__all__ = [  # `Symbol` is re-exported: the kernel meets clingo's terms only through this module
+# `Function`, `Number` and `Symbol` are re-exported, with `integer` and `is_function` to read a
+# symbol: a module that does not parse, ground or solve meets clingo's terms only here. Those that
+# do and use them, clauses, engine, instances, normalize, search and tree, import them from
+# clingo.
+__all__ = [
     "Assumption",
     "Atoms",
+    "Function",
     "Literal",
+    "Number",
     "Scenario",
     "Signature",
     "Symbol",
+    "integer",
+    "is_function",
 ]  # fmt: skip
+
+
+def integer(symbol: Symbol) -> int | None:
+    """Read `symbol` as an integer, or `None` when it is not a number."""
+    return symbol.number if symbol.type is SymbolType.Number else None
+
+
+def is_function(symbol: Symbol) -> bool:
+    """Say whether `symbol` is a function symbol: a constant, `f(...)` or a tuple."""
+    return symbol.type is SymbolType.Function
 
 
 class Signature(NamedTuple):
@@ -37,7 +55,7 @@ class Literal:
 
     @classmethod
     def of(cls, symbol: Symbol) -> Literal:
-        if symbol.type is not SymbolType.Function or not symbol.name:
+        if not is_function(symbol) or not symbol.name:
             message = f"not a literal: {symbol}"
             raise ValueError(message)
         return cls(symbol.name, tuple(symbol.arguments), symbol.positive)

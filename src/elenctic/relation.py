@@ -3,8 +3,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from clingo import Symbol
-
+from elenctic.literals import Symbol
 from elenctic.terms import Variable
 
 type Row = tuple[Symbol, ...]

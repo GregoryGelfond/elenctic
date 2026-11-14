@@ -4,9 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import override
 
-from clingo import Symbol
-
-from elenctic.literals import Literal, Signature
+from elenctic.literals import Literal, Signature, Symbol
 from elenctic.substitution import Substitution
 from elenctic.terms import Term, Variable, leaves, rename, render, variables
 

@@ -3,11 +3,9 @@
 from collections.abc import Mapping
 from typing import Final
 
-from clingo import SymbolType
-
 from elenctic.clauses import Form, Instance, Kind, ground_text
 from elenctic.instances import Instances
-from elenctic.literals import Symbol
+from elenctic.literals import Symbol, integer
 
 _NOT: Final = "not "
 
@@ -80,10 +78,11 @@ def choice_bounds(instance: Instance) -> tuple[int | None, int | None]:
     upper: int | None = None
     bounds = [b for side in instance.bounds for b in side.arguments]
     for guard, bound in zip(instance.clause.bounds, bounds, strict=True):
-        if bound.type is not SymbolType.Number:
+        number = integer(bound)
+        if number is None:
             continue
         if guard.operator in _LOWER:
-            lower = bound.number + _LOWER[guard.operator]
+            lower = number + _LOWER[guard.operator]
         if guard.operator in _UPPER:
-            upper = bound.number + _UPPER[guard.operator]
+            upper = number + _UPPER[guard.operator]
     return lower, upper

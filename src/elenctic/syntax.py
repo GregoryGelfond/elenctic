@@ -3,13 +3,12 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from clingo import Symbol, SymbolType
 from clingo.ast import AST, ASTType, ComparisonOperator, Sign
 
 from elenctic import tree
 from elenctic.body import place, prefixed, read_body, span_of
 from elenctic.determination import Valuation
-from elenctic.literals import Assumption, Literal, Scenario
+from elenctic.literals import Assumption, Literal, Scenario, Symbol, integer
 from elenctic.normalize import NotAPattern, evaluate, function_of, normalize
 from elenctic.patterns import Pattern
 from elenctic.spans import Diagnostic, Parsed, Position, Span, failure
@@ -114,7 +113,8 @@ def _equation(literal: AST) -> Valuation | None:
     value = evaluate(str(tree.child(guard, "term")))
     equal = tree.number(guard, "comparison") == ComparisonOperator.Equal
     if equal and isinstance(variable, Symbol) and isinstance(value, Symbol):
-        return Valuation(variable, value.number) if value.type is SymbolType.Number else None
+        number = integer(value)
+        return None if number is None else Valuation(variable, number)
     return None
 
 
