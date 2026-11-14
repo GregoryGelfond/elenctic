@@ -10,13 +10,23 @@ All notable changes are recorded here. The format follows
 - `elenctic explain PATH…`: `test`, then the evidence for each failed claim: the counterexample,
   and a tree in which each step shows its ground rule instance and line. `--spans` adds each rule as
   written with its substitution; `--max-depth N|all` bounds how many absences deep it goes
-  (default 3). `why`, `ask` and `repl` stay reserved.
-- Library: `session(program, solver)` and `Session`, a `Grounded` with `explain(literals,
-  counterexample)`, `outrank(literals, scenario)` and `evidence(finding)`; `evidenced(report,
-  program)`; the model: `Explanation`, `Counterexample`, `Node`, `Handle`, `Rule`, `Minimality`,
-  the `Reason` kinds (`Fact`, `Derived`, `Chosen`, `NotChosen`, `Aggregate`, `TheoryAtom`,
-  `Unsupported`, `Blocked`, `NoRule`, `Unexpanded`, `Unexplained`), `Outranked`, `Paid` and
-  `Evidence`.
+  (default 3).
+- `elenctic why PATH ATOM`: why a ground literal holds, or not, in the first answer set, or the
+  `--answer-set K`-th, of all or `--over optimal`, under `--assuming L,…`; the block of `explain`,
+  headed `why:`. `elenctic ask PATH QUERY`: a query, written as `@query` writes it, answered over
+  the answer sets, with the first answer set taking each value, or a pattern's bindings. Each exits
+  with its own outcome, `WhyExit` or `AskExit`; `repl` stays reserved.
+- Library: `why(program, atom, …)` and `ask(program, query, …)`; `Session.answer(query, scenario,
+  over=)`, `answered`, `Answered` and `Taken`. `Session.counterexample` gives the refutation when
+  there is no answer set.
+- JSON: `why` and `ask` write their result under their names, `{"schema": 1, "why": …}`; the schema
+  gains them, `answered`, `taken` and `bindings`, and a run is written as before.
+- Library: `session(program, solver)` and `Session`, a `Grounded` with `counterexample(index,
+  scenario, over=)`, `explain(literals, counterexample)`, `outrank(literals, scenario)` and
+  `evidence(finding)`; `evidenced(report, program)`; the model: `Explanation`, `Counterexample`,
+  `Node`, `Handle`, `Rule`, `Minimality`, the `Reason` kinds (`Fact`, `Derived`, `Chosen`,
+  `NotChosen`, `Aggregate`, `TheoryAtom`, `Unsupported`, `Blocked`, `NoRule`, `Unexpanded`,
+  `Unexplained`), `Outranked`, `Paid` and `Evidence`.
 - `Finding.evidence`, `None` unless `explain` found some. In JSON a finding has an `evidence` key
   only then, so a `test` run is written as before; a `Substitution` is written as a string. The
   schema gains the new kinds and nothing else changes.

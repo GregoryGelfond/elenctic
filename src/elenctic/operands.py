@@ -1,9 +1,9 @@
 """The operands of a tag: the words and groups it is read from, and the things they name."""
 
 from elenctic.determination import Assignment, Range
-from elenctic.literals import Assumption, Atoms, Scenario
+from elenctic.literals import Atoms, Scenario
 from elenctic.spans import Diagnostic, Parsed, Span, failure, one_line
-from elenctic.syntax import literals, positive, read_literals, read_valuations
+from elenctic.syntax import positive, read_literals, read_valuations, scenario_of
 from elenctic.tags import Block, Element
 
 
@@ -60,18 +60,7 @@ def assumptions(block: Block, element: Element) -> Parsed[Scenario]:
     items = read_literals(element.text, block.span(element.start, element.end))
     if isinstance(items, Diagnostic):
         return items
-    grounds = literals(items)
-    if grounds is None:
-        return failure(
-            block.covering(element),
-            "assumption is not ground",
-            label="has a variable",
-            notes=("an assumption is a ground literal",),
-        )
-    return frozenset(
-        Assumption(literal, holds=not item.negated)
-        for literal, item in zip(grounds, items, strict=True)
-    )
+    return scenario_of(items, block.covering(element))
 
 
 def read_range(head: list[Element]) -> tuple[Range, list[Element]]:

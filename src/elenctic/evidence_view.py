@@ -1,4 +1,4 @@
-"""The text view of a finding's evidence: a counterexample and its tree, a refutation, a ranking.
+"""The text view of evidence: a counterexample and its tree, a refutation, a ranking, an answer.
 
 Layout only: every mark, role and word comes from the legend, and every value from the model.
 Each step of the tree shows its ground rule instance; `spans` adds the rule as written and its
@@ -7,11 +7,14 @@ substitution beneath it.
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, cast
 
+from elenctic.determination import Range, Refutation
 from elenctic.display import legible
 from elenctic.explanation import Explanation, Node, Outranked, Paid
 from elenctic.legend import (
+    ANSWER,
+    ASK,
     COST,
     EVIDENCE,
     EVIDENCE_HEADING,
@@ -21,8 +24,10 @@ from elenctic.legend import (
     OUTRANKED,
     PAID,
     REFUTATION,
+    WHY,
     Mark,
     assuming,
+    bindings_of,
     cited,
     counterexample,
     differs,
@@ -35,13 +40,19 @@ from elenctic.legend import (
     priority,
     refuted,
     shared,
+    shows_why,
     stopped,
+    taken,
     words,
 )
-from elenctic.paint import Phrase, Role, paint, plain
+from elenctic.literals import Literal
+from elenctic.paint import Phrase, Piece, Role, paint, plain
+from elenctic.patterns import Pattern
 from elenctic.presentation import Style
-from elenctic.spans import Span
+from elenctic.query import All, Answer, Answered, Bindings
+from elenctic.spans import Severity, Span
 from elenctic.verdicts import Ended, Finding
+from elenctic.writer import queried
 
 _WIDTH: Final = 34
 """The column the words of a short line start at."""
@@ -69,7 +80,34 @@ class _Pen:
         return paint(self.style.color, Role.MARGIN, text)
 
     def note(self, words: str) -> str:
-        return f"  {paint(self.style.color, Role.NOTE, '= note:')} {words}"
+        return f"  {paint(self.style.color, Role.NOTE, f'= {Severity.NOTE.value}:')} {words}"
+
+    def help(self, words: str) -> str:
+        return (
+            f"  {paint(self.style.color, Role.HELP, f'= {Severity.HELP.value}:')} {legible(words)}"
+        )
+
+    def said(self, phrase: Phrase) -> str:
+        """Write a line that says something of the whole block."""
+        return f"  {self.margin('=')} {self.phrase(phrase)}"
+
+    def answer_set(self, phrase: Phrase) -> str:
+        """Write a line naming an answer set, marked as one."""
+        return f"  {self.margin('=')} {self.glyph(Mark.COUNTEREXAMPLE)}{self.phrase(phrase)}"
+
+    def heading(self, role: Role, word: str, subject: str, where: str) -> list[str]:
+        """Write the opening of a block: what it is about, and where."""
+        return [
+            f"{self(role, word)}: {self(Role.EMPHASIS, subject)}",
+            self.margin(f" --> {legible(where)}"),
+            self.margin("  |"),
+        ]
+
+    def unfound(self, result: Refutation | Ended) -> str:
+        """Write why there is nothing to show: the search ended, or there is no answer set."""
+        if isinstance(result, Ended):
+            return f"  {self.margin('=')} {self(Role.WARNING, ended(result))}"
+        return f"  {self.margin('=')} {self(Role.EMPHASIS, REFUTATION)}: {legible(refuted(result))}"
 
 
 @dataclass(slots=True)
@@ -142,16 +180,21 @@ def _beneath(node: Node, below: str, *, chained: bool) -> list[tuple[str, str, s
     ]
 
 
-def explanation_lines(explanation: Explanation, style: Style, *, spans: bool) -> list[str]:
-    """Write the counterexample, the tree of why each root holds or not, and its guarantee."""
+def explanation_lines(
+    explanation: Explanation,
+    style: Style,
+    *,
+    spans: bool,
+    failed: bool = True,
+    over: Range = Range.ALL,
+) -> list[str]:
+    """Write the answer set explained, the tree of why each root holds or not, and its guarantee.
+
+    The answer set is a counterexample if a claim `failed` in it, and else one of `over`.
+    """
     pen = _Pen(style)
-    lines = [
-        (
-            f"  {pen.margin('=')} {pen.glyph(Mark.COUNTEREXAMPLE)}"
-            f"{pen.phrase(counterexample(explanation.counterexample))}"
-        ),
-        pen.margin("  |"),
-    ]
+    found = counterexample(explanation.counterexample, failed=failed, over=over)
+    lines = [pen.answer_set(found), pen.margin("  |")]
     if not explanation.roots:
         lines.append(f"  {pen(Role.ASIDE, EXPECTS_NONE)}")
     tree = _Tree({n.handle: n for n in explanation.nodes}, pen, spans, set(), [])
@@ -220,19 +263,59 @@ def evidence_lines(finding: Finding, style: Style, lines_of: Lines, *, spans: bo
         return []
     pen = _Pen(style)
     span = finding.claim.span
-    lines = [
-        f"{pen(Role.ERROR, EVIDENCE_HEADING)}: {pen(Role.EMPHASIS, finding.claim_text)}",
-        pen.margin(f" --> {legible(span.source)}:{span.start.line}:{span.start.column}"),
-        pen.margin("  |"),
-    ]
+    where = f"{span.source}:{span.start.line}:{span.start.column}"
+    lines = pen.heading(Role.ERROR, EVIDENCE_HEADING, finding.claim_text, where)
     match evidence:
         case Explanation():
             lines += explanation_lines(evidence, style, spans=spans)
         case Outranked():
             lines += outranked_lines(evidence, style, lines_of, spans=spans)
-        case Ended():
-            lines.append(f"  {pen.margin('=')} {pen(Role.WARNING, ended(evidence))}")
         case _:
-            said = legible(refuted(evidence))
-            lines.append(f"  {pen.margin('=')} {pen(Role.EMPHASIS, REFUTATION)}: {said}")
+            lines.append(pen.unfound(evidence))
+    return [*lines, ""]
+
+
+def why_lines(  # noqa: PLR0913
+    source: str,
+    atom: Literal,
+    result: Explanation | Refutation | Ended,
+    style: Style,
+    *,
+    spans: bool,
+    over: Range,
+) -> list[str]:
+    """Write the block that shows why an atom holds, or not, in the answer set asked for."""
+    pen = _Pen(style)
+    lines = pen.heading(Role.NOTE, WHY, str(atom), source)
+    if isinstance(result, Explanation):
+        lines += explanation_lines(result, style, spans=spans, failed=False, over=over)
+    else:
+        lines.append(pen.unfound(result))
+    return [*lines, ""]
+
+
+def ask_lines(
+    source: str, query: All | Pattern, result: Answered | Refutation | Ended, style: Style
+) -> list[str]:
+    """Write the block that shows a query's answer and the first answer set giving each value.
+
+    A pattern with variables shows its bindings instead: those giving yes, and any others.
+    """
+    pen = _Pen(style)
+    lines = pen.heading(Role.NOTE, ASK, queried(query), source)
+    if not isinstance(result, Answered):
+        return [*lines, pen.unfound(result), ""]
+    if isinstance(result.answer, Bindings):
+        found = result.answer
+        shown = [each for each in Answer if each is Answer.YES or found.giving(each)]
+        pattern = cast("Pattern", query)
+        return [*lines, *(pen.said(bindings_of(each, pattern, found)) for each in shown), ""]
+    conjunction = cast("All", query)
+    lines.append(pen.said((Piece(ANSWER, Role.EMPHASIS), Piece(f": {result.answer.value}"))))
+    lines += [pen.answer_set(taken(each, conjunction, result)) for each in result.taken]
+    match conjunction.parts, result.taken:
+        case (Literal() as alone,), (first, *_):
+            lines += [pen.margin("  |"), pen.help(shows_why(source, alone, first, result.over))]
+        case _:
+            pass
     return [*lines, ""]

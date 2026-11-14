@@ -36,6 +36,13 @@ def rows(pattern: Pattern, found: Iterable[tuple[Symbol, ...]]) -> str:
     return "{ }" if not written else "{ " + ", ".join(written) + " }"
 
 
+def queried(query: All | Pattern) -> str:
+    """Write a query as `@query` does: its literals in braces, or its one pattern."""
+    if isinstance(query, Pattern):
+        return f"{{ {query} }}"
+    return braces(part for part in query.parts if isinstance(part, Literal))
+
+
 def _optimally(over: Range) -> str:
     return "optimal " if over is Range.OPTIMAL else ""
 
@@ -71,11 +78,8 @@ def _reading(reading: Reading) -> str:
             return f"@expect {'sat' if expected else 'unsat'}"
         case Census() | Witness() | Assigns() | Entails() | Costs():
             return _of_answer_sets(reading)
-        case Asks(answer, All(parts), over):
-            return (
-                f"@query {_optimally(over)}{answer} "
-                f"{braces(p for p in parts if isinstance(p, Literal))}"
-            )
+        case Asks(answer, query, over):
+            return f"@query {_optimally(over)}{answer} {queried(query)}"
         case Binds(answer, pattern, bindings, over):
             return f"@query {_optimally(over)}{answer} {{ {pattern} }} = {rows(pattern, bindings)}"
 

@@ -1,9 +1,11 @@
 """Three-valued queries over a world view (Gelfond and Kahl, Definition 2.2.2, with its errata)."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum, auto
+from typing import Final
 
-from elenctic.determination import WorldView
+from elenctic.determination import AnswerSet, Range, WorldView
 from elenctic.extension import Extension
 from elenctic.literals import Atoms, Literal, Symbol
 from elenctic.patterns import Pattern
@@ -155,3 +157,43 @@ def bindings(pattern: Pattern, view: WorldView) -> Bindings:
     yes = _unifiers(pattern, cautious).rows
     no = _unifiers(pattern.contrary, cautious).rows
     return Bindings(yes, no, _entertained(pattern, brave).rows - yes - no)
+
+
+@dataclass(frozen=True, slots=True)
+class Taken:
+    """An answer a query takes in one answer set alone, and the first answer set that gives it."""
+
+    answer: Answer
+    index: int
+    answer_set: AnswerSet
+
+
+@dataclass(frozen=True, slots=True)
+class Answered:
+    """A query answered over the `read` answer sets, and the first to give each answer alone."""
+
+    query: Query
+    over: Range
+    answer: Answer | Bindings
+    taken: tuple[Taken, ...]
+    read: int
+
+
+_ALONE: Final = {Truth.TRUE: Answer.YES, Truth.FALSE: Answer.NO, Truth.UNKNOWN: Answer.UNKNOWN}
+"""The answer a query has in one answer set, from its truth there."""
+
+
+def answered(query: Query, members: Sequence[AnswerSet], over: Range = Range.ALL) -> Answered:
+    """Answer `query` over every answer set of a search, given in the order it read them.
+
+    A pattern with variables is answered by its bindings; it takes no one answer in an answer set.
+    """
+    view = WorldView(frozenset(member.atoms for member in members), over)
+    if isinstance(query, Pattern) and query.variables:
+        return Answered(query, over, bindings(query, view), (), len(members))
+    first: dict[Answer, Taken] = {}
+    for index, member in enumerate(members, 1):
+        alone = _ALONE[evaluate(query, member.atoms)]
+        first.setdefault(alone, Taken(alone, index, member))
+    taken = tuple(first.values())
+    return Answered(query, over, answer(query, view), taken, len(members))

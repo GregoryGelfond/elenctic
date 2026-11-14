@@ -71,6 +71,14 @@ roots are the literals that make it fail there: those absent, or the contrary th
 to explain. Claims about counts, witnesses, assignments, costs and bindings have no evidence yet, and
 neither has an undecided claim. `test` computes none, so it is as fast as it was.
 
+**`why` explains an answer set it is asked for; `ask` answers as `@query` does.** `why` picks the
+K-th answer set the search reads, of AS(P) or of Opt(P), and explains its atom by the two rules
+below: present, or absent by default negation, whether or not its contrary holds. Which answer set
+is K-th depends on enumeration order, as nothing else here does. `ask` keeps the three values: an
+atom in no answer set and whose contrary is in none is `unknown`, never `no`. Beside the answer it
+names, for each value the query takes in one answer set alone, the first answer set taking it;
+that answer set too depends on order, the answer does not.
+
 **Presence is well-founded support; it is sound, not minimal.** An atom that holds gets one ground
 rule instance whose body holds, each of whose positive atoms got its own before it, so the support
 has no cycle. Negative literals and comparisons are listed as the instance's conditions, not

@@ -4,10 +4,13 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from elenctic.determination import Valuation
+from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
+from elenctic.queries import read_query
+from elenctic.query import All
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Position, Span
-from elenctic.syntax import Item, read_literals, read_valuations
+from elenctic.syntax import Item, read_atom, read_literals, read_scenario, read_valuations
 from elenctic.terms import Compound, Variable
 from elenctic.writer import rows as rows_written
 
@@ -224,3 +227,68 @@ def test_two_variable_bindings_round_trip_through_the_reader(
 def test_a_tuple_valued_one_variable_binding_round_trips() -> None:
     row = ((parse_term("(1,2)"),),)
     assert read_bindings(_written(row, 1), 1, WHERE) == row
+
+
+# What a command asks: an atom, a query, assumptions, written on the command line.
+
+
+def test_an_atom_asked_about_reads_with_or_without_default_negation() -> None:
+    assert read_atom("reach(c)", "ATOM") == Literal("reach", (parse_term("c"),))
+    assert read_atom("not reach(c)", "ATOM") == Literal("reach", (parse_term("c"),))
+    assert read_atom("-p", "ATOM") == Literal("p", positive=False)
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("p(X)", "atom asked about is not ground"),
+        ("p, q", "expected one atom, found `p, q`"),
+        ("", "expected one atom, found nothing"),
+        ("p :- q", "syntax error"),
+        ("X < 2", "expected a literal"),
+    ],
+)
+def test_an_atom_that_is_not_one_ground_literal_is_refused(text: str, message: str) -> None:
+    refused = read_atom(text, "ATOM")
+    assert isinstance(refused, Diagnostic)
+    assert message in refused.message
+    assert refused.span is not None
+    assert refused.span.source == "ATOM"
+
+
+def test_assumptions_read_as_a_scenario_with_or_without_braces() -> None:
+    expected = frozenset({Assumption(Literal("a")), Assumption(Literal("b"), holds=False)})
+    assert read_scenario("a, not b", "--assuming") == expected
+    assert read_scenario("{ a, not b }", "--assuming") == expected
+
+
+def test_an_assumption_with_a_variable_is_refused() -> None:
+    refused = read_scenario("p(X)", "--assuming")
+    assert isinstance(refused, Diagnostic)
+    assert "assumption is not ground" in refused.message
+
+
+def test_a_query_reads_as_the_query_tag_reads_it() -> None:
+    assert read_query("{ a, -b }", "QUERY") == All((Literal("a"), Literal("b", positive=False)))
+    assert read_query("a", "QUERY") == All((Literal("a"),))
+    assert read_query("{ p(X, 1) }", "QUERY") == Pattern("p", (X, Number(1)))
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("{ not a }", "query uses `not`"),
+        ("{ p(X), q }", "query with variables has one pattern"),
+        ("{ p(_) }", "anonymous variable"),
+        ("{ }", "expected at least one atom"),
+    ],
+)
+def test_a_query_the_query_tag_would_refuse_is_refused(text: str, message: str) -> None:
+    refused = read_query(text, "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert message in refused.message
+
+
+@pytest.mark.parametrize("text", ["{ ab", "ab }"])
+def test_a_brace_left_open_is_not_taken_for_braces(text: str) -> None:
+    assert isinstance(read_query(text, "QUERY"), Diagnostic)

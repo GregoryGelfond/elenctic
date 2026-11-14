@@ -8,10 +8,11 @@ from enum import Enum, IntEnum
 from types import UnionType
 from typing import Final, TypeIs, cast
 
+from elenctic.inquiry import Ask, AskExit, Why, WhyExit
 from elenctic.legend import listed
 from elenctic.literals import Literal, Symbol
 from elenctic.patterns import Pattern
-from elenctic.report import Entry, Exit, Run
+from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.substitution import Substitution
 from elenctic.verdicts import Finding, Report, Verdict
 
@@ -89,6 +90,14 @@ def to_json(run: Run) -> str:
     """Write a run as one JSON document."""
     return (
         json.dumps({"schema": SCHEMA, "run": encode(run), "exit_code": run.exit_code}, indent=2)
+        + "\n"
+    )
+
+
+def inquiry_json(command: str, result: object, exit_code: int) -> str:
+    """Write what a question found as one JSON document, under the command's name."""
+    return (
+        json.dumps({"schema": SCHEMA, command: encode(result), "exit_code": exit_code}, indent=2)
         + "\n"
     )
 
@@ -198,9 +207,27 @@ def _object_schema(type_: type) -> Json:
     }
 
 
+def _codes() -> list[Json]:
+    """List the statuses a command can exit with: those of a run and of each question."""
+    codes: list[Json] = []
+    for each in (Exit, WhyExit, AskExit):
+        codes += [member.value for member in each if member.value not in codes]
+    return codes
+
+
+_QUESTIONS: Final = {"why": Why | Internal, "ask": Ask | Internal}
+"""What each question's document holds, under the question's name."""
+
+
 def schema_document() -> dict[str, Json]:
-    """Build the JSON Schema of a `--json` document from the result types `encode` walks."""
-    types = sorted(_object_types(set(), Run), key=kind_of)
+    """Build the JSON Schema of a `--json` document from the result types `encode` walks.
+
+    A document holds a test run, or what `why` or `ask` found, under its command's name.
+    """
+    found = _object_types(set(), Run)
+    for hint in _QUESTIONS.values():
+        _object_types(found, hint)
+    types = sorted(found, key=kind_of)
     defs = {kind_of(each): _object_schema(each) for each in types}
     diagnostic = cast("dict[str, Json]", defs["diagnostic"])
     properties = cast("dict[str, Json]", diagnostic["properties"])
@@ -213,16 +240,19 @@ def schema_document() -> dict[str, Json]:
         "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/v1.0.0/docs/reference/output-v1.schema.json",
         "title": "elenctic output schema 1",
         "type": "object",
-        "required": ["schema", "run", "exit_code"],
+        "required": ["schema", "exit_code"],
         "properties": {
             "schema": {"const": SCHEMA},
             "run": {"$ref": "#/$defs/run"},
+            **{name: _schema_for(hint) for name, hint in _QUESTIONS.items()},
             "exit_code": {
                 "type": "integer",
-                "enum": [member.value for member in Exit],
-                "description": "The Exit of the test run (0, 1, 2, or 3).",
+                "enum": _codes(),
+                "description": "The status the command exits with: the Exit of a test run, or "
+                "the WhyExit or AskExit of a question (0, 1, 2, or 3).",
             },
         },
+        "oneOf": [{"required": [name]} for name in ("run", *_QUESTIONS)],
         "additionalProperties": False,
         "$defs": defs,
     }

@@ -5,22 +5,37 @@ import os
 import signal
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from enum import IntEnum
 from math import inf
 from pathlib import Path
 from typing import Final
 
 from elenctic.about import VersionExit, package
 from elenctic.check import check
-from elenctic.determination import Truncation, option
-from elenctic.human import Format, internal_error, render_run, reserved, version
-from elenctic.json_view import to_json
+from elenctic.determination import Range, Truncation, option
+from elenctic.human import (
+    Format,
+    Rendered,
+    internal_error,
+    refused,
+    render_ask,
+    render_run,
+    render_why,
+    reserved,
+    version,
+)
+from elenctic.inquiry import Ask, AskExit, Why, WhyExit, ask, why
+from elenctic.json_view import inquiry_json, to_json
+from elenctic.literals import Scenario
 from elenctic.presentation import Environment, Presentation, Stream, When, resolve
 from elenctic.program import Fault, Locus, Program
+from elenctic.queries import read_query
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.session import evidenced
-from elenctic.spans import Diagnostic, failure, first_unlexable, note
+from elenctic.spans import Diagnostic, Parsed, failure, first_unlexable, note
+from elenctic.syntax import read_atom, read_scenario
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
 from elenctic.verdicts import Report
@@ -32,18 +47,14 @@ DEFAULT_MAX_ANSWER_SETS: Final = 100_000
 DEFAULT_MAX_DEPTH: Final = 3
 
 
-DECIDED: Final = frozenset({"test", "explain", "version"})
+DECIDED: Final = frozenset({"test", "explain", "why", "ask", "version"})
 """The subcommands that are built: a first argument that names one is a command, not a path."""
 VERSION_FLAGS: Final = ("-V", "--version")
 """The option of the main parser that asks for `version`: valid before the command, never after."""
 BARE: Final = frozenset({*VERSION_FLAGS, "-h", "--help"})
 """The options of the main parser that take no value."""
 
-RESERVED = {
-    "repl": "start an interactive session over a live program",
-    "why": "show the support of an atom, or why it is absent",
-    "ask": "answer one query over the answer sets",
-}
+RESERVED = {"repl": "start an interactive session over a live program"}
 """The subcommands kept for later; each exits as a fault, with a note, until it is built."""
 
 
@@ -85,6 +96,15 @@ _answer_sets_limit = _limit_reader(int, "a positive integer")
 _depth_limit = _limit_reader(int, "a positive integer")
 
 
+def _index(text: str) -> int:
+    """Read an index of an answer set: a positive integer."""
+    number = _parsed_or_none(int, text)
+    if number is None or number < 1:
+        message = f"{text!r} is not a positive integer"
+        raise argparse.ArgumentTypeError(message)
+    return number
+
+
 def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
     """Make the parser of the options that decide how output looks.
 
@@ -113,11 +133,8 @@ def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
     return options
 
 
-def _checking(command: argparse.ArgumentParser, written: str) -> None:
-    """Give a command that checks programs the options of `test`."""
-    command.add_argument(
-        "paths", nargs="+", type=Path, help=".lp files, or directories searched for them"
-    )
+def _written(command: argparse.ArgumentParser, written: str) -> None:
+    """Give a command the options that choose how what it found is written."""
     command.add_argument(
         "--format",
         choices=("full", "short", "json"),
@@ -127,14 +144,10 @@ def _checking(command: argparse.ArgumentParser, written: str) -> None:
     command.add_argument(
         "--json", action="store_true", help=f"write {written} as JSON (same as --format json)"
     )
-    command.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
-    command.add_argument(
-        "--root",
-        type=_directory,
-        metavar="DIR",
-        help="the directory every path and every `#include` must lie under (default: each "
-        "directory searched, or a named file's own directory)",
-    )
+
+
+def _limited(command: argparse.ArgumentParser) -> None:
+    """Give a command that searches the limits of each search."""
     command.add_argument(
         option(Truncation.MAX_SECONDS),
         type=_seconds_limit,
@@ -149,6 +162,56 @@ def _checking(command: argparse.ArgumentParser, written: str) -> None:
         metavar="N|all",
         help="most answer sets read per search, or `all` for no limit (default: %(default)s)",
     )
+
+
+def _checking(command: argparse.ArgumentParser, written: str) -> None:
+    """Give a command that checks programs the options of `test`."""
+    command.add_argument(
+        "paths", nargs="+", type=Path, help=".lp files, or directories searched for them"
+    )
+    _written(command, written)
+    command.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
+    command.add_argument(
+        "--root",
+        type=_directory,
+        metavar="DIR",
+        help="the directory every path and every `#include` must lie under (default: each "
+        "directory searched, or a named file's own directory)",
+    )
+    _limited(command)
+
+
+def _depth(command: argparse.ArgumentParser) -> None:
+    """Give a command that explains the options of how deep and how fully it shows the tree."""
+    command.add_argument(
+        "--max-depth",
+        type=_depth_limit,
+        default=DEFAULT_MAX_DEPTH,
+        metavar="N|all",
+        help=(
+            "how many absent atoms deep an explanation goes, or `all` for no limit "
+            "(default: %(default)s)"
+        ),
+    )
+    command.add_argument(
+        "--spans",
+        action="store_true",
+        help="show each rule as written, its place and its substitution, beneath its instance",
+    )
+
+
+def _asking(command: argparse.ArgumentParser, written: str) -> None:
+    """Give a command that asks about one program its path and the options of its search."""
+    command.add_argument("path", type=Path, metavar="PATH", help="the .lp file asked about")
+    _written(command, written)
+    command.add_argument(
+        "--over",
+        choices=list(Range),
+        type=Range,
+        default=Range.ALL,
+        help="all the answer sets, or only the optimal ones (default: all)",
+    )
+    _limited(command)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -177,20 +240,31 @@ def _parser() -> argparse.ArgumentParser:
         "explain", parents=options, help="check programs, and show why each failed claim fails"
     )
     _checking(explain, "the run, with the evidence")
-    explain.add_argument(
-        "--max-depth",
-        type=_depth_limit,
-        default=DEFAULT_MAX_DEPTH,
-        metavar="N|all",
-        help=(
-            "how many absent atoms deep an explanation goes, or `all` for no limit "
-            "(default: %(default)s)"
-        ),
+    _depth(explain)
+    why = commands.add_parser(
+        "why", parents=options, help="show why an atom holds, or not, in an answer set"
     )
-    explain.add_argument(
-        "--spans",
-        action="store_true",
-        help="show each rule as written, its place and its substitution, beneath its instance",
+    _asking(why, "the explanation")
+    why.add_argument("atom", metavar="ATOM", help="the ground literal asked about: `p(a)`, `-p`")
+    why.add_argument(
+        "--answer-set",
+        type=_index,
+        default=1,
+        metavar="K",
+        help="the answer set explained, counted from 1 among those --over reads (default: 1)",
+    )
+    why.add_argument(
+        "--assuming",
+        metavar="L,...",
+        help="literals assumed, `p` or `not p`, as `assuming { ... }` writes them",
+    )
+    _depth(why)
+    ask = commands.add_parser("ask", parents=options, help="answer one query over the answer sets")
+    _asking(ask, "the answer")
+    ask.add_argument(
+        "query",
+        metavar="QUERY",
+        help="literals `{ a, -b }`, or one pattern `{ p(X) }`, as `@query`",
     )
     commands.add_parser(
         "version",
@@ -274,6 +348,15 @@ def _unreadable_note(error: OSError | UnicodeDecodeError) -> str:
             return str(error)
 
 
+def _read(path: Path) -> Program | Fault:
+    """Read the program at `path`, or refuse it as unreadable."""
+    try:
+        return Program.read(path)
+    except (OSError, UnicodeDecodeError) as error:
+        problem = failure(None, f"cannot read `{path}`", notes=(_unreadable_note(error),))
+        return Fault(Locus.REQUEST, (problem,))
+
+
 def _mistaken(text: str) -> tuple[str, tuple[str, ...]] | None:
     """Say which `@tag`s of `text` are not tags, with what each likely means; `None` if none."""
     missed = tuple(dict.fromkeys(near_misses(text)))
@@ -326,15 +409,9 @@ def _entry(  # noqa: PLR0913
     root: Path,
     max_depth: int | Limit | None = None,
 ) -> Entry | None:
-    try:
-        program = Program.read(path)
-    except (OSError, UnicodeDecodeError) as error:
-        problem = failure(
-            None,
-            f"cannot read `{path}`",
-            notes=(_unreadable_note(error),),
-        )
-        return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
+    program = _read(path)
+    if isinstance(program, Fault):
+        return Entry(str(path), program)
     if not is_case(program.text):
         if named:
             return Entry(program.source, _not_a_case(path, program.text), program.text)
@@ -391,11 +468,17 @@ def _sigint(interrupt: Interrupt) -> Callable[[int, object], None]:
     return handle
 
 
-def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
-    """Check the paths; for `explain`, give each failed claim its evidence."""
+def _searching(arguments: argparse.Namespace) -> tuple[Limits, Interrupt]:
+    """Take the limits of each search, and the interrupt the first SIGINT pulls."""
     limits = Limits(max_seconds=arguments.max_seconds, max_answer_sets=arguments.max_answer_sets)
     interrupt = Interrupt()
     signal.signal(signal.SIGINT, _sigint(interrupt))
+    return limits, interrupt
+
+
+def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
+    """Check the paths; for `explain`, give each failed claim its evidence."""
+    limits, interrupt = _searching(arguments)
     plan = _plan(arguments.paths, arguments.root)
     max_depth = arguments.max_depth if arguments.command == "explain" else None
     entries = [_checked(item, limits, interrupt, max_depth) for item in plan]
@@ -419,6 +502,117 @@ def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     return run.exit_code
 
 
+def _format(arguments: argparse.Namespace) -> str:
+    return "json" if arguments.json else arguments.format
+
+
+def _form(arguments: argparse.Namespace) -> Format:
+    return Format.SHORT if _format(arguments) == "short" else Format.FULL
+
+
+def _write(rendered: Rendered) -> None:
+    sys.stderr.write(rendered.stderr)
+    sys.stdout.write(rendered.stdout)
+
+
+def _refuse[Outcome: IntEnum](  # noqa: PLR0913
+    command: str,
+    refusal: Fault | Diagnostic,
+    arguments: argparse.Namespace,
+    presentation: Presentation,
+    *,
+    text: str | None,
+    outcome: Outcome,
+) -> Outcome:
+    """Write a refusal of the program or an argument, whose `text` it shows, and exit `outcome`."""
+    fault = refusal if isinstance(refusal, Fault) else Fault(Locus.REQUEST, (refusal,))
+    if _format(arguments) == "json":
+        sys.stdout.write(inquiry_json(command, fault, outcome))
+    else:
+        source = str(arguments.path)
+        _write(refused(fault, presentation, form=_form(arguments), source=source, text=text))
+    return outcome
+
+
+def _why(arguments: argparse.Namespace, presentation: Presentation) -> WhyExit:
+    """Explain an atom in the answer set asked for; the CLI only reads and writes."""
+    program = _read(arguments.path)
+    if isinstance(program, Fault):
+        return _refuse("why", program, arguments, presentation, text=None, outcome=WhyExit.FAULT)
+    atom = read_atom(arguments.atom, "ATOM")
+    if isinstance(atom, Diagnostic):
+        return _refuse(
+            "why", atom, arguments, presentation, text=arguments.atom, outcome=WhyExit.FAULT
+        )
+    assumed = arguments.assuming
+    scenario: Parsed[Scenario] = (
+        frozenset() if assumed is None else read_scenario(assumed, "--assuming")
+    )
+    if isinstance(scenario, Diagnostic):
+        return _refuse(
+            "why", scenario, arguments, presentation, text=assumed, outcome=WhyExit.FAULT
+        )
+    limits, interrupt = _searching(arguments)
+    try:
+        result: Why | Internal = why(
+            program,
+            atom,
+            index=arguments.answer_set,
+            scenario=scenario,
+            over=arguments.over,
+            limits=limits,
+            interrupt=interrupt,
+            max_depth=arguments.max_depth,
+        )
+    except Exception as error:  # noqa: BLE001
+        result = Internal.of(error)
+    outcome = WhyExit.of(result)
+    if _format(arguments) == "json":
+        sys.stdout.write(inquiry_json("why", result, outcome))
+        return outcome
+    source = str(arguments.path)
+    _write(
+        render_why(
+            source,
+            atom,
+            result,
+            presentation,
+            form=_form(arguments),
+            spans=arguments.spans,
+            over=arguments.over,
+            text=program.text,
+        )
+    )
+    return outcome
+
+
+def _ask(arguments: argparse.Namespace, presentation: Presentation) -> AskExit:
+    """Answer a query over the answer sets; the CLI only reads and writes."""
+    program = _read(arguments.path)
+    if isinstance(program, Fault):
+        return _refuse("ask", program, arguments, presentation, text=None, outcome=AskExit.FAULT)
+    query = read_query(arguments.query, "QUERY")
+    if isinstance(query, Diagnostic):
+        return _refuse(
+            "ask", query, arguments, presentation, text=arguments.query, outcome=AskExit.FAULT
+        )
+    limits, interrupt = _searching(arguments)
+    try:
+        result: Ask | Internal = ask(
+            program, query, over=arguments.over, limits=limits, interrupt=interrupt
+        )
+    except Exception as error:  # noqa: BLE001
+        result = Internal.of(error)
+    outcome = AskExit.of(result)
+    if _format(arguments) == "json":
+        sys.stdout.write(inquiry_json("ask", result, outcome))
+        return outcome
+    source = str(arguments.path)
+    form = _form(arguments)
+    _write(render_ask(source, query, result, presentation, form=form, text=program.text))
+    return outcome
+
+
 def _version(presentation: Presentation) -> VersionExit:
     sys.stdout.write(version(package(), loaded_solvers(), presentation.stdout))
     return VersionExit.REPORTED
@@ -440,26 +634,37 @@ def _guarded[Outcome](
         return failed
 
 
-def main(argv: Sequence[str] | None = None) -> Exit | VersionExit:
+type Outcome = Exit | VersionExit | WhyExit | AskExit
+"""The outcome of a command: each has its own type, and its value is the status to exit with."""
+
+
+def _runner(
+    command: str, arguments: argparse.Namespace, presentation: Presentation
+) -> tuple[Callable[[], Outcome], Outcome]:
+    """Name what runs a command, and the outcome of a failure no check anticipated."""
+    match command:
+        case "test" | "explain":
+            return (lambda: _test(arguments, presentation)), Exit.INTERNAL_ERROR
+        case "why":
+            return (lambda: _why(arguments, presentation)), WhyExit.INTERNAL_ERROR
+        case "ask":
+            return (lambda: _ask(arguments, presentation)), AskExit.INTERNAL_ERROR
+        case "version":
+            return (lambda: _version(presentation)), VersionExit.INTERNAL_ERROR
+        case _:
+            return (lambda: _reserved(arguments, presentation)), Exit.INTERNAL_ERROR
+
+
+def main(argv: Sequence[str] | None = None) -> Outcome:
     """Run a command and return its outcome, which is the status to exit with."""
     parser = _parser()
     arguments = parser.parse_args(_normalized(sys.argv[1:] if argv is None else argv))
     if arguments.command is None and not arguments.show_version:
         parser.error("the following arguments are required: COMMAND")
     presentation = _presentation(arguments, os.environ)
-    match "version" if arguments.show_version else arguments.command:
-        case "test" | "explain":
-            return _guarded(
-                lambda: _test(arguments, presentation), Exit.INTERNAL_ERROR, presentation
-            )
-        case "version":
-            return _guarded(
-                lambda: _version(presentation), VersionExit.INTERNAL_ERROR, presentation
-            )
-        case _:
-            return _guarded(
-                lambda: _reserved(arguments, presentation), Exit.INTERNAL_ERROR, presentation
-            )
+    command = "version" if arguments.show_version else str(arguments.command)
+    run, failed = _runner(command, arguments, presentation)
+    return _guarded(run, failed, presentation)
 
 
 if __name__ == "__main__":

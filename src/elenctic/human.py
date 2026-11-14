@@ -10,12 +10,17 @@ from enum import StrEnum, auto
 from pathlib import Path
 
 from elenctic.about import Package, Solvers
+from elenctic.determination import Range
 from elenctic.display import legible
-from elenctic.evidence_view import evidence_lines
+from elenctic.evidence_view import ask_lines, evidence_lines, why_lines
+from elenctic.inquiry import Ask, Why
 from elenctic.legend import COPYRIGHT, MARKS, SEVERITY_ROLES, VERDICT_ROLES, judged, reported, tally
+from elenctic.literals import Literal
 from elenctic.paint import Role, paint
+from elenctic.patterns import Pattern
 from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
+from elenctic.query import All
 from elenctic.report import Entry, Internal, Run
 from elenctic.spans import Child, Diagnostic, Span
 from elenctic.verdicts import Finding, Report, Verdict
@@ -253,6 +258,54 @@ def render_run(
     stderr_lines = _report_notes(run, stderr, form) + _fault_lines(run, stderr, form)
     stderr_lines += _internal_lines(run, stderr)
     return Rendered(_lines([*shown, _summary(run, stdout)]), _lines(stderr_lines))
+
+
+def refused(
+    result: Fault | Internal,
+    presentation: Presentation,
+    *,
+    form: Format = Format.FULL,
+    source: str | None = None,
+    text: str | None = None,
+) -> Rendered:
+    """Write why a question could not be answered, as diagnostics: a fault, or an internal error."""
+    style = presentation.stderr
+    if isinstance(result, Internal):
+        return Rendered("", internal_error(result, style))
+    return Rendered("", _lines(_fault(result, text, style, form, source)))
+
+
+def render_why(  # noqa: PLR0913
+    source: str,
+    atom: Literal,
+    result: Why | Internal,
+    presentation: Presentation,
+    *,
+    form: Format = Format.FULL,
+    spans: bool,
+    over: Range = Range.ALL,
+    text: str | None = None,
+) -> Rendered:
+    """Write what `why` found, or, as diagnostics, why it could not look."""
+    if isinstance(result, Fault | Internal):
+        return refused(result, presentation, form=form, source=source, text=text)
+    shown = why_lines(source, atom, result, presentation.stdout, spans=spans, over=over)
+    return Rendered(_lines(shown), "")
+
+
+def render_ask(  # noqa: PLR0913
+    source: str,
+    query: All | Pattern,
+    result: Ask | Internal,
+    presentation: Presentation,
+    *,
+    form: Format = Format.FULL,
+    text: str | None = None,
+) -> Rendered:
+    """Write what `ask` found, or, as diagnostics, why it could not look."""
+    if isinstance(result, Fault | Internal):
+        return refused(result, presentation, form=form, source=source, text=text)
+    return Rendered(_lines(ask_lines(source, query, result, presentation.stdout)), "")
 
 
 def reserved(command: str, style: Style) -> str:

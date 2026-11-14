@@ -69,6 +69,7 @@ from elenctic.explanation import (
 from elenctic.extension import Extension
 from elenctic.facts import Facts, Shown
 from elenctic.grounded import Grounded
+from elenctic.inquiry import Ask, AskExit, Why, WhyExit, ask, why
 from elenctic.judge import Found, judge
 from elenctic.literals import (
     Assumption,
@@ -82,15 +83,19 @@ from elenctic.program import Fault, Locus, Program
 from elenctic.query import (
     All,
     Answer,
+    Answered,
     Any,
     Bindings,
     Query,
+    Taken,
     Truth,
     answer,
+    answered,
     bindings,
     evaluate,
 )
 from elenctic.reader import parse_contract
+from elenctic.report import Internal
 from elenctic.search import Cut, Interrupt, Keep, Limit, Limits, Request
 from elenctic.session import Session, evidenced, session
 from elenctic.spans import Child, Diagnostic, Position, Severity, Span
@@ -106,7 +111,10 @@ __all__ = [
     "Answer",
     "AnswerSet",
     "AnswerSets",
+    "Answered",
     "Any",
+    "Ask",
+    "AskExit",
     "Asks",
     "Assignment",
     "Assigns",
@@ -148,6 +156,7 @@ __all__ = [
     "Inconclusive",
     "Inconsistent",
     "Incumbent",
+    "Internal",
     "Interrupt",
     "Keep",
     "Limit",
@@ -185,6 +194,7 @@ __all__ = [
     "Solver",
     "Span",
     "Substitution",
+    "Taken",
     "Term",
     "TheoryAtom",
     "These",
@@ -197,9 +207,13 @@ __all__ = [
     "Valuation",
     "Variable",
     "Verdict",
+    "Why",
+    "WhyExit",
     "Witness",
     "WorldView",
     "answer",
+    "answered",
+    "ask",
     "bindings",
     "check",
     "evaluate",
@@ -213,5 +227,6 @@ __all__ = [
     "session",
     "solve",
     "unify",
+    "why",
     "world_view",
 ]

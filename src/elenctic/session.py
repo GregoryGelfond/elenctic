@@ -19,12 +19,14 @@ from elenctic.contract import Asks, Claim, Entails, Satisfiable, Solver
 from elenctic.determination import (
     AnswerSet,
     AnswerSets,
+    Conclusion,
     Consistent,
     Exhausted,
     Inconclusive,
     Inconsistent,
     Optimum,
     Range,
+    Refutation,
     Truncation,
 )
 from elenctic.engine import controlled, parsed, possible_atoms, source_texts
@@ -33,7 +35,7 @@ from elenctic.grounded import Grounded
 from elenctic.instances import Instances, Payment, instances
 from elenctic.literals import Assumption, Atoms, Literal, Scenario, Symbol
 from elenctic.program import Fault, Program
-from elenctic.query import Answer, Truth, evaluate
+from elenctic.query import Answer, Answered, Query, Truth, answered, evaluate
 from elenctic.relaxation import Reading, Source, read
 from elenctic.search import KEEP_ALL, Interrupt, Keep, Limit, Limits, Seen, seen
 from elenctic.substitution import Substitution
@@ -206,50 +208,85 @@ class Session(Grounded):
             case _:
                 return None
 
-    def _members(self, claim: Claim, over: Range) -> tuple[tuple[AnswerSet, ...], bool] | Ended:
-        """Search for a claim's answer sets, and say whether it read all of them."""
+    def counterexample(
+        self, index: int = 1, scenario: Scenario = frozenset(), *, over: Range = Range.ALL
+    ) -> Counterexample | Refutation | Ended | None:
+        """Find the `index`-th answer set the search reads under `scenario`, of all or the optima.
+
+        `None` when there are fewer; the refutation when there is none; `Ended` when the search
+        stopped before reaching it. Raises `ValueError` for an index below 1.
+        """
+        if index < 1:
+            message = "an answer set's index counts from 1"
+            raise ValueError(message)
+        members = self._members(scenario, over)
+        if not isinstance(members, tuple):
+            return members
+        sets, conclusion = members
+        read = len(sets) if conclusion is Exhausted.EXHAUSTED else None
+        if index <= len(sets):
+            return Counterexample(sets[index - 1], index, read)
+        return None if read is not None else Ended(Truncation(conclusion))
+
+    def answer(
+        self, query: Query, scenario: Scenario = frozenset(), *, over: Range = Range.ALL
+    ) -> Answered | Refutation | Ended:
+        """Answer `query` over the answer sets of `scenario`, all or the optima, as `@query` does.
+
+        The refutation when there is none; `Ended` when the search stopped before reading them all.
+        """
+        members = self._members(scenario, over)
+        if not isinstance(members, tuple):
+            return members
+        sets, conclusion = members
+        if conclusion is not Exhausted.EXHAUSTED:
+            return Ended(Truncation(conclusion))
+        return answered(query, sets, over)
+
+    def _members(
+        self, scenario: Scenario, over: Range
+    ) -> tuple[tuple[AnswerSet, ...], Conclusion] | Ended | Refutation:
+        """Search for the answer sets of `scenario`, all or the optima, and say how it ended."""
         if over is Range.OPTIMAL:
-            return self._optimal(claim)
-        found = self.solve(claim.scenario, limits=self.limits, interrupt=self.interrupt)
+            return self._optimal(scenario)
+        found = self.solve(scenario, limits=self.limits, interrupt=self.interrupt)
         match found:
             case Inconclusive(cut):
                 return Ended(cut)
             case Consistent(AnswerSets() as sets, conclusion):
-                return sets.all, conclusion is Exhausted.EXHAUSTED
-            case _:
-                return (), True
+                return sets.all, conclusion
+            case Inconsistent(refutation):
+                return refutation
 
-    def _optimal(self, claim: Claim) -> tuple[tuple[AnswerSet, ...], bool] | Ended:
-        """Search for a claim's optimal answer sets, and say whether it read all of them."""
-        optimized = self.optimize(claim.scenario, limits=self.limits, interrupt=self.interrupt)
+    def _optimal(
+        self, scenario: Scenario
+    ) -> tuple[tuple[AnswerSet, ...], Conclusion] | Ended | Refutation:
+        """Search for the optimal answer sets of `scenario`, and say how it ended."""
+        optimized = self.optimize(scenario, limits=self.limits, interrupt=self.interrupt)
         match optimized:
             case Inconclusive(cut):
                 return Ended(cut)
             case Consistent(Optimum(_, sets), conclusion):
-                return sets.all, conclusion is Exhausted.EXHAUSTED
+                return sets.all, conclusion
             case Consistent(_, conclusion):
                 return Ended(Truncation(conclusion), optimum_unproven=True)
-            case _:
-                return (), True
+            case Inconsistent(refutation):
+                return refutation
 
     def _first(self, claim: Claim, max_depth: int | Limit) -> Explanation | Ended | None:
-        members = self._members(claim, Range.ALL)
-        if isinstance(members, Ended):
-            return members
-        sets, closed = members
-        if not sets:
-            return None
-        return self.explain(
-            (), Counterexample(sets[0], 1, len(sets) if closed else None), max_depth=max_depth
-        )
+        found = self.counterexample(1, claim.scenario)
+        if not isinstance(found, Counterexample):
+            return found if isinstance(found, Ended) else None
+        return self.explain((), found, max_depth=max_depth)
 
     def _entails(
         self, claim: Claim, entails: Entails, max_depth: int | Limit
     ) -> Evidence | Ended | None:
-        members = self._members(claim, entails.over)
-        if isinstance(members, Ended):
-            return members
-        sets, closed = members
+        members = self._members(claim.scenario, entails.over)
+        if not isinstance(members, tuple):
+            return members if isinstance(members, Ended) else None
+        sets, conclusion = members
+        closed = conclusion is Exhausted.EXHAUSTED
         if not sets:
             return None
         found = failures.missing(entails, sets, closed=closed)
@@ -264,10 +301,11 @@ class Session(Grounded):
         return self.explain(missing, Counterexample(answer_set, at, read), max_depth=max_depth)
 
     def _asks(self, claim: Claim, asks: Asks, max_depth: int | Limit) -> Evidence | Ended | None:
-        members = self._members(claim, asks.over)
-        if isinstance(members, Ended):
-            return members
-        sets, closed = members
+        members = self._members(claim.scenario, asks.over)
+        if not isinstance(members, tuple):
+            return members if isinstance(members, Ended) else None
+        sets, conclusion = members
+        closed = conclusion is Exhausted.EXHAUSTED
         if not sets:
             return None
         read = len(sets) if closed else None

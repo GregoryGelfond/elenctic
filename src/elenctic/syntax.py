@@ -9,10 +9,10 @@ from clingo.ast import AST, ASTType, ComparisonOperator, Sign
 from elenctic import tree
 from elenctic.body import place, prefixed, read_body, span_of
 from elenctic.determination import Valuation
-from elenctic.literals import Literal
+from elenctic.literals import Assumption, Literal, Scenario
 from elenctic.normalize import NotAPattern, evaluate, function_of, normalize
 from elenctic.patterns import Pattern
-from elenctic.spans import Diagnostic, Parsed, Span, failure
+from elenctic.spans import Diagnostic, Parsed, Position, Span, failure
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,3 +116,54 @@ def _equation(literal: AST) -> Valuation | None:
     if equal and isinstance(variable, Symbol) and isinstance(value, Symbol):
         return Valuation(variable, value.number) if value.type is SymbolType.Number else None
     return None
+
+
+def asked(text: str, source: str) -> tuple[str, Span]:
+    """Place what a command was given as its own one-line source, without enclosing braces."""
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        stripped = stripped[1:-1]
+    return stripped, Span(source, Position(1, 1), Position(1, len(text) + 1))
+
+
+def read_atom(text: str, source: str) -> Parsed[Literal]:
+    """Read the one ground literal a command asks about; a `not` before it is allowed and dropped.
+
+    Whether the atom holds is the answer set's to say, so `not p` asks what `p` does.
+    """
+    body, where = asked(text, source)
+    items = read_literals(body, where)
+    if isinstance(items, Diagnostic):
+        return items
+    if len(items) != 1:
+        given = f"`{text}`" if items else "nothing"
+        return failure(where, f"expected one atom, found {given}", label="expected one atom")
+    grounds = literals(items)
+    if not grounds:
+        return failure(where, "atom asked about is not ground", label="has a variable")
+    return grounds[0]
+
+
+def read_scenario(text: str, source: str) -> Parsed[Scenario]:
+    """Read comma-separated assumptions, `p` or `not p`, as `assuming { … }` writes them."""
+    body, where = asked(text, source)
+    items = read_literals(body, where)
+    if isinstance(items, Diagnostic):
+        return items
+    return scenario_of(items, where)
+
+
+def scenario_of(items: tuple[Item, ...], where: Span) -> Parsed[Scenario]:
+    """Take literals read as assumptions, `not` saying one is taken not to hold."""
+    grounds = literals(items)
+    if grounds is None:
+        return failure(
+            where,
+            "assumption is not ground",
+            label="has a variable",
+            notes=("an assumption is a ground literal",),
+        )
+    return frozenset(
+        Assumption(literal, holds=not item.negated)
+        for literal, item in zip(grounds, items, strict=True)
+    )

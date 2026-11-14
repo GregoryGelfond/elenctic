@@ -13,6 +13,7 @@ from elenctic.determination import (
     Consistent,
     Incumbent,
     NoAssumptions,
+    Range,
     These,
     Truncation,
 )
@@ -38,7 +39,7 @@ from elenctic.explanation import (
 from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
 from elenctic.program import Fault, Program
-from elenctic.query import All, Answer
+from elenctic.query import All, Answer, Answered, Bindings, Truth, evaluate
 from elenctic.search import KEEP_SHOWN, Interrupt, Limit, Limits
 from elenctic.session import Session, evidenced, session
 from elenctic.terms import Variable
@@ -859,3 +860,138 @@ def test_a_disjunction_whose_other_elements_cannot_apply_is_written_alone() -> N
     chosen = by["1/p"].reason
     assert isinstance(chosen, Chosen)
     assert chosen.instance == "p :- r."
+
+
+# The answer set an explanation is about, by its index in the search.
+
+
+def test_the_answer_set_at_an_index_is_the_one_the_search_reads_there() -> None:
+    made = opened("{ a; b }.")
+    found = made.solve(frozenset())
+    assert isinstance(found, Consistent)
+    third = made.counterexample(3)
+    assert isinstance(third, Counterexample)
+    assert third.answer_set == found.evidence.all[2]
+    assert (third.index, third.read) == (3, 4)
+
+
+def test_there_is_no_answer_set_past_the_last() -> None:
+    assert opened("{ a; b }.").counterexample(5) is None
+
+
+def test_with_no_answer_set_at_all_the_refutation_says_why() -> None:
+    assert opened("a. :- a.").counterexample() == NoAssumptions()
+    clash = frozenset({Assumption(Literal("a")), Assumption(Literal("a"), holds=False)})
+    refuted = opened("{ a }.").counterexample(1, clash, over=Range.OPTIMAL)
+    assert isinstance(refuted, These)
+
+
+def test_the_index_counts_the_answer_sets_of_the_scenario() -> None:
+    made = opened("{ a; b }.")
+    only = made.counterexample(
+        1, frozenset({Assumption(Literal("a")), Assumption(Literal("b"), holds=False)})
+    )
+    assert isinstance(only, Counterexample)
+    assert only.read == 1
+    assert {str(s) for s in only.answer_set.atoms} == {"a"}
+    assert made.counterexample(2, frozenset({Assumption(Literal("a"))})) is not None
+    assert made.counterexample(3, frozenset({Assumption(Literal("a"))})) is None
+
+
+def test_the_index_counts_the_optima_when_the_range_is_optimal() -> None:
+    made = opened("1 { a; b; c } 1. #minimize { 1 : a; 1 : b; 2 : c }.")
+    second = made.counterexample(2, over=Range.OPTIMAL)
+    assert isinstance(second, Counterexample)
+    assert second.read == 2
+    assert {str(s) for s in second.answer_set.atoms} <= {"a", "b"}
+    assert made.counterexample(3, over=Range.OPTIMAL) is None
+
+
+def test_an_answer_set_beyond_a_truncated_search_is_not_known() -> None:
+    made = session(Program("{ a; b; c }.", "t.lp"), limits=Limits(max_answer_sets=2))
+    assert isinstance(made, Session)
+    second = made.counterexample(2)
+    assert isinstance(second, Counterexample)
+    assert second.read is None
+    assert made.counterexample(3) == Ended(Truncation.MAX_ANSWER_SETS)
+
+
+def test_an_index_counts_from_one() -> None:
+    with pytest.raises(ValueError, match="counts from 1"):
+        opened("a.").counterexample(0)
+
+
+# A query answered over the answer sets, and the first answer set giving each answer.
+
+
+def _indices(made: Session, query: Literal) -> dict[Answer, int]:
+    found = made.solve(frozenset())
+    assert isinstance(found, Consistent)
+    first: dict[Answer, int] = {}
+    for at, answer_set in enumerate(found.evidence.all, 1):
+        truth = evaluate(query, answer_set.atoms)
+        first.setdefault(
+            {Truth.TRUE: Answer.YES, Truth.FALSE: Answer.NO}.get(truth, Answer.UNKNOWN), at
+        )
+    return first
+
+
+def test_a_query_is_answered_with_the_first_answer_set_taking_each_value() -> None:
+    made = opened("{ a; b }.")
+    answered = made.answer(All((Literal("a"),)))
+    assert isinstance(answered, Answered)
+    assert answered.answer is Answer.UNKNOWN
+    assert answered.read == 4
+    expected = sorted(_indices(made, Literal("a")).items(), key=lambda pair: pair[1])
+    assert [(t.answer, t.index) for t in answered.taken] == expected
+    assert all(Literal("a") in t.answer_set.atoms for t in answered.taken if t.answer is Answer.YES)
+    assert {t.answer for t in answered.taken} == {Answer.YES, Answer.UNKNOWN}
+
+
+def test_a_contrary_in_every_answer_set_answers_no() -> None:
+    answered = opened("-b.").answer(All((Literal("b"),)))
+    assert isinstance(answered, Answered)
+    assert answered.answer is Answer.NO
+    assert [(t.answer, t.index) for t in answered.taken] == [(Answer.NO, 1)]
+
+
+def test_a_conjunction_is_answered_as_the_query_tag_answers_it() -> None:
+    answered = opened("a. { b }.").answer(All((Literal("a"), Literal("b"))))
+    assert isinstance(answered, Answered)
+    assert answered.answer is Answer.UNKNOWN
+    assert len(answered.taken) == 2
+
+
+def test_a_pattern_with_variables_is_answered_by_its_bindings() -> None:
+    pattern = Pattern("p", (Variable("X"),))
+    answered = opened("p(1). { p(2) }. -p(3).").answer(pattern)
+    assert isinstance(answered, Answered)
+    assert answered.answer == Bindings(
+        frozenset({(Number(1),)}), frozenset({(Number(3),)}), frozenset({(Number(2),)})
+    )
+    assert answered.taken == ()
+
+
+def test_a_query_over_the_optima_reads_only_them() -> None:
+    made = opened("1 { a; b; c } 1. #minimize { 1 : a; 1 : b; 2 : c }.")
+    answered = made.answer(All((Literal("c"),)), over=Range.OPTIMAL)
+    assert isinstance(answered, Answered)
+    assert (answered.answer, answered.read, answered.over) == (Answer.UNKNOWN, 2, Range.OPTIMAL)
+    assert {t.answer for t in answered.taken} == {Answer.UNKNOWN}
+
+
+def test_a_query_under_a_scenario_reads_its_answer_sets() -> None:
+    scenario = frozenset({Assumption(Literal("a"))})
+    answered = opened("{ a; b }.").answer(All((Literal("a"),)), scenario)
+    assert isinstance(answered, Answered)
+    assert (answered.answer, answered.read) == (Answer.YES, 2)
+
+
+def test_a_query_without_answer_sets_gets_the_refutation() -> None:
+    assert opened("a. :- a.").answer(All((Literal("a"),))) == NoAssumptions()
+
+
+def test_a_query_whose_search_is_truncated_is_not_answered() -> None:
+    made = session(Program("{ a; b }.", "t.lp"), limits=Limits(max_answer_sets=1))
+    assert isinstance(made, Session)
+    assert made.answer(All((Literal("a"),))) == Ended(Truncation.MAX_ANSWER_SETS)

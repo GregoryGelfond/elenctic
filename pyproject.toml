@@ -86,7 +86,7 @@ type = "layers"
 layers = [
     "elenctic.cli",
     "elenctic.check | elenctic.human | elenctic.json_view",
-    "elenctic.evidence_view | elenctic.judge",
+    "elenctic.evidence_view | elenctic.inquiry | elenctic.judge",
     "elenctic.legend | elenctic.presentation",
     "elenctic.by_answer_sets | elenctic.glyphs | elenctic.report | elenctic.session",
     "elenctic.failures",

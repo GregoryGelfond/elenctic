@@ -15,12 +15,16 @@ import elenctic
 from elenctic.check import check
 from elenctic.contract import Census, Entails
 from elenctic.determination import AnswerSet, Incumbent, Truncation, WorldView
-from elenctic.json_view import SCHEMA, encode, kind_of, schema_document, to_json
+from elenctic.inquiry import AskExit, WhyExit, ask, why
+from elenctic.json_view import SCHEMA, encode, inquiry_json, kind_of, schema_document, to_json
 from elenctic.literals import Literal
+from elenctic.patterns import Pattern
 from elenctic.program import Program
+from elenctic.query import All
 from elenctic.report import Entry, Exit, Run
 from elenctic.session import evidenced
 from elenctic.spans import Position
+from elenctic.terms import Variable
 from elenctic.verdicts import Ended, Report
 from runs import FAILING, PROGRAM_WITH_ESCAPE_CODES, entry
 
@@ -248,3 +252,49 @@ def test_a_set_of_literals_is_listed_in_the_order_the_text_lists_it() -> None:
 def test_bindings_are_listed_in_the_order_the_text_writes_them() -> None:
     rows = frozenset({(Number(10),), (Number(2),)})
     assert encode(rows) == [["2"], ["10"]]
+
+
+def _keys_follow_schema(document: object) -> None:
+    defs = schema_document()["$defs"]
+    assert isinstance(defs, dict)
+    for each in _objects(document):
+        schema = defs[str(each["kind"])]
+        assert isinstance(schema, dict)
+        properties, required = schema["properties"], schema["required"]
+        assert isinstance(properties, dict)
+        assert isinstance(required, list)
+        assert set(each) <= set(properties), each["kind"]
+        assert set(required) <= set(each), each["kind"]
+
+
+def test_why_and_ask_documents_add_to_schema_one_under_their_names() -> None:
+    document = schema_document()
+    properties, alternatives = document["properties"], document["oneOf"]
+    assert isinstance(properties, dict)
+    assert {"run", "why", "ask"} <= set(properties)
+    assert document["required"] == ["schema", "exit_code"]
+    assert alternatives == [{"required": ["run"]}, {"required": ["why"]}, {"required": ["ask"]}]
+    defs = document["$defs"]
+    assert isinstance(defs, dict)
+    assert {"answered", "taken", "bindings", "explanation", "internal", "fault"} <= set(defs)
+
+
+def test_an_answer_is_written_with_the_answer_sets_that_give_it() -> None:
+    program = Program("{ a; b }.\n-c.\n", "ab.lp")
+    answered = ask(program, All((Literal("a"),)))
+    document = json.loads(inquiry_json("ask", answered, AskExit.of(answered)))
+    assert document["exit_code"] == 0
+    assert document["ask"]["query"] == {"kind": "all", "parts": ["a"]}
+    assert document["ask"]["taken"][1]["answer_set"]["shown"] == ["a", "-c"]
+    _keys_follow_schema(document)
+    pattern = ask(Program("p(1). { p(2) }.", "p.lp"), Pattern("p", (Variable("X"),)))
+    bound = json.loads(inquiry_json("ask", pattern, AskExit.of(pattern)))
+    assert bound["ask"]["answer"] == {
+        "kind": "bindings",
+        "yes": [["1"]],
+        "no": [],
+        "unknown": [["2"]],
+    }
+    _keys_follow_schema(bound)
+    explained = why(program, Literal("a"), index=3)
+    _keys_follow_schema(json.loads(inquiry_json("why", explained, WhyExit.of(explained))))

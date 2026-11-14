@@ -177,10 +177,10 @@ def test_icons_and_color_are_independent(
 
 
 def test_icons_and_color_apply_to_every_command(capsys: pytest.CaptureFixture[str]) -> None:
-    shown = written(capsys, "why", "--color=always", "--icons=always", "x.lp")
+    shown = written(capsys, "repl", "--color=always", "--icons=always", "x.lp")
     assert shown.code == Exit.FAULT
     assert shown.out == ""
-    assert shown.err == "\x1b[1;36melenctic: `why` is reserved and not yet built\x1b[0m\n"
+    assert shown.err == "\x1b[1;36melenctic: `repl` is reserved and not yet built\x1b[0m\n"
 
 
 def test_verdicts_and_summary_are_on_stdout_and_diagnostics_on_stderr(

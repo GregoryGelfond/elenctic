@@ -7,10 +7,13 @@ decides only where things go.
 
 from collections.abc import Iterable, Mapping
 from enum import StrEnum, auto
+from shlex import quote
 from typing import Final, TypeIs, cast
 
 from elenctic.determination import (
+    AnswerSet,
     NotThese,
+    Range,
     Refutation,
     These,
     Truncation,
@@ -39,11 +42,13 @@ from elenctic.explanation import (
 from elenctic.glyphs import Glyph
 from elenctic.literals import Assumption, Literal, Symbol
 from elenctic.paint import Phrase, Piece, Role
+from elenctic.patterns import Pattern
+from elenctic.query import All, Answer, Answered, Bindings, Taken
 from elenctic.report import Run
 from elenctic.search import Limit
 from elenctic.spans import Severity
 from elenctic.verdicts import Ended, Finding, Report, Verdict
-from elenctic.writer import bound, braces
+from elenctic.writer import bound, braces, rows
 
 MARKS: Final[Mapping[Verdict, Glyph]] = {
     verdict: Glyph(nerd, f"[{verdict.name}]")
@@ -328,17 +333,63 @@ def cited(reason: Reason) -> tuple[Rule, str] | None:
             return None
 
 
-def counterexample(found: Counterexample) -> Phrase:
-    """Word the answer set a claim fails in, and the assignment it carries."""
-    read = f" of {found.read}" if found.read is not None else ""
-    answer_set = found.answer_set
-    phrase = (
-        Piece(f"counterexample: answer set {found.index}{read}", Role.EMPHASIS),
-        Piece(f": {braces(answer_set.shown)}"),
-    )
-    if not answer_set.assignment:
+def answer_set(index: int, read: int | None, over: Range = Range.ALL) -> str:
+    """Name an answer set by its index among those read, of all or of the optima."""
+    of = f" of {read}" if read is not None else ""
+    return f"{'optimal ' if over is Range.OPTIMAL else ''}answer set {index}{of}"
+
+
+def _shown(head: str, found: AnswerSet) -> Phrase:
+    """Word an answer set after its name: what it shows, and the assignment it carries."""
+    phrase = (Piece(head, Role.EMPHASIS), Piece(f": {braces(found.shown)}"))
+    if not found.assignment:
         return phrase
-    return (*phrase, Piece(" "), Piece(f"where {bound(answer_set.assignment)}", Role.ASIDE))
+    return (*phrase, Piece(" "), Piece(f"where {bound(found.assignment)}", Role.ASIDE))
+
+
+def counterexample(found: Counterexample, *, failed: bool, over: Range) -> Phrase:
+    """Word the answer set explained: the one a claim fails in, or the one asked for by `over`."""
+    named = answer_set(found.index, found.read, over)
+    return _shown(f"counterexample: {named}" if failed else named, found.answer_set)
+
+
+WHY: Final = "why"
+"""The heading of what `why` explains."""
+ASK: Final = "ask"
+"""The heading of what `ask` answers."""
+ANSWER: Final = "answer"
+
+
+def taken(found: Taken, query: All, answered: Answered) -> Phrase:
+    """Word an answer a query takes in one answer set alone, and the first that gives it."""
+    named = answer_set(found.index, answered.read, answered.over)
+    match found.answer, query.parts:
+        case Answer.YES, _:
+            value = "true"
+        case Answer.NO, _:
+            value = "false"
+        case _, (Literal() as alone,):
+            value = f"neither {alone} nor {alone.contrary}"
+        case _:
+            value = "neither true nor false"
+    return _shown(f"{value} in {named}", found.answer_set)
+
+
+def bindings_of(answer: Answer, pattern: Pattern, found: Bindings) -> Phrase:
+    """Word the bindings of a pattern that give one answer, as `@query … = { … }` writes them."""
+    return (
+        Piece(f"{answer.value} bindings", Role.EMPHASIS),
+        Piece(f": {rows(pattern, found.giving(answer))}"),
+    )
+
+
+def shows_why(source: str, literal: Literal, found: Taken, over: Range) -> str:
+    """Word the help on asking `why` of the answer set a query was answered in, for a shell."""
+    optimal = " --over optimal" if over is Range.OPTIMAL else ""
+    asked = (
+        f"elenctic why {quote(source)} {quote(str(literal))} --answer-set {found.index}{optimal}"
+    )
+    return f"`{asked}` shows why"
 
 
 EXPECTS_NONE: Final = "the program has this answer set, and the claim expects none"

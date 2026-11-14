@@ -5,7 +5,6 @@
   "type": "object",
   "required": [
     "schema",
-    "run",
     "exit_code"
   ],
   "properties": {
@@ -15,6 +14,56 @@
     "run": {
       "$ref": "#/$defs/run"
     },
+    "why": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/explanation"
+        },
+        {
+          "$ref": "#/$defs/these"
+        },
+        {
+          "$ref": "#/$defs/not_these"
+        },
+        {
+          "$ref": "#/$defs/no_assumptions"
+        },
+        {
+          "$ref": "#/$defs/ended"
+        },
+        {
+          "$ref": "#/$defs/fault"
+        },
+        {
+          "$ref": "#/$defs/internal"
+        }
+      ]
+    },
+    "ask": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/answered"
+        },
+        {
+          "$ref": "#/$defs/these"
+        },
+        {
+          "$ref": "#/$defs/not_these"
+        },
+        {
+          "$ref": "#/$defs/no_assumptions"
+        },
+        {
+          "$ref": "#/$defs/ended"
+        },
+        {
+          "$ref": "#/$defs/fault"
+        },
+        {
+          "$ref": "#/$defs/internal"
+        }
+      ]
+    },
     "exit_code": {
       "type": "integer",
       "enum": [
@@ -23,9 +72,26 @@
         2,
         3
       ],
-      "description": "The Exit of the test run (0, 1, 2, or 3)."
+      "description": "The status the command exits with: the Exit of a test run, or the WhyExit or AskExit of a question (0, 1, 2, or 3)."
     }
   },
+  "oneOf": [
+    {
+      "required": [
+        "run"
+      ]
+    },
+    {
+      "required": [
+        "why"
+      ]
+    },
+    {
+      "required": [
+        "ask"
+      ]
+    }
+  ],
   "additionalProperties": false,
   "$defs": {
     "aggregate": {
@@ -129,6 +195,67 @@
           "items": {
             "type": "integer"
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "answered": {
+      "type": "object",
+      "required": [
+        "kind",
+        "query",
+        "over",
+        "answer",
+        "taken",
+        "read"
+      ],
+      "properties": {
+        "kind": {
+          "const": "answered"
+        },
+        "query": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/all"
+            },
+            {
+              "$ref": "#/$defs/any"
+            }
+          ]
+        },
+        "over": {
+          "type": "string",
+          "enum": [
+            "all",
+            "optimal"
+          ]
+        },
+        "answer": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "yes",
+                "no",
+                "unknown"
+              ]
+            },
+            {
+              "$ref": "#/$defs/bindings"
+            }
+          ]
+        },
+        "taken": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/taken"
+          }
+        },
+        "read": {
+          "type": "integer"
         }
       },
       "additionalProperties": false
@@ -238,6 +365,48 @@
         },
         "holds": {
           "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "bindings": {
+      "type": "object",
+      "required": [
+        "kind",
+        "yes",
+        "no",
+        "unknown"
+      ],
+      "properties": {
+        "kind": {
+          "const": "bindings"
+        },
+        "yes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "no": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "unknown": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -1275,6 +1444,35 @@
         },
         "end": {
           "$ref": "#/$defs/position"
+        }
+      },
+      "additionalProperties": false
+    },
+    "taken": {
+      "type": "object",
+      "required": [
+        "kind",
+        "answer",
+        "index",
+        "answer_set"
+      ],
+      "properties": {
+        "kind": {
+          "const": "taken"
+        },
+        "answer": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "index": {
+          "type": "integer"
+        },
+        "answer_set": {
+          "$ref": "#/$defs/answer_set"
         }
       },
       "additionalProperties": false

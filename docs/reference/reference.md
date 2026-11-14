@@ -48,14 +48,27 @@ verdicts. It takes the options of `test` and two of its own; its exit codes are 
 | `--max-depth N\|all` | how many absent atoms deep an explanation goes (a positive integer), or `all` for no limit (default: 3) |
 | `--spans` | beneath each rule instance, the rule as written, its place, and its substitution |
 
-`repl`, `why` and `ask` are reserved: each writes a note on stderr and exits `FAULT` (2).
-`--color` and `--icons` apply to every command; the other options belong to `test` and `explain`.
+`elenctic why PATH ATOM` explains why the ground literal `ATOM` holds, or not, in one answer set of
+the program at `PATH`; a leading `not` is dropped, since the answer set says which. `elenctic ask
+PATH QUERY` answers a query, written as `@query` writes it (`{ a, -b }`, or one pattern `{ p(X) }`;
+braces optional), over every answer set. Each takes `--format`, `--json`, `--max-seconds` and
+`--max-answer-sets` as `test` does, and these:
+
+| Option | Meaning |
+|---|---|
+| `--over all\|optimal` | all the answer sets (default), or only the optimal ones |
+| `--answer-set K` | `why`: the answer set explained, counted from 1 among those `--over` reads (default: 1) |
+| `--assuming L,…` | `why`: literals assumed, `p` or `not p`, as `assuming { … }` writes them |
+| `--max-depth N\|all`, `--spans` | `why`: as for `explain` |
+
+`repl` is reserved: it writes a note on stderr and exits `FAULT` (2). `--color` and `--icons`
+apply to every command.
 
 ## Output
 
-Verdicts and the summary go to stdout; diagnostics for sources that could not be checked, the
-reserved-command note and the internal-error line go to stderr. With `--json` the whole document is
-on stdout and is never colored or marked with glyphs.
+Verdicts, the summary and the blocks `why` and `ask` write go to stdout; diagnostics for sources
+that could not be checked, the reserved-command note and the internal-error line go to stderr. With
+`--json` the whole document is on stdout and is never colored or marked with glyphs.
 
 Color and glyphs are decided for each stream on its own, so `elenctic … > run.txt` leaves stderr
 colored on a terminal. Color, `auto`, is decided in this order; the first rule that applies wins.
@@ -79,10 +92,10 @@ Glyphs and color are independent. The glyphs are from a Nerd Font: a terminal wi
 boxes, which is why they are off unless asked for. Program text is made legible before it is
 colored or marked, so a program cannot write escape sequences.
 
-Colors by role: error `1;31` (a `FAIL`, an error, an internal error), warning `1;33`
-(`UNDECIDED`), note `1;32` (`PASS`), help `1;36` (the reserved-command note), margin `1;34` (line
-numbers) and emphasis `1` (sources and the summary). Evidence adds aside `3`, italic (substitutions,
-guards, counts) and reference `2`, dim (a rule's line).
+Colors by role: error `1;31` (a `FAIL`, an error, an internal error), warning `1;33` (`UNDECIDED`),
+note `1;32` (`PASS`, the `why:` and `ask:` headings), help `1;36` (the reserved-command note, `=
+help:`), margin `1;34` (line numbers) and emphasis `1` (sources and the summary). Evidence adds
+aside `3`, italic (substitutions, guards, counts) and reference `2`, dim (a rule's line).
 
 ### Evidence
 
@@ -110,6 +123,16 @@ A step with more than one child branches with `├──` and `└──`. The o
 a root sits at that step's indent with no branch, so a chain of single reasons keeps one indent
 however long it is.
 
+`why` writes the same block under `why:` and the atom, naming the program's path; its answer set is
+`answer set K of N`, or `optimal answer set K of N` under `--over optimal`, and `counterexample:`
+stays for failed claims. `ask` writes `ask:` and the query, then `= answer: yes|no|unknown` and, for
+each answer the query takes in one answer set alone, the first answer set that gives it: `true in
+answer set 3 of 7: { … }`, `false in …`, or `neither p nor -p in …` (`neither true nor false` for a
+conjunction). A one-literal query ends with a `= help:` line giving the `why` command for that
+answer set. A pattern with variables writes `= yes bindings: { … }`, and the `no` and `unknown`
+bindings when there are any. With no answer set, each shows the refutation; a search cut short shows
+what ended it.
+
 An outranked result first shows the costs with and without the claim's literals, by priority, and
 the weak-constraint instances paid differently, each at its place in the source. A refuted `@expect
 sat` shows its refutation. A search cut short shows what ended it. The block ends with
@@ -117,7 +140,8 @@ sat` shows its refutation. A search cut short shows what ended it. The block end
 glyph: `fa-database` (fact), `cod-symbol_method` (derived), `fa-random` (chosen, not chosen),
 `fa-ban` (absent, blocked), `md-sigma` (aggregate), `fa-calculator` (theory atom),
 `cod-references` (shown above, `^` without icons), `fa-ellipsis_h` (not expanded, `...`),
-`fa-balance_scale` (outranked) and `fa-eye` (the counterexample).
+`fa-balance_scale` (outranked) and `fa-eye` (the counterexample, or an answer set `why` or `ask`
+names).
 
 ## Diagnostics
 
@@ -149,9 +173,19 @@ values are fixed. `elenctic test`, `elenctic explain` (and the refusal of a rese
 | `REPORTED` | 0 | the text was written |
 | `INTERNAL_ERROR` | 3 | the metadata or the solvers could not be read; one line on stderr |
 
+`elenctic why` returns `elenctic.inquiry.WhyExit` and `elenctic ask` returns
+`elenctic.inquiry.AskExit`; `ask` exits 0 whatever the answer is:
+
+| Name | Value | Meaning |
+|---|---|---|
+| `EXPLAINED` / `ANSWERED` | 0 | the atom was explained / the query was answered |
+| `ENDED` | 1 | the search ended before it reached the answer set, or read them all |
+| `FAULT` | 2 | the program or an argument was refused, there is no answer set `K`, or none at all (the refutation is shown) |
+| `INTERNAL_ERROR` | 3 | elenctic itself failed; one line on stderr |
+
 A usage error is argparse's, status 2, before any command runs.
 
-Stderr lines use one of two prefixes: `elenctic: …` for a failure of the command (a reserved-command note, or an internal error), and `path:line:col: error: …` (or the rustc multi-line form) for a fault in a source.
+Stderr lines use one of two prefixes: `elenctic: …` for a failure of the command (a reserved-command note, or an internal error), and `path:line:col: error: …` (or the rustc multi-line form) for a fault in a source. A fault in an argument of `why` or `ask` names the argument in place of the path: `ATOM:1:1`, `QUERY:1:1`, `--assuming:1:1`.
 
 ## Contract syntax
 
@@ -233,7 +267,11 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 | Over which solver? | `solve(program, solver=Solver.CLINGCON)`, `ground(program, solver)` | the same; an `AnswerSet` carries its `assignment` |
 | Why is there none? | the `Inconsistent` result's `refutation` | `These`, `NotThese` or `NoAssumptions` |
 | Why does a claim fail? | `evidenced(report, program)`, or `Session.evidence(finding)` | each failed `Finding` with its `evidence` |
+| Which is the k-th answer set, of all or of the optima? | `Session.counterexample(k, scenario, over=range)` | a `Counterexample`; the `Refutation` when there is none; `Ended`; or `None` past the last |
+| What does a query come to over the answer sets? | `Session.answer(query, scenario, over=range)` | an `Answered`, the `Refutation` when there are none, or `Ended` |
 | Why does an atom hold, or not, in an answer set? | `session(program).explain(literals, counterexample)` | an `Explanation` |
+| Why does an atom hold, or not, in the k-th answer set? | `why(program, atom, index=k, scenario=…, over=…)` | an `Explanation`, the `Refutation`, `Ended`, or a `Fault` |
+| What does a query come to over a program's answer sets? | `ask(program, query, over=…)` | an `Answered`, the `Refutation`, `Ended`, or a `Fault` |
 | How does the objective rank some literals? | `Session.outrank(literals, scenario)` | `Outranked`, `Ended`, or `None` |
 | Do two patterns have a common instance? | `mgu(first, second)` | a `Unifier`, or `None` |
 | The same, their variables shared by name? | `unify(first, second)` | a `Substitution`, or `None` |
@@ -328,6 +366,9 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Truth` | truth in one answer set, ordered `FALSE < UNKNOWN < TRUE`, so that conjunction is `min` and disjunction `max` |
 | `evaluate` | a query's `Truth` in one answer set |
 | `answer` | a query's `Answer` over a `WorldView` |
+| `answered` | a query answered over answer sets given in the order read: an `Answered` |
+| `Answered` | a query's `answer`, or its `Bindings` for a pattern with variables, over the `read` answer sets, `over` all or the optima, with what it is `taken` to be in one answer set alone |
+| `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it |
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
 | `bindings` | the `Bindings` of a `Pattern` over a `WorldView`: its unifiers with the cautious consequences (yes, and no by the contrary), and with the brave ones for the rest it entertains (unknown) |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
@@ -339,6 +380,13 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | Name | What it is |
 |---|---|
 | `check` | check the contract written in a program: a `Report`, or `None` if it carries none |
+| `why` | explain an atom in one answer set of a program, opened as `check` opens it |
+| `ask` | answer a query over the answer sets of a program, opened as `check` opens it |
+| `Why` | what `why` comes to: `Explanation \| Refutation \| Ended \| Fault` |
+| `Ask` | what `ask` comes to: `Answered \| Refutation \| Ended \| Fault` |
+| `WhyExit` | the status `why` exits with, named by `WhyExit.of(result)`; an `Internal` failure is 3 |
+| `AskExit` | the status `ask` exits with, named by `AskExit.of(result)`; an `Internal` failure is 3 |
+| `Internal` | elenctic itself failed: the `error_type` and `message` of the exception |
 | `parse_contract` | read each tag of a text: a claim for every one that reads, a diagnostic for the rest |
 | `render` | write a claim as the tag line that reads back to it |
 | `judge` | judge one claim against the search over its scenario: a `Finding` |
@@ -365,11 +413,11 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | Name | What it is |
 |---|---|
 | `session` | ground a program for a `Solver` into a `Session`, or a `Fault` saying why not |
-| `Session` | a `Grounded` that can explain what it finds: `explain`, `outrank`, `evidence` |
+| `Session` | a `Grounded` that can explain what it finds: `counterexample`, `answer`, `explain`, `outrank`, `evidence` |
 | `evidenced` | a `Report` with the `evidence` of each failed finding, or a `Fault` |
 | `Evidence` | why a claim fails: an `Explanation`, a `Refutation` or an `Outranked` |
 | `Explanation` | why each root holds or not in a `Counterexample`: its `nodes` in first-visit order, each once; `minimality`, `max_depth`, and `complete` when no node is `Unexpanded` |
-| `Counterexample` | the answer set a claim fails in: the `index`-th found, of `read` (`None` when the search did not read them all) |
+| `Counterexample` | the answer set explained, as a claim fails in it or as asked for: the `index`-th found, of `read` (`None` when the search did not read them all) |
 | `Node` | a `handle`, an `atom`, whether it `holds`, its `Reason`, and its `children` by handle |
 | `Handle` | a node's name, built from what it says: `1/p(a)`, `1/not p(a)`, and `1/not p(a)#r8(a)` for the instance of statement 8 with its variables' values `(a)`; `1/` is the counterexample's index |
 | `Reason` | why a node holds or not: one of the eleven below |
@@ -401,7 +449,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 
 ## JSON
 
-`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1, 2, or 3); see `elenctic.json_view.encode`. A
+`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1, 2, or 3); see `elenctic.json_view.encode`. `why` writes `{"schema": 1, "why": …, "exit_code": n}`, the value an `explanation`, a refutation, `ended`, a `fault` or `internal`; `ask` writes `"ask"` the same way, its value an `answered` in place of the explanation, and `n` is the command's own exit. A
 dataclass becomes `{"kind": type_name, field: …}`, the `kind` being the type's name in snake case (`Census` is `census`, `AnswerSet` is `answer_set`), an enum its value, a set a sorted list. Keys and enum values are snake_case (`max_answer_sets`);
 the command-line flags keep their hyphens (`--max-answer-sets`). A `Substitution` is a string,
 `"{X=b, Y=c}"`, as a literal is. A finding has an `evidence` key only when it has evidence, so a

@@ -1,14 +1,16 @@
 """The query tag: a question put to the answer sets, with bindings if it has variables."""
 
+from enum import StrEnum, auto
 from typing import Final
 
 from elenctic.contract import Asks, Binds, Reading
 from elenctic.determination import Range
 from elenctic.operands import pointing, read_range, shown
+from elenctic.patterns import Pattern
 from elenctic.query import All, Answer
 from elenctic.rows import read_bindings
-from elenctic.spans import Diagnostic, Parsed, failure
-from elenctic.syntax import Item, literals, read_literals
+from elenctic.spans import Diagnostic, Parsed, Span, failure
+from elenctic.syntax import Item, asked, literals, read_literals
 from elenctic.tags import Block, Element
 
 
@@ -52,17 +54,50 @@ def query(block: Block, head: list[Element]) -> Parsed[Reading]:
     )
 
 
+class _Refusal(StrEnum):
+    """A query `@query` and `ask` both refuse."""
+
+    NEGATED = auto()
+    ANONYMOUS = auto()
+    SEVERAL = auto()
+
+
+def _refused(where: Span, refusal: _Refusal) -> Diagnostic:
+    """Refuse a query: a `not`, an anonymous variable, or more than one pattern with variables."""
+    match refusal:
+        case _Refusal.NEGATED:
+            return failure(
+                where,
+                "query uses `not`",
+                label="`not` is not a query atom",
+                help=("drop `not`, or state a positive pattern with bindings",),
+            )
+        case _Refusal.ANONYMOUS:
+            return failure(
+                where,
+                "anonymous variable in a binding pattern",
+                label="`_` has no binding to state",
+                help=("name the variable",),
+            )
+        case _Refusal.SEVERAL:
+            return failure(
+                where,
+                "query with variables has one pattern",
+                label="more than one literal",
+                help=("ask each pattern on its own",),
+            )
+
+
+def _empty(where: Span) -> Diagnostic:
+    return failure(where, "expected at least one atom, found `{ }`", label="empty query")
+
+
 def _asks(
     block: Block, answer: Answer, items: tuple[Item, ...], element: Element, over: Range
 ) -> Parsed[Reading]:
     where = block.covering(element)
     if any(item.negated for item in items):
-        return failure(
-            where,
-            "query uses `not`",
-            label="`not` is not a query atom",
-            help=("drop `not`, or state a positive pattern with bindings",),
-        )
+        return _refused(where, _Refusal.NEGATED)
     grounds = literals(items)
     if grounds is None:
         return failure(
@@ -72,11 +107,7 @@ def _asks(
             help=(f"state its bindings: `{{ {shown(element)} }} = {{ ... }}`",),
         )
     if not grounds:
-        return failure(
-            where,
-            "expected at least one atom, found `{ }`",
-            label="empty query",
-        )
+        return _empty(where)
     return Asks(answer, All(tuple(grounds)), over)
 
 
@@ -91,12 +122,7 @@ def _binds(
         )
     pattern = items[0].pattern
     if pattern.anonymous:
-        return failure(
-            block.covering(head[1]),
-            "anonymous variable in a binding pattern",
-            label="`_` has no binding to state",
-            help=("name the variable",),
-        )
+        return _refused(block.covering(head[1]), _Refusal.ANONYMOUS)
     if not pattern.variables:
         return failure(
             block.covering(head[1]),
@@ -111,3 +137,23 @@ def _binds(
     return (
         found if isinstance(found, Diagnostic) else Binds(answer, pattern, frozenset(found), over)
     )
+
+
+def read_query(text: str, source: str) -> Parsed[All | Pattern]:
+    """Read a query as `@query` writes it, `{ L, … }` or `{ q(X, …) }`, the braces optional.
+
+    Ground literals are their conjunction; one pattern with variables asks for its bindings.
+    """
+    body, where = asked(text, source)
+    items = read_literals(body, where) if body.strip() else ()
+    if isinstance(items, Diagnostic):
+        return items
+    if any(item.negated for item in items):
+        return _refused(where, _Refusal.NEGATED)
+    grounds = literals(items)
+    if grounds is not None:
+        return All(tuple(grounds)) if grounds else _empty(where)
+    if len(items) != 1:
+        return _refused(where, _Refusal.SEVERAL)
+    pattern = items[0].pattern
+    return _refused(where, _Refusal.ANONYMOUS) if pattern.anonymous else pattern

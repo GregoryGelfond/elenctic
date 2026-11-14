@@ -171,9 +171,10 @@ class Minimality(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Counterexample:
-    """The answer set a claim fails in: the `index`-th the search read, of `read` in all.
+    """The answer set explained: the `index`-th the search read, of `read` in all.
 
-    `read` is `None` when the search was truncated before it had read them all.
+    It is the one a claim fails in, or the one asked for by its index. `read` is `None` when the
+    search was truncated before it had read them all.
     """
 
     answer_set: AnswerSet
