@@ -1,3 +1,6 @@
+from time import perf_counter
+
+from elenctic.relaxation import Source
 from elenctic.spans import (
     Child,
     Diagnostic,
@@ -9,6 +12,7 @@ from elenctic.spans import (
     failure,
     in_characters,
     note,
+    split_lines,
 )
 
 
@@ -79,3 +83,23 @@ def test_in_characters_reads_the_named_line_not_a_neighbour() -> None:
     raw = Span("t.lp", Position(2, 1), Position(2, 2))
     converted = in_characters(raw, "aé\ny\n")
     assert converted == Span("t.lp", Position(2, 1), Position(2, 2))
+
+
+def seconds_to_locate_every_line(count: int) -> float:
+    """Locate and read back each line of a program of `count` facts, as reading its rules does."""
+    text = "\n".join(f"p({i})." for i in range(count))
+    source = Source("<string>", {"<string>": text})
+    split_lines.cache_clear()
+    started = perf_counter()
+    for line in range(1, count + 1):
+        span = in_characters(Span("<string>", Position(line, 1), Position(line, 3)), text)
+        assert source.text(span) == "p("
+    return perf_counter() - started
+
+
+def test_locating_eight_times_as_many_lines_takes_about_eight_times_as_long_not_sixty_four() -> (
+    None
+):
+    small = min(seconds_to_locate_every_line(1_000) for _ in range(3))
+    large = min(seconds_to_locate_every_line(8_000) for _ in range(3))
+    assert large < 24 * small

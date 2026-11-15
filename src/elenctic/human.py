@@ -4,7 +4,7 @@ Everything a program contributes is made legible before it is styled, so no prog
 terminal, and the styling that follows is never escaped.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from pathlib import Path
@@ -22,7 +22,7 @@ from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
 from elenctic.query import All
 from elenctic.report import Entry, Internal, Run
-from elenctic.spans import Child, Diagnostic, Span
+from elenctic.spans import Child, Diagnostic, Span, split_lines
 from elenctic.verdicts import Finding, Report, Verdict
 
 
@@ -102,7 +102,7 @@ def _snippet(diagnostic: Diagnostic, text: str | None, style: Style) -> list[str
     source_text = _file_text(span, text)
     if source_text is None:
         return [arrow]
-    lines = source_text.split("\n")
+    lines = split_lines(source_text)
     if not (1 <= span.start.line <= len(lines)):
         return [arrow]
     source_line = lines[span.start.line - 1]
@@ -163,10 +163,10 @@ def _fault(
     return lines or [str(fault.locus)]
 
 
-def _source_lines(text: str | None) -> Callable[[Span], list[str] | None]:
-    def lines_of(span: Span) -> list[str] | None:
+def _source_lines(text: str | None) -> Callable[[Span], Sequence[str] | None]:
+    def lines_of(span: Span) -> Sequence[str] | None:
         found = _file_text(span, text)
-        return None if found is None else found.split("\n")
+        return None if found is None else split_lines(found)
 
     return lines_of
 

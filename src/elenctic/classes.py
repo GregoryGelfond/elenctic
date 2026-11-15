@@ -155,7 +155,7 @@ class Classes:
         is what keeps unification near-linear.
         """
         shade = [Shade.WHITE] * len(self._cells)
-        roots = (node for node in range(len(self._cells)) if self._classes.find(node) == node)
+        roots = {self._classes.find(node) for node in range(len(self._cells))}
         return all(shade[r] is not Shade.WHITE or self._search(r, shade) for r in roots)
 
     def _search(self, start: int, shade: list[Shade]) -> bool:

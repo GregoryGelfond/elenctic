@@ -51,6 +51,9 @@ All notable changes are recorded here. The format follows
   through `literals`, so fourteen modules import clingo (fifteen in 1.0.0). The clingo contract is
   named for that: only the modules that parse, ground or solve with clingo import it; judging and
   reporting never do.
+- Each source is split into lines once, by `spans.split_lines`, however many of its lines are read:
+  snippets, tags and the reading of a program's rules for evidence. Reading rules is linear in their
+  number; it split the whole text for each rule (`ask` over 20,000 facts: 34.6 s, now 9.3 s).
 
 ## [1.0.0] - 2026-11-06
 

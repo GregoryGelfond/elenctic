@@ -5,7 +5,7 @@ Each step of the tree shows its ground rule instance; `spans` adds the rule as w
 substitution beneath it.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Final, cast
 
@@ -57,7 +57,7 @@ from elenctic.writer import queried
 _WIDTH: Final = 34
 """The column the words of a short line start at."""
 
-type Lines = Callable[[Span], list[str] | None]
+type Lines = Callable[[Span], Sequence[str] | None]
 """The lines of the source a span is in, or `None` if it cannot be read."""
 
 

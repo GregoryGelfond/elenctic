@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 from enum import StrEnum, auto
+from functools import lru_cache
 from typing import Final, override
 
 
@@ -116,8 +117,18 @@ def char_column(line: str, byte_column: int) -> int:
     return len(line) + 1
 
 
+@lru_cache(maxsize=16)
+def split_lines(text: str) -> tuple[str, ...]:
+    """Split a source's text into its lines, line 1 first.
+
+    Each text is split once, however many of its lines are read: reading every rule's line of a
+    program stays linear in its length.
+    """
+    return tuple(text.split("\n"))
+
+
 def _line_at(text: str, number: int) -> str:
-    lines = text.split("\n")
+    lines = split_lines(text)
     return lines[number - 1] if 1 <= number <= len(lines) else ""
 
 

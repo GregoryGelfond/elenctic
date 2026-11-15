@@ -39,7 +39,7 @@ from elenctic.clauses import (
     tuple_text,
 )
 from elenctic.explanation import Rule
-from elenctic.spans import Position, Span, in_characters
+from elenctic.spans import Position, Span, in_characters, split_lines
 
 _BASE: Final = "_elenctic"
 _FRESH: Final = "_E"
@@ -65,7 +65,7 @@ class Source:
         text = self.texts.get(span.source)
         if text is None:
             return ""
-        lines = text.split("\n")
+        lines = split_lines(text)
         if not 1 <= span.start.line <= span.end.line <= len(lines):
             return ""
         if span.start.line == span.end.line:
@@ -148,7 +148,7 @@ def _after_separator(source: Source, span: Span) -> Position:
     text = source.texts.get(span.source)
     if text is None:
         return span.start
-    lines = text.split("\n")
+    lines = split_lines(text)
     line, column = span.start.line, span.start.column
     while line <= len(lines):
         rest = lines[line - 1][column - 1 :]

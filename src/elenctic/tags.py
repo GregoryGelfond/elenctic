@@ -1,11 +1,12 @@
 """The tags of a program's comments: where each begins and ends, and the words and groups in it."""
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
 from elenctic.braces import OUTSIDE, closing_brace, scan
-from elenctic.spans import Position, Span
+from elenctic.spans import Position, Span, split_lines
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +84,7 @@ RENAMED: Final = {"model": "answer-set"}
 """Spellings that are not tags, each with the tag a reader who writes it means."""
 
 
-def _block(lines: list[str], index: int, head: re.Match[str], source: str) -> tuple[Block, int]:
+def _block(lines: Sequence[str], index: int, head: re.Match[str], source: str) -> tuple[Block, int]:
     """Read the tag matched by `head` on `lines[index]` and the comment lines its brace spans."""
     column = len(head["lead"]) + 1
     first = Piece(
@@ -103,7 +104,7 @@ def _block(lines: list[str], index: int, head: re.Match[str], source: str) -> tu
 
 
 def blocks(text: str, source: str) -> list[Block]:
-    lines = text.split("\n")
+    lines = split_lines(text)
     blocks: list[Block] = []
     index = 0
     while index < len(lines):
@@ -118,7 +119,7 @@ def blocks(text: str, source: str) -> list[Block]:
 def is_case(text: str) -> bool:
     """Say whether `text` is a case (some contract tag) rather than a library."""
     return any(
-        (found := _TAG.fullmatch(line)) and found["tag"] in KNOWN for line in text.split("\n")
+        (found := _TAG.fullmatch(line)) and found["tag"] in KNOWN for line in split_lines(text)
     )
 
 
@@ -126,7 +127,7 @@ def near_misses(text: str) -> tuple[str, ...]:
     """Return unknown `@tag` names that look like misspelled contract tags."""
     return tuple(
         found["tag"]
-        for line in text.split("\n")
+        for line in split_lines(text)
         if (found := _TAG.fullmatch(line)) and found["tag"] not in KNOWN
     )
 
