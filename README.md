@@ -21,12 +21,14 @@ its refutation, and `UNDECIDED` is aporia, an honest "cannot say" rather than a 
 ## Install
 
 Requires Python 3.14+ and clingo 5.8. The optional `theory` extra pulls in clingcon 5.2 for
-contracts that declare `% @elenctic solver clingcon`.
+contracts that declare `% @elenctic solver clingcon`; the optional `tui` extra pulls in Textual 8
+for the interactive view.
 
 ```bash
 # pip
 pip install elenctic
 pip install 'elenctic[theory]'
+pip install 'elenctic[tui]'
 
 # uv — as a project dependency, or as a tool on PATH
 uv add elenctic
@@ -119,8 +121,12 @@ report = check(Program.read("drinks.lp"), limits=Limits(max_seconds=10))
 | | |
 |---|---|
 | `elenctic [test] PATH…` | check programs against their contracts ([reference](docs/reference/reference.md#command-line)) |
-| `--format full\|short\|json` | rustc multi-line diagnostics (default), one-line short, or JSON ([output](docs/reference/reference.md#output), [diagnostics](docs/reference/reference.md#diagnostics)) |
+| `elenctic explain PATH…` | `test`, and why each failed claim fails ([evidence](docs/reference/reference.md#evidence)) |
+| `--format text\|json\|tui` | text, JSON, or the interactive view, the default of `explain`, `why` and `ask` on a terminal with the `tui` extra ([output](docs/reference/reference.md#output), [interactive view](docs/reference/reference.md#the-interactive-view)) |
+| `--short` | one line per diagnostic ([diagnostics](docs/reference/reference.md#diagnostics)) |
 | Exit `0` / `1` / `2` / `3` | claims hold, claim unmet, fault, internal error ([exit codes](docs/reference/reference.md#exit-codes)) |
+
+![elenctic explain docs/examples/chain.lp in the interactive view](docs/images/explain-chain.svg)
 
 Claims with real command output: [docs/reference/examples.md](docs/reference/examples.md).
 Tutorial: [docs/tutorial/first-contract.md](docs/tutorial/first-contract.md). Full map:

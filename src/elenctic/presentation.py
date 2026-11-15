@@ -99,6 +99,11 @@ def _glyphs(when: When, stream: Stream) -> Glyphs:
     return Glyphs.NERD if shown else Glyphs.PLAIN
 
 
+def interactive(environment: Environment, *, stdin: Stream, stdout: Stream) -> bool:
+    """Say whether an app may take the terminal: stdin and stdout are terminals, not dumb ones."""
+    return not environment.dumb and stdin is Stream.TERMINAL and stdout is Stream.TERMINAL
+
+
 def resolve(
     color: When, icons: When, environment: Environment, *, stdout: Stream, stderr: Stream
 ) -> Presentation:

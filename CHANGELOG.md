@@ -33,6 +33,17 @@ All notable changes are recorded here. The format follows
 - Text roles `aside` (italic) and `reference` (dim), and a Nerd Font glyph for each kind of evidence
   line, shown with `--icons`.
 - Five examples of evidence: `absent.lp`, `chain.lp`, `laptop.lp`, `late.lp`, `team.lp`.
+- The interactive view, `--format tui`, from the optional `tui` extra (Textual 8): what `explain`,
+  `why`, `ask` or `test` found as a tree, each row the text view's line in its roles and glyphs,
+  with a pane for the selected step's rule as written, or the first one cited below the selected
+  row. `+` asks the library for one absence more, ⏎ on a shared step reaches its first row and on an
+  answer set `ask` names shows `why`, `test` finds a claim's evidence when it is opened. `explain`,
+  `why` and `ask` open it by default when the extra is installed and stdin and stdout are terminals;
+  `test` writes text unless asked. It calls the library off its own thread, so the keys answer while
+  a search runs; Esc stops it, Ctrl-C quits. `?` lists the keys that apply, and the view's own parts
+  take the text view's roles.
+- `--format text|json|tui` on `test`, `explain`, `why` and `ask`, and `--short` for one-line
+  diagnostics.
 
 ### Changed
 - JSON lists a set of literals or valuations in their own order, `p(2)` before `p(10)`, as the text
@@ -51,9 +62,16 @@ All notable changes are recorded here. The format follows
   through `literals`, so fourteen modules import clingo (fifteen in 1.0.0). The clingo contract is
   named for that: only the modules that parse, ground or solve with clingo import it; judging and
   reporting never do.
+- The legend words the lines the text view drew itself (headings, notes, the costs of an outranked
+  result, the weak constraints it pays), so the interactive view reads the same phrases; the text is
+  byte for byte the same.
 - Each source is split into lines once, by `spans.split_lines`, however many of its lines are read:
   snippets, tags and the reading of a program's rules for evidence. Reading rules is linear in their
   number; it split the whole text for each rule (`ask` over 20,000 facts: 34.6 s, now 9.3 s).
+
+### Deprecated
+- `--format full` and `--format short`, read as `--format text` and `--format text --short` with a
+  warning on stderr; 2.0 removes them.
 
 ## [1.0.0] - 2026-11-06
 

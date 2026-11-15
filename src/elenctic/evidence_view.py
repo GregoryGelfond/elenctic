@@ -11,46 +11,42 @@ from typing import Final, cast
 
 from elenctic.determination import Range, Refutation
 from elenctic.display import legible
-from elenctic.explanation import Explanation, Node, Outranked, Paid
+from elenctic.explanation import Explanation, Node, Outranked
 from elenctic.legend import (
-    ANSWER,
     ASK,
-    COST,
     EVIDENCE,
     EVIDENCE_HEADING,
     EXPECTS_NONE,
     GUARANTEE,
-    OPTIMUM,
     OUTRANKED,
-    PAID,
-    REFUTATION,
     WHY,
     Mark,
-    assuming,
+    answering,
     bindings_of,
     cited,
     counterexample,
-    differs,
-    ended,
+    heading,
+    helped,
     label,
-    listed,
     mark,
-    paid,
-    possible,
-    priority,
-    refuted,
+    noted,
+    paying,
+    ranking,
+    said,
     shared,
     shows_why,
     stopped,
     taken,
+    unfound,
     words,
+    written,
 )
 from elenctic.literals import Literal
-from elenctic.paint import Phrase, Piece, Role, paint, plain
+from elenctic.paint import Phrase, Role, paint, plain
 from elenctic.patterns import Pattern
 from elenctic.presentation import Style
 from elenctic.query import All, Answer, Answered, Bindings
-from elenctic.spans import Severity, Span
+from elenctic.spans import Span
 from elenctic.verdicts import Ended, Finding
 from elenctic.writer import queried
 
@@ -79,17 +75,9 @@ class _Pen:
     def margin(self, text: str) -> str:
         return paint(self.style.color, Role.MARGIN, text)
 
-    def note(self, words: str) -> str:
-        return f"  {paint(self.style.color, Role.NOTE, f'= {Severity.NOTE.value}:')} {words}"
-
-    def help(self, words: str) -> str:
-        return (
-            f"  {paint(self.style.color, Role.HELP, f'= {Severity.HELP.value}:')} {legible(words)}"
-        )
-
-    def said(self, phrase: Phrase) -> str:
-        """Write a line that says something of the whole block."""
-        return f"  {self.margin('=')} {self.phrase(phrase)}"
+    def line(self, phrase: Phrase) -> str:
+        """Write a line of the block, beneath its heading."""
+        return f"  {self.phrase(phrase)}"
 
     def answer_set(self, phrase: Phrase) -> str:
         """Write a line naming an answer set, marked as one."""
@@ -98,16 +86,10 @@ class _Pen:
     def heading(self, role: Role, word: str, subject: str, where: str) -> list[str]:
         """Write the opening of a block: what it is about, and where."""
         return [
-            f"{self(role, word)}: {self(Role.EMPHASIS, subject)}",
+            self.phrase(heading(role, word, subject)),
             self.margin(f" --> {legible(where)}"),
             self.margin("  |"),
         ]
-
-    def unfound(self, result: Refutation | Ended) -> str:
-        """Write why there is nothing to show: the search ended, or there is no answer set."""
-        if isinstance(result, Ended):
-            return f"  {self.margin('=')} {self(Role.WARNING, ended(result))}"
-        return f"  {self.margin('=')} {self(Role.EMPHASIS, REFUTATION)}: {legible(refuted(result))}"
 
 
 @dataclass(slots=True)
@@ -154,14 +136,7 @@ class _Tree:
         named = cited(node.reason)
         if not self.spans or named is None:
             return
-        pen = self.pen
-        rule, substitution = named
-        written = " ".join(rule.text.split())
-        given = f" {pen(Role.ASIDE, substitution)}" if substitution else ""
-        where = f"= {rule.span.source}:{rule.span.start.line}:"
-        self.lines.append(
-            f"  {pen.margin(guide)}{pen(Role.REFERENCE, where)} {legible(written)}{given}"
-        )
+        self.lines.append(f"  {self.pen.margin(guide)}{self.pen.phrase(written(*named))}")
 
 
 def _beneath(node: Node, below: str, *, chained: bool) -> list[tuple[str, str, str, bool]]:
@@ -199,29 +174,10 @@ def explanation_lines(
         lines.append(f"  {pen(Role.ASIDE, EXPECTS_NONE)}")
     tree = _Tree({n.handle: n for n in explanation.nodes}, pen, spans, set(), [])
     lines += tree.draw(explanation.roots)
-    lines += [pen.margin("  |"), pen.note(GUARANTEE[explanation.minimality])]
+    lines += [pen.margin("  |"), pen.line(noted(GUARANTEE[explanation.minimality]))]
     if not explanation.complete:
-        lines.append(pen.note(stopped(explanation.max_depth)))
+        lines.append(pen.line(noted(stopped(explanation.max_depth))))
     return lines
-
-
-def _paid(payment: Paid, lines_of: Lines, pen: _Pen, *, more: bool) -> list[str]:
-    span = payment.rule.span
-    source = lines_of(span)
-    arrow = pen.margin(f" --> {legible(span.source)}:{span.start.line}:{span.start.column}")
-    said = pen.phrase(paid(payment, more=more))
-    if source is None or not 1 <= span.start.line <= len(source):
-        return [arrow, f"  {pen.margin('|')} {legible(payment.rule.text)} {said}"]
-    width = max(1, span.end.column - span.start.column) if span.end.line == span.start.line else 1
-    carets = pen(Role.ERROR if more else Role.NOTE, "^" * width)
-    number = str(span.start.line)
-    pad = " " * len(number)
-    return [
-        arrow,
-        pen.margin(f"{pad} |"),
-        f"{pen.margin(f'{number} |')} {legible(source[span.start.line - 1])}",
-        f"{pen.margin(f'{pad} |')} {' ' * (span.start.column - 1)}{carets} {said}",
-    ]
 
 
 def outranked_lines(
@@ -229,29 +185,13 @@ def outranked_lines(
 ) -> list[str]:
     """Write how the objective ranks the literals below the optimum, and why it lacks them."""
     pen = _Pen(style)
-    literals = ", ".join(map(str, listed(outranked.literals) or ()))
-    pad = len(assuming(literals)) + 2
-    cells = "".join(f"{priority(p):>12}" for p in outranked.priorities)
-
-    def row(name: str, cost: tuple[int, ...], role: Role) -> str:
-        return f"    {legible(name):<{pad}}" + "".join(
-            pen(role if p == outranked.priority else Role.EMPHASIS, f"{v:>12}")
-            for p, v in zip(outranked.priorities, cost, strict=False)
-        )
-
     lines = [
         f"  {pen.glyph(Mark.OUTRANKED)}{pen(Role.EMPHASIS, OUTRANKED)}",
-        f"  {pen.margin('1')} {legible(possible(literals))}",
-        f"  {pen.margin('2')} {COST:<{pad}}{cells}",
-        row(assuming(literals), outranked.assuming, Role.ERROR),
-        row(OPTIMUM, outranked.optimum, Role.NOTE)
-        + f"  {pen(Role.ASIDE, differs(outranked.priority))}",
-        f"  {pen.margin('3')} {PAID}",
+        *(pen.line(phrase) for phrase in ranking(outranked)),
     ]
-    for payment in outranked.assuming_only:
-        lines += _paid(payment, lines_of, pen, more=True)
-    for payment in outranked.optimum_only:
-        lines += _paid(payment, lines_of, pen, more=False)
+    for payments, more in ((outranked.assuming_only, True), (outranked.optimum_only, False)):
+        for payment in payments:
+            lines += map(pen.phrase, paying(payment, lines_of(payment.rule.span), more=more))
     lines.append(pen.margin("  |"))
     return lines + explanation_lines(outranked.explanation, style, spans=spans)
 
@@ -271,7 +211,7 @@ def evidence_lines(finding: Finding, style: Style, lines_of: Lines, *, spans: bo
         case Outranked():
             lines += outranked_lines(evidence, style, lines_of, spans=spans)
         case _:
-            lines.append(pen.unfound(evidence))
+            lines.append(pen.line(unfound(evidence)))
     return [*lines, ""]
 
 
@@ -290,7 +230,7 @@ def why_lines(  # noqa: PLR0913
     if isinstance(result, Explanation):
         lines += explanation_lines(result, style, spans=spans, failed=False, over=over)
     else:
-        lines.append(pen.unfound(result))
+        lines.append(pen.line(unfound(result)))
     return [*lines, ""]
 
 
@@ -304,18 +244,19 @@ def ask_lines(
     pen = _Pen(style)
     lines = pen.heading(Role.NOTE, ASK, queried(query), source)
     if not isinstance(result, Answered):
-        return [*lines, pen.unfound(result), ""]
+        return [*lines, pen.line(unfound(result)), ""]
     if isinstance(result.answer, Bindings):
         found = result.answer
         shown = [each for each in Answer if each is Answer.YES or found.giving(each)]
         pattern = cast("Pattern", query)
-        return [*lines, *(pen.said(bindings_of(each, pattern, found)) for each in shown), ""]
+        return [*lines, *(pen.line(said(bindings_of(each, pattern, found))) for each in shown), ""]
     conjunction = cast("All", query)
-    lines.append(pen.said((Piece(ANSWER, Role.EMPHASIS), Piece(f": {result.answer.value}"))))
+    lines.append(pen.line(said(answering(result.answer))))
     lines += [pen.answer_set(taken(each, conjunction, result)) for each in result.taken]
     match conjunction.parts, result.taken:
         case (Literal() as alone,), (first, *_):
-            lines += [pen.margin("  |"), pen.help(shows_why(source, alone, first, result.over))]
+            helping = helped(shows_why(source, alone, first, result.over))
+            lines += [pen.margin("  |"), pen.line(helping)]
         case _:
             pass
     return [*lines, ""]

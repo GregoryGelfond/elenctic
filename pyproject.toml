@@ -17,12 +17,13 @@ Issues = "https://github.com/GregoryGelfond/elenctic/issues"
 
 [project.optional-dependencies]
 theory = ["clingcon>=5.2.1,<5.3"]
+tui = ["textual>=8.2.8,<9", "rich>=14.2"]
 
 [project.scripts]
 elenctic = "elenctic.cli:main"
 
 [dependency-groups]
-dev = ["clingcon>=5.2.1,<5.3", "import-linter>=2.5", "mypy>=2.4", "pyright>=1.1.414", "ruff>=0.17", "pytest>=9", "hypothesis>=6.170"]
+dev = ["clingcon>=5.2.1,<5.3", "import-linter>=2.5", "mypy>=2.4", "pyright>=1.1.414", "ruff>=0.17", "pytest>=9", "hypothesis>=6.170", "textual>=8.2.8,<9", "pytest-textual-snapshot>=1"]
 
 [build-system]
 requires = ["hatchling"]
@@ -84,7 +85,7 @@ name = "a module imports only from its own layer and the layers below it"
 type = "layers"
 layers = [
     "elenctic.cli",
-    "elenctic.check | elenctic.human | elenctic.json_view",
+    "elenctic.check | elenctic.human | elenctic.json_view | elenctic.tui",
     "elenctic.evidence_view | elenctic.inquiry | elenctic.judge",
     "elenctic.legend | elenctic.presentation",
     "elenctic.by_answer_sets | elenctic.glyphs | elenctic.report | elenctic.session",
@@ -138,6 +139,15 @@ allow_indirect_imports = true
 ignore_imports = ["elenctic.theory -> clingcon"]
 
 [[tool.importlinter.contracts]]
+id = "textual-boundary"
+name = "textual and rich are imported only by the tui package, the one place the optional extra is guarded"
+type = "forbidden"
+source_modules = ["elenctic"]
+forbidden_modules = ["textual", "rich"]
+allow_indirect_imports = true
+ignore_imports = ["elenctic.tui.** -> textual", "elenctic.tui.** -> rich"]
+
+[[tool.importlinter.contracts]]
 id = "spans-are-pure"
 name = "spans know nothing outside the standard library"
 type = "forbidden"
@@ -170,6 +180,8 @@ pyright = ">=1.1.414"
 ruff = ">=0.17"
 pytest = ">=9"
 hypothesis = ">=6.170"
+textual = ">=8.2.8,<9"
+pytest-textual-snapshot = ">=1"
 
 [tool.pixi.feature.theory.dependencies]
 clingcon = ">=5.2.1,<5.3"

@@ -14,7 +14,16 @@ from elenctic.determination import Range
 from elenctic.display import legible
 from elenctic.evidence_view import ask_lines, evidence_lines, why_lines
 from elenctic.inquiry import Ask, Why
-from elenctic.legend import COPYRIGHT, MARKS, SEVERITY_ROLES, VERDICT_ROLES, judged, reported, tally
+from elenctic.legend import (
+    COPYRIGHT,
+    MARKS,
+    SEVERITY_ROLES,
+    VERDICT_ROLES,
+    judged,
+    reported,
+    tally,
+    underlined,
+)
 from elenctic.literals import Literal
 from elenctic.paint import Role, paint
 from elenctic.patterns import Pattern
@@ -22,7 +31,7 @@ from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
 from elenctic.query import All
 from elenctic.report import Entry, Internal, Run
-from elenctic.spans import Child, Diagnostic, Span, split_lines
+from elenctic.spans import Child, Diagnostic, Severity, Span, split_lines
 from elenctic.verdicts import Finding, Report, Verdict
 
 
@@ -74,10 +83,8 @@ def _margin(style: Style, text: str) -> str:
 
 
 def _caret_line(span: Span, label: str, style: Style, role: Role) -> str:
-    width = max(1, span.end.column - span.start.column) if span.end.line == span.start.line else 1
-    carets = paint(style.color, role, "^" * width)
-    pad = " " * (span.start.column - 1)
-    marked = f"{pad}{carets}"
+    pad, carets = underlined(span)
+    marked = f"{pad}{paint(style.color, role, carets)}"
     if not label:
         return f"{_margin(style, '  |')} {marked}"
     return f"{_margin(style, '  |')} {marked} {legible(label)}"
@@ -163,7 +170,9 @@ def _fault(
     return lines or [str(fault.locus)]
 
 
-def _source_lines(text: str | None) -> Callable[[Span], Sequence[str] | None]:
+def source_lines(text: str | None) -> Callable[[Span], Sequence[str] | None]:
+    """Read the lines of the source a span is in: its file on disk, else `text`."""
+
     def lines_of(span: Span) -> Sequence[str] | None:
         found = _file_text(span, text)
         return None if found is None else split_lines(found)
@@ -175,7 +184,7 @@ def _entry(entry: Entry, style: Style, *, verbose: bool, spans: bool) -> list[st
     match entry.result:
         case Report(findings=findings) as report if verbose or report.verdict is not Verdict.PASS:
             shown = [f for f in findings if verbose or f.verdict is not Verdict.PASS]
-            lines_of = _source_lines(entry.text)
+            lines_of = source_lines(entry.text)
             evidence = [
                 line
                 for finding in shown
@@ -313,6 +322,12 @@ def reserved(command: str, style: Style) -> str:
     return (
         paint(style.color, Role.HELP, f"elenctic: `{command}` is reserved and not yet built") + "\n"
     )
+
+
+def deprecated(old: str, new: str, style: Style) -> str:
+    """Write the note on a spelling 1.x still accepts and 2.0 removes."""
+    severity = paint(style.color, SEVERITY_ROLES[Severity.WARNING], Severity.WARNING.value)
+    return f"{severity}: `{old}` is deprecated and removed in 2.0; write `{new}`\n"
 
 
 def internal_error(error: Exception | Internal, style: Style) -> str:

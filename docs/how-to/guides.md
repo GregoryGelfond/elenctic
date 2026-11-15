@@ -81,6 +81,16 @@ and `session(program).explain(literals, counterexample)` explains any literals i
 session found. [Every example](../reference/examples.md) from `absent.lp` to `team.lp` shows one
 kind of evidence.
 
+## Read the evidence in the interactive view
+
+With the `tui` extra installed, `elenctic explain PATH` on a terminal opens the evidence as a tree:
+move with the arrows, open and close steps, ⏎ on a step `shown above` to reach its first row, `+` to
+go one absence deeper, `s` for the selected step's rule as written. `elenctic test PATH --format tui`
+lists every claim and finds a failed claim's evidence when it is opened; `e` finds them all.
+`elenctic ask PATH QUERY` lists the answer sets that decide the answer, and ⏎ on one shows `why`.
+A long search shows `searching` and leaves the keys free; Esc stops it.
+`--format text` writes text, as on a pipe.
+
 ## Read the optimum from the library
 
 ```python

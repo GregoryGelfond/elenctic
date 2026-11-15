@@ -8,7 +8,8 @@ like a command is written `./why`.
 
 | Option | Meaning |
 |---|---|
-| `--format full\|short\|json` | how to write the run: rustc multi-line diagnostics (default), one-line short, or JSON |
+| `--format text\|json\|tui` | how to write the run: text (default), JSON, or the [interactive view](#the-interactive-view) |
+| `--short` | write each diagnostic on one line, in the gcc form ([diagnostics](#diagnostics)); text only |
 | `--json` | write the run as JSON (same as `--format json`) |
 | `-V`, `--version` | print the version and exit; stands before the command (below) |
 | `-v`, `--verbose` | list the claims that passed |
@@ -17,6 +18,9 @@ like a command is written `./why`.
 | `--max-seconds SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default: 30) |
 | `--max-answer-sets N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default: 100,000) |
 | `--root DIR` | the root: the directory every path and every `#include` must lie under (default: each directory searched, or a named file's own directory) |
+
+`--format full` and `--format short`, the spellings of 1.0, still work: they are `--format text`
+and `--format text --short`, with a warning on stderr naming the new spelling. 2.0 removes them.
 
 Zero and negative values of `--max-seconds` and `--max-answer-sets` are a usage error (`FAULT`, 2). In the library the same
 choice is `Limits(max_seconds=…, max_answer_sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has default limits.
@@ -42,6 +46,8 @@ copyright sign is the Nerd Font glyph `fa-copyright`; the text takes no color.
 
 `elenctic explain PATH…` is `test`, with the evidence for each failed claim after its source's
 verdicts. It takes the options of `test` and two of its own; its exit codes are those of `test`.
+On a terminal with the `tui` extra installed it opens the [interactive view](#the-interactive-view)
+unless `--format` says otherwise.
 
 | Option | Meaning |
 |---|---|
@@ -51,8 +57,9 @@ verdicts. It takes the options of `test` and two of its own; its exit codes are 
 `elenctic why PATH ATOM` explains why the ground literal `ATOM` holds, or not, in one answer set of
 the program at `PATH`; a leading `not` is dropped, since the answer set says which. `elenctic ask
 PATH QUERY` answers a query, written as `@query` writes it (`{ a, -b }`, or one pattern `{ p(X) }`;
-braces optional), over every answer set. Each takes `--format`, `--json`, `--max-seconds` and
-`--max-answer-sets` as `test` does, and these:
+braces optional), over every answer set. Each takes `--format`, `--short`, `--json`,
+`--max-seconds` and `--max-answer-sets` as `test` does, and opens the interactive view as `explain`
+does; and these:
 
 | Option | Meaning |
 |---|---|
@@ -143,12 +150,59 @@ glyph: `fa-database` (fact), `cod-symbol_method` (derived), `fa-random` (chosen,
 `fa-balance_scale` (outranked) and `fa-eye` (the counterexample, or an answer set `why` or `ask`
 names).
 
+### The interactive view
+
+`--format tui` shows what `explain`, `why`, `ask` or `test` found as a tree to read with the keys.
+It needs the `tui` extra (`pip install 'elenctic[tui]'`, Textual 8) and a terminal on stdin and
+stdout; without either, `--format tui` is refused (`FAULT`, 2). With no `--format`, `explain`, `why`
+and `ask` open it when the extra is installed and stdin and stdout are terminals, `TERM` not `dumb`;
+otherwise they write text. `test` writes text unless asked. There is no environment variable for
+the choice: `--format text` is it.
+
+Each row is the text view's line, its guides aside: the same words, order, glyphs (with `--icons`),
+roles and handles, painted by the same roles; `NO_COLOR` and `--color never` leave it plain. A
+shared node is drawn once, and a chain of single reasons keeps one indent. A source's diagnostics
+open into the block the text view writes. `explain` and `why` start at `--max-depth` (3), as the text
+does; `+` asks the library for one step more. `test` lists every claim, as `--verbose` does, and
+finds a failed claim's evidence when it is opened; `explain` opens with each failed claim open and
+finds its evidence then. The pane shows the rule the selected step cites, as `--spans` writes it
+with its line quoted; on a row that cites none, such as a source or a claim, it shows the first rule
+cited below it, titled `first step beneath`. Below 100 columns the pane is hidden, and it never
+narrows a source's heading. The command exits with its own code when the view is closed, and the diagnostics of a run
+go to stderr then.
+
+The view opens once the run is checked, and asks the library for anything more (evidence, `+`,
+`why` from `ask`) off its own thread, one call at a time: the keys answer meanwhile, the row waiting
+reads `searching` and the title `searching · esc cancels`. Esc stops the search and nothing it
+found is shown; Ctrl-C quits, stopping it first. Each call has `--max-seconds` and
+`--max-answer-sets`, as in the text. The window is titled by the command and what it was asked of,
+and the view's own parts take the colours of the text view's roles: the selected row and the pane's
+border the margin's, a key the help's.
+
+| Key | Action |
+|---|---|
+| ↑ ↓, `k` `j` | move |
+| → `l`, ← `h` | open, close; ← on a closed row goes to its parent |
+| ⏎ | a shared row: go to its first row; an answer set `ask` names: `why` on it; else open or close |
+| `s` | show or hide the pane: the rule the selected row cites, or the first cited below it |
+| `+` | explain the selected step's block one step deeper |
+| `/`, `n` | find a literal, the next match |
+| `f` | `test`, `explain`: only the sources that did not pass |
+| `e` | `test`, `explain`: open every failed claim's evidence, finding it if need be |
+| `?` | the keys that apply to the view, in these words |
+| `q`, Ctrl-C; Esc | quit; Esc first closes the find box, else stops a search, else closes a `why` opened from `ask` |
+
+`f` and `e` apply to `test` and `explain`, `s` and `+` to all but `ask`; neither the footer nor `?`
+lists a key that does not apply.
+
+The mouse selects and opens rows, and nothing else.
+
 ## Diagnostics
 
 A diagnostic names what is wrong. Its message is lowercase and has no trailing period. How to fix
-it stands only on a `help` line; context stands on a `note`. The default (`--format full`) is the
+it stands only on a `help` line; context stands on a `note`. The default is the
 rustc form: `error: message`, then ` --> path:line:col`, a source snippet with carets and a primary
-label, then `= note:` and `= help:` lines. `--format short` prints one line per diagnostic in the
+label, then `= note:` and `= help:` lines. `--short` prints one line per diagnostic in the
 gcc form `path:line:col-col: error: message`. Columns count Unicode scalars; clingo's byte columns
 are converted at the boundary. Syntax errors read `expected X, found Y`. Non-ASCII outside strings and comments is refused before clingo sees it (program text, `#include`d files, and tag payloads), so a bad character never aborts the process.
 

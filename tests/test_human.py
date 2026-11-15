@@ -18,10 +18,10 @@ from elenctic.json_view import encode
 from elenctic.legend import MARKS, SEVERITY_ROLES, VERDICT_ROLES
 from elenctic.paint import Color
 from elenctic.presentation import PLAIN, Presentation, Style
-from elenctic.program import Fault, Program
+from elenctic.program import Fault, Locus, Program
 from elenctic.report import Entry, Run
 from elenctic.search import Limits
-from elenctic.spans import Position, Severity, Span
+from elenctic.spans import Position, Severity, Span, failure
 from elenctic.verdicts import Ended, Finding, Report, Verdict
 from runs import FAILING, FAULTY, PASSING, PROGRAM_WITH_ESCAPE_CODES, UNDECIDED_COUNT, entry
 
@@ -330,3 +330,10 @@ def test_a_diagnostic_on_a_last_line_without_a_newline_shows_its_snippet() -> No
     text = "p.\n% @expect sat\n% @count x"
     rendered = render_run(Run((entry(text, "l.lp"),)), PLAIN)
     assert "3 | % @count x\n" in rendered.stderr
+
+
+def test_a_diagnostic_on_no_line_of_the_source_shows_only_where_it_is() -> None:
+    span = Span("z.lp", Position(0, 1), Position(0, 2))
+    fault = Fault(Locus.PROGRAM, (failure(span, "no such line", label="here"),))
+    rendered = render_run(Run((Entry("z.lp", fault, "p.\nq.\n"),)), PLAIN)
+    assert rendered.stderr == "error: no such line\n --> z.lp:0:1\n"

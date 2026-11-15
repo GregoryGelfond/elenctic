@@ -34,7 +34,9 @@ from elenctic.legend import (
     label,
     listed,
     mark,
+    quoted,
     refuted,
+    underlined,
     words,
 )
 from elenctic.literals import Assumption, Literal
@@ -151,3 +153,16 @@ def test_literals_and_valuations_are_listed_in_their_own_order_and_nothing_else_
     assert listed(frozenset({(Literal("p"),)})) is None
     rows = frozenset({(parse_term("b"), parse_term("10")), (parse_term("b"), parse_term("2"))})
     assert [",".join(map(str, row)) for row in listed(rows) or ()] == ["b,2", "b,10"]
+
+
+def test_a_span_on_no_line_of_the_source_is_not_quoted() -> None:
+    lines = ["p.", "q."]
+    for line in (0, 3):
+        span = Span("t.lp", Position(line, 1), Position(line, 2))
+        assert quoted(span, lines, Role.ERROR) == ()
+    assert quoted(Span("t.lp", Position(2, 1), Position(2, 3)), lines, Role.ERROR)
+
+
+def test_an_empty_span_is_marked_by_one_caret_where_it_stands() -> None:
+    assert underlined(Span("t.lp", Position(1, 3), Position(1, 3))) == ("  ", "^")
+    assert underlined(Span("t.lp", Position(1, 3), Position(1, 6))) == ("  ", "^^^")

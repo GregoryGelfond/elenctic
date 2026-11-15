@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --locked --python ${{ matrix.python }} --extra theory
+      - run: uv sync --locked --python ${{ matrix.python }} --extra theory --extra tui
       - run: uv run pytest
   pixi:
     # The gate: format, lint, strict types, import contracts, tests.

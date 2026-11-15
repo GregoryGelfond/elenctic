@@ -5,7 +5,9 @@ import os
 import signal
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from enum import IntEnum
+from dataclasses import replace
+from enum import IntEnum, StrEnum, auto
+from importlib import import_module
 from math import inf
 from pathlib import Path
 from typing import Final
@@ -16,29 +18,39 @@ from elenctic.determination import Range, Truncation, option
 from elenctic.human import (
     Format,
     Rendered,
+    deprecated,
     internal_error,
     refused,
     render_ask,
     render_run,
     render_why,
     reserved,
+    source_lines,
     version,
 )
 from elenctic.inquiry import Ask, AskExit, Why, WhyExit, ask, why
 from elenctic.json_view import inquiry_json, to_json
-from elenctic.literals import Scenario
-from elenctic.presentation import Environment, Presentation, Stream, When, resolve
+from elenctic.literals import Literal, Scenario
+from elenctic.presentation import (
+    Environment,
+    Presentation,
+    Stream,
+    Style,
+    When,
+    interactive,
+    resolve,
+)
 from elenctic.program import Fault, Locus, Program
 from elenctic.queries import read_query
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
-from elenctic.session import evidenced
+from elenctic.session import Session, evidenced, session
 from elenctic.spans import Diagnostic, Parsed, failure, first_unlexable, note
 from elenctic.syntax import read_atom, read_scenario
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
-from elenctic.verdicts import Report
+from elenctic.verdicts import Finding, Report
 
 DEFAULT_MAX_SECONDS: Final = 30.0
 DEFAULT_MAX_ANSWER_SETS: Final = 100_000
@@ -133,13 +145,42 @@ def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
     return options
 
 
-def _written(command: argparse.ArgumentParser, written: str) -> None:
+class View(StrEnum):
+    """How a command writes what it found: `--format`."""
+
+    TEXT = auto()
+    JSON = auto()
+    TUI = auto()
+    """The interactive view, from the optional `elenctic[tui]` extra."""
+
+
+DEPRECATED: Final = {"full": "--format text", "short": "--format text --short"}
+"""The values of `--format` that 1.0 took, which 1.x still accepts with a note and 2.0 removes."""
+INTERACTIVE: Final = "tui on a terminal when elenctic[tui] is installed, else text"
+"""The default of `--format` for the commands that show evidence."""
+
+
+def _view(text: str) -> str:
+    """Read the value of `--format`: a view, or a value 1.x still accepts."""
+    if text in set(View) or text in DEPRECATED:
+        return text
+    message = f"{text!r} is not text, json or tui"
+    raise argparse.ArgumentTypeError(message)
+
+
+def _written(command: argparse.ArgumentParser, written: str, default: str) -> None:
     """Give a command the options that choose how what it found is written."""
     command.add_argument(
         "--format",
-        choices=("full", "short", "json"),
-        default="full",
-        help=f"how to write {written}: rustc form (default), one-line short, or JSON",
+        type=_view,
+        metavar="text|json|tui",
+        help=f"how to write {written}: text, JSON, or tui, the interactive view "
+        f"(default: {default})",
+    )
+    command.add_argument(
+        "--short",
+        action="store_true",
+        help="write each diagnostic on one line, `path:line:col: level: message` (text only)",
     )
     command.add_argument(
         "--json", action="store_true", help=f"write {written} as JSON (same as --format json)"
@@ -164,12 +205,12 @@ def _limited(command: argparse.ArgumentParser) -> None:
     )
 
 
-def _checking(command: argparse.ArgumentParser, written: str) -> None:
+def _checking(command: argparse.ArgumentParser, written: str, default: str) -> None:
     """Give a command that checks programs the options of `test`."""
     command.add_argument(
         "paths", nargs="+", type=Path, help=".lp files, or directories searched for them"
     )
-    _written(command, written)
+    _written(command, written, default)
     command.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
     command.add_argument(
         "--root",
@@ -203,7 +244,7 @@ def _depth(command: argparse.ArgumentParser) -> None:
 def _asking(command: argparse.ArgumentParser, written: str) -> None:
     """Give a command that asks about one program its path and the options of its search."""
     command.add_argument("path", type=Path, metavar="PATH", help="the .lp file asked about")
-    _written(command, written)
+    _written(command, written, INTERACTIVE)
     command.add_argument(
         "--over",
         choices=list(Range),
@@ -235,11 +276,11 @@ def _parser() -> argparse.ArgumentParser:
     test = commands.add_parser(
         "test", parents=options, help="check programs against their contracts"
     )
-    _checking(test, "the run")
+    _checking(test, "the run", View.TEXT)
     explain = commands.add_parser(
         "explain", parents=options, help="check programs, and show why each failed claim fails"
     )
-    _checking(explain, "the run, with the evidence")
+    _checking(explain, "the run, with the evidence", INTERACTIVE)
     _depth(explain)
     why = commands.add_parser(
         "why", parents=options, help="show why an atom holds, or not, in an answer set"
@@ -440,8 +481,8 @@ def _checked(
     return _entry(path, limits, interrupt, named=named, root=root, max_depth=max_depth)
 
 
-def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str]) -> Presentation:
-    """Decide once how each stream is written: the one place that reads the environment.
+def _presentation(arguments: argparse.Namespace, environment: Environment) -> Presentation:
+    """Decide once how each stream is written.
 
     `Stream.of` asks each stream. It governs elenctic's own report and diagnostics; the
     parser's help and usage are its own.
@@ -449,7 +490,7 @@ def _presentation(arguments: argparse.Namespace, environment: Mapping[str, str])
     return resolve(
         When(arguments.color),
         When(arguments.icons),
-        Environment.of(environment),
+        environment,
         stdout=Stream.of(sys.stdout),
         stderr=Stream.of(sys.stderr),
     )
@@ -469,45 +510,114 @@ def _sigint(interrupt: Interrupt) -> Callable[[int, object], None]:
 
 
 def _searching(arguments: argparse.Namespace) -> tuple[Limits, Interrupt]:
-    """Take the limits of each search, and the interrupt the first SIGINT pulls."""
+    """Take the limits of each search, and the interrupt the first SIGINT pulls.
+
+    The interactive view's interrupt also stops the one call it cancels.
+    """
     limits = Limits(max_seconds=arguments.max_seconds, max_answer_sets=arguments.max_answer_sets)
-    interrupt = Interrupt()
+    interrupt = _calls() if arguments.view is View.TUI else Interrupt()
     signal.signal(signal.SIGINT, _sigint(interrupt))
     return limits, interrupt
+
+
+def _calls() -> Interrupt:
+    from elenctic.tui.calls import Calls  # noqa: PLC0415
+
+    return Calls()
+
+
+def _diagnosed(style: Style) -> Callable[[Fault | Internal, str | None, str], str]:
+    """Write a refusal for the interactive view as the text view writes it, in its style."""
+    shown = Presentation(style, style)
+
+    def write(refusal: Fault | Internal, text: str | None, source: str) -> str:
+        return refused(refusal, shown, source=source, text=text).stderr
+
+    return write
+
+
+type _Evidenced = Callable[[Entry, Finding, int | Limit], Finding | Fault | Internal]
+"""Find a failed claim's evidence at a depth, the callable the interactive view is given."""
+
+
+def _evidence_of(limits: Limits, interrupt: Interrupt) -> _Evidenced:
+    """Find a failed claim's evidence for the interactive view, one session for each source."""
+    opened: dict[str, Session | Fault] = {}
+
+    def found(entry: Entry, finding: Finding, depth: int | Limit) -> Finding | Fault | Internal:
+        try:
+            if entry.source not in opened:
+                program = Program(entry.text or "", entry.source, Path(entry.source))
+                solver = entry.result.solver if isinstance(entry.result, Report) else None
+                opened[entry.source] = session(
+                    program,
+                    *(() if solver is None else (solver,)),
+                    limits=limits,
+                    interrupt=interrupt,
+                )
+            each = opened[entry.source]
+            if isinstance(each, Fault):
+                return each
+            return replace(finding, evidence=each.evidence(finding, max_depth=depth))
+        except Exception as error:  # noqa: BLE001
+            return Internal.of(error)
+
+    return found
 
 
 def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
     """Check the paths; for `explain`, give each failed claim its evidence."""
     limits, interrupt = _searching(arguments)
     plan = _plan(arguments.paths, arguments.root)
-    max_depth = arguments.max_depth if arguments.command == "explain" else None
+    explaining = arguments.command == "explain"
+    max_depth = arguments.max_depth if explaining and arguments.view is not View.TUI else None
     entries = [_checked(item, limits, interrupt, max_depth) for item in plan]
     run = Run(
         tuple(entry for entry in entries if entry is not None),
         notes=_walked_notes([item for item in plan if not isinstance(item, Entry)]),
     )
-    fmt = "json" if arguments.json else arguments.format
-    if fmt == "json":
+    if arguments.view is View.JSON:
         sys.stdout.write(to_json(run))
-    else:
-        rendered = render_run(
-            run,
-            presentation,
-            verbose=arguments.verbose,
-            form=Format.SHORT if fmt == "short" else Format.FULL,
-            spans=getattr(arguments, "spans", False),
-        )
+        return run.exit_code
+    rendered = render_run(
+        run,
+        presentation,
+        verbose=arguments.verbose,
+        form=arguments.form,
+        spans=getattr(arguments, "spans", False),
+    )
+    if arguments.view is View.TUI:
+        _show_run(run, arguments, presentation, _evidence_of(limits, interrupt))
         sys.stderr.write(rendered.stderr)
-        sys.stdout.write(rendered.stdout)
+        return run.exit_code
+    _write(rendered)
     return run.exit_code
 
 
-def _format(arguments: argparse.Namespace) -> str:
-    return "json" if arguments.json else arguments.format
+def _show_run(
+    run: Run, arguments: argparse.Namespace, presentation: Presentation, evidence: _Evidenced
+) -> None:
+    """Show a run in the interactive view, which finds a claim's evidence when it is opened.
 
+    `explain` opens each failed claim at the start.
+    """
+    from elenctic import tui  # noqa: PLC0415
 
-def _form(arguments: argparse.Namespace) -> Format:
-    return Format.SHORT if _format(arguments) == "short" else Format.FULL
+    explaining = arguments.command == "explain"
+    style = presentation.stdout
+    shown = tui.run_view(
+        run,
+        style,
+        command=arguments.command,
+        subject=" ".join(map(str, arguments.paths)),
+        lines_of=source_lines(None),
+        diagnosed=_diagnosed(style),
+        evidence=evidence,
+        max_depth=arguments.max_depth if explaining else DEFAULT_MAX_DEPTH,
+        every=not explaining or arguments.verbose,
+        opened=explaining,
+    )
+    tui.show(shown, style)
 
 
 def _write(rendered: Rendered) -> None:
@@ -526,11 +636,11 @@ def _refuse[Outcome: IntEnum](  # noqa: PLR0913
 ) -> Outcome:
     """Write a refusal of the program or an argument, whose `text` it shows, and exit `outcome`."""
     fault = refusal if isinstance(refusal, Fault) else Fault(Locus.REQUEST, (refusal,))
-    if _format(arguments) == "json":
+    if arguments.view is View.JSON:
         sys.stdout.write(inquiry_json(command, fault, outcome))
     else:
         source = str(arguments.path)
-        _write(refused(fault, presentation, form=_form(arguments), source=source, text=text))
+        _write(refused(fault, presentation, form=arguments.form, source=source, text=text))
     return outcome
 
 
@@ -553,31 +663,53 @@ def _why(arguments: argparse.Namespace, presentation: Presentation) -> WhyExit:
             "why", scenario, arguments, presentation, text=assumed, outcome=WhyExit.FAULT
         )
     limits, interrupt = _searching(arguments)
-    try:
-        result: Why | Internal = why(
-            program,
-            atom,
-            index=arguments.answer_set,
-            scenario=scenario,
-            over=arguments.over,
-            limits=limits,
-            interrupt=interrupt,
-            max_depth=arguments.max_depth,
-        )
-    except Exception as error:  # noqa: BLE001
-        result = Internal.of(error)
+
+    def explained(depth: int | Limit) -> Why | Internal:
+        try:
+            return why(
+                program,
+                atom,
+                index=arguments.answer_set,
+                scenario=scenario,
+                over=arguments.over,
+                limits=limits,
+                interrupt=interrupt,
+                max_depth=depth,
+            )
+        except Exception as error:  # noqa: BLE001
+            return Internal.of(error)
+
+    result = explained(arguments.max_depth)
     outcome = WhyExit.of(result)
-    if _format(arguments) == "json":
+    if arguments.view is View.JSON:
         sys.stdout.write(inquiry_json("why", result, outcome))
         return outcome
     source = str(arguments.path)
+    if arguments.view is View.TUI and not isinstance(result, Fault | Internal):
+        from elenctic import tui  # noqa: PLC0415
+
+        style = presentation.stdout
+        shown = tui.why_view(
+            source,
+            atom,
+            result,
+            style,
+            over=arguments.over,
+            lines_of=source_lines(program.text),
+            diagnosed=_diagnosed(style),
+            explained=explained,
+            max_depth=arguments.max_depth,
+            text=program.text,
+        )
+        tui.show(shown, style)
+        return outcome
     _write(
         render_why(
             source,
             atom,
             result,
             presentation,
-            form=_form(arguments),
+            form=arguments.form,
             spans=arguments.spans,
             over=arguments.over,
             text=program.text,
@@ -604,11 +736,43 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation) -> AskExit:
     except Exception as error:  # noqa: BLE001
         result = Internal.of(error)
     outcome = AskExit.of(result)
-    if _format(arguments) == "json":
+    if arguments.view is View.JSON:
         sys.stdout.write(inquiry_json("ask", result, outcome))
         return outcome
     source = str(arguments.path)
-    form = _form(arguments)
+    if arguments.view is View.TUI and not isinstance(result, Fault | Internal):
+        from elenctic import tui  # noqa: PLC0415
+
+        def why_of(literal: Literal, index: int, depth: int | Limit) -> Why | Internal:
+            try:
+                return why(
+                    program,
+                    literal,
+                    index=index,
+                    over=arguments.over,
+                    limits=limits,
+                    interrupt=interrupt,
+                    max_depth=depth,
+                )
+            except Exception as error:  # noqa: BLE001
+                return Internal.of(error)
+
+        style = presentation.stdout
+        shown = tui.ask_view(
+            source,
+            query,
+            result,
+            style,
+            over=arguments.over,
+            lines_of=source_lines(program.text),
+            diagnosed=_diagnosed(style),
+            why_of=why_of,
+            max_depth=DEFAULT_MAX_DEPTH,
+            text=program.text,
+        )
+        tui.show(shown, style)
+        return outcome
+    form = arguments.form
     _write(render_ask(source, query, result, presentation, form=form, text=program.text))
     return outcome
 
@@ -637,6 +801,72 @@ def _guarded[Outcome](
 type Outcome = Exit | VersionExit | WhyExit | AskExit
 """The outcome of a command: each has its own type, and its value is the status to exit with."""
 
+FAULTS: Final[Mapping[str, Outcome]] = {
+    "test": Exit.FAULT,
+    "explain": Exit.FAULT,
+    "why": WhyExit.FAULT,
+    "ask": AskExit.FAULT,
+}
+"""The commands that write what they found, each with the outcome of a refused request."""
+
+
+def _installed() -> bool:
+    """Say whether the interactive view's extra is installed: whether its package imports."""
+    try:
+        import_module("elenctic.tui")
+    except ModuleNotFoundError as error:
+        if (error.name or "").partition(".")[0] in {"textual", "rich"}:
+            return False
+        raise
+    return True
+
+
+def _tui_refused(message: str, tip: str) -> Fault:
+    return Fault(Locus.REQUEST, (failure(None, message, help=(tip,)),))
+
+
+def _chosen(
+    arguments: argparse.Namespace, presentation: Presentation, environment: Environment
+) -> tuple[View, Format] | Fault:
+    """Decide how a command writes what it found, from `--format`, `--json` and `--short`.
+
+    With no `--format`, the commands that show evidence take the interactive view when its extra
+    is installed and stdin and stdout are terminals; `test`, and every other case, takes text. A
+    value 1.0 took is read as its new spelling, with a note.
+    """
+    form = Format.SHORT if arguments.short or arguments.format == "short" else Format.FULL
+    named = _named(arguments, presentation)
+    terminal = interactive(environment, stdin=Stream.of(sys.stdin), stdout=Stream.of(sys.stdout))
+    if named is None:
+        tui = arguments.command != "test" and terminal and _installed()
+        return (View.TUI if tui else View.TEXT), form
+    refusal = _tui_refusal(terminal=terminal) if named == View.TUI else None
+    return (View(named), form) if refusal is None else refusal
+
+
+def _named(arguments: argparse.Namespace, presentation: Presentation) -> str | None:
+    """Name the view `--json` or `--format` asks for; a value 1.0 took is read anew, with a note."""
+    named: str | None = "json" if arguments.json else arguments.format
+    if named in DEPRECATED:
+        sys.stderr.write(deprecated(f"--format {named}", DEPRECATED[named], presentation.stderr))
+        return View.TEXT
+    return named
+
+
+def _tui_refusal(*, terminal: bool) -> Fault | None:
+    """Why `--format tui` cannot be shown: the extra is missing, or there is no terminal."""
+    if not _installed():
+        return _tui_refused(
+            "`--format tui` needs the optional `elenctic[tui]` extra",
+            "pip install 'elenctic[tui]'",
+        )
+    if not terminal:
+        return _tui_refused(
+            "`--format tui` needs a terminal on stdin and stdout",
+            "write `--format text` to a pipe or a file",
+        )
+    return None
+
 
 def _runner(
     command: str, arguments: argparse.Namespace, presentation: Presentation
@@ -661,8 +891,15 @@ def main(argv: Sequence[str] | None = None) -> Outcome:
     arguments = parser.parse_args(_normalized(sys.argv[1:] if argv is None else argv))
     if arguments.command is None and not arguments.show_version:
         parser.error("the following arguments are required: COMMAND")
-    presentation = _presentation(arguments, os.environ)
+    environment = Environment.of(os.environ)  # the one place that reads the environment
+    presentation = _presentation(arguments, environment)
     command = "version" if arguments.show_version else str(arguments.command)
+    if command in FAULTS:
+        chosen = _chosen(arguments, presentation, environment)
+        if isinstance(chosen, Fault):
+            _write(refused(chosen, presentation))
+            return FAULTS[command]
+        arguments.view, arguments.form = chosen
     run, failed = _runner(command, arguments, presentation)
     return _guarded(run, failed, presentation)
 

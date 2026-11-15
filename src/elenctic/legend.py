@@ -5,7 +5,7 @@ phrases, the JSON view lists sets in its order, and a later view reads the same 
 decides only where things go.
 """
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from enum import StrEnum, auto
 from shlex import quote
 from typing import Final, TypeIs, cast
@@ -31,6 +31,7 @@ from elenctic.explanation import (
     Node,
     NoRule,
     NotChosen,
+    Outranked,
     Paid,
     Reason,
     Rule,
@@ -46,7 +47,7 @@ from elenctic.patterns import Pattern
 from elenctic.query import All, Answer, Answered, Bindings, Taken
 from elenctic.report import Run
 from elenctic.search import Limit
-from elenctic.spans import Severity
+from elenctic.spans import Severity, Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
 from elenctic.writer import bound, braces, rows
 
@@ -94,6 +95,20 @@ def reported(report: Report) -> Phrase:
         Piece(report.source, Role.EMPHASIS),
         Piece(" — "),
         Piece(report.verdict.name, VERDICT_ROLES[report.verdict]),
+    )
+
+
+FAULTED: Final = "ERROR"
+"""The verdict a source is shown with when it could not be checked."""
+
+
+def faulted(source: str, diagnostics: int) -> Phrase:
+    """Word the heading of a source that could not be checked: the source, and how many reasons."""
+    return (
+        Piece(source, Role.EMPHASIS),
+        Piece(" — "),
+        Piece(FAULTED, Role.ERROR),
+        Piece(f" ({_plural(diagnostics, 'diagnostic')})", Role.REFERENCE),
     )
 
 
@@ -359,6 +374,87 @@ ASK: Final = "ask"
 """The heading of what `ask` answers."""
 ANSWER: Final = "answer"
 
+KEYS: Final[Mapping[str, str]] = {
+    "up": "up",
+    "down": "down",
+    "open": "open",
+    "close": "close",
+    "go": "go to",
+    "spans": "spans",
+    "deeper": "deeper",
+    "find": "find",
+    "next": "next",
+    "failures": "failures only",
+    "every": "explain all",
+    "keys": "keys",
+    "back": "back",
+    "quit": "quit",
+}
+"""The words of the interactive view's keys, by the action each one takes."""
+PRESSED: Final[Mapping[str, str]] = {
+    "up": "↑ k",
+    "down": "↓ j",
+    "open": "→ l",
+    "close": "← h",
+    "go": "enter",
+    "spans": "s",
+    "deeper": "+",
+    "find": "/",
+    "next": "n",
+    "failures": "f",
+    "every": "e",
+    "keys": "?",
+    "back": "esc",
+    "quit": "q",
+}
+"""The keys of the interactive view as they are shown, by the action each one takes."""
+CHROME: Final[Mapping[str, Role]] = {
+    "cursor": Role.MARGIN,
+    "frame": Role.MARGIN,
+    "key": Role.HELP,
+}
+"""The roles of the interactive view's own parts: the selected row's bar; the pane's border and the
+scrollbars; and a key. The guides are drawn as the text view draws them, plain."""
+
+
+def titled(command: str, subject: str) -> Phrase:
+    """Word the title of the interactive view: the command, and what it was asked of."""
+    return (Piece(f"elenctic {command}", Role.EMPHASIS), Piece(f" · {subject}"))
+
+
+FIND: Final = "find a literal"
+"""The prompt of the interactive view's search."""
+NOT_FOUND: Final = "not found"
+NOTHING_DEEPER: Final = "no branch stops at its depth: there is nothing deeper"
+"""What the interactive view says when asked to go deeper than a complete explanation."""
+BENEATH: Final = "first step beneath:"
+"""What the pane says above a rule cited below the selected row, when that row cites none."""
+NO_STEP: Final = "no rule is cited here or beneath"
+SEARCHING: Final = "searching"
+"""What the interactive view shows while the library looks for more, until it finds it or `esc`."""
+CANCELLED: Final = "search cancelled"
+PENDING: Final[Phrase] = (
+    Piece(SEARCHING, Role.ASIDE),
+    Piece(" · "),
+    Piece(PRESSED["back"], CHROME["key"]),
+    Piece(" cancels"),
+)
+"""The title's note while the library looks for more: what it does, and the key that stops it."""
+
+
+def keyed(actions: Sequence[str]) -> tuple[Phrase, ...]:
+    """Word the keys of the interactive view, a line for each action: its key, then what it does."""
+    width = max((len(PRESSED[action]) for action in actions), default=0)
+    return tuple(
+        (Piece(f"{PRESSED[action]:<{width}}", CHROME["key"]), Piece(f"  {KEYS[action]}"))
+        for action in actions
+    )
+
+
+def answering(answer: Answer) -> Phrase:
+    """Word the answer a query comes to over the answer sets."""
+    return (Piece(ANSWER, Role.EMPHASIS), Piece(f": {answer.value}"))
+
 
 def taken(found: Taken, query: All, answered: Answered) -> Phrase:
     """Word an answer a query takes in one answer set alone, and the first that gives it."""
@@ -403,6 +499,40 @@ def stopped(max_depth: int | Limit) -> str:
     return f"some branches stop at depth {max_depth}; {_FURTHER}"
 
 
+def heading(role: Role, word: str, subject: str) -> Phrase:
+    """Word the opening of a block: what kind it is, in `role`, and what it is about."""
+    return (Piece(word, role), Piece(": "), Piece(subject, Role.EMPHASIS))
+
+
+def said(phrase: Phrase) -> Phrase:
+    """Word a line that says something of the whole block."""
+    return (Piece("=", Role.MARGIN), Piece(" "), *phrase)
+
+
+def noted(words: str) -> Phrase:
+    """Word a note on a block."""
+    return (Piece(f"= {Severity.NOTE.value}:", Role.NOTE), Piece(f" {words}"))
+
+
+def helped(words: str) -> Phrase:
+    """Word a help on a block: what to run or write next."""
+    return (Piece(f"= {Severity.HELP.value}:", Role.HELP), Piece(f" {words}"))
+
+
+def unfound(result: Refutation | Ended) -> Phrase:
+    """Word why there is nothing to show: the search ended, or there is no answer set."""
+    if isinstance(result, Ended):
+        return said((Piece(ended(result), Role.WARNING),))
+    return said((Piece(REFUTATION, Role.EMPHASIS), Piece(f": {refuted(result)}")))
+
+
+def written(rule: Rule, substitution: str) -> Phrase:
+    """Word a rule as written, on one line, after its place, and the substitution of a step."""
+    where = Piece(f"= {rule.span.source}:{rule.span.start.line}:", Role.REFERENCE)
+    phrase = (where, Piece(f" {' '.join(rule.text.split())}"))
+    return (*phrase, Piece(" "), Piece(substitution, Role.ASIDE)) if substitution else phrase
+
+
 EVIDENCE_HEADING: Final = "evidence"
 REFUTATION: Final = "refutation"
 OUTRANKED: Final = "outranked: the objective ranks it below the optimum"
@@ -439,3 +569,81 @@ def paid(payment: Paid, *, more: bool) -> Phrase:
     if not payment.substitution.bindings:
         return phrase
     return (*phrase, Piece(" "), Piece(str(payment.substitution), Role.ASIDE))
+
+
+_CELL: Final = 12
+"""The width of a column of the table of costs."""
+
+
+def ranking(outranked: Outranked) -> tuple[Phrase, ...]:
+    """Word how the objective ranks the literals: that they are possible, then the costs compared.
+
+    The costs are a table: one column per priority, the one they first differ at in color.
+    """
+    literals = ", ".join(map(str, listed(outranked.literals) or ()))
+    pad = len(assuming(literals)) + 2
+    cells = "".join(f"{priority(p):>{_CELL}}" for p in outranked.priorities)
+
+    def row(name: str, cost: tuple[int, ...], role: Role) -> Phrase:
+        cost_cells = (
+            Piece(f"{v:>{_CELL}}", role if p == outranked.priority else Role.EMPHASIS)
+            for p, v in zip(outranked.priorities, cost, strict=False)
+        )
+        return (Piece(f"  {name:<{pad}}"), *cost_cells)
+
+    return (
+        (Piece("1", Role.MARGIN), Piece(f" {possible(literals)}")),
+        (Piece("2", Role.MARGIN), Piece(f" {COST:<{pad}}{cells}")),
+        row(assuming(literals), outranked.assuming, Role.ERROR),
+        (
+            *row(OPTIMUM, outranked.optimum, Role.NOTE),
+            Piece("  "),
+            Piece(differs(outranked.priority), Role.ASIDE),
+        ),
+        (Piece("3", Role.MARGIN), Piece(f" {PAID}")),
+    )
+
+
+def _located(span: Span) -> Phrase:
+    """Word where a span starts, as an arrow to it."""
+    return (Piece(f" --> {span.source}:{span.start.line}:{span.start.column}", Role.MARGIN),)
+
+
+def quoted(span: Span, lines: Sequence[str], role: Role, said: Phrase = ()) -> tuple[Phrase, ...]:
+    """Quote the line a span starts on, with carets in `role` under the span, and what is `said`.
+
+    Nothing if the line is not among `lines`.
+    """
+    if not 1 <= span.start.line <= len(lines):
+        return ()
+    number = str(span.start.line)
+    pad = " " * len(number)
+    after = (Piece(" "), *said) if said else ()
+    before, carets = underlined(span)
+    return (
+        (Piece(f"{pad} |", Role.MARGIN),),
+        (Piece(f"{number} |", Role.MARGIN), Piece(f" {lines[span.start.line - 1]}")),
+        (Piece(f"{pad} |", Role.MARGIN), Piece(f" {before}"), Piece(carets, role), *after),
+    )
+
+
+def underlined(span: Span) -> tuple[str, str]:
+    """Underline the line a span starts on: the spaces before its carets, and the carets.
+
+    A span over several lines is marked by one caret where it starts.
+    """
+    width = max(1, span.end.column - span.start.column) if span.end.line == span.start.line else 1
+    return " " * (span.start.column - 1), "^" * width
+
+
+def paying(payment: Paid, lines: Sequence[str] | None, *, more: bool) -> tuple[Phrase, ...]:
+    """Word a weak-constraint instance one side pays: where its rule is, quoted when it can be."""
+    span = payment.rule.span
+    said = paid(payment, more=more)
+    found = quoted(span, lines or (), Role.ERROR if more else Role.NOTE, said)
+    if found:
+        return (_located(span), *found)
+    return (
+        _located(span),
+        (Piece("  "), Piece("|", Role.MARGIN), Piece(f" {payment.rule.text} "), *said),
+    )

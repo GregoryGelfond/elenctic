@@ -389,7 +389,7 @@ def test_a_spanless_fault_names_its_source(
     code, _out, err = run_both(capsys, "--color", "never", tmp_path)
     assert code == Exit.FAULT
     assert "bad.lp" in err
-    code, _out, err = run_both(capsys, "--color", "never", "--format", "short", tmp_path)
+    code, _out, err = run_both(capsys, "--color", "never", "--short", tmp_path)
     assert code == Exit.FAULT
     assert "bad.lp" in err
 
@@ -847,7 +847,7 @@ def test_why_past_the_last_answer_set_is_a_fault_on_stderr(
         "  |\n"
         "  = help: `--answer-set` counts from 1 to 4\n"
     )
-    _, _, short = run_both(capsys, "why", path, "a", "--answer-set", "9", "--format", "short")
+    _, _, short = run_both(capsys, "why", path, "a", "--answer-set", "9", "--short")
     assert short == f"{path}: error: there is no answer set 9: the search read 4\n"
 
 
