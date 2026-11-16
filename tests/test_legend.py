@@ -36,6 +36,7 @@ from elenctic.legend import (
     mark,
     quoted,
     refuted,
+    signed,
     underlined,
     words,
 )
@@ -166,3 +167,9 @@ def test_a_span_on_no_line_of_the_source_is_not_quoted() -> None:
 def test_an_empty_span_is_marked_by_one_caret_where_it_stands() -> None:
     assert underlined(Span("t.lp", Position(1, 3), Position(1, 3))) == ("  ", "^")
     assert underlined(Span("t.lp", Position(1, 3), Position(1, 6))) == ("  ", "^^^")
+
+
+def test_an_atom_is_signed_as_a_step_writes_it() -> None:
+    assert signed("p(1)", negated=False) == "p(1)"
+    assert signed("p(1)", negated=True) == "not p(1)"
+    assert signed(Literal("p", positive=False), negated=True) == "not -p"

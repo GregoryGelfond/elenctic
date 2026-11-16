@@ -39,6 +39,7 @@ from elenctic.legend import (
     said,
     shared,
     shows_why,
+    signed,
     stopped,
     taken,
     unfound,
@@ -95,13 +96,23 @@ class Asking:
 
 
 @dataclass(frozen=True, slots=True)
+class Paying:
+    """A row of how the objective ranks a claim: the weak-constraint instances it is about.
+
+    Each is paid by one side only, more by the claim's side when `True`.
+    """
+
+    payments: tuple[tuple[Paid, bool], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Source:
     """A row heading what one source came to; `failed` says it did not pass."""
 
     failed: bool
 
 
-type About = Step | Again | Block | Asking | Source
+type About = Step | Again | Block | Asking | Paying | Source
 """What a row shows, when the view can act on it."""
 
 
@@ -179,16 +190,20 @@ def explained(
     return rows
 
 
-def _payments(outranked: Outranked, lines_of: Lines) -> list[Row]:
-    sides: tuple[tuple[tuple[Paid, ...], bool], ...] = (
-        (outranked.assuming_only, True),
-        (outranked.optimum_only, False),
-    )
+def _paying(outranked: Outranked) -> Paying:
+    """Take the instances one side pays and the other does not, the claim's side first."""
+    sides = ((outranked.assuming_only, True), (outranked.optimum_only, False))
+    return Paying(tuple((payment, more) for payments, more in sides for payment in payments))
+
+
+def _payments(ranked: Paying, lines_of: Lines) -> list[Row]:
     rows: list[Row] = []
-    for payments, more in sides:
-        for payment in payments:
-            arrow, *quote = paying(payment, lines_of(payment.rule.span), more=more)
-            rows.append(Row((), arrow, children=[Row((), each) for each in quote]))
+    for payment, more in ranked.payments:
+        one = Paying(((payment, more),))
+        arrow, *quote = paying(payment, lines_of(payment.rule.span), more=more)
+        rows.append(
+            Row((), arrow, children=[Row((), each, about=one) for each in quote], about=one)
+        )
     return rows
 
 
@@ -201,9 +216,11 @@ def evidence(finding: Finding, glyphs: Glyphs, lines_of: Lines, block: int) -> l
         case Explanation() as explanation:
             rows += explained(explanation, glyphs, block, failed=True, over=Range.ALL)
         case Outranked() as outranked:
-            rows.append(Row(_glyph(Mark.OUTRANKED, glyphs), (Piece(OUTRANKED, Role.EMPHASIS),)))
-            rows += [Row((), phrase) for phrase in ranking(outranked)]
-            rows += _payments(outranked, lines_of)
+            ranked = _paying(outranked)
+            mark = _glyph(Mark.OUTRANKED, glyphs)
+            rows.append(Row(mark, (Piece(OUTRANKED, Role.EMPHASIS),), about=ranked))
+            rows += [Row((), phrase, about=ranked) for phrase in ranking(outranked)]
+            rows += _payments(ranked, lines_of)
             rows += explained(outranked.explanation, glyphs, block, failed=True, over=Range.ALL)
         case found:
             rows.append(Row((), unfound(found)))
@@ -284,11 +301,17 @@ def explaining(
 
 
 def why(
-    atom: Literal, result: Explanation | Refutation | Ended, glyphs: Glyphs, *, over: Range
+    atom: Literal,
+    result: Explanation | Refutation | Ended,
+    glyphs: Glyphs,
+    *,
+    over: Range,
+    negated: bool,
 ) -> list[Row]:
-    """Build the rows of what `why` found, beneath its heading."""
+    """Build the rows of what `why` found, beneath its heading: the atom as it was asked."""
     below = explaining(result, glyphs, over=over)
-    return [Row((), heading(Role.NOTE, WHY, str(atom)), children=below, about=Block(0))]
+    asked = signed(atom, negated=negated)
+    return [Row((), heading(Role.NOTE, WHY, asked), children=below, about=Block(0))]
 
 
 def ask(

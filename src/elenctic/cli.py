@@ -47,7 +47,7 @@ from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.session import Session, evidenced, session
 from elenctic.spans import Diagnostic, Parsed, failure, first_unlexable, note
-from elenctic.syntax import read_atom, read_scenario
+from elenctic.syntax import read_asked, read_scenario
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
 from elenctic.verdicts import Finding, Report
@@ -649,11 +649,12 @@ def _why(arguments: argparse.Namespace, presentation: Presentation) -> WhyExit:
     program = _read(arguments.path)
     if isinstance(program, Fault):
         return _refuse("why", program, arguments, presentation, text=None, outcome=WhyExit.FAULT)
-    atom = read_atom(arguments.atom, "ATOM")
-    if isinstance(atom, Diagnostic):
+    read = read_asked(arguments.atom, "ATOM")
+    if isinstance(read, Diagnostic):
         return _refuse(
-            "why", atom, arguments, presentation, text=arguments.atom, outcome=WhyExit.FAULT
+            "why", read, arguments, presentation, text=arguments.atom, outcome=WhyExit.FAULT
         )
+    atom, negated = read
     assumed = arguments.assuming
     scenario: Parsed[Scenario] = (
         frozenset() if assumed is None else read_scenario(assumed, "--assuming")
@@ -695,6 +696,7 @@ def _why(arguments: argparse.Namespace, presentation: Presentation) -> WhyExit:
             result,
             style,
             over=arguments.over,
+            negated=negated,
             lines_of=source_lines(program.text),
             diagnosed=_diagnosed(style),
             explained=explained,
@@ -712,6 +714,7 @@ def _why(arguments: argparse.Namespace, presentation: Presentation) -> WhyExit:
             form=arguments.form,
             spans=arguments.spans,
             over=arguments.over,
+            negated=negated,
             text=program.text,
         )
     )

@@ -130,7 +130,8 @@ A step with more than one child branches with `├──` and `└──`. The o
 a root sits at that step's indent with no branch, so a chain of single reasons keeps one indent
 however long it is.
 
-`why` writes the same block under `why:` and the atom, naming the program's path; its answer set is
+`why` writes the same block under `why:` and the atom as it was asked, `not` kept (`why: not
+access(ann,db)`), naming the program's path; its answer set is
 `answer set K of N`, or `optimal answer set K of N` under `--over optimal`, and `counterexample:`
 stays for failed claims. `ask` writes `ask:` and the query, then `= answer: yes|no|unknown` and, for
 each answer the query takes in one answer set alone, the first answer set that gives it: `true in
@@ -163,21 +164,27 @@ Each row is the text view's line, its guides aside: the same words, order, glyph
 roles and handles, painted by the same roles; `NO_COLOR` and `--color never` leave it plain. A
 shared node is drawn once, and a chain of single reasons keeps one indent. A source's diagnostics
 open into the block the text view writes. `explain` and `why` start at `--max-depth` (3), as the text
-does; `+` asks the library for one step more. `test` lists every claim, as `--verbose` does, and
-finds a failed claim's evidence when it is opened; `explain` opens with each failed claim open and
-finds its evidence then. The pane shows the rule the selected step cites, as `--spans` writes it
+does; `+` asks the library for one step more, and the cursor stays on the step it deepened, as it
+stays on its row while evidence comes in or `f` and `e` change the rows around it. `test` lists
+every claim, as `--verbose` does, and finds a failed claim's evidence when it is opened; `explain`
+opens with each failed claim open and finds its evidence then. The pane shows the rule the selected step cites, as `--spans` writes it
 with its line quoted; on a row that cites none, such as a source or a claim, it shows the first rule
-cited below it, titled `first step beneath`. Below 100 columns the pane is hidden, and it never
-narrows a source's heading. The command exits with its own code when the view is closed, and the diagnostics of a run
-go to stderr then.
+cited below it, titled `first step beneath`; on a row of how the objective ranks a claim, such as
+its costs, it quotes the weak constraints paid differently, as the text quotes them. Below 100
+columns the pane is hidden, and it never narrows a source's heading. A title too long for the title
+bar is cut short with `…`, or left out where even that does not fit, and the tally beside it kept
+whole. The command exits with its own code when the view is closed, and the diagnostics of a run go
+to stderr then.
 
 The view opens once the run is checked, and asks the library for anything more (evidence, `+`,
 `why` from `ask`) off its own thread, one call at a time: the keys answer meanwhile, the row waiting
 reads `searching` and the title `searching · esc cancels`. Esc stops the search and nothing it
 found is shown; Ctrl-C quits, stopping it first. Each call has `--max-seconds` and
 `--max-answer-sets`, as in the text. The window is titled by the command and what it was asked of,
-and the view's own parts take the colours of the text view's roles: the selected row and the pane's
-border the margin's, a key the help's.
+and the view's own parts take the colours of the text view's roles: the pane's border the margin's,
+a key the help's. The selected row is shown reversed, as a terminal shows a selection, so each of
+its pieces keeps its role's colour and reads as well as it does unselected; the scrollbars are the
+terminal's grey.
 
 | Key | Action |
 |---|---|

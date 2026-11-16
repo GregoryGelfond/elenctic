@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 from clingo import Number, Symbol
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from elenctic import engine, failures
 from elenctic.check import check
@@ -995,3 +997,119 @@ def test_a_query_whose_search_is_truncated_is_not_answered() -> None:
     made = session(Program("{ a; b }.", "t.lp"), limits=Limits(max_answer_sets=1))
     assert isinstance(made, Session)
     assert made.answer(All((Literal("a"),))) == Ended(Truncation.MAX_ANSWER_SETS)
+
+
+def _failed(name: str) -> tuple[Program, Report, list[Finding]]:
+    path = EXAMPLES / name
+    program = Program(path.read_text(), name, path)
+    report = check(program)
+    assert isinstance(report, Report), report
+    return program, report, [f for f in report.findings if f.verdict is Verdict.FAIL]
+
+
+def _deepened(path: Path) -> bool:
+    """Whether an example checks to a report with a failed claim; consequences.lp is slow."""
+    if path.name == "consequences.lp":
+        return False
+    report = check(Program(path.read_text(), path.name, path))
+    return isinstance(report, Report) and any(f.verdict is Verdict.FAIL for f in report.findings)
+
+
+DEEPENED = sorted(path.name for path in EXAMPLES.glob("*.lp") if _deepened(path))
+
+
+@pytest.mark.parametrize("name", DEEPENED)
+def test_going_deeper_in_one_session_finds_what_a_fresh_one_finds_at_that_depth(name: str) -> None:
+    """`+` asks one session for a claim's evidence again, deeper; the counterexample stays."""
+    program, report, failed = _failed(name)
+    kept = session(program, report.solver)
+    assert isinstance(kept, Session)
+    for finding in failed:
+        for depth in (1, 2, 3):
+            fresh = session(program, report.solver)
+            assert isinstance(fresh, Session)
+            assert kept.evidence(finding, max_depth=depth) == fresh.evidence(
+                finding, max_depth=depth
+            )
+
+
+_DEPTHS = (1, 2, 3, Limit.UNBOUNDED)
+
+
+@settings(max_examples=30, deadline=None)
+@given(
+    name=st.sampled_from(["team.lp", "laptop.lp", "absent.lp"]),
+    depths=st.lists(st.sampled_from(_DEPTHS), min_size=1, max_size=5),
+)
+def test_evidence_asked_at_any_depths_in_turn_is_what_a_fresh_session_finds(
+    name: str, depths: list[int | Limit]
+) -> None:
+    program, report, failed = _failed(name)
+    kept = session(program, report.solver)
+    assert isinstance(kept, Session)
+    for depth in depths:
+        fresh = session(program, report.solver)
+        assert isinstance(fresh, Session)
+        for finding in failed:
+            assert kept.evidence(finding, max_depth=depth) == fresh.evidence(
+                finding, max_depth=depth
+            )
+
+
+def test_a_session_numbers_an_answer_set_the_same_each_time_it_is_asked() -> None:
+    """Once it has solved, clingo enumerates in another order; the session keeps its first."""
+    path = EXAMPLES / "team.lp"
+    opened = session(Program(path.read_text(), "team.lp", path))
+    assert isinstance(opened, Session)
+    first = [opened.counterexample(index) for index in range(1, 8)]
+    assert [opened.counterexample(index) for index in range(1, 8)] == first
+    assert opened.answer(All(())) == opened.answer(All(()))
+
+
+def test_a_search_the_limits_cut_is_asked_again() -> None:
+    """Only a search that ended is kept: one cut short, as by `esc`, runs again when asked again."""
+    interrupt = Interrupt()
+    interrupt.pull()
+    opened = session(Program("{ p }.", "t.lp"), interrupt=interrupt)
+    assert isinstance(opened, Session)
+    assert isinstance(opened.counterexample(1), Ended)
+    opened.interrupt = Interrupt()
+    assert isinstance(opened.counterexample(1), Counterexample)
+
+
+def test_a_session_searches_once_for_each_scenario_it_is_asked_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Asked again, an ended search is read from what the session kept, not run on clingo again."""
+    path = EXAMPLES / "laptop.lp"
+    opened = session(Program(path.read_text(), "laptop.lp", path))
+    assert isinstance(opened, Session)
+    calls: list[str] = []
+    solve, optimize = opened.solve, opened.optimize
+
+    def solving(*args: object, **kwargs: object) -> object:
+        calls.append("solve")
+        return solve(*args, **kwargs)  # type: ignore[arg-type]
+
+    def optimizing(*args: object, **kwargs: object) -> object:
+        calls.append("optimize")
+        return optimize(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(opened, "solve", solving)
+    monkeypatch.setattr(opened, "optimize", optimizing)
+    ram = frozenset({Literal.parse("ram(32)")})
+    for _ in range(2):
+        opened.counterexample(1)
+        opened.counterexample(1, over=Range.OPTIMAL)
+        opened.outrank(ram)
+    assert calls == ["solve", "optimize", "optimize"]
+
+
+def test_an_optimization_the_limits_cut_is_asked_again() -> None:
+    interrupt = Interrupt()
+    interrupt.pull()
+    opened = session(Program("{ p }. #minimize { 1 : p }.", "t.lp"), interrupt=interrupt)
+    assert isinstance(opened, Session)
+    assert isinstance(opened.counterexample(1, over=Range.OPTIMAL), Ended)
+    opened.interrupt = Interrupt()
+    assert isinstance(opened.counterexample(1, over=Range.OPTIMAL), Counterexample)

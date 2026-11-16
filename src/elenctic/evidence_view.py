@@ -35,6 +35,7 @@ from elenctic.legend import (
     said,
     shared,
     shows_why,
+    signed,
     stopped,
     taken,
     unfound,
@@ -223,10 +224,14 @@ def why_lines(  # noqa: PLR0913
     *,
     spans: bool,
     over: Range,
+    negated: bool,
 ) -> list[str]:
-    """Write the block that shows why an atom holds, or not, in the answer set asked for."""
+    """Write the block that shows why an atom holds, or not, in the answer set asked for.
+
+    It is headed by the atom as it was asked: `negated` when `not` was written before it.
+    """
     pen = _Pen(style)
-    lines = pen.heading(Role.NOTE, WHY, str(atom), source)
+    lines = pen.heading(Role.NOTE, WHY, signed(atom, negated=negated), source)
     if isinstance(result, Explanation):
         lines += explanation_lines(result, style, spans=spans, failed=False, over=over)
     else:

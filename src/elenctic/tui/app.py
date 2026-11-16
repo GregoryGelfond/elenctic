@@ -12,15 +12,16 @@ from functools import partial
 from threading import Event
 from typing import ClassVar, Final, override
 
+from rich.style import Style as Look
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.events import Resize
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Footer, Input, Static, Tree
-from textual.widgets.tree import TreeNode
 
-from elenctic.explanation import Rule, Unexpanded
+from elenctic.explanation import Handle, Rule
 from elenctic.glyphs import Glyphs
 from elenctic.legend import (
     BENEATH,
@@ -30,11 +31,13 @@ from elenctic.legend import (
     NO_STEP,
     NOT_FOUND,
     NOTHING_DEEPER,
+    PAID,
     PENDING,
     PRESSED,
     SEARCHING,
     cited,
     keyed,
+    paying,
     quoted,
     written,
 )
@@ -42,7 +45,18 @@ from elenctic.paint import Color, Phrase, Piece, Role, plain
 from elenctic.presentation import Style
 from elenctic.search import Limit
 from elenctic.tui.calls import call
-from elenctic.tui.outline import Again, Asking, Block, Lines, Row, Source, Step
+from elenctic.tui.outline import Again, Asking, Block, Lines, Paying, Row, Step
+from elenctic.tui.places import (
+    Node,
+    found_at,
+    has_failed,
+    holding,
+    instead,
+    is_beneath,
+    place_of,
+    stopping,
+    walk,
+)
 from elenctic.tui.rows import lines, painted, text
 from elenctic.tui.theme import NAME, theme
 
@@ -75,25 +89,6 @@ class View:
     """The rows can hold steps, which the pane shows and `+` takes deeper."""
 
 
-type Node = TreeNode[Row]
-
-
-def _nodes(node: Node) -> Iterator[Node]:
-    """Walk the nodes beneath `node`, each before its children, in the order they are shown."""
-    pending = list(reversed(node.children))
-    while pending:
-        each = pending.pop()
-        yield each
-        pending.extend(reversed(each.children))
-
-
-def _holder(node: Node | None, block: int) -> Node | None:
-    """Find the nearest row, `node` or above it, whose children are the evidence block `block`."""
-    while node is not None and not (node.data is not None and node.data.about == Block(block)):
-        node = node.parent
-    return node
-
-
 def _citing(row: Row | None) -> tuple[Row, tuple[Rule, str]] | None:
     """Find the row, `row` or the first below it in reading order, whose step cites a rule."""
     pending = [] if row is None else [row]
@@ -105,19 +100,6 @@ def _citing(row: Row | None) -> tuple[Row, tuple[Rule, str]] | None:
         if named is not None:
             return each, named
     return None
-
-
-def _stops(holder: Node) -> bool:
-    """Whether some branch beneath `holder` stops at its depth."""
-    return any(
-        isinstance(each.data.about, Step) and isinstance(each.data.about.node.reason, Unexpanded)
-        for each in _nodes(holder)
-        if each.data is not None
-    )
-
-
-def _failed(row: Row | None) -> bool:
-    return row is not None and isinstance(row.about, Source) and row.about.failed
 
 
 _WAITING: Final = Row((), (Piece(SEARCHING, Role.ASIDE),))
@@ -257,7 +239,17 @@ class Outline(Tree[Row]):
             pending.extend((node, child, None) for child in reversed(row.children))
 
     def shown(self) -> Iterator[Node]:
-        return _nodes(self.root)
+        return walk(self.root)
+
+    @override
+    def render_label(self, node: Node, base_style: Look, style: Look) -> Text:
+        """Write a row with the selected row's style beneath its own, so each piece keeps its role.
+
+        Textual lays that style over the row, which would paint every piece in one colour.
+        """
+        shown = super().render_label(node, base_style, Look())
+        shown.stylize_before(style, len(shown) - len(node.label))
+        return shown
 
     def _waiting(self, node: Node, block: int) -> Callable[[], None]:
         """Show that `block` is being found beneath `node`; return what takes the waiting back."""
@@ -372,6 +364,18 @@ class Outline(Tree[Row]):
             above = above.parent
         self.call_after_refresh(self.move_cursor, node)
 
+    def stay(self, holder: Node, place: tuple[Handle, ...] | None) -> None:
+        """Keep the cursor on the row it was on, now shown again beneath `holder`, and open it.
+
+        A row with no step of its own, or one gone from the rows shown again, gives way to `holder`.
+        """
+        kept = None if place is None else found_at(holder, place)
+        if kept is None:
+            self.reach(holder)
+            return
+        kept.expand()
+        self.reach(kept)
+
     def deeper(self) -> bool:
         """Explain the selected step's block one step deeper; `False` if it has no further step."""
         node = self.cursor_node
@@ -379,8 +383,8 @@ class Outline(Tree[Row]):
         if not isinstance(about, Step | Again):
             return False
         block = about.block
-        holder = _holder(node, block)
-        if holder is None or holder.data is None or not _stops(holder):
+        holder = holding(node, block)
+        if holder is None or holder.data is None or not stopping(holder):
             return False
         if block in self.finding:
             return True
@@ -391,12 +395,16 @@ class Outline(Tree[Row]):
 
         async def found(rows: list[Row]) -> None:
             undo()
+            at = self.cursor_node
+            moved = at is not None and is_beneath(at, holder)
+            place = None if at is None else place_of(holder, at)
             self.depths[block] = further
             holder.remove_children()
             row.children = rows
             self.show(rows, holder)
             self.recited()
-            self.call_after_refresh(self.move_cursor, holder)
+            if moved:
+                self.stay(holder, place)
 
         self.viewer.search(partial(self.view.evidence, block, further), found, undo)
         return True
@@ -495,11 +503,20 @@ class Viewing(Screen[None]):
                 outline.load(node)
 
     def titled(self) -> None:
-        """Write the title bar: the title, then the status, or what the library is finding."""
+        """Write the title bar: the title, then the status, or what the library is finding.
+
+        The status is kept whole; a title too long for the rest is cut short, with an ellipsis,
+        and left out where there is no room for even that.
+        """
         width = self.size.width
         status = PENDING if self.viewer.searches else self.view.status
         left = text(Row((), self.view.title), self.style)
         right = text(Row((), status), self.style)
+        room = width - right.cell_len - 1
+        if room > 0:
+            left.truncate(room, overflow="ellipsis")
+        else:
+            left = Text()
         left.pad_right(max(1, width - left.cell_len - right.cell_len))
         left.append_text(right)
         self.query_one("#title", Static).update(left)
@@ -527,9 +544,15 @@ class Viewing(Screen[None]):
     def cited(self, row: Row | None) -> None:
         """Show in the pane the rule the row cites, or else the first one cited in the rows below.
 
+        A row of how the objective ranks a claim shows the weak constraints it is about, instead.
+
         The rule is written as `--spans` writes it, wrapped to the pane, and its line quoted whole.
         """
         rule_of, quote_of = self.query_one("#cited", Static), self.query_one("#quote", Static)
+        if row is not None and isinstance(row.about, Paying):
+            rule_of.update(lines(((Piece(PAID, Role.ASIDE),),), self.style))
+            quote_of.update(lines(self._paid(row.about), self.style))
+            return
         found = _citing(row)
         if found is None:
             rule_of.update(lines(((Piece(NO_STEP, Role.REFERENCE),),), self.style))
@@ -540,6 +563,14 @@ class Viewing(Screen[None]):
         rule_of.update(lines((*above, written(rule, substitution)), self.style))
         source = self.view.lines_of(rule.span)
         quote_of.update(lines(quoted(rule.span, source or (), Role.NOTE), self.style))
+
+    def _paid(self, ranked: Paying) -> tuple[Phrase, ...]:
+        """Quote each weak constraint a ranking row is about, as the text view quotes it."""
+        return tuple(
+            phrase
+            for payment, more in ranked.payments
+            for phrase in paying(payment, self.view.lines_of(payment.rule.span), more=more)
+        )
 
     def on_tree_node_expanded(self, event: Tree.NodeExpanded[Row]) -> None:
         if event.node.data is not None:
@@ -598,12 +629,25 @@ class Viewing(Screen[None]):
     def action_failures(self) -> None:
         """Show only the sources that did not pass, or each again; rows already shown stay."""
         self.failures_only = not self.failures_only
-        outline = self.outline
         if self.failures_only:
-            for node in list(outline.root.children):
-                if not _failed(node.data):
-                    node.remove()
-            return
+            self._only_failures()
+        else:
+            self._every_source()
+
+    def _only_failures(self) -> None:
+        """Leave out each source that passed; the cursor on one goes to the next that failed."""
+        outline = self.outline
+        tops = list(outline.root.children)
+        moved = instead(tops, outline.cursor_node)
+        for node in tops:
+            if not has_failed(node.data):
+                node.remove()
+        if moved is not None:
+            outline.reach(moved)
+
+    def _every_source(self) -> None:
+        """Show each source again, in its place among those shown."""
+        outline = self.outline
         kept = {id(node.data): node for node in outline.root.children}
         ahead: Node | None = None
         for row in reversed(self.view.rows):

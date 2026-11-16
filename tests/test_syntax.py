@@ -10,7 +10,7 @@ from elenctic.queries import read_query
 from elenctic.query import All
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Position, Span
-from elenctic.syntax import Item, read_atom, read_literals, read_scenario, read_valuations
+from elenctic.syntax import Item, read_asked, read_literals, read_scenario, read_valuations
 from elenctic.terms import Compound, Variable
 from elenctic.writer import rows as rows_written
 
@@ -233,9 +233,11 @@ def test_a_tuple_valued_one_variable_binding_round_trips() -> None:
 
 
 def test_an_atom_asked_about_reads_with_or_without_default_negation() -> None:
-    assert read_atom("reach(c)", "ATOM") == Literal("reach", (parse_term("c"),))
-    assert read_atom("not reach(c)", "ATOM") == Literal("reach", (parse_term("c"),))
-    assert read_atom("-p", "ATOM") == Literal("p", positive=False)
+    reach = Literal("reach", (parse_term("c"),))
+    assert read_asked("reach(c)", "ATOM") == (reach, False)
+    assert read_asked("not reach(c)", "ATOM") == (reach, True)
+    assert read_asked("-p", "ATOM") == (Literal("p", positive=False), False)
+    assert read_asked("not -p", "ATOM") == (Literal("p", positive=False), True)
 
 
 @pytest.mark.parametrize(
@@ -249,7 +251,7 @@ def test_an_atom_asked_about_reads_with_or_without_default_negation() -> None:
     ],
 )
 def test_an_atom_that_is_not_one_ground_literal_is_refused(text: str, message: str) -> None:
-    refused = read_atom(text, "ATOM")
+    refused = read_asked(text, "ATOM")
     assert isinstance(refused, Diagnostic)
     assert message in refused.message
     assert refused.span is not None

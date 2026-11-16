@@ -20,9 +20,11 @@ from elenctic.determination import (
     AnswerSets,
     Conclusion,
     Consistent,
+    Determination,
     Exhausted,
     Inconclusive,
     Inconsistent,
+    Optimized,
     Optimum,
     Range,
     Refutation,
@@ -55,6 +57,8 @@ class Session(Grounded):
     """A program grounded once to be searched and explained: the session 1.0 reserves.
 
     Each answer set it finds is remembered with the atoms it records, so `explain` can read them.
+    Each search it ends is kept too, so a counterexample keeps its number from call to call: clingo
+    enumerates in another order once it has solved, as when `explain` is asked to go deeper.
     """
 
     def __init__(
@@ -73,6 +77,26 @@ class Session(Grounded):
         self.limits = limits
         self.interrupt = interrupt
         self._recorded: dict[AnswerSet, frozenset[Symbol]] = {}
+        self._enumerated: dict[Scenario, Determination[AnswerSets]] = {}
+        self._optimized: dict[Scenario, Determination[Optimized]] = {}
+
+    def _enumerate(self, scenario: Scenario) -> Determination[AnswerSets]:
+        """Enumerate the answer sets of `scenario` in the session's limits, once it has ended."""
+        found = self._enumerated.get(scenario)
+        if found is None:
+            found = self.solve(scenario, limits=self.limits, interrupt=self.interrupt)
+            if not isinstance(found, Inconclusive):
+                self._enumerated[scenario] = found
+        return found
+
+    def _optimize(self, scenario: Scenario) -> Determination[Optimized]:
+        """Find the optimum of `scenario` within the session's limits, once it has ended."""
+        found = self._optimized.get(scenario)
+        if found is None:
+            found = self.optimize(scenario, limits=self.limits, interrupt=self.interrupt)
+            if not isinstance(found, Inconclusive):
+                self._optimized[scenario] = found
+        return found
 
     @override
     def _seen(self, answer_set: ClingoModel, keep: Keep) -> Seen:
@@ -165,7 +189,7 @@ class Session(Grounded):
         assumed = scenario | {Assumption(literal) for literal in literals}
         optima: list[Optimum] = []
         for assumptions in (scenario, assumed):
-            match self.optimize(assumptions, limits=self.limits, interrupt=self.interrupt):
+            match self._optimize(assumptions):
                 case Inconclusive(cut):
                     return Ended(cut)
                 case Consistent(Optimum() as optimum, _):
@@ -248,7 +272,7 @@ class Session(Grounded):
         """Search for the answer sets of `scenario`, all or the optima, and say how it ended."""
         if over is Range.OPTIMAL:
             return self._optimal(scenario)
-        found = self.solve(scenario, limits=self.limits, interrupt=self.interrupt)
+        found = self._enumerate(scenario)
         match found:
             case Inconclusive(cut):
                 return Ended(cut)
@@ -261,7 +285,7 @@ class Session(Grounded):
         self, scenario: Scenario
     ) -> tuple[tuple[AnswerSet, ...], Conclusion] | Ended | Refutation:
         """Search for the optimal answer sets of `scenario`, and say how it ended."""
-        optimized = self.optimize(scenario, limits=self.limits, interrupt=self.interrupt)
+        optimized = self._optimize(scenario)
         match optimized:
             case Inconclusive(cut):
                 return Ended(cut)

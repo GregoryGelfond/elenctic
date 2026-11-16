@@ -89,6 +89,7 @@ def why_view(  # noqa: PLR0913
     style: Style,
     *,
     over: Range,
+    negated: bool,
     lines_of: Lines,
     diagnosed: Diagnosed,
     explained: Explained,
@@ -104,7 +105,7 @@ def why_view(  # noqa: PLR0913
             return _refused(diagnosed, again, text, source)
         return outline.explaining(again, glyphs, over=over)
 
-    rows = outline.why(atom, result, glyphs, over=over)
+    rows = outline.why(atom, result, glyphs, over=over, negated=negated)
     return View(titled("why", source), (), rows, lines_of, max_depth, found)
 
 
@@ -134,6 +135,7 @@ def ask_view(  # noqa: PLR0913
             first,
             style,
             over=over,
+            negated=False,
             lines_of=lines_of,
             diagnosed=diagnosed,
             explained=lambda depth: why_of(asking.literal, asking.index, depth),

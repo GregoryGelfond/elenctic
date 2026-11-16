@@ -20,6 +20,8 @@ _ANSI: Final = {
 }
 """The terminal colour of each SGR colour parameter a role has."""
 _TERMINAL: Final = "ansi_default"
+_QUIET: Final = "ansi_bright_black"
+"""The terminal's grey, which each palette sets apart from its text and its background alike."""
 NAME: Final = "elenctic"
 
 
@@ -31,14 +33,16 @@ def _colored(role: Role) -> str:
 def theme(color: Color) -> Theme:
     """Build the theme of the view's parts, in colour when `color` is on and plain when it is not.
 
-    Plain, the selected row is shown reversed, as a terminal shows a selection.
+    The selected row is shown reversed, as a terminal shows a selection: each piece swaps its
+    colour with the background, so it reads as well as it does unselected in any palette. A bar of
+    one colour cannot: a role's own colour, or the text's, may match it, as blue on blue does.
     """
 
     def of(role: Role) -> str:
         return _colored(role) if color is Color.ON else _TERMINAL
 
-    cursor, frame, key = of(CHROME["cursor"]), of(CHROME["frame"]), of(CHROME["key"])
-    plain = color is Color.OFF
+    frame, key = of(CHROME["frame"]), of(CHROME["key"])
+    quiet = _QUIET if color is Color.ON else _TERMINAL
     return Theme(
         name=NAME,
         ansi=True,
@@ -56,16 +60,16 @@ def theme(color: Color) -> Theme:
         variables={
             "ansi-background": _TERMINAL,
             "ansi-foreground": _TERMINAL,
-            "block-cursor-foreground": _TERMINAL if plain else "ansi_bright_white",
-            "block-cursor-background": cursor,
-            "block-cursor-text-style": "reverse" if plain else "bold",
+            "block-cursor-foreground": _TERMINAL,
+            "block-cursor-background": _TERMINAL,
+            "block-cursor-text-style": "reverse",
             "block-cursor-blurred-foreground": _TERMINAL,
             "block-cursor-blurred-background": _TERMINAL,
             "block-cursor-blurred-text-style": "underline",
             "block-hover-background": _TERMINAL,
             "border": frame,
             "border-blurred": frame,
-            "scrollbar": frame,
+            "scrollbar": quiet,
             "scrollbar-hover": key,
             "scrollbar-active": key,
             "scrollbar-background": _TERMINAL,
@@ -82,7 +86,7 @@ def theme(color: Color) -> Theme:
             "input-cursor-foreground": _TERMINAL,
             "input-cursor-background": _TERMINAL,
             "input-cursor-text-style": "reverse",
-            "input-selection-background": cursor,
+            "input-selection-background": quiet,
             "input-selection-foreground": _TERMINAL,
         },
     )

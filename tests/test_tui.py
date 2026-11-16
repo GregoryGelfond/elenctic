@@ -13,6 +13,7 @@ from typing import Final
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from rich.style import Style as Look
 
 from elenctic import cli
 from elenctic.cli import main
@@ -29,6 +30,7 @@ from elenctic.legend import (
     KEYS,
     NO_STEP,
     NOTHING_DEEPER,
+    PAID,
     PENDING,
     PRESSED,
     SEARCHING,
@@ -507,6 +509,300 @@ def test_plus_asks_the_library_one_step_deeper(
     assert "... not c not expanded (depth 2); `--max-depth` goes further" in texts
 
 
+@pytest.mark.parametrize("name", EVIDENCE)
+@pytest.mark.parametrize("depth", [1, 2])
+def test_going_deeper_shows_what_the_text_view_shows_a_step_deeper(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], name: str, depth: int
+) -> None:
+    """`+` asks again a step deeper: the same counterexample, the text view's rows at that depth."""
+    argv = ("explain", str(EXAMPLES / name))
+    _, view, style = viewed(monkeypatch, *argv, "--max-depth", str(depth))
+    blocks = [row.about.block for row in flat(view.rows) if isinstance(row.about, Block)]
+    deeper = [
+        row
+        for block in blocks
+        for row in (view.evidence(block, depth), view.evidence(block, depth + 1))[1]
+    ]
+    capsys.readouterr()
+    main([*argv, "--max-depth", str(depth + 1), "--format", "text"])
+    text = capsys.readouterr().out
+    assert follows_the_text_view(deeper, style, text)
+    assert [
+        _normal(painted(row, style)) for row in flat(deeper) if "answer set" in painted(row, style)
+    ] == [_normal(line) for line in text.splitlines() if "answer set" in line]
+
+
+def test_plus_keeps_the_counterexample_it_deepens(monkeypatch: pytest.MonkeyPatch) -> None:
+    """team.lp stops at depth 1; after `+` its counterexample is still answer set 1 of 7."""
+    _, view, style = viewed(monkeypatch, "explain", str(EXAMPLES / "team.lp"), "--max-depth", "1")
+    shown: list[list[str]] = []
+
+    def counterexamples(app: Viewer) -> list[str]:
+        rows = (_normal(painted(n.data, style)) for n in outline_of(app).shown() if n.data)
+        return [row for row in rows if "counterexample" in row]
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        shown.append(counterexamples(app))
+        _cursor_to(app, lambda row: "not expanded" in painted(row, style))
+        await pilot.pause()
+        await pilot.press("plus")
+        await settled(pilot)
+        shown.append(counterexamples(app))
+
+    drive(view, style, act)
+    assert shown == [["= counterexample: answer set 1 of 7: { team(cy), team(dee) }"]] * 2
+
+
+def _shows(row: Row) -> tuple[str, object]:
+    """Say what a row shows: a step by its handle, as its first row or again; else its text."""
+    about = row.about
+    if isinstance(about, Step):
+        return "step", about.node.handle
+    if isinstance(about, Again):
+        return "again", about.handle
+    return "row", plain(row.phrase)
+
+
+DEEP = "{ x }.\ne :- b.\ne :- c.\nb :- c.\nc :- x.\n"
+"""Two branches that stop at depth 1; a step deeper, the first comes to `not c` too."""
+
+
+@pytest.mark.parametrize(
+    ("argv", "last", "stops"),
+    [
+        (("explain", str(EXAMPLES / "team.lp")), False, False),
+        (("why", "DEEP", "e"), False, False),
+        # The second `not c` still stops a step deeper; the cursor stays on it, not on the first.
+        (("why", "DEEP", "e"), True, True),
+        (("why", "DEEP", "b"), False, False),
+    ],
+)
+def test_plus_keeps_the_cursor_on_the_step_it_deepens_with_its_rows_beneath(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    argv: tuple[str, ...],
+    *,
+    last: bool,
+    stops: bool,
+) -> None:
+    path = tmp_path / "deep.lp"
+    path.write_text(DEEP)
+    named = tuple(str(path) if each == "DEEP" else each for each in argv)
+    _, view, style = viewed(monkeypatch, *named, "--max-depth", "1")
+    seen: list[object] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        tree = outline_of(app)
+        stops = [n for n in tree.shown() if n.data and "not expanded" in painted(n.data, style)]
+        tree.reach(stops[-1 if last else 0])
+        await pilot.pause()
+        before = _shows(selected(app))
+        ahead = _ahead(app)
+        rows = _texts(app)
+        await pilot.press("plus")
+        await settled(pilot)
+        node = outline_of(app).cursor_node
+        assert node is not None
+        assert node.data is not None
+        seen.extend([_shows(node.data) == before, _ahead(app) == ahead, _texts(app) != rows])
+        seen.append("not expanded" in painted(node.data, style))
+        shown = _pane(app)
+        screen = app.screen
+        assert isinstance(screen, Viewing)
+        screen.cited(node.data)
+        seen.append(shown == _pane(app))
+
+    drive(view, style, act, size=(142, 37))
+    assert seen == [True, True, True, stops, True]
+
+
+def _ahead(app: Viewer) -> object:
+    """Say what the row just above the cursor shows."""
+    shown = [node for node in outline_of(app).shown() if node.line >= 0]
+    at = outline_of(app).cursor_node
+    above = shown[shown.index(at) - 1] if at in shown else None
+    return None if above is None or above.data is None else _shows(above.data)
+
+
+def _held(monkeypatch: pytest.MonkeyPatch, gate: Gate, *argv: str) -> tuple[View, Style]:
+    """Keep the view's evidence from coming in until `gate` lets it through, with a row more."""
+    _, view, style = viewed(monkeypatch, *argv)
+
+    def evidence(block: int, depth: int | Limit) -> list[Row]:
+        return [*gate.evidence(block, depth), Row((), (Piece("more"),))]
+
+    view.evidence = evidence
+    return view, style
+
+
+def _later(monkeypatch: pytest.MonkeyPatch, gate: Gate, *argv: str) -> tuple[View, Style]:
+    """Find what the view opens with at once; keep what is asked after until `gate` lets it."""
+    _, view, style = viewed(monkeypatch, *argv)
+    found = view.evidence
+    first = [True]
+
+    def evidence(block: int, depth: int | Limit) -> list[Row]:
+        if first:
+            first.clear()
+        else:
+            gate.evidence(block, depth)
+        return found(block, depth)
+
+    view.evidence = evidence
+    return view, style
+
+
+def test_the_cursor_stays_on_its_row_while_rows_arrive_above_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(EXAMPLES)
+    gate = Gate(heeds=True)
+    view, style = _held(monkeypatch, gate, "test", "chain.lp", "absent.lp")
+    seen: list[object] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        await pilot.press("l", "j", "j", "l")
+        await _started(gate)
+        _cursor_to(app, lambda row: plain(row.phrase).startswith("absent.lp"))
+        await pilot.pause()
+        at = outline_of(app).cursor_node
+        line = outline_of(app).cursor_line
+        gate.through.set()
+        await settled(pilot)
+        seen.extend([outline_of(app).cursor_node is at, outline_of(app).cursor_line == line + 1])
+        seen.append("found" in _texts(app))
+
+    drive(view, style, act)
+    assert seen == [True, True, True]
+
+
+def test_a_cursor_moved_above_the_claim_while_plus_goes_deeper_is_left_there(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gate = Gate(heeds=True)
+    view, style = _later(
+        monkeypatch, gate, "explain", str(EXAMPLES / "team.lp"), "--max-depth", "1"
+    )
+    seen: list[object] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        _cursor_to(app, lambda row: "not expanded" in painted(row, style))
+        await pilot.pause()
+        await pilot.press("plus")
+        await _started(gate)
+        await pilot.press("home")
+        at = outline_of(app).cursor_node
+        gate.through.set()
+        await settled(pilot)
+        seen.extend([outline_of(app).cursor_node is at, outline_of(app).cursor_line])
+
+    drive(view, style, act)
+    assert seen == [True, 0]
+
+
+@pytest.mark.parametrize("moved", ["searching", "= note"])
+def test_a_cursor_moved_beneath_the_claim_to_a_row_not_of_a_step_goes_to_the_claim(
+    monkeypatch: pytest.MonkeyPatch, moved: str
+) -> None:
+    gate = Gate(heeds=True)
+    view, style = _later(
+        monkeypatch, gate, "explain", str(EXAMPLES / "team.lp"), "--max-depth", "1"
+    )
+    seen: list[object] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        _cursor_to(app, lambda row: "not expanded" in painted(row, style))
+        await pilot.pause()
+        await pilot.press("plus")
+        await _started(gate)
+        tree = outline_of(app)
+        tree.reach(next(n for n in tree.shown() if str(n.label).startswith(moved)))
+        await pilot.pause()
+        gate.through.set()
+        await settled(pilot)
+        seen.append(selected(app).about)
+
+    drive(view, style, act)
+    assert seen == [Block(0)]
+
+
+THREE = ("optimum.lp", "absent.lp", "chain.lp")
+
+
+@pytest.mark.parametrize(
+    ("order", "at", "keys", "then"),
+    [
+        (THREE, "chain.lp", (), "chain.lp"),
+        (THREE, "absent.lp", (), "absent.lp"),
+        (THREE, "optimum.lp", (), "absent.lp"),
+        (THREE, "optimum.lp", ("l", "j"), "absent.lp"),
+        (("absent.lp", "chain.lp", "optimum.lp"), "optimum.lp", (), "chain.lp"),
+        (("absent.lp", "chain.lp", "optimum.lp"), "optimum.lp", ("l", "j"), "chain.lp"),
+    ],
+)
+def test_f_keeps_the_cursor_on_its_source_or_moves_it_to_the_next_that_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    order: tuple[str, ...],
+    at: str,
+    keys: tuple[str, ...],
+    then: str,
+) -> None:
+    monkeypatch.chdir(EXAMPLES)
+    _, view, style = viewed(monkeypatch, "test", *order)
+    seen: list[str] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        _cursor_to(app, lambda row: plain(row.phrase).startswith(at))
+        await pilot.pause()
+        await pilot.press(*keys)
+        await pilot.press("f")
+        await pilot.pause()
+        seen.append(plain(selected(app).phrase).split()[0])
+        await pilot.press("f")
+        await pilot.pause()
+        seen.append(plain(selected(app).phrase).split()[0])
+
+    drive(view, style, act)
+    assert seen == [then, then]
+
+
+def test_e_keeps_the_cursor_on_its_row_as_every_claim_is_found_and_opened(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(EXAMPLES)
+    _, view, style = viewed(monkeypatch, "test", *THREE)
+    seen: list[object] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        _cursor_to(app, lambda row: plain(row.phrase).startswith("chain.lp"))
+        await pilot.pause()
+        at = outline_of(app).cursor_node
+        await pilot.press("e")
+        await settled(pilot)
+        seen.extend([outline_of(app).cursor_node is at, outline_of(app).cursor_line])
+        seen.append(sum(1 for node in outline_of(app).shown() if node.is_expanded) > len(THREE))
+
+    drive(view, style, act)
+    assert seen[0] is True
+    assert seen[2] is True
+    assert isinstance(seen[1], int)
+    assert seen[1] > len(THREE) - 1
+
+
 def test_plus_on_a_complete_explanation_says_there_is_nothing_deeper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -748,6 +1044,38 @@ def test_the_pane_on_a_heading_shows_the_first_rule_cited_beneath_it(
     assert below == [NO_STEP]
 
 
+def _starting(word: str) -> Callable[[Row], bool]:
+    """Pick the row whose phrase starts with `word`, after any number it is listed by."""
+    return lambda row: re.match(rf"[\d ]*{re.escape(word)}", plain(row.phrase)) is not None
+
+
+def test_the_pane_on_how_the_objective_ranks_a_claim_quotes_the_weak_constraints_it_pays(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The cost rows cite no rule: the pane quotes each weak constraint paid, as the text does."""
+    argv = ("explain", str(EXAMPLES / "laptop.lp"))
+    _, view, style = viewed(monkeypatch, *argv)
+    capsys.readouterr()
+    main([*argv, "--format", "text"])
+    text = capsys.readouterr().out.splitlines()
+    start = next(at for at, line in enumerate(text) if line.strip().endswith(PAID))
+    quotes = text[start + 1 : start + 9]
+    seen: list[list[str]] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        for wanted in ("cost", "optimum", "-->"):
+            _cursor_to(app, _starting(wanted))
+            await pilot.pause()
+            seen.append(_pane(app))
+
+    drive(view, style, act, size=(160, 40))
+    cost, optimum, first = seen
+    assert cost == optimum == [PAID, *(line.rstrip() for line in quotes)]
+    assert first == [PAID, *(line.rstrip() for line in quotes[:4])]
+
+
 def test_the_pane_takes_in_the_evidence_once_it_is_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -876,18 +1204,16 @@ def test_q_quits_from_the_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.parametrize(
-    ("color", "cursor"), [(Color.ON, "ansi_blue"), (Color.OFF, "ansi_default")]
+    ("color", "quiet"), [(Color.ON, "ansi_bright_black"), (Color.OFF, "ansi_default")]
 )
-def test_the_views_own_parts_take_the_legends_roles(color: Color, cursor: str) -> None:
+def test_the_views_own_parts_take_the_legends_roles(color: Color, quiet: str) -> None:
     built = theme(color)
     assert built.ansi, "the view keeps the terminal's own palette, as the text view does"
-    assert built.variables["block-cursor-background"] == cursor
     assert built.variables["footer-key-foreground"] == (
         "ansi_cyan" if color is Color.ON else "ansi_default"
     )
-    assert built.variables["block-cursor-text-style"] == (
-        "bold" if color is Color.ON else "reverse"
-    )
+    assert built.variables["border"] == ("ansi_blue" if color is Color.ON else "ansi_default")
+    assert built.variables["scrollbar"] == quiet
     assert (built.error, built.warning, built.success) == (
         ("ansi_red", "ansi_yellow", "ansi_green") if color is Color.ON else ("ansi_default",) * 3
     )
@@ -1221,16 +1547,17 @@ def test_plus_brings_the_deeper_rows_to_the_block_they_belong_to(
         assert isinstance(app, Viewer)
         _cursor_to(app, lambda row: isinstance(row.about, Step))
         await pilot.pause()
+        before = _shows(selected(app))
         await pilot.press("plus")
         await settled(pilot)
-        seen.extend([selected(app).about, _messages(app)])
+        seen.extend([_shows(selected(app)) == before, _messages(app)])
         (top,) = outline_of(app).root.children
         seen.append(
             [child.data for child in top.children] == top.data.children if top.data else None
         )
 
     drive(view, style, act)
-    assert seen == [Block(0), [], True]
+    assert seen == [True, [], True]
 
 
 def test_plus_again_while_the_library_goes_deeper_asks_it_nothing_more(
@@ -1422,4 +1749,85 @@ def test_a_narrow_title_keeps_a_space_before_its_status(monkeypatch: pytest.Monk
         titles.append(str(pilot.app.screen.query_one("#title", Static).render()))
 
     drive(view, style, act, size=(50, 20))
-    assert "laptop.lp 0/1 passed" in titles[0]
+    assert titles[0].endswith("… 0/1 passed, 1 fail")
+
+
+@pytest.mark.parametrize(
+    ("asked", "heading"),
+    [("not access(ann,db)", "why: not access(ann,db)"), ("access(ann,db)", "why: access(ann,db)")],
+)
+def test_why_is_headed_by_the_atom_as_it_was_asked(
+    monkeypatch: pytest.MonkeyPatch, asked: str, heading: str
+) -> None:
+    _, view, style = viewed(monkeypatch, "why", str(EXAMPLES / "absent.lp"), asked)
+    assert painted(view.rows[0], style) == heading
+
+
+@pytest.mark.parametrize("color", ["always", "never"])
+def test_the_selected_row_is_reversed_and_each_piece_keeps_its_roles_colour(
+    monkeypatch: pytest.MonkeyPatch, color: str
+) -> None:
+    """A bar of one colour hid a piece of that colour; reversed, each reads as it did."""
+    _, view, style = viewed(monkeypatch, "--color", color, "explain", str(EXAMPLES / "chain.lp"))
+    found: list[tuple[str, str | None, bool | None]] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        outline = outline_of(app)
+        node = outline.cursor_node
+        assert node is not None
+        selected = outline.get_component_rich_style("tree--cursor", partial=False)
+        label = outline.render_label(node, Look(), selected)
+        found.extend(
+            (each.text, each.style.color and each.style.color.name, each.style.reverse)
+            for each in label.render(app.console)
+            if each.text.strip() and each.style is not None
+        )
+
+    drive(view, style, act)
+    pieces = {text: (hue, reverse) for text, hue, reverse in found if text != "▼ "}
+    assert pieces
+    assert all(reverse for _, reverse in pieces.values())
+    painted_in = {hue for hue, _ in pieces.values()}
+    assert painted_in == ({"default", "color(1)"} if color == "always" else {"default"})
+
+
+FIVE = ("chain.lp", "absent.lp", "laptop.lp", "team.lp", "optimum.lp")
+
+
+@pytest.mark.parametrize("width", [20, 30, 60, 78, 142])
+def test_a_title_too_long_is_cut_short_and_the_tally_kept_whole(
+    monkeypatch: pytest.MonkeyPatch, width: int
+) -> None:
+    monkeypatch.chdir(EXAMPLES)
+    _, view, style = viewed(monkeypatch, "test", *FIVE)
+    titles: list[str] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        titles.append(str(pilot.app.screen.query_one("#title", Static).render()))
+
+    drive(view, style, act, size=(width, 20))
+    (title,) = titles
+    whole = "elenctic test · " + " ".join(FIVE)
+    tally = "1/5 passed, 4 fail"
+    assert title.endswith(f" {tally}")
+    assert len(title) == width
+    head = title.removesuffix(tally).rstrip()
+    assert head == whole if len(whole) + 1 + len(tally) <= width else head.endswith("…")
+    assert whole.startswith(head.removesuffix("…"))
+
+
+@pytest.mark.parametrize("width", [12, 19])
+def test_a_title_with_no_room_beside_the_tally_is_left_out(
+    monkeypatch: pytest.MonkeyPatch, width: int
+) -> None:
+    monkeypatch.chdir(EXAMPLES)
+    _, view, style = viewed(monkeypatch, "test", *FIVE)
+    titles: list[str] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        titles.append(str(pilot.app.screen.query_one("#title", Static).render()))
+
+    drive(view, style, act, size=(width, 20))
+    assert [title.strip() for title in titles] == ["1/5 passed, 4 fail"]

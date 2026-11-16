@@ -126,10 +126,11 @@ def asked(text: str, source: str) -> tuple[str, Span]:
     return stripped, Span(source, Position(1, 1), Position(1, len(text) + 1))
 
 
-def read_atom(text: str, source: str) -> Parsed[Literal]:
-    """Read the one ground literal a command asks about; a `not` before it is allowed and dropped.
+def read_asked(text: str, source: str) -> Parsed[tuple[Literal, bool]]:
+    """Read the one ground literal a command asks about, and whether `not` was written before it.
 
-    Whether the atom holds is the answer set's to say, so `not p` asks what `p` does.
+    Whether the atom holds is the answer set's to say, so `not p` asks what `p` does; the `not` is
+    kept only to head the answer as it was asked.
     """
     body, where = asked(text, source)
     items = read_literals(body, where)
@@ -141,7 +142,7 @@ def read_atom(text: str, source: str) -> Parsed[Literal]:
     grounds = literals(items)
     if not grounds:
         return failure(where, "atom asked about is not ground", label="has a variable")
-    return grounds[0]
+    return grounds[0], items[0].negated
 
 
 def read_scenario(text: str, source: str) -> Parsed[Scenario]:

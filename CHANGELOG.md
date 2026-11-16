@@ -13,9 +13,10 @@ All notable changes are recorded here. The format follows
   (default 3).
 - `elenctic why PATH ATOM`: why a ground literal holds, or not, in the first answer set, or the
   `--answer-set K`-th, of all or `--over optimal`, under `--assuming L,…`; the block of `explain`,
-  headed `why:`. `elenctic ask PATH QUERY`: a query, written as `@query` writes it, answered over
-  the answer sets, with the first answer set taking each value, or a pattern's bindings. Each exits
-  with its own outcome, `WhyExit` or `AskExit`; `repl` stays reserved.
+  headed `why:` and the atom as it was asked, `not` kept. `elenctic ask PATH QUERY`: a query,
+  written as `@query` writes it, answered over the answer sets, with the first answer set taking
+  each value, or a pattern's bindings. Each exits with its own outcome, `WhyExit` or `AskExit`;
+  `repl` stays reserved.
 - Library: `why(program, atom, …)` and `ask(program, query, …)`; `Session.answer(query, scenario,
   over=)`, `answered`, `Answered` and `Taken`. `Session.counterexample` gives the refutation when
   there is no answer set.
@@ -41,7 +42,14 @@ All notable changes are recorded here. The format follows
   `why` and `ask` open it by default when the extra is installed and stdin and stdout are terminals;
   `test` writes text unless asked. It calls the library off its own thread, so the keys answer while
   a search runs; Esc stops it, Ctrl-C quits. `?` lists the keys that apply, and the view's own parts
-  take the text view's roles.
+  take the text view's roles; the selected row is reversed, so each piece keeps its role's colour.
+  On a row of how the objective ranks a claim, the pane quotes the weak constraints paid
+  differently. A title too long for its bar is cut short, the tally kept whole. After `+` the
+  cursor stays on the step it deepened, and on its row as evidence comes in or `f` and `e` change
+  the rows around it.
+- A `Session` keeps each search it ends, so a counterexample keeps its number from call to call:
+  clingo enumerates in another order once it has solved, and going deeper (`+`) chose another
+  counterexample than `--max-depth` did.
 - `--format text|json|tui` on `test`, `explain`, `why` and `ask`, and `--short` for one-line
   diagnostics.
 

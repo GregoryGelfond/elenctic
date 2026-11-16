@@ -293,12 +293,15 @@ def render_why(  # noqa: PLR0913
     form: Format = Format.FULL,
     spans: bool,
     over: Range = Range.ALL,
+    negated: bool,
     text: str | None = None,
 ) -> Rendered:
-    """Write what `why` found, or, as diagnostics, why it could not look."""
+    """Write what `why` found, headed by the atom as it was asked, or why it could not look."""
     if isinstance(result, Fault | Internal):
         return refused(result, presentation, form=form, source=source, text=text)
-    shown = why_lines(source, atom, result, presentation.stdout, spans=spans, over=over)
+    shown = why_lines(
+        source, atom, result, presentation.stdout, spans=spans, over=over, negated=negated
+    )
     return Rendered(_lines(shown), "")
 
 

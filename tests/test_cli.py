@@ -808,7 +808,7 @@ def test_why_names_the_answer_set_asked_for_and_the_optima_as_optimal(
     path = write(tmp_path, "ab.lp", CHOICE)
     _, out = run(capsys, "why", path, "not a", "--answer-set", "2")
     assert "  = answer set 2 of 4: { b, -c }\n" in out
-    assert out.startswith("why: a\n")
+    assert out.startswith("why: not a\n")
     _, out = run(capsys, "why", path, "a", "--answer-set", "2", "--over", "optimal")
     assert "  = optimal answer set 2 of 4: " in out
     assert "counterexample" not in out
@@ -1034,3 +1034,33 @@ def test_the_why_a_help_line_gives_can_be_pasted_into_a_shell(
     (line,) = [each for each in out.splitlines() if "= help:" in each]
     command = line.split("`")[1]
     assert shlex.split(command) == ["elenctic", "why", str(path), 'q("it\'s")', "--answer-set", "1"]
+
+
+@pytest.mark.parametrize(
+    ("asked", "heading"),
+    [
+        ("a", "why: a\n"),
+        ("not a", "why: not a\n"),
+        ("  not   a ", "why: not a\n"),
+        ("-c", "why: -c\n"),
+        ("not -c", "why: not -c\n"),
+    ],
+)
+def test_why_is_headed_by_the_atom_as_it_was_asked_written_as_a_step_writes_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], asked: str, heading: str
+) -> None:
+    """`not a` asks what `a` does; the heading keeps the `not`, in the legend's spelling."""
+    path = write(tmp_path, "ab.lp", CHOICE)
+    _, out = run(capsys, "why", path, "--", asked)
+    assert out.startswith(heading)
+
+
+def test_why_as_json_names_the_literal_by_its_roots_with_or_without_not(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """JSON has no heading: its roots say whether the atom holds, as they did before."""
+    path = write(tmp_path, "ab.lp", CHOICE)
+    held, unheld = (
+        run(capsys, "why", path, asked, "--format", "json")[1] for asked in ("a", "not a")
+    )
+    assert held == unheld

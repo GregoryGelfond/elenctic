@@ -223,9 +223,14 @@ def mark(node: Node) -> Mark:
     return _MARK_OF.get(type(node.reason), Mark.ABSENT)
 
 
+def signed(atom: object, *, negated: bool) -> str:
+    """Write an atom, or its default negation: as a step writes it, and as `why` was asked it."""
+    return f"not {atom}" if negated else str(atom)
+
+
 def _sign(node: Node) -> str:
     """Write a node's atom, or its negation if it does not hold."""
-    return node.atom if node.holds else f"not {node.atom}"
+    return signed(node.atom, negated=not node.holds)
 
 
 def _signed(node: Node) -> Piece:
@@ -409,12 +414,13 @@ PRESSED: Final[Mapping[str, str]] = {
 }
 """The keys of the interactive view as they are shown, by the action each one takes."""
 CHROME: Final[Mapping[str, Role]] = {
-    "cursor": Role.MARGIN,
     "frame": Role.MARGIN,
     "key": Role.HELP,
 }
-"""The roles of the interactive view's own parts: the selected row's bar; the pane's border and the
-scrollbars; and a key. The guides are drawn as the text view draws them, plain."""
+"""The roles of the interactive view's own parts: the pane's border, and a key. The guides are
+drawn as the text view draws them, plain. The selected row takes no role: it is shown reversed, as
+a terminal shows a selection, so each of its pieces reads as well as it does unselected and keeps
+its own role's colour. The scrollbars are drawn quietly, in the terminal's grey."""
 
 
 def titled(command: str, subject: str) -> Phrase:
