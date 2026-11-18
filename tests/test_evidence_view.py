@@ -116,7 +116,7 @@ def test_the_block_names_the_claim_its_place_and_the_counterexample() -> None:
     assert lines[at + 1 : at + 5] == [
         f" --> {EXAMPLES / 'absent.lp'}:9:3",
         "  |",
-        "  = counterexample: answer set 1 of 1: { access(bob,wiki) }",
+        "  = counterexample: answer set 1: { access(bob,wiki) }",
         "  |",
     ]
     assert "  = note: support is sound, not minimal" in lines
@@ -323,7 +323,7 @@ def test_an_answer_set_is_listed_in_the_order_its_claim_lists_it() -> None:
     listed = "{ p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), p(10) }"
     text = shown(program)
     assert "= { p(1), p(2)" in text.split("(line 3): ")[1]
-    assert f"  = counterexample: answer set 1 of 1: {listed}\n" in text
+    assert f"  = counterexample: answer set 1: {listed}\n" in text
 
 
 def test_a_rule_instance_a_program_writes_is_made_legible() -> None:

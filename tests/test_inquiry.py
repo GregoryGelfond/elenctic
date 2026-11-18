@@ -26,7 +26,7 @@ def test_why_explains_an_atom_in_the_first_answer_set() -> None:
 def test_why_explains_the_answer_set_asked_for_by_its_index() -> None:
     explained = why(Program("{ a; b }.", "t.lp"), Literal("a"), index=3)
     assert isinstance(explained, Explanation)
-    assert (explained.counterexample.index, explained.counterexample.read) == (3, 4)
+    assert (explained.counterexample.index, explained.counterexample.read) == (3, None)
 
 
 def test_why_counts_the_optima_under_optimal() -> None:
@@ -100,6 +100,7 @@ def test_ask_without_answer_sets_and_on_a_cut_search_does_not_answer() -> None:
     refuted = ask(Program("a. :- a.", "t.lp"), All((Literal("a"),)))
     assert refuted == NoAssumptions()
     assert AskExit.of(refuted) is AskExit.FAULT
-    ended = ask(Program("{ a }.", "t.lp"), All((Literal("a"),)), limits=Limits(max_answer_sets=1))
+    both = All((Literal("a"), Literal("b")))
+    ended = ask(Program("{ a; b }.", "t.lp"), both, limits=Limits(max_answer_sets=1))
     assert AskExit.of(ended) is AskExit.ENDED
     assert AskExit.of(Internal("ValueError", "x")) is AskExit.INTERNAL_ERROR

@@ -207,7 +207,8 @@
         "over",
         "answer",
         "taken",
-        "read"
+        "read",
+        "unreached"
       ],
       "properties": {
         "kind": {
@@ -255,7 +256,20 @@
           }
         },
         "read": {
-          "type": "integer"
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unreached": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/unreached"
+          }
         }
       },
       "additionalProperties": false
@@ -1557,6 +1571,40 @@
             {
               "type": "null"
             }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "unreached": {
+      "type": "object",
+      "required": [
+        "kind",
+        "answer",
+        "read",
+        "cut"
+      ],
+      "properties": {
+        "kind": {
+          "const": "unreached"
+        },
+        "answer": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "read": {
+          "type": "integer"
+        },
+        "cut": {
+          "type": "string",
+          "enum": [
+            "max_answer_sets",
+            "max_seconds",
+            "interrupted"
           ]
         }
       },

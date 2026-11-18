@@ -12,8 +12,11 @@ from elenctic.check import check
 from elenctic.contract import Solver
 from elenctic.determination import (
     AnswerSet,
+    Consequences,
     Consistent,
+    Inconclusive,
     Incumbent,
+    Mode,
     NoAssumptions,
     Range,
     These,
@@ -41,7 +44,7 @@ from elenctic.explanation import (
 from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
 from elenctic.program import Fault, Program
-from elenctic.query import All, Answer, Answered, Bindings, Truth, evaluate
+from elenctic.query import All, Answer, Answered, Any, Bindings, Truth, Unreached, evaluate
 from elenctic.search import KEEP_SHOWN, Interrupt, Limit, Limits
 from elenctic.session import Session, evidenced, session
 from elenctic.terms import Variable
@@ -134,7 +137,7 @@ def test_team_explains_a_failed_aggregate_down_to_a_choice_not_made() -> None:
     found = explanation(example("team.lp"))
     by = nodes(found)
     assert found.counterexample.index == 1
-    assert found.counterexample.read == 7
+    assert found.counterexample.read is None
     aggregate = by["1/not 2 = #count { P: team(P), senior(P) }"]
     assert isinstance(aggregate.reason, Aggregate)
     assert (aggregate.reason.value, aggregate.reason.guard) == (1, "= 2")
@@ -213,7 +216,7 @@ def test_a_failed_expect_unsat_has_an_answer_set_and_nothing_to_explain() -> Non
 def test_a_failed_brave_claim_explains_the_absence_in_the_first_answer_set() -> None:
     found = explanation(explained("{ p }. q :- p, r.\n% @expect sat\n% @brave { q }\n"))
     assert found.roots == ("1/not q",)
-    assert found.counterexample.read == 2
+    assert found.counterexample.read is None
     first = opened("{ p }. q :- p, r.").solve(frozenset())
     assert isinstance(first, Consistent)
     assert found.counterexample.answer_set == first.evidence.first
@@ -520,6 +523,35 @@ def test_instances_of_one_rule_with_the_same_values_are_told_apart() -> None:
     assert by["1/not p"].children == ("1/not p#r2", "1/not p#r2.1")
 
 
+def test_the_instances_of_a_rule_are_ordered_as_the_text_of_their_values() -> None:
+    """Spelled a symbol at a time, a rule's values still order as their tuple's text."""
+    values = '1;10;12;-3;"a";"a)";"x\\"";a;ab;a(1);-a;(1,b);();#inf;#sup'
+    text = f"v({values}). {{ q(X): v(X) }}. :- q(X). p :- v(X), v(Y), q(X), q(Y). r :- v(X), q(X)."
+    by = why(text, [Literal("p"), Literal("r")])
+    for root, count in (("1/not p", 15 * 15), ("1/not r", 15)):
+        found = []
+        for child in by[root].children:
+            reason = by[child].reason
+            assert isinstance(reason, Blocked)
+            found.append(tuple(reason.substitution.bindings.values()))
+        assert len(found) == count
+        assert found == sorted(found, key=str)
+
+
+def test_reading_instances_spells_each_value_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A symbol is spelled in Python, a part at a time: 900 instances of 30 values spell 30."""
+    spelled: list[Symbol] = []
+    plain = Symbol.__repr__
+
+    def spelling(symbol: Symbol) -> str:
+        spelled.append(symbol)
+        return plain(symbol)
+
+    monkeypatch.setattr(Symbol, "__repr__", spelling)
+    opened("n(101..130). p(X,Y) :- n(X), n(Y).")
+    assert len(spelled) == len(set(spelled)) <= 30
+
+
 def test_a_rule_written_over_lines_keeps_its_text_up_to_its_end() -> None:
     derived = why("q. p :-\n  q. r.", [Literal("p")])["1/p"].reason
     assert isinstance(derived, Derived)
@@ -618,11 +650,29 @@ def test_a_claim_that_holds_after_all_has_no_evidence() -> None:
     assert [made.evidence(f) for f in findings[1:]] == [None, None, None]
 
 
-def test_a_brave_claim_on_answer_sets_not_all_read_ends_the_search() -> None:
+def test_a_brave_claim_is_explained_without_reading_every_answer_set() -> None:
+    """The brave consequences name what no answer set has; one answer set shows it absent."""
     made, findings = judged(
         "{ p; q }.\n% @expect sat\n% @brave { r }\n", limits=Limits(max_answer_sets=1)
     )
-    assert made.evidence(findings[1]) == Ended(Truncation.MAX_ANSWER_SETS)
+    evidence = made.evidence(findings[1])
+    assert isinstance(evidence, Explanation)
+    assert evidence.roots == ("1/not r",)
+
+
+@pytest.mark.parametrize(
+    "cut",
+    [
+        Consistent(Consequences(Mode.BRAVE, frozenset()), Truncation.MAX_SECONDS),
+        Inconclusive(Truncation.MAX_SECONDS),
+    ],
+)
+def test_a_brave_claim_whose_consequences_the_search_did_not_finish_ends_the_search(
+    monkeypatch: pytest.MonkeyPatch, cut: object
+) -> None:
+    made, findings = judged("{ p }.\n% @expect sat\n% @brave { r }\n")
+    monkeypatch.setattr(Session, "consequences", lambda *_args, **_kwargs: cut)
+    assert made.evidence(findings[1]) == Ended(Truncation.MAX_SECONDS)
 
 
 def test_an_interrupt_ends_the_search_for_each_kind_of_claim() -> None:
@@ -874,7 +924,7 @@ def test_the_answer_set_at_an_index_is_the_one_the_search_reads_there() -> None:
     third = made.counterexample(3)
     assert isinstance(third, Counterexample)
     assert third.answer_set == found.evidence.all[2]
-    assert (third.index, third.read) == (3, 4)
+    assert (third.index, third.read) == (3, None)
 
 
 def test_there_is_no_answer_set_past_the_last() -> None:
@@ -894,10 +944,13 @@ def test_the_index_counts_the_answer_sets_of_the_scenario() -> None:
         1, frozenset({Assumption(Literal("a")), Assumption(Literal("b"), holds=False)})
     )
     assert isinstance(only, Counterexample)
-    assert only.read == 1
     assert {str(s) for s in only.answer_set.atoms} == {"a"}
-    assert made.counterexample(2, frozenset({Assumption(Literal("a"))})) is not None
-    assert made.counterexample(3, frozenset({Assumption(Literal("a"))})) is None
+    assumed = frozenset({Assumption(Literal("a"))})
+    assert made.counterexample(2, assumed) is not None
+    assert made.counterexample(3, assumed) is None
+    first = made.counterexample(1, assumed)
+    assert isinstance(first, Counterexample)
+    assert first.read == 2
 
 
 def test_the_index_counts_the_optima_when_the_range_is_optimal() -> None:
@@ -943,7 +996,7 @@ def test_a_query_is_answered_with_the_first_answer_set_taking_each_value() -> No
     answered = made.answer(All((Literal("a"),)))
     assert isinstance(answered, Answered)
     assert answered.answer is Answer.UNKNOWN
-    assert answered.read == 4
+    assert answered.read is None
     expected = sorted(_indices(made, Literal("a")).items(), key=lambda pair: pair[1])
     assert [(t.answer, t.index) for t in answered.taken] == expected
     assert all(Literal("a") in t.answer_set.atoms for t in answered.taken if t.answer is Answer.YES)
@@ -986,7 +1039,7 @@ def test_a_query_under_a_scenario_reads_its_answer_sets() -> None:
     scenario = frozenset({Assumption(Literal("a"))})
     answered = opened("{ a; b }.").answer(All((Literal("a"),)), scenario)
     assert isinstance(answered, Answered)
-    assert (answered.answer, answered.read) == (Answer.YES, 2)
+    assert (answered.answer, answered.read) == (Answer.YES, None)
 
 
 def test_a_query_without_answer_sets_gets_the_refutation() -> None:
@@ -996,7 +1049,105 @@ def test_a_query_without_answer_sets_gets_the_refutation() -> None:
 def test_a_query_whose_search_is_truncated_is_not_answered() -> None:
     made = session(Program("{ a; b }.", "t.lp"), limits=Limits(max_answer_sets=1))
     assert isinstance(made, Session)
-    assert made.answer(All((Literal("a"),))) == Ended(Truncation.MAX_ANSWER_SETS)
+    assert made.answer(All((Literal("a"), Literal("b")))) == Ended(Truncation.MAX_ANSWER_SETS)
+
+
+def test_a_literal_truncated_is_answered_with_the_answers_it_did_not_reach() -> None:
+    """Its answer is known before the search reads; the answer sets it did not reach go unnamed."""
+    made = session(Program("{ a; b }.", "t.lp"), limits=Limits(max_answer_sets=1))
+    assert isinstance(made, Session)
+    answered = made.answer(All((Literal("a"),)))
+    assert isinstance(answered, Answered)
+    assert (answered.answer, answered.read) == (Answer.UNKNOWN, None)
+    ((first,),) = (answered.taken,)
+    assert answered.unreached == (
+        Unreached(
+            ({Answer.YES, Answer.UNKNOWN} - {first.answer}).pop(), 1, Truncation.MAX_ANSWER_SETS
+        ),
+    )
+
+
+def test_a_query_whose_search_is_cut_is_not_answered() -> None:
+    interrupt = Interrupt()
+    interrupt.pull()
+    made = session(Program("{ a }.", "t.lp"), interrupt=interrupt)
+    assert isinstance(made, Session)
+    assert made.answer(Literal("a")) == Ended(Truncation.INTERRUPTED)
+
+
+def test_a_literal_is_answered_without_reading_every_answer_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Whether each truth is taken is asked apart; the search stops at the first to take each.
+
+    Asked again, it reads on from the answer set it read first, once more at most.
+    """
+    made = opened(_MANY)
+    read = _reads(monkeypatch)
+    answered = made.answer(Pattern("q", ()))
+    assert isinstance(answered, Answered)
+    assert (answered.answer, answered.read) == (Answer.YES, None)
+    assert [(t.answer, t.index) for t in answered.taken] == [(Answer.YES, 1)]
+    unknown = made.answer(Any((Literal.parse("p(3)"),)))
+    assert isinstance(unknown, Answered)
+    assert unknown.answer is Answer.UNKNOWN
+    assert len(unknown.taken) == 2
+    assert len(read) <= 1 + max(t.index for t in unknown.taken)
+
+
+@pytest.mark.parametrize("query", ["team(ann)", "team(bob)", "balanced", "-team(cy)"])
+def test_a_literal_takes_each_answer_where_a_fresh_session_numbers_it(query: str) -> None:
+    """The answer sets an answer names are those `why --answer-set` explains in a new session.
+
+    clingo enumerates in another order once it has solved, as it does team.lp; the session asks
+    whether each truth is taken on a grounding apart, so it reads as a fresh session does.
+    """
+    path = EXAMPLES / "team.lp"
+
+    def fresh() -> Session:
+        made = session(Program(path.read_text(), "team.lp", path))
+        assert isinstance(made, Session)
+        return made
+
+    literal = Literal.parse(query)
+    answered = fresh().answer(literal)
+    assert isinstance(answered, Answered)
+    assert answered.read is None
+    assert {t.answer: t.index for t in answered.taken} == _indices(fresh(), literal)
+    for each in answered.taken:
+        found = fresh().counterexample(each.index)
+        assert isinstance(found, Counterexample)
+        assert found.answer_set == each.answer_set
+    whole = fresh().answer(All((literal, literal)))
+    assert isinstance(whole, Answered)
+    assert (whole.answer, whole.taken, whole.read) == (answered.answer, answered.taken, 7)
+
+
+def test_an_answer_set_at_an_index_is_found_without_reading_those_after(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unbounded, the search stops at the index asked for, so it does not say how many follow."""
+    made = opened(_MANY)
+    read = _reads(monkeypatch)
+    fifth = made.counterexample(5)
+    assert isinstance(fifth, Counterexample)
+    assert (fifth.index, fifth.read, len(read)) == (5, None, 5)
+
+
+def test_reading_on_keeps_the_numbers_of_the_answer_sets_read_before() -> None:
+    """Asked past what it has read, the session reads on, numbering only answer sets it lacks."""
+    path = EXAMPLES / "team.lp"
+    made = session(Program(path.read_text(), "team.lp", path))
+    assert isinstance(made, Session)
+    second = made.counterexample(2)
+    assert isinstance(made.counterexample(5), Counterexample)
+    assert made.counterexample(2) == second
+    every = [made.counterexample(index) for index in range(1, 8)]
+    assert len({c.answer_set for c in every if isinstance(c, Counterexample)}) == 7
+    assert made.counterexample(8) is None
+    first = made.counterexample(1)
+    assert isinstance(first, Counterexample)
+    assert first.read == 7
 
 
 def _failed(name: str) -> tuple[Program, Report, list[Finding]]:
@@ -1008,9 +1159,7 @@ def _failed(name: str) -> tuple[Program, Report, list[Finding]]:
 
 
 def _deepened(path: Path) -> bool:
-    """Whether an example checks to a report with a failed claim; consequences.lp is slow."""
-    if path.name == "consequences.lp":
-        return False
+    """Whether an example checks to a report with a failed claim."""
     report = check(Program(path.read_text(), path.name, path))
     return isinstance(report, Report) and any(f.verdict is Verdict.FAIL for f in report.findings)
 
@@ -1054,6 +1203,73 @@ def test_evidence_asked_at_any_depths_in_turn_is_what_a_fresh_session_finds(
             assert kept.evidence(finding, max_depth=depth) == fresh.evidence(
                 finding, max_depth=depth
             )
+
+
+_MANY = "{ p(1..40) }. q.\n"
+"""A program with 2^40 answer sets, more than any search reads."""
+
+
+def _reads(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    """Note each answer set a session reads from clingo."""
+    read: list[object] = []
+    real = session_module.seen
+
+    def noted(*args: object) -> object:
+        read.append(args)
+        return real(*args)
+
+    monkeypatch.setattr(session_module, "seen", noted)
+    return read
+
+
+@pytest.mark.parametrize(
+    ("claim", "most"),
+    [
+        ("@expect sat\n% @cautious { p(1) }", 1),
+        ("@expect unsat", 1),
+        ("@expect sat\n% @brave { r }", 1 + 41),
+    ],
+)
+def test_a_counterexample_is_found_without_reading_every_answer_set(
+    monkeypatch: pytest.MonkeyPatch, claim: str, most: int
+) -> None:
+    """Unbounded, the search stops at the counterexample.
+
+    Brave consequences read an answer set for each shown atom they gain, at most: 41 here.
+    """
+    made, findings = judged(f"{_MANY}% {claim}\n")
+    read = _reads(monkeypatch)
+    evidence = made.evidence(findings[-1])
+    assert isinstance(evidence, Explanation)
+    assert (evidence.counterexample.index, evidence.counterexample.read) == (1, None)
+    assert len(read) <= most
+
+
+def test_a_cautious_counterexample_is_the_first_answer_set_without_a_literal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The answer sets before it hold the literals: the search reads them, and stops at it."""
+    program = "{ p(1..3) }. a(X) :- X = 1..3, not p(X).\n"
+    every = opened(program).solve(frozenset())
+    assert isinstance(every, Consistent)
+    wanted = Literal.parse("a(1)")
+    at = next(at for at, each in enumerate(every.evidence.all, 1) if wanted not in each.shown)
+    made, findings = judged(f"{program}% @expect sat\n% @cautious {{ a(1) }}\n")
+    read = _reads(monkeypatch)
+    found = made.evidence(findings[1])
+    assert isinstance(found, Explanation)
+    assert found.counterexample.index == at > 1
+    assert len(read) == at < len(every.evidence.all)
+
+
+def test_a_counterexample_is_kept_across_other_searches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Asked again after another search, a claim's counterexample is read from what was kept."""
+    made, findings = judged(f"{_MANY}% @expect sat\n% @cautious {{ p(1) }}\n% @brave {{ r }}\n")
+    first = made.evidence(findings[1])
+    made.evidence(findings[2])
+    read = _reads(monkeypatch)
+    assert made.evidence(findings[1]) == first
+    assert read == []
 
 
 def test_a_session_numbers_an_answer_set_the_same_each_time_it_is_asked() -> None:

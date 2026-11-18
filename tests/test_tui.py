@@ -153,6 +153,7 @@ COMMANDS = [
     ("ask", str(EXAMPLES / "team.lp"), "{ team(X) }"),
     ("ask", str(EXAMPLES / "team.lp"), "{ team(ann), team(bob) }"),
     ("ask", str(EXAMPLES / "team.lp"), "{ nobody(X) }"),
+    ("ask", str(EXAMPLES / "team.lp"), "team(ann)", "--max-answer-sets", "2"),
 ]
 
 
@@ -533,7 +534,7 @@ def test_going_deeper_shows_what_the_text_view_shows_a_step_deeper(
 
 
 def test_plus_keeps_the_counterexample_it_deepens(monkeypatch: pytest.MonkeyPatch) -> None:
-    """team.lp stops at depth 1; after `+` its counterexample is still answer set 1 of 7."""
+    """team.lp stops at depth 1; after `+` its counterexample is still answer set 1."""
     _, view, style = viewed(monkeypatch, "explain", str(EXAMPLES / "team.lp"), "--max-depth", "1")
     shown: list[list[str]] = []
 
@@ -552,7 +553,7 @@ def test_plus_keeps_the_counterexample_it_deepens(monkeypatch: pytest.MonkeyPatc
         shown.append(counterexamples(app))
 
     drive(view, style, act)
-    assert shown == [["= counterexample: answer set 1 of 7: { team(cy), team(dee) }"]] * 2
+    assert shown == [["= counterexample: answer set 1: { team(cy), team(dee) }"]] * 2
 
 
 def _shows(row: Row) -> tuple[str, object]:

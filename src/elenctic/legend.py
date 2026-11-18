@@ -44,7 +44,7 @@ from elenctic.glyphs import Glyph
 from elenctic.literals import Assumption, Literal, Symbol
 from elenctic.paint import Phrase, Piece, Role
 from elenctic.patterns import Pattern
-from elenctic.query import All, Answer, Answered, Bindings, Taken
+from elenctic.query import All, Answer, Answered, Bindings, Taken, Unreached
 from elenctic.report import Run
 from elenctic.search import Limit
 from elenctic.spans import Severity, Span
@@ -465,16 +465,32 @@ def answering(answer: Answer) -> Phrase:
 def taken(found: Taken, query: All, answered: Answered) -> Phrase:
     """Word an answer a query takes in one answer set alone, and the first that gives it."""
     named = answer_set(found.index, answered.read, answered.over)
-    match found.answer, query.parts:
+    return _shown(f"{_valued(found.answer, query)} in {named}", found.answer_set)
+
+
+def unreached(found: Unreached, query: All) -> Phrase:
+    """Word an answer a query takes in some answer set alone, past those the search read."""
+    return (
+        Piece(
+            f"{_valued(found.answer, query)} in an answer set past the {found.read} read",
+            Role.EMPHASIS,
+        ),
+        Piece(": "),
+        Piece(ended(Ended(found.cut)), Role.WARNING),
+    )
+
+
+def _valued(answer: Answer, query: All) -> str:
+    """Word the truth that gives `answer` in one answer set: of the query's literal, if alone."""
+    match answer, query.parts:
         case Answer.YES, _:
-            value = "true"
+            return "true"
         case Answer.NO, _:
-            value = "false"
+            return "false"
         case _, (Literal() as alone,):
-            value = f"neither {alone} nor {alone.contrary}"
+            return f"neither {alone} nor {alone.contrary}"
         case _:
-            value = "neither true nor false"
-    return _shown(f"{value} in {named}", found.answer_set)
+            return "neither true nor false"
 
 
 def bindings_of(answer: Answer, pattern: Pattern, found: Bindings) -> Phrase:

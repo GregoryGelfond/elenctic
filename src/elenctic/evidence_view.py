@@ -39,6 +39,7 @@ from elenctic.legend import (
     stopped,
     taken,
     unfound,
+    unreached,
     words,
     written,
 )
@@ -258,6 +259,7 @@ def ask_lines(
     conjunction = cast("All", query)
     lines.append(pen.line(said(answering(result.answer))))
     lines += [pen.answer_set(taken(each, conjunction, result)) for each in result.taken]
+    lines += [pen.answer_set(unreached(each, conjunction)) for each in result.unreached]
     match conjunction.parts, result.taken:
         case (Literal() as alone,), (first, *_):
             helping = helped(shows_why(source, alone, first, result.over))

@@ -1,11 +1,12 @@
 """Three-valued queries over a world view (Gelfond and Kahl, Definition 2.2.2, with its errata)."""
 
 from collections.abc import Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum, auto
 from typing import Final
 
-from elenctic.determination import AnswerSet, Range, WorldView
+from elenctic.determination import AnswerSet, Range, Truncation, WorldView
 from elenctic.extension import Extension
 from elenctic.literals import Atoms, Literal, Symbol
 from elenctic.patterns import Pattern
@@ -70,6 +71,22 @@ def evaluate(query: Query, member: Atoms) -> Truth:
             return max((evaluate(part, member) for part in parts), default=Truth.FALSE)
 
 
+def literal_of(query: Query) -> Literal | None:
+    """Return the one literal `query` asks of, when it has the literal's truth; else `None`.
+
+    A ground pattern is its literal, and a conjunction or disjunction of one part is that part.
+    """
+    match query:
+        case Literal():
+            return query
+        case Pattern():
+            return query.as_literal()
+        case All((part,)) | Any((part,)):
+            return literal_of(part)
+        case _:
+            return None
+
+
 def answer(query: Query, view: WorldView) -> Answer:
     """Yes if `query` is true in every answer set, no if false in every one, else unknown.
 
@@ -87,7 +104,11 @@ def answer(query: Query, view: WorldView) -> Answer:
             if query.contrary in cautious
             else Answer.UNKNOWN
         )
-    truths = {evaluate(query, member) for member in view.members}
+    return decided({evaluate(query, member) for member in view.members})
+
+
+def decided(truths: AbstractSet[Truth]) -> Answer:
+    """Answer from the truths a query takes: yes if only true, no if only false, else unknown."""
     if truths == {Truth.TRUE}:
         return Answer.YES
     return Answer.NO if truths == {Truth.FALSE} else Answer.UNKNOWN
@@ -169,14 +190,32 @@ class Taken:
 
 
 @dataclass(frozen=True, slots=True)
+class Unreached:
+    """An answer a query takes in some answer set alone, past the `read` answer sets searched.
+
+    `cut` is what stopped the search before it reached the first answer set to give it.
+    """
+
+    answer: Answer
+    read: int
+    cut: Truncation
+
+
+@dataclass(frozen=True, slots=True)
 class Answered:
-    """A query answered over the `read` answer sets, and the first to give each answer alone."""
+    """A query answered over the answer sets of a search, and the first to give each answer alone.
+
+    `read` counts the answer sets when the search read them all, and is `None` when it stopped once
+    each answer was given, or was cut first. Each answer given only past what it read is
+    `unreached`.
+    """
 
     query: Query
     over: Range
     answer: Answer | Bindings
     taken: tuple[Taken, ...]
-    read: int
+    read: int | None
+    unreached: tuple[Unreached, ...] = ()
 
 
 _ALONE: Final = {Truth.TRUE: Answer.YES, Truth.FALSE: Answer.NO, Truth.UNKNOWN: Answer.UNKNOWN}
@@ -191,9 +230,36 @@ def answered(query: Query, members: Sequence[AnswerSet], over: Range = Range.ALL
     view = WorldView(frozenset(member.atoms for member in members), over)
     if isinstance(query, Pattern) and query.variables:
         return Answered(query, over, bindings(query, view), (), len(members))
+    return Answered(query, over, answer(query, view), taken(query, members), len(members))
+
+
+def settled(
+    query: Query,
+    members: Sequence[AnswerSet],
+    truths: AbstractSet[Truth],
+    cut: Truncation | None,
+    read: int | None,
+) -> Answered:
+    """Answer `query` from the truths some answer set gives it, and the first of `members` to.
+
+    `members` are the answer sets a search read, in its order, until each truth was given or `cut`
+    stopped it: an answer none of them gives is unreached. `read` counts them if they are all.
+    """
+    first = taken(query, members)
+    given = {each.answer for each in first}
+    wanted = {_ALONE[truth] for truth in truths}
+    unreached = tuple(
+        Unreached(each, len(members), cut)
+        for each in Answer
+        if cut is not None and each in wanted and each not in given
+    )
+    return Answered(query, Range.ALL, decided(truths), first, read, unreached)
+
+
+def taken(query: Query, members: Sequence[AnswerSet]) -> tuple[Taken, ...]:
+    """Find the first of `members`, in their order, to give each answer `query` takes alone."""
     first: dict[Answer, Taken] = {}
     for index, member in enumerate(members, 1):
         alone = _ALONE[evaluate(query, member.atoms)]
         first.setdefault(alone, Taken(alone, index, member))
-    taken = tuple(first.values())
-    return Answered(query, over, answer(query, view), taken, len(members))
+    return tuple(first.values())

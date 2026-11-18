@@ -64,11 +64,12 @@ reference.
 
 **Evidence is a counterexample, explained.** `explain` re-runs a failed claim's search in a session
 of its own and picks the answer set it fails in: for `@cautious`, the first without a literal; for
-`@brave`, the first, once the search has read them all and none has it; for `@query yes`, the first
-where the query is false, else the first where it is unknown, and the reverse for `@query no`. Its
-roots are the literals that make it fail there: those absent, or the contrary that holds. A failed
-`@expect sat` has its refutation as evidence, and a failed `@expect unsat` an answer set with nothing
-to explain. Claims about counts, witnesses, assignments, costs and bindings have no evidence yet, and
+`@brave`, the first, and the literals the solver's brave consequences lack; for `@query yes`, the
+first where the query is false, else the first where it is unknown, and the reverse for `@query no`.
+Its roots are the literals that make it fail there: those absent, or the contrary that holds. A
+failed `@expect sat` has its refutation as evidence, and a failed `@expect unsat` its first answer
+set, with nothing to explain. For `@cautious`, `@brave` and `@expect unsat` the search stops at that
+answer set, so its name gives no count: `answer set 1`, not `answer set 1 of 7`. Claims about counts, witnesses, assignments, costs and bindings have no evidence yet, and
 neither has an undecided claim. `test` computes none, so it is as fast as it was.
 
 **`why` explains an answer set it is asked for; `ask` answers as `@query` does.** `why` picks the

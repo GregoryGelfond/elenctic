@@ -43,6 +43,7 @@ from elenctic.legend import (
     stopped,
     taken,
     unfound,
+    unreached,
     words,
 )
 from elenctic.literals import Literal
@@ -346,6 +347,9 @@ def _answered(
         about = None if not isinstance(alone, Literal) else Asking(alone, each.index)
         lead, phrase = _answer_set(taken(each, conjunction, result), glyphs)
         rows.append(Row(lead, phrase, about=about))
+    for past in result.unreached:
+        lead, phrase = _answer_set(unreached(past, conjunction), glyphs)
+        rows.append(Row(lead, phrase))
     if isinstance(alone, Literal) and result.taken:
         rows.append(Row((), helped(shows_why(source, alone, result.taken[0], result.over))))
     return rows

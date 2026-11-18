@@ -192,6 +192,15 @@ class Viewer(App[None]):
         self.exit()
 
 
+@dataclass(frozen=True, slots=True)
+class _Held:
+    """A block the view can explain deeper: the row holding it, that row, and the block."""
+
+    holder: Node
+    row: Row
+    block: int
+
+
 class Outline(Tree[Row]):
     """The tree of rows, with the keys of the text view's reader."""
 
@@ -376,38 +385,49 @@ class Outline(Tree[Row]):
         kept.expand()
         self.reach(kept)
 
-    def deeper(self) -> bool:
-        """Explain the selected step's block one step deeper; `False` if it has no further step."""
+    def _deepening(self) -> _Held | None:
+        """Find the block of the selected step, and the row holding it, if it can go deeper.
+
+        `None` when the selected row is no step, or when no branch of its block stops at its depth.
+        """
         node = self.cursor_node
         about = None if node is None or node.data is None else node.data.about
         if not isinstance(about, Step | Again):
-            return False
-        block = about.block
-        holder = holding(node, block)
+            return None
+        holder = holding(node, about.block)
         if holder is None or holder.data is None or not stopping(holder):
+            return None
+        return _Held(holder, holder.data, about.block)
+
+    def deeper(self) -> bool:
+        """Explain the selected step's block one step deeper; `False` if it has no further step."""
+        held = self._deepening()
+        if held is None:
             return False
-        if block in self.finding:
+        if held.block in self.finding:
             return True
-        depth = self.depths.get(block, self.view.max_depth)
+        depth = self.depths.get(held.block, self.view.max_depth)
         further = depth + 1 if isinstance(depth, int) else depth
-        row = holder.data
-        undo = self._waiting(holder, block)
-
-        async def found(rows: list[Row]) -> None:
-            undo()
-            at = self.cursor_node
-            moved = at is not None and is_beneath(at, holder)
-            place = None if at is None else place_of(holder, at)
-            self.depths[block] = further
-            holder.remove_children()
-            row.children = rows
-            self.show(rows, holder)
-            self.recited()
-            if moved:
-                self.stay(holder, place)
-
-        self.viewer.search(partial(self.view.evidence, block, further), found, undo)
+        undo = self._waiting(held.holder, held.block)
+        found = partial(self._deepened, held, further, undo)
+        self.viewer.search(partial(self.view.evidence, held.block, further), found, undo)
         return True
+
+    async def _deepened(
+        self, held: _Held, further: int | Limit, undo: Callable[[], None], rows: list[Row]
+    ) -> None:
+        """Show the block found one step deeper, the cursor kept on its row if it was beneath."""
+        undo()
+        at = self.cursor_node
+        moved = at is not None and is_beneath(at, held.holder)
+        place = None if at is None else place_of(held.holder, at)
+        self.depths[held.block] = further
+        held.holder.remove_children()
+        held.row.children = rows
+        self.show(rows, held.holder)
+        self.recited()
+        if moved:
+            self.stay(held.holder, place)
 
 
 class Keys(ModalScreen[None]):

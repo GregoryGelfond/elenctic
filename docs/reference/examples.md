@@ -25,7 +25,7 @@ docs/examples/absent.lp — FAIL
 evidence: @cautious { access(ann,db) }
  --> docs/examples/absent.lp:9:3
   |
-  = counterexample: answer set 1 of 1: { access(bob,wiki) }
+  = counterexample: answer set 1: { access(bob,wiki) }
   |
   not access(ann,db)                no rule fires (1 candidate)
   └── access(ann,db) :- role(ann,admin), permits(admin,db), not suspended(ann).  line 6: blocked by not suspended(ann)
@@ -364,7 +364,7 @@ docs/examples/team.lp — FAIL
 evidence: @cautious { balanced }
  --> docs/examples/team.lp:10:3
   |
-  = counterexample: answer set 1 of 7: { team(cy), team(dee) }
+  = counterexample: answer set 1: { team(cy), team(dee) }
   |
   not balanced                      no rule fires (1 candidate)
   └── balanced :- seniors(2), 2 >= 2.  line 7: blocked by seniors(2)

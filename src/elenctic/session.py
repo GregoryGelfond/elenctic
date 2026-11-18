@@ -5,8 +5,9 @@ pays and the truth of each theory atom of a body. A positive relaxation of it, g
 every rule instance that could derive each atom. Neither changes the answer sets.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
+from functools import cache, partial
 from typing import override
 
 from clingo import Model as ClingoModel
@@ -19,24 +20,35 @@ from elenctic.determination import (
     AnswerSet,
     AnswerSets,
     Conclusion,
+    Consequences,
     Consistent,
     Determination,
     Exhausted,
     Inconclusive,
     Inconsistent,
+    Mode,
     Optimized,
     Optimum,
     Range,
     Refutation,
     Truncation,
 )
-from elenctic.engine import controlled, parsed, possible_atoms, source_texts
+from elenctic.engine import Controlled, controlled, ground, parsed, possible_atoms, source_texts
 from elenctic.explanation import Counterexample, Evidence, Explanation, Outranked, Paid
 from elenctic.grounded import Grounded
 from elenctic.instances import Instances, Payment, instances
 from elenctic.literals import Assumption, Atoms, Literal, Scenario, Symbol, is_function
 from elenctic.program import Fault, Program
-from elenctic.query import Answer, Answered, Query, Truth, answered, evaluate
+from elenctic.query import (
+    Answer,
+    Answered,
+    Query,
+    Truth,
+    answered,
+    evaluate,
+    literal_of,
+    settled,
+)
 from elenctic.relaxation import Reading, Source, read
 from elenctic.search import KEEP_ALL, Interrupt, Keep, Limit, Limits, Seen, seen
 from elenctic.substitution import Substitution
@@ -53,41 +65,92 @@ class _Prepared:
     instances: Instances | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _Reading:
+    """The answer sets of a scenario a session has read, in its order, and how the search ended.
+
+    `stopped` when the search stopped on purpose, at an answer set it wanted: more may follow.
+    """
+
+    sets: tuple[AnswerSet, ...] = ()
+    conclusion: Conclusion = Exhausted.EXHAUSTED
+    stopped: bool = True
+
+    @property
+    def read(self) -> int | None:
+        """How many answer sets there are, once the search has read every one."""
+        ended = not self.stopped and self.conclusion is Exhausted.EXHAUSTED
+        return len(self.sets) if ended else None
+
+
 class Session(Grounded):
     """A program grounded once to be searched and explained: the session 1.0 reserves.
 
     Each answer set it finds is remembered with the atoms it records, so `explain` can read them.
-    Each search it ends is kept too, so a counterexample keeps its number from call to call: clingo
-    enumerates in another order once it has solved, as when `explain` is asked to go deeper.
+    The answer sets of each scenario are kept in the order it read them, so each keeps its number
+    from call to call: clingo enumerates in another order once it has solved, as when `explain` is
+    asked to go deeper. A query of one literal asks which answers it is given on a grounding apart,
+    so the session goes on to read in the order a fresh one does, and numbers as `why` does.
     """
 
     def __init__(
         self,
-        grounded: Grounded,
+        grounded: Controlled,
         instances: Instances,
-        priorities: tuple[int, ...],
         *,
         limits: Limits,
         interrupt: Interrupt | None,
+        apart: Callable[[], Grounded],
     ) -> None:
-        super().__init__(grounded._control, grounded.facts, grounded._theory)  # noqa: SLF001
+        super().__init__(grounded.control, grounded.facts, grounded.theory)
         self._instances = instances
         self._prefix = instances.reading.prefix
-        self.priorities = priorities
+        self.priorities = grounded.priorities
         self.limits = limits
         self.interrupt = interrupt
+        self._apart = cache(apart)
         self._recorded: dict[AnswerSet, frozenset[Symbol]] = {}
-        self._enumerated: dict[Scenario, Determination[AnswerSets]] = {}
+        self._readings: dict[Scenario, _Reading | Refutation] = {}
         self._optimized: dict[Scenario, Determination[Optimized]] = {}
 
-    def _enumerate(self, scenario: Scenario) -> Determination[AnswerSets]:
-        """Enumerate the answer sets of `scenario` in the session's limits, once it has ended."""
-        found = self._enumerated.get(scenario)
-        if found is None:
-            found = self.solve(scenario, limits=self.limits, interrupt=self.interrupt)
-            if not isinstance(found, Inconclusive):
-                self._enumerated[scenario] = found
-        return found
+    def _reach(
+        self, scenario: Scenario, wanted: Callable[[int, AnswerSet], bool]
+    ) -> _Reading | Refutation | Ended:
+        """Read the answer sets of `scenario` until one is `wanted`, asked of each with its number.
+
+        What is read is kept. A search that must read on starts over, in clingo's new order, and
+        numbers only the answer sets not read before, after them.
+        """
+        known = self._readings.get(scenario, _Reading())
+        if not isinstance(known, _Reading) or not known.stopped:
+            return known
+        if any(wanted(at, answer_set) for at, answer_set in enumerate(known.sets, 1)):
+            return known
+        before = frozenset(known.sets)
+        number = len(known.sets)
+        stopped = False
+
+        def enough(read: list[Seen]) -> bool:
+            nonlocal number, stopped
+            answer_set = read[-1].answer_set
+            if answer_set in before:
+                return False
+            number += 1
+            stopped = wanted(number, answer_set)
+            return stopped
+
+        found = self.solve(scenario, limits=self.limits, interrupt=self.interrupt, enough=enough)
+        match found:
+            case Inconclusive(cut):
+                return Ended(cut)
+            case Inconsistent(refutation):
+                self._readings[scenario] = refutation
+                return refutation
+            case Consistent(AnswerSets() as sets, conclusion):
+                new = tuple(answer_set for answer_set in sets.all if answer_set not in before)
+                reading = _Reading((*known.sets, *new), conclusion, stopped)
+                self._readings[scenario] = reading
+                return reading
 
     def _optimize(self, scenario: Scenario) -> Determination[Optimized]:
         """Find the optimum of `scenario` within the session's limits, once it has ended."""
@@ -242,96 +305,180 @@ class Session(Grounded):
         if index < 1:
             message = "an answer set's index counts from 1"
             raise ValueError(message)
-        members = self._members(scenario, over)
-        if not isinstance(members, tuple):
-            return members
-        sets, conclusion = members
-        read = len(sets) if conclusion is Exhausted.EXHAUSTED else None
-        if index <= len(sets):
-            return Counterexample(sets[index - 1], index, read)
-        return None if read is not None else Ended(Truncation(conclusion))
+        if over is Range.OPTIMAL:
+            found = self._optimal(scenario)
+        else:
+            found = self._reach(scenario, lambda at, _: at == index)
+        if not isinstance(found, _Reading):
+            return found
+        if index <= len(found.sets):
+            return Counterexample(found.sets[index - 1], index, found.read)
+        return None if found.read is not None else Ended(Truncation(found.conclusion))
 
     def answer(
         self, query: Query, scenario: Scenario = frozenset(), *, over: Range = Range.ALL
     ) -> Answered | Refutation | Ended:
         """Answer `query` over the answer sets of `scenario`, all or the optima, as `@query` does.
 
-        The refutation when there is none; `Ended` when the search stopped before reading them all.
+        A query of one literal, over all the answer sets, is answered once the search has read the
+        first answer set to give each answer some answer set gives. The refutation when there is
+        none; `Ended` when the search stopped before reading what the answer needs.
         """
+        literal = literal_of(query)
+        if over is Range.ALL and literal is not None:
+            return self._settled(query, literal, scenario)
         members = self._members(scenario, over)
-        if not isinstance(members, tuple):
+        if not isinstance(members, _Reading):
             return members
-        sets, conclusion = members
-        if conclusion is not Exhausted.EXHAUSTED:
-            return Ended(Truncation(conclusion))
-        return answered(query, sets, over)
+        if members.read is None:
+            return Ended(Truncation(members.conclusion))
+        return answered(query, members.sets, over)
 
-    def _members(
-        self, scenario: Scenario, over: Range
-    ) -> tuple[tuple[AnswerSet, ...], Conclusion] | Ended | Refutation:
-        """Search for the answer sets of `scenario`, all or the optima, and say how it ended."""
+    def _settled(
+        self, query: Query, literal: Literal, scenario: Scenario
+    ) -> Answered | Refutation | Ended:
+        """Answer a query of one literal from its truths, read until each is first taken.
+
+        The answer is known before the search reads: one that stops it first leaves the truths not
+        yet taken unreached.
+        """
+        truths = self._truths(literal, scenario)
+        if isinstance(truths, Ended):
+            return truths
+        left = set(truths)
+
+        def wanted(_: int, answer_set: AnswerSet) -> bool:
+            left.discard(evaluate(literal, answer_set.atoms))
+            return not left
+
+        reading = self._reach(scenario, wanted)
+        if not isinstance(reading, _Reading):
+            return reading
+        cut = reading.conclusion if isinstance(reading.conclusion, Truncation) else None
+        return settled(query, reading.sets, truths, cut, reading.read)
+
+    def _truths(self, literal: Literal, scenario: Scenario) -> frozenset[Truth] | Ended:
+        """Find the truths some answer set of `scenario` gives `literal`, on the grounding apart."""
+        contrary = literal.contrary
+        giving = {
+            Truth.TRUE: {Assumption(literal)},
+            Truth.FALSE: {Assumption(contrary)},
+            Truth.UNKNOWN: {Assumption(literal, holds=False), Assumption(contrary, holds=False)},
+        }
+        limits = replace(self.limits, max_answer_sets=1)
+        truths: set[Truth] = set()
+        for truth, assumed in giving.items():
+            match self._apart().solve(scenario | assumed, limits=limits, interrupt=self.interrupt):
+                case Inconclusive(cut):
+                    return Ended(cut)
+                case Consistent():
+                    truths.add(truth)
+                case Inconsistent():
+                    pass
+        return frozenset(truths)
+
+    def _members(self, scenario: Scenario, over: Range) -> _Reading | Ended | Refutation:
+        """Search for every answer set of `scenario`, of all or the optima."""
         if over is Range.OPTIMAL:
             return self._optimal(scenario)
-        found = self._enumerate(scenario)
-        match found:
-            case Inconclusive(cut):
-                return Ended(cut)
-            case Consistent(AnswerSets() as sets, conclusion):
-                return sets.all, conclusion
-            case Inconsistent(refutation):
-                return refutation
+        return self._reach(scenario, _none)
 
-    def _optimal(
-        self, scenario: Scenario
-    ) -> tuple[tuple[AnswerSet, ...], Conclusion] | Ended | Refutation:
+    def _optimal(self, scenario: Scenario) -> _Reading | Ended | Refutation:
         """Search for the optimal answer sets of `scenario`, and say how it ended."""
         optimized = self._optimize(scenario)
         match optimized:
             case Inconclusive(cut):
                 return Ended(cut)
             case Consistent(Optimum(_, sets), conclusion):
-                return sets.all, conclusion
+                return _Reading(sets.all, conclusion, stopped=False)
             case Consistent(_, conclusion):
                 return Ended(Truncation(conclusion), optimum_unproven=True)
             case Inconsistent(refutation):
                 return refutation
 
+    def _lacking(
+        self, scenario: Scenario, literals: Atoms | None = None
+    ) -> Counterexample | Ended | None:
+        """Find the first answer set of `scenario` without all of `literals`, or the first of all.
+
+        The search stops there, so how many answer sets there are is not said. What it read is
+        kept, so a claim asked again, deeper, is shown the same answer set.
+        """
+
+        def lacks(answer_set: AnswerSet) -> bool:
+            return literals is None or not literals <= answer_set.shown
+
+        reading = self._reach(scenario, lambda _, answer_set: lacks(answer_set))
+        if not isinstance(reading, _Reading):
+            return reading if isinstance(reading, Ended) else None
+        found = next((at for at, s in enumerate(reading.sets, 1) if lacks(s)), None)
+        return None if found is None else Counterexample(reading.sets[found - 1], found, None)
+
+    def _never(self, literals: Atoms, scenario: Scenario) -> list[Literal] | Ended:
+        """Name the literals no answer set of `scenario` holds, from its brave consequences."""
+        found = self.consequences(
+            Mode.BRAVE, scenario, limits=self.limits, interrupt=self.interrupt
+        )
+        match found:
+            case Inconclusive(cut):
+                return Ended(cut)
+            case Consistent(Consequences(literals=held), Exhausted.EXHAUSTED):
+                return sorted(literals - held)
+            case Consistent(_, conclusion):
+                return Ended(Truncation(conclusion))
+            case _:
+                return []
+
     def _first(self, claim: Claim, max_depth: int | Limit) -> Explanation | Ended | None:
-        found = self.counterexample(1, claim.scenario)
+        found = self._lacking(claim.scenario)
         if not isinstance(found, Counterexample):
-            return found if isinstance(found, Ended) else None
+            return found
         return self.explain((), found, max_depth=max_depth)
 
     def _entails(
         self, claim: Claim, entails: Entails, max_depth: int | Limit
     ) -> Evidence | Ended | None:
+        if entails.over is Range.OPTIMAL:
+            return self._entails_optimally(claim, entails, max_depth)
+        if entails.mode is Mode.CAUTIOUS:
+            found = self._lacking(claim.scenario, entails.literals)
+            if not isinstance(found, Counterexample):
+                return found
+            missing = sorted(entails.literals - found.answer_set.shown)
+            return self.explain(missing, found, max_depth=max_depth)
+        first = self._lacking(claim.scenario)
+        if not isinstance(first, Counterexample):
+            return first
+        never = self._never(entails.literals, claim.scenario)
+        if isinstance(never, Ended):
+            return never
+        return self.explain(never, first, max_depth=max_depth) if never else None
+
+    def _entails_optimally(
+        self, claim: Claim, entails: Entails, max_depth: int | Limit
+    ) -> Evidence | Ended | None:
         members = self._members(claim.scenario, entails.over)
-        if not isinstance(members, tuple):
+        if not isinstance(members, _Reading):
             return members if isinstance(members, Ended) else None
-        sets, conclusion = members
-        closed = conclusion is Exhausted.EXHAUSTED
+        sets, read = members.sets, members.read
         if not sets:
             return None
-        found = failures.missing(entails, sets, closed=closed)
+        found = failures.missing(entails, sets, closed=read is not None)
         if not isinstance(found, tuple):
             return found
         at, answer_set, missing = found
-        if entails.over is Range.OPTIMAL:
-            ranked = self.outrank(frozenset(missing), claim.scenario, max_depth=max_depth)
-            if ranked is not None:
-                return ranked
-        read = len(sets) if closed else None
+        ranked = self.outrank(frozenset(missing), claim.scenario, max_depth=max_depth)
+        if ranked is not None:
+            return ranked
         return self.explain(missing, Counterexample(answer_set, at, read), max_depth=max_depth)
 
     def _asks(self, claim: Claim, asks: Asks, max_depth: int | Limit) -> Evidence | Ended | None:
         members = self._members(claim.scenario, asks.over)
-        if not isinstance(members, tuple):
+        if not isinstance(members, _Reading):
             return members if isinstance(members, Ended) else None
-        sets, conclusion = members
-        closed = conclusion is Exhausted.EXHAUSTED
+        sets, read = members.sets, members.read
         if not sets:
             return None
-        read = len(sets) if closed else None
         contrary = Truth.FALSE if asks.answer is Answer.YES else Truth.TRUE
         if asks.answer is Answer.UNKNOWN:
             return None
@@ -345,6 +492,21 @@ class Session(Grounded):
                     roots, Counterexample(answer_set, at, read), max_depth=max_depth
                 )
         return None
+
+
+def _none(_at: int, _answer_set: AnswerSet) -> bool:
+    """Want no answer set in particular, so the search reads them all."""
+    return False
+
+
+def _apart(program: Program, solver: Solver) -> Grounded:
+    """Ground `program` again, plainly, for searches that must leave the session's order alone."""
+    match ground(program, solver):
+        case Fault():
+            message = "the program grounded once, so it grounds again"
+            raise AssertionError(message)
+        case grounded:
+            return grounded
 
 
 def _paid(payments: frozenset[Payment]) -> tuple[Paid, ...]:
@@ -383,9 +545,12 @@ def session(
     if prepared.instances is None:
         message = "the program was grounded without being read"
         raise AssertionError(message)
-    plain = Grounded(grounded.control, grounded.facts, grounded.theory)
     return Session(
-        plain, prepared.instances, grounded.priorities, limits=limits, interrupt=interrupt
+        grounded,
+        prepared.instances,
+        limits=limits,
+        interrupt=interrupt,
+        apart=partial(_apart, program, solver),
     )
 
 

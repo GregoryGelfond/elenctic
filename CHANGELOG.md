@@ -47,9 +47,18 @@ All notable changes are recorded here. The format follows
   differently. A title too long for its bar is cut short, the tally kept whole. After `+` the
   cursor stays on the step it deepened, and on its row as evidence comes in or `f` and `e` change
   the rows around it.
-- A `Session` keeps each search it ends, so a counterexample keeps its number from call to call:
-  clingo enumerates in another order once it has solved, and going deeper (`+`) chose another
-  counterexample than `--max-depth` did.
+- A `Session` keeps the answer sets it reads of each scenario, in its order, so a counterexample
+  keeps its number from call to call: clingo enumerates in another order once it has solved, and
+  going deeper (`+`) chose another counterexample than `--max-depth` did. A search that must read on
+  numbers only the answer sets it had not read, after them.
+- `explain`, `why` and `ask` read only the answer sets they need: a `@cautious`, `@brave` or
+  `@expect unsat` counterexample and `why --answer-set K` stop at it, and a one-literal `ask` asks
+  apart which answers it is given, then stops once each has been given (`consequences.lp`, with
+  2^40 answer sets, takes 0.1 s, not 10). An answer set is named `answer set K`, and `of N` only
+  when the search read all N; in JSON its `read` is `null`. `ask` answers a huge program it used to
+  end on, and an answer a limit kept it from reaching is `true in an answer set past the 100000
+  read: search ended: …` (`unreached` in JSON). A rule's instances are ordered by their values'
+  text, each spelled once.
 - `--format text|json|tui` on `test`, `explain`, `why` and `ask`, and `--short` for one-line
   diagnostics.
 

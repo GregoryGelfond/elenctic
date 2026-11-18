@@ -174,7 +174,7 @@ class Counterexample:
     """The answer set explained: the `index`-th the search read, of `read` in all.
 
     It is the one a claim fails in, or the one asked for by its index. `read` is `None` when the
-    search was truncated before it had read them all.
+    search did not read them all: it stopped at this one, or was truncated.
     """
 
     answer_set: AnswerSet

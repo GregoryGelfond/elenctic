@@ -107,8 +107,8 @@ aside `3`, italic (substitutions, guards, counts) and reference `2`, dim (a rule
 ### Evidence
 
 `explain` writes a block for each failed claim: `evidence:` and the claim, its place, the
-counterexample (`answer set K of N`, or `answer set K` when the search did not read them all), then
-a tree with one line for each atom. A line that a rule instance accounts for shows the instance, its
+counterexample (`answer set K`, and `of N` when the search read all N, as a claim over the optimal
+answer sets or a `@query` does), then a tree with one line for each atom. A line that a rule instance accounts for shows the instance, its
 variables replaced by their values, and the rule's line:
 
 | Line | Says |
@@ -132,11 +132,15 @@ however long it is.
 
 `why` writes the same block under `why:` and the atom as it was asked, `not` kept (`why: not
 access(ann,db)`), naming the program's path; its answer set is
-`answer set K of N`, or `optimal answer set K of N` under `--over optimal`, and `counterexample:`
-stays for failed claims. `ask` writes `ask:` and the query, then `= answer: yes|no|unknown` and, for
+`answer set K`, the search stopping there, or `optimal answer set K of N` under `--over optimal`, and
+`counterexample:` stays for failed claims. `ask` writes `ask:` and the query, then `= answer: yes|no|unknown` and, for
 each answer the query takes in one answer set alone, the first answer set that gives it: `true in
-answer set 3 of 7: { … }`, `false in …`, or `neither p nor -p in …` (`neither true nor false` for a
-conjunction). A one-literal query ends with a `= help:` line giving the `why` command for that
+answer set 3: { … }`, `false in …`, or `neither p nor -p in …` (`neither true nor false` for a
+conjunction). A one-literal query asks apart which answers some answer set gives, and the search
+stops at the first answer set to give the last of them. If a limit stops it first, the query is
+still answered, and an answer it did not reach is `true in an answer set past the 100000 read:
+search ended: …`. A conjunction, a disjunction, or a query `--over optimal` reads every answer set,
+and names them `answer set 3 of 7`. A one-literal query ends with a `= help:` line giving the `why` command for that
 answer set. A pattern with variables writes `= yes bindings: { … }`, and the `no` and `unknown`
 bindings when there are any. With no answer set, each shows the refutation; a search cut short shows
 what ended it.
@@ -328,7 +332,7 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 | Over which solver? | `solve(program, solver=Solver.CLINGCON)`, `ground(program, solver)` | the same; an `AnswerSet` carries its `assignment` |
 | Why is there none? | the `Inconsistent` result's `refutation` | `These`, `NotThese` or `NoAssumptions` |
 | Why does a claim fail? | `evidenced(report, program)`, or `Session.evidence(finding)` | each failed `Finding` with its `evidence` |
-| Which is the k-th answer set, of all or of the optima? | `Session.counterexample(k, scenario, over=range)` | a `Counterexample`; the `Refutation` when there is none; `Ended`; or `None` past the last |
+| Which is the k-th answer set, of all or of the optima? | `Session.counterexample(k, scenario, over=range)` | a `Counterexample`, the search stopping at it; the `Refutation` when there is none; `Ended`; or `None` past the last |
 | What does a query come to over the answer sets? | `Session.answer(query, scenario, over=range)` | an `Answered`, the `Refutation` when there are none, or `Ended` |
 | Why does an atom hold, or not, in an answer set? | `session(program).explain(literals, counterexample)` | an `Explanation` |
 | Why does an atom hold, or not, in the k-th answer set? | `why(program, atom, index=k, scenario=…, over=…)` | an `Explanation`, the `Refutation`, `Ended`, or a `Fault` |
@@ -428,8 +432,9 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `evaluate` | a query's `Truth` in one answer set |
 | `answer` | a query's `Answer` over a `WorldView` |
 | `answered` | a query answered over answer sets given in the order read: an `Answered` |
-| `Answered` | a query's `answer`, or its `Bindings` for a pattern with variables, over the `read` answer sets, `over` all or the optima, with what it is `taken` to be in one answer set alone |
+| `Answered` | a query's `answer`, or its `Bindings` for a pattern with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached` |
 | `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it |
+| `Unreached` | an `answer` a query takes in some answer set alone, past the `read` answer sets a search read before `cut` stopped it |
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
 | `bindings` | the `Bindings` of a `Pattern` over a `WorldView`: its unifiers with the cautious consequences (yes, and no by the contrary), and with the brave ones for the rest it entertains (unknown) |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |

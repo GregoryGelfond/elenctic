@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from functools import cache
 
 from clingo import Function, Number, Symbol, Tuple_
 
@@ -137,6 +138,23 @@ def instances(reading: Reading, atoms: Iterable[Symbol]) -> Instances:
     )
 
 
-def order(instance: Instance) -> tuple[int, int, str]:
-    """Order instances as their rules are written, then by the values of their variables."""
-    return instance.clause.rule.statement, instance.clause.number, str(instance.values)
+def order(instance: Instance) -> tuple[int, int, tuple[str, ...]]:
+    """Order instances as their rules are written, then by the values of their variables.
+
+    The values compare as the text of their tuple would: a rule's instances have as many values as
+    it has variables, and no symbol's `repr` begins another's.
+    """
+    return (
+        instance.clause.rule.statement,
+        instance.clause.number,
+        tuple(map(_spelled, instance.values)),
+    )
+
+
+@cache
+def _spelled(symbol: Symbol) -> str:
+    """Spell a symbol as `repr` does, once: clingo spells it in Python, a part at a time.
+
+    clingo keeps every symbol for as long as the process runs, so this keeps no more than it does.
+    """
+    return repr(symbol)

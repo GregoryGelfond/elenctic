@@ -789,7 +789,7 @@ def test_why_explains_an_atom_in_the_first_answer_set(
         "why: reach(c)\n"
         f" --> {path}\n"
         "  |\n"
-        "  = answer set 1 of 1: { edge(a,b), edge(b,c), reach(a), reach(b), reach(c) }\n"
+        "  = answer set 1: { edge(a,b), edge(b,c), reach(a), reach(b), reach(c) }\n"
         "  |\n"
         "  reach(c) :- reach(b), edge(b,c).  line 3\n"
         "  ├── reach(b) :- reach(a), edge(a,b).  line 3\n"
@@ -807,7 +807,7 @@ def test_why_names_the_answer_set_asked_for_and_the_optima_as_optimal(
 ) -> None:
     path = write(tmp_path, "ab.lp", CHOICE)
     _, out = run(capsys, "why", path, "not a", "--answer-set", "2")
-    assert "  = answer set 2 of 4: { b, -c }\n" in out
+    assert "  = answer set 2: { b, -c }\n" in out
     assert out.startswith("why: not a\n")
     _, out = run(capsys, "why", path, "a", "--answer-set", "2", "--over", "optimal")
     assert "  = optimal answer set 2 of 4: " in out
@@ -820,7 +820,7 @@ def test_why_under_assumptions_explains_their_answer_sets(
     path = write(tmp_path, "ab.lp", CHOICE)
     code, out = run(capsys, "why", path, "a", "--assuming", "{ b, not a }")
     assert code == WhyExit.EXPLAINED
-    assert "  = answer set 1 of 1: { b, -c }\n" in out
+    assert "  = answer set 1: { b, -c }\n" in out
 
 
 def test_why_without_an_answer_set_shows_the_refutation_and_exits_as_a_fault(
@@ -897,19 +897,44 @@ def test_ask_answers_with_the_first_answer_set_giving_each_value(
         f" --> {path}\n"
         "  |\n"
         "  = answer: unknown\n"
-        "  = neither a nor -a in answer set 1 of 4: { -c }\n"
-        "  = true in answer set 3 of 4: { a, -c }\n"
+        "  = neither a nor -a in answer set 1: { -c }\n"
+        "  = true in answer set 3: { a, -c }\n"
         "  |\n"
         f"  = help: `elenctic why {path} a --answer-set 1` shows why\n"
         "\n"
     )
 
 
+def test_ask_answers_past_a_limit_and_says_which_answer_sets_it_did_not_reach(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    code, out, err = run_both(capsys, "ask", path, "a", "--max-answer-sets", "2")
+    assert (code, err) == (AskExit.ANSWERED, "")
+    assert out == (
+        "ask: { a }\n"
+        f" --> {path}\n"
+        "  |\n"
+        "  = answer: unknown\n"
+        "  = neither a nor -a in answer set 1: { -c }\n"
+        "  = true in an answer set past the 2 read: search ended: answer-set limit reached"
+        " (--max-answer-sets)\n"
+        "  |\n"
+        f"  = help: `elenctic why {path} a --answer-set 1` shows why\n"
+        "\n"
+    )
+    code, out = run(capsys, "ask", path, "a", "--max-answer-sets", "2", "--json")
+    asked = json.loads(out)["ask"]
+    assert asked["unreached"] == [
+        {"kind": "unreached", "answer": "yes", "read": 2, "cut": "max_answer_sets"}
+    ]
+
+
 def test_ask_answers_no_and_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = write(tmp_path, "ab.lp", CHOICE)
     code, out = run(capsys, "ask", path, "{ c }")
     assert code == AskExit.ANSWERED
-    assert "  = answer: no\n  = false in answer set 1 of 4: { -c }\n" in out
+    assert "  = answer: no\n  = false in answer set 1: { -c }\n" in out
 
 
 def test_ask_of_a_conjunction_says_neither_true_nor_false_and_offers_no_why(
