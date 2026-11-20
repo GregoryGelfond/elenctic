@@ -1089,3 +1089,32 @@ def test_why_as_json_names_the_literal_by_its_roots_with_or_without_not(
         run(capsys, "why", path, asked, "--format", "json")[1] for asked in ("a", "not a")
     )
     assert held == unheld
+
+
+@pytest.mark.parametrize(
+    "invocation",
+    [
+        ("project", ["test", "."], None),
+        ("project", ["test", "--root", "tests", "tests"], "project/base.lp"),
+        (".", ["test", "project/tests"], "base.lp"),
+    ],
+)
+def test_root_holds_an_include_that_clingo_finds_from_the_working_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    invocation: tuple[str, list[str], str | None],
+) -> None:
+    working, argv, escaped = invocation
+    tests = tmp_path / "project" / "tests"
+    tests.mkdir(parents=True)
+    write(tmp_path / "project", "base.lp", "q.\n")
+    write(tmp_path, "base.lp", "q.\n")
+    write(tests, "unit-test.lp", '#include "base.lp".\n% @expect sat\n% @cautious { q }\n')
+    monkeypatch.chdir(tmp_path / working)
+    code, out, err = run_both(capsys, *argv)
+    if escaped is None:
+        assert (code, out) == (Exit.CLAIMS_HOLD, "1/1 passed\n")
+    else:
+        assert code == Exit.FAULT
+        assert f"this case loads {tmp_path / escaped}, which is outside the root" in err

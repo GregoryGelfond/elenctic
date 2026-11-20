@@ -182,6 +182,8 @@ def test_only_the_adapters_ask_the_environment_or_a_stream() -> None:
             users[path.name] = found
     assert users == {
         "cli.py": {"environ"},
+        # Clingo reads `CLINGOPATH` to find an include; the root check must read what it reads.
+        "engine.py": {"environ"},
         "presentation.py": {"isatty"},
     }
 

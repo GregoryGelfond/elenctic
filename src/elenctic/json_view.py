@@ -8,6 +8,7 @@ from enum import Enum, IntEnum
 from types import UnionType
 from typing import Final, TypeIs, cast
 
+from elenctic.about import package
 from elenctic.inquiry import Ask, AskExit, Why, WhyExit
 from elenctic.legend import listed
 from elenctic.literals import Literal, Symbol
@@ -24,6 +25,12 @@ _AS_STRING: Final = (Symbol, Literal, Pattern, Substitution)
 """Types `encode` writes as a string rather than as a kind-tagged object."""
 
 _SEQUENCE: Final = (tuple, list, set, frozenset)
+
+_SCHEMA_ID: Final = (
+    "https://raw.githubusercontent.com/GregoryGelfond/elenctic/v{version}/docs/reference/"
+    "output-v1.schema.json"
+)
+"""Where the schema of a release is published: under its tag, from the package's version."""
 
 
 def _is_ordered(value: object) -> TypeIs[tuple[object, ...] | list[object]]:
@@ -237,7 +244,7 @@ def schema_document() -> dict[str, Json]:
     }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://raw.githubusercontent.com/GregoryGelfond/elenctic/v1.0.0/docs/reference/output-v1.schema.json",
+        "$id": _SCHEMA_ID.format(version=package().version),
         "title": "elenctic output schema 1",
         "type": "object",
         "required": ["schema", "exit_code"],

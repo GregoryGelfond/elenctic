@@ -4,7 +4,7 @@ All notable changes are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.1.0] - 2026-11-19
 
 ### Added
 - `elenctic explain PATH…`: `test`, then the evidence for each failed claim: the counterexample,
@@ -89,6 +89,18 @@ All notable changes are recorded here. The format follows
 ### Deprecated
 - `--format full` and `--format short`, read as `--format text` and `--format text --short` with a
   warning on stderr; 2.0 removes them.
+
+### Fixed
+- The root holds every file clingo loads. An `#include` is found as clingo finds it: as written,
+  from the working directory, then beside the including file, then under `CLINGOPATH`. The check
+  looked only beside the file, so a file clingo found from the working directory, inside the root
+  or outside it, went unchecked. `#include <…>` names a built-in program, never a file.
+- Comments and strings are read as clingo reads them: block comments nest, a `%` inside one
+  comments out the rest of its line, `#!` starts a comment, and a string ends on its line. A
+  directive in a nested comment is not followed, one with a comment before its file is, and
+  non-ASCII after a `"` that opens no string is refused instead of aborting the process.
+- An included file that is not UTF-8 is refused (`cannot read`, naming it) instead of aborting the
+  process.
 
 ## [1.0.0] - 2026-11-06
 
@@ -276,4 +288,5 @@ All notable changes are recorded here. The format follows
 - A file that is not UTF-8 is a refusal of the request (`FAULT`, 2), not a traceback.
 - `pixi run check` prints the number of tests: pytest was given `-q` twice.
 
+[1.1.0]: https://github.com/GregoryGelfond/elenctic/releases/tag/v1.1.0
 [1.0.0]: https://github.com/GregoryGelfond/elenctic/releases/tag/v1.0.0

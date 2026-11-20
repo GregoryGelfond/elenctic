@@ -1,6 +1,6 @@
 [project]
 name = "elenctic"
-version = "1.0.0"
+version = "1.1.0"
 description = "Contracts and queries for answer set programs: a library first, a command line second"
 readme = "README.md"
 license = "MIT"

@@ -2,7 +2,7 @@ schema_version: 1
 
 context:
   name: elenctic
-  version: "1.0.0"
+  version: "1.1.0"
   python_min: "3.14"
 
 package:
@@ -11,7 +11,7 @@ package:
 
 source:
   url: https://pypi.org/packages/source/e/elenctic/elenctic-${{ version }}.tar.gz
-  sha256: "aa83f55e47bdaae111f510bc257b745ef00cc740dc457871aba7a1b918a5b52a"
+  sha256: "REPLACE_WITH_PYPI_SDIST_SHA256"
 
 build:
   number: 0

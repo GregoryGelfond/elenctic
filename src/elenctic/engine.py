@@ -1,7 +1,8 @@
 """The one place that makes a clingo `Control`: it grounds a program to run searches over."""
 
+import os
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Final, override
@@ -17,7 +18,16 @@ from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
 from elenctic.program import Fault, Locus, Program
 from elenctic.search import Interrupt, Limits
-from elenctic.spans import Diagnostic, diagnose, failure, first_unlexable, in_code
+from elenctic.spans import (
+    Diagnostic,
+    Lexeme,
+    diagnose,
+    failure,
+    first_unlexable,
+    in_code,
+    lexemes,
+    unreadable,
+)
 from elenctic.theory import Clingcon, Plain, Theory
 
 _EXTRA: Final = "theory"
@@ -46,23 +56,10 @@ def _relocated(diagnostic: Diagnostic, source: str) -> Diagnostic:
 def source_texts(program: Program) -> dict[str, str]:
     """Map each source name to its text: the program and every `#include` it reaches."""
     texts = {program.source: program.text}
-    if program.path is None:
-        return texts
-    seen = {program.path.resolve()}
-    pending = [program.path.parent / target for target in _include_targets(program.text)]
-    while pending:
-        path = pending.pop().resolve()
-        if path in seen:
-            continue
-        seen.add(path)
-        try:
-            included = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
-            continue
-        texts[str(path)] = included
-        # Also under the relative name clingo may report.
-        texts[path.name] = included
-        pending.extend(path.parent / target for target in _include_targets(included))
+    for loaded in _loaded(program):
+        if isinstance(loaded.text, str):
+            # Under its own path, and under the name clingo reports it by.
+            texts[str(loaded.path)] = texts[loaded.name] = loaded.text
     return texts
 
 
@@ -121,37 +118,107 @@ def _absent(solver: Solver, _program: Program) -> Fault:
     )
 
 
-_INCLUDE = re.compile(r"#include\s*(?:\"([^\"]+)\"|<([^>]+)>)")
+_DIRECTIVE: Final = re.compile("#include")
+_BLANK: Final = frozenset(" \t\r\n")
+_ESCAPED: Final = re.compile(r"\\(.)")
+_UNESCAPED: Final = {"n": "\n", "\\": "\\", '"': '"'}
+
+
+def _past_blanks(text: str, index: int, comments: Mapping[int, Lexeme]) -> int:
+    while index < len(text):
+        if text[index] in _BLANK:
+            index += 1
+        elif (comment := comments.get(index)) is not None:
+            index = comment.end
+        else:
+            break
+    return index
 
 
 def _include_targets(text: str) -> tuple[str, ...]:
-    """Return the paths named by `#include` directives outside strings and comments."""
+    """Return the files `#include "..."` directives name, read as clingo's lexer reads them.
+
+    `#include <...>` names a built-in program (only `<incmode>` exists), never a file.
+    """
+    pieces = lexemes(text)
     code = in_code(text)
-    return tuple(
-        quoted or angled
-        for match in _INCLUDE.finditer(text)
-        if code[match.start()]
-        for quoted, angled in [match.groups()]
+    comments = {piece.start: piece for piece in pieces if not piece.string}
+    strings = {piece.start: piece for piece in pieces if piece.string}
+    targets: list[str] = []
+    for directive in _DIRECTIVE.finditer(text):
+        if not code[directive.start()]:
+            continue
+        string = strings.get(_past_blanks(text, directive.end(), comments))
+        if string is not None:
+            quoted = text[string.start + 1 : string.end - 1]
+            targets.append(_ESCAPED.sub(lambda escape: _UNESCAPED[escape[1]], quoted))
+    return tuple(targets)
+
+
+def _found(target: str, including: str) -> Path | None:
+    """Return the path clingo opens for `#include "target"` in the file named `including`.
+
+    Clingo tries `target` as written (from the working directory), then beside the including
+    file, then under each directory of `CLINGOPATH`; the first that exists wins.
+    """
+    searched = os.environ.get("CLINGOPATH")
+    directories = (
+        Path(),
+        Path(including).parent,
+        *(() if searched is None else map(Path, searched.split(":"))),
     )
+    return next((path for d in directories if (path := d / target).exists()), None)
+
+
+@dataclass(frozen=True, slots=True)
+class _Loaded:
+    """A file clingo loads by `#include`: where it is, its name to clingo, and its text.
+
+    The text is the decoding error for a file that is not UTF-8, and `None` for one that cannot
+    be read (clingo reports that itself).
+    """
+
+    path: Path
+    name: str
+    text: str | UnicodeDecodeError | None
+
+
+def _read(path: Path) -> str | UnicodeDecodeError | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        return error
+    except OSError:
+        return None
+
+
+def _loaded(program: Program) -> Iterator[_Loaded]:
+    """Yield each file clingo loads for `program`'s `#include`s, in the order it loads them."""
+    if program.path is None:
+        return
+    seen = {program.path.resolve()}
+    # Depth first, as clingo reads an included file where its directive stands.
+    pending = [(str(program.path), iter(_include_targets(program.text)))]
+    while pending:
+        including, targets = pending[-1]
+        if (target := next(targets, None)) is None:
+            pending.pop()
+            continue
+        if (found := _found(target, including)) is None:
+            continue  # clingo reports the missing include
+        if (path := found.resolve()) in seen:
+            continue
+        seen.add(path)
+        yield (loaded := _Loaded(path, str(found), _read(path)))
+        if isinstance(loaded.text, str):
+            pending.append((loaded.name, iter(_include_targets(loaded.text))))
 
 
 def included_sources(program: Program) -> frozenset[Path]:
-    """Return this program's path and every readable `#include` it reaches."""
+    """Return this program's path and every file its `#include`s load, readable or not."""
     if program.path is None:
         return frozenset()
-    found = {program.path.resolve()}
-    pending = [program.path.parent / target for target in _include_targets(program.text)]
-    while pending:
-        path = pending.pop().resolve()
-        if path in found:
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
-            continue
-        found.add(path)
-        pending.extend(path.parent / target for target in _include_targets(text))
-    return frozenset(found)
+    return frozenset((program.path.resolve(), *(loaded.path for loaded in _loaded(program))))
 
 
 def containment(program: Program, root: Path) -> Fault | None:
@@ -187,22 +254,14 @@ def _lexable(program: Program) -> Fault | None:
     """Refuse program text (and `#include`d files) that would abort pyclingo's logger."""
     if (refused := first_unlexable(program.text, program.source)) is not None:
         return Fault(Locus.PROGRAM, (refused,))
-    if program.path is None:
-        return None
-    seen: set[Path] = {program.path.resolve()}
-    pending = [program.path.parent / target for target in _include_targets(program.text)]
-    while pending:
-        path = pending.pop().resolve()
-        if path in seen:
-            continue
-        seen.add(path)
-        try:
-            included = path.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
-            continue  # clingo will report the missing or unreadable include
-        if (refused := first_unlexable(included, str(path))) is not None:
-            return Fault(Locus.PROGRAM, (refused,))
-        pending.extend(path.parent / target for target in _include_targets(included))
+    for loaded in _loaded(program):
+        match loaded.text:
+            case UnicodeDecodeError() as error:
+                return Fault(Locus.PROGRAM, (unreadable(str(loaded.path), error),))
+            case str() as text if (refused := first_unlexable(text, str(loaded.path))) is not None:
+                return Fault(Locus.PROGRAM, (refused,))
+            case _:
+                pass
     return None
 
 

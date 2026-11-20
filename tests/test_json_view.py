@@ -12,6 +12,7 @@ from clingo import Number
 from write_output_schema import TARGET, render
 
 import elenctic
+from elenctic.about import package
 from elenctic.check import check
 from elenctic.contract import Census, Entails
 from elenctic.determination import AnswerSet, Incumbent, Truncation, WorldView
@@ -154,6 +155,10 @@ def test_the_schema_document_names_schema_one_and_the_run_kinds() -> None:
     assert "literal" not in defs
     assert "pattern" not in defs
     assert render().endswith("\n")
+
+
+def test_the_schema_is_published_under_the_tag_of_the_packages_version() -> None:
+    assert f"/elenctic/v{package().version}/docs/" in str(schema_document()["$id"])
 
 
 def _explained(name: str) -> Run:

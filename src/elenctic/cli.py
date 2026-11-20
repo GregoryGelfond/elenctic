@@ -46,7 +46,7 @@ from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.session import Session, evidenced, session
-from elenctic.spans import Diagnostic, Parsed, failure, first_unlexable, note
+from elenctic.spans import Diagnostic, Parsed, failure, first_unlexable, note, unreadable
 from elenctic.syntax import read_asked, read_scenario
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
@@ -381,21 +381,12 @@ def _outside(path: Path, root: Path) -> Entry:
     return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
 
 
-def _unreadable_note(error: OSError | UnicodeDecodeError) -> str:
-    match error:
-        case UnicodeDecodeError():
-            return f"not valid UTF-8 at byte {error.start}: {error.reason}"
-        case _:
-            return str(error)
-
-
 def _read(path: Path) -> Program | Fault:
     """Read the program at `path`, or refuse it as unreadable."""
     try:
         return Program.read(path)
     except (OSError, UnicodeDecodeError) as error:
-        problem = failure(None, f"cannot read `{path}`", notes=(_unreadable_note(error),))
-        return Fault(Locus.REQUEST, (problem,))
+        return Fault(Locus.REQUEST, (unreadable(str(path), error),))
 
 
 def _mistaken(text: str) -> tuple[str, tuple[str, ...]] | None:

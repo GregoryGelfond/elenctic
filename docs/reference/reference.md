@@ -27,6 +27,9 @@ choice is `Limits(max_seconds=…, max_answer_sets=…)`, each a number or `Limi
 
 Every file a case reaches by `#include` must lie under its root once symbolic links and `..` are
 resolved; the root is `--root DIR`, else the directory searched, else a named file's own directory.
+An `#include "…"` is found as clingo finds it: as written, from the working directory, then beside
+the including file, then under each directory of `CLINGOPATH`. Write it relative to the including
+file and keep the working directory free of a file by the same name.
 A case that includes a file outside it is refused (`FAULT`, 2) before it runs, naming the path and
 never its contents. With `--root`, a path not under DIR is refused the same way and the other paths
 still run; a `--root` that is not a directory is a usage error. In the library the root is

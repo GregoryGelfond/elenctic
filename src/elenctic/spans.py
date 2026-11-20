@@ -144,59 +144,70 @@ def in_characters(span: Span, text: str) -> Span:
 _ASCII_MAX = 127
 
 
-def _skip_block_comment(text: str, start: int, mask: list[bool]) -> int:
-    mask[start] = mask[start + 1] = False
-    index = start + 2
-    length = len(text)
+_STRING: Final = re.compile(r'"(?:[^\\"\n]|\\["\\n])*"')
+"""A string as clingo's lexer reads one: on one line, escaping only `"`, `\\` and newline.
+
+A `"` that opens no such string is a stray character, and what follows it is code.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class Lexeme:
+    """A comment or a string: text from `start` to `end` that clingo's lexer reads as one piece."""
+
+    start: int
+    end: int
+    string: bool
+
+
+def _line_end(text: str, index: int) -> int:
+    end = text.find("\n", index)
+    return len(text) if end < 0 else end
+
+
+def _comment_end(text: str, start: int) -> int:
+    """Return where the comment opening at `start` ends.
+
+    A `%` or `#!` comments out the rest of its line. Block comments nest, and a `%` inside one
+    comments out the rest of that line, closers included.
+    """
+    if not text.startswith("%*", start):
+        return _line_end(text, start)
+    depth, index, length = 1, start + 2, len(text)
     while index < length:
-        mask[index] = False
-        if text[index] == "*" and index + 1 < length and text[index + 1] == "%":
-            mask[index + 1] = False
-            return index + 2
-        index += 1
+        if text.startswith("%*", index):
+            depth, index = depth + 1, index + 2
+        elif text.startswith("*%", index):
+            depth, index = depth - 1, index + 2
+            if depth == 0:
+                return index
+        elif text[index] == "%":
+            index = _line_end(text, index)
+        else:
+            index += 1
     return index
 
 
-def _skip_line_comment(text: str, start: int, mask: list[bool]) -> int:
-    index = start
-    length = len(text)
-    while index < length and text[index] != "\n":
-        mask[index] = False
-        index += 1
-    return index
-
-
-def _skip_string(text: str, start: int, mask: list[bool]) -> int:
-    mask[start] = False
-    index = start + 1
-    length = len(text)
+def lexemes(text: str) -> tuple[Lexeme, ...]:
+    """Return the comments and strings of `text`, in order, as clingo's lexer reads them."""
+    found: list[Lexeme] = []
+    index, length = 0, len(text)
     while index < length:
-        mask[index] = False
-        current = text[index]
-        if current == "\\" and index + 1 < length:
-            mask[index + 1] = False
-            index += 2
-            continue
-        index += 1
-        if current == '"':
-            break
-    return index
+        if text[index] == "%" or text.startswith("#!", index):
+            found.append(Lexeme(index, end := _comment_end(text, index), string=False))
+        elif text[index] == '"' and (string := _STRING.match(text, index)) is not None:
+            found.append(Lexeme(index, end := string.end(), string=True))
+        else:
+            end = index + 1
+        index = end
+    return tuple(found)
 
 
 def in_code(text: str) -> list[bool]:
     """Mark each character that sits outside strings and comments."""
     mask = [True] * len(text)
-    index, length = 0, len(text)
-    while index < length:
-        character = text[index]
-        if character == "%" and index + 1 < length and text[index + 1] == "*":
-            index = _skip_block_comment(text, index, mask)
-        elif character == "%":
-            index = _skip_line_comment(text, index, mask)
-        elif character == '"':
-            index = _skip_string(text, index, mask)
-        else:
-            index += 1
+    for lexeme in lexemes(text):
+        mask[lexeme.start : lexeme.end] = [False] * (lexeme.end - lexeme.start)
     return mask
 
 
@@ -286,3 +297,13 @@ def _located(
         header["message"],
         children=children,
     )
+
+
+def unreadable(source: str, error: OSError | UnicodeDecodeError) -> Diagnostic:
+    """Say that the file `source` cannot be read, and why."""
+    match error:
+        case UnicodeDecodeError():
+            note = f"not valid UTF-8 at byte {error.start}: {error.reason}"
+        case _:
+            note = str(error)
+    return failure(None, f"cannot read `{source}`", notes=(note,))

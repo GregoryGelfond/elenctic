@@ -1,8 +1,11 @@
 """Pin source masks, nested include boundaries and located refusals."""
 
+import os
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
+from clingo.ast import parse_files
 
 from elenctic.check import check
 from elenctic.engine import ground, included_sources
@@ -30,14 +33,19 @@ from elenctic.spans import (
         [("% é", False), ("\na.", True)],
         [("a. ", True), ("% tail", False)],
         [("%**%", False), ("a.", True)],
-        [("a.", True), ("%* ignored ** text % end *%", False), ("b.", True)],
+        [("a.", True), ("%* ignored ** text *%", False), ("b.", True)],
+        [("a.", True), ("%* a % comments out *% b.\n *%", False), ("c.", True)],
+        [("a.", True), ("%* %* nested *% b. *%", False), ("c.", True)],
+        [("#! b.", False), ("\nc.", True)],
         [("%* é", False)],
         [("%* trailing *", False)],
         [("a.", True), ("%* *%", False), ("%* *%", False), ("b.", True)],
         [('""', False), ("a", True)],
         [('"é"', False), ("b", True)],
-        [('"unterminated', False)],
-        [('"backslash' + "\\", False)],
+        [('"unterminated', True)],
+        [('"backslash' + "\\", True)],
+        [('"two\nlines"', True)],
+        [('"\\t is no escape"', True)],
         [('"escaped \\" quote"', False), ("p.", True)],
         [('"escaped \\\\"', False), ("p.", True)],
         [('"%* not a comment *%"', False), ("a.", True)],
@@ -138,3 +146,189 @@ def test_relative_spans_shift_columns_only_on_their_first_line(
 def test_byte_columns_use_both_the_first_and_the_last_lines() -> None:
     where = Span("case.lp", Position(1, 3), Position(2, 3))
     assert in_characters(where, "éx\néy") == Span("case.lp", Position(1, 2), Position(2, 2))
+
+
+def clingo_loads(program: Path) -> frozenset[Path]:
+    """Return the files clingo itself reads statements from when it parses `program`."""
+    names: set[str] = set()
+    with suppress(RuntimeError):  # a syntax error still leaves what was read
+        parse_files(
+            [str(program)],
+            lambda statement: names.add(statement.location.begin.filename),
+            logger=lambda _code, _message: None,
+        )
+    return frozenset(Path(name).resolve() for name in names)
+
+
+# Each layout: files (name -> text), the directory to run from, `CLINGOPATH` relative to the
+# temporary directory (or none), and the files the case under test loads.
+LAYOUTS = {
+    "beside the including file": (
+        {"case/t.lp": '#include "lib.lp".\nt.', "case/lib.lp": "lib."},
+        ".",
+        None,
+        {"case/t.lp", "case/lib.lp"},
+    ),
+    "the working directory before the including file": (
+        {"case/t.lp": '#include "lib.lp".\nt.', "case/lib.lp": "near.", "lib.lp": "far."},
+        ".",
+        None,
+        {"case/t.lp", "lib.lp"},
+    ),
+    "CLINGOPATH last": (
+        {"case/t.lp": '#include "lib.lp".\nt.', "path/lib.lp": "lib."},
+        ".",
+        "path",
+        {"case/t.lp", "path/lib.lp"},
+    ),
+    "a nested include beside the name it was opened by": (
+        {
+            "case/t.lp": '#include "sub/a.lp".\nt.',
+            "case/sub/a.lp": '#include "b.lp".\na.',
+            "case/sub/b.lp": "b.",
+        },
+        "case",
+        None,
+        {"case/t.lp", "case/sub/a.lp", "case/sub/b.lp"},
+    ),
+    "a comment between the directive and its file": (
+        {"case/t.lp": '#include %* note *% % line\n "lib.lp".\nt.', "case/lib.lp": "lib."},
+        ".",
+        None,
+        {"case/t.lp", "case/lib.lp"},
+    ),
+    "an escaped name": (
+        {"case/t.lp": '#include "l\\\\b.lp".\nt.', "case/l\\b.lp": "lib."},
+        ".",
+        None,
+        {"case/t.lp", "case/l\\b.lp"},
+    ),
+    "a directive inside a nested comment": (
+        {"case/t.lp": '%* %* *% #include "lib.lp". *%\nt.', "case/lib.lp": "lib."},
+        ".",
+        None,
+        {"case/t.lp"},
+    ),
+    "a directive in a comment": (
+        {"case/t.lp": 't.\n% #include\n"lib.lp".', "case/lib.lp": "lib."},
+        ".",
+        None,
+        {"case/t.lp"},
+    ),
+    "a longer keyword, not a directive": (
+        {"case/t.lp": 'p.\n#include_x "lib.lp".\nt.', "case/lib.lp": "lib."},
+        ".",
+        None,
+        {"case/t.lp"},
+    ),
+    "a built-in program, not a file": (
+        {"case/t.lp": "#include <incmode>.\nt.", "case/incmode": "lib."},
+        "case",
+        None,
+        {"case/t.lp"},
+    ),
+}
+
+
+@pytest.mark.parametrize("layout", LAYOUTS.values(), ids=LAYOUTS.keys())
+def test_include_discovery_finds_exactly_what_clingo_loads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    layout: tuple[dict[str, str], str, str | None, set[str]],
+) -> None:
+    files, working, searched, loaded = layout
+    for name, text in files.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text)
+    monkeypatch.chdir(tmp_path / working)
+    if searched is None:
+        monkeypatch.delenv("CLINGOPATH", raising=False)
+    else:
+        monkeypatch.setenv("CLINGOPATH", str(tmp_path / searched))
+    case = Path(os.path.relpath(tmp_path / "case/t.lp"))
+    expected = frozenset(tmp_path / name for name in loaded)
+    assert clingo_loads(case) == expected
+    assert included_sources(Program.read(case)) == expected
+
+
+@pytest.mark.parametrize("tail", ["#include", "#include  \n", "#include %* note *%"])
+def test_a_directive_cut_off_at_the_end_names_no_file(tmp_path: Path, tail: str) -> None:
+    (tmp_path / "main.lp").write_text(f"p.\n{tail}")
+    assert included_sources(Program.read(tmp_path / "main.lp")) == {tmp_path / "main.lp"}
+
+
+def test_a_linked_file_includes_beside_its_link_not_its_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for directory in ("case", "real"):
+        (tmp_path / directory).mkdir()
+    (tmp_path / "case/t.lp").write_text('#include "a.lp".\nt.')
+    (tmp_path / "real/a.lp").write_text('#include "b.lp".\na.')
+    (tmp_path / "case/a.lp").symlink_to(tmp_path / "real/a.lp")
+    (tmp_path / "case/b.lp").write_text("near.")
+    (tmp_path / "real/b.lp").write_text("far.")
+    monkeypatch.chdir(tmp_path)
+    expected = {tmp_path / name for name in ("case/t.lp", "real/a.lp", "case/b.lp")}
+    assert clingo_loads(Path("case/t.lp")) == expected
+    assert included_sources(Program.read("case/t.lp")) == expected
+
+
+def test_include_discovery_stops_at_a_cycle(tmp_path: Path) -> None:
+    (tmp_path / "main.lp").write_text('#include "a.lp".\n')
+    (tmp_path / "a.lp").write_text('#include "b.lp".\n')
+    (tmp_path / "b.lp").write_text('#include "a.lp".\n#include "main.lp".\n')
+    assert included_sources(Program.read(tmp_path / "main.lp")) == {
+        tmp_path / name for name in ("main.lp", "a.lp", "b.lp")
+    }
+
+
+def test_a_file_clingo_finds_but_cannot_read_is_still_held_to_the_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (tmp_path / "lib.lp").mkdir()
+    (root / "case.lp").write_text('#include "lib.lp".\n% @expect sat\n')
+    monkeypatch.chdir(tmp_path)
+    refused = check(Program.read("root/case.lp"), root=root)
+    assert isinstance(refused, Fault)
+    assert f"loads {tmp_path / 'lib.lp'}, which is outside" in refused.diagnostics[0].message
+
+
+def test_a_fault_in_a_file_found_by_a_relative_name_counts_that_files_characters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "main.lp").write_text('#include "sub/lib.lp".\n% @expect sat\n')
+    (tmp_path / "sub/lib.lp").write_text('a("é"). p(X) :- q.\n')
+    monkeypatch.chdir(tmp_path)
+    program = Program.read("main.lp")
+    refused = check(program)
+    assert isinstance(refused, Fault)
+    assert refused.diagnostics[0].span == Span("sub/lib.lp", Position(1, 9), Position(1, 19))
+    rendered = render_run(Run((Entry(program.source, refused, program.text),)), PLAIN)
+    assert 'a("é"). p(X) :- q.' in rendered.stderr
+
+
+def test_a_file_found_from_a_working_directory_outside_the_root_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "lib.lp").write_text("p.\n")
+    (tmp_path / "lib.lp").write_text("p.\n")
+    (root / "case.lp").write_text('#include "lib.lp".\n% @expect sat\n')
+    monkeypatch.chdir(tmp_path)
+    refused = check(Program.read("root/case.lp"), root=root)
+    assert isinstance(refused, Fault)
+    assert f"loads {tmp_path / 'lib.lp'}, which is outside" in refused.diagnostics[0].message
+
+
+def test_an_included_file_that_is_not_utf8_is_refused_not_loaded(tmp_path: Path) -> None:
+    (tmp_path / "lib.lp").write_bytes(b"p(\xe9).\n")
+    (tmp_path / "main.lp").write_text('#include "lib.lp".\n% @expect sat\n')
+    refused = ground(Program.read(tmp_path / "main.lp"))
+    assert isinstance(refused, Fault)
+    assert refused.diagnostics[0].message == f"cannot read `{tmp_path / 'lib.lp'}`"
+    (note,) = refused.diagnostics[0].children
+    assert note.message == "not valid UTF-8 at byte 2: invalid continuation byte"
