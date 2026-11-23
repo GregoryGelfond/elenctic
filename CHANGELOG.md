@@ -8,15 +8,25 @@ All notable changes are recorded here. The format follows
 
 ### Added
 - `elenctic explain PATH…`: `test`, then the evidence for each failed claim: the counterexample,
-  and a tree in which each step shows its ground rule instance and line. `--spans` adds each rule as
-  written with its substitution; `--max-depth N|all` bounds how many absences deep it goes
-  (default 3).
+  and a tree in which each step shows its ground rule instance and line, `file:line` for a rule
+  from a file other than the case's. `--spans` adds each rule as written with its substitution;
+  `--max-depth N|all` bounds how many absences deep it goes (default 3).
 - `elenctic why PATH ATOM`: why a ground literal holds, or not, in the first answer set, or the
   `--answer-set K`-th, of all or `--over optimal`, under `--assuming L,…`; the block of `explain`,
   headed `why:` and the atom as it was asked, `not` kept. `elenctic ask PATH QUERY`: a query,
   written as `@query` writes it, answered over the answer sets, with the first answer set taking
   each value, or a pattern's bindings. Each exits with its own outcome, `WhyExit` or `AskExit`;
   `repl` stays reserved.
+- `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base
+  encoding, loaded with every case after its own text, as clingo loads the files it is given. A
+  file the case already loads is not loaded again. The root defaults to the directory that holds
+  every path and `--with` file, and is refused when that is the file system's root or holds the
+  home directory. A `--with` file that cannot be read, lies outside `--root` or carries a contract
+  tag is refused, and no case runs. `Program` takes `libraries`, which `check`, `why` and `ask`
+  hold by default to the directory that holds the program's file and them; the library reads no
+  home directory, so only the file system's root is too wide. A JSON entry lists them as `libraries`.
+- `why` and `ask` take `--root DIR` and `--with` as `test` does, and a refused root or `--with`
+  file stops them before they run; a `PATH` that is a directory is a usage error.
 - Library: `why(program, atom, …)` and `ask(program, query, …)`; `Session.answer(query, scenario,
   over=)`, `answered`, `Answered` and `Taken`. `Session.counterexample` gives the refutation when
   there is no answer set.
@@ -91,6 +101,8 @@ All notable changes are recorded here. The format follows
   warning on stderr; 2.0 removes them.
 
 ### Fixed
+- A linked program is held by default to the directory its file resolves to, as on the command
+  line; `check` refused it for lying outside its link's directory.
 - The root holds every file clingo loads. An `#include` is found as clingo finds it: as written,
   from the working directory, then beside the including file, then under `CLINGOPATH`. The check
   looked only beside the file, so a file clingo found from the working directory, inside the root

@@ -1,17 +1,24 @@
 """Pin source masks, nested include boundaries and located refusals."""
 
 import os
+import subprocess
+import sys
 from contextlib import suppress
 from pathlib import Path
 
 import pytest
 from clingo.ast import parse_files
 
+from conftest import Link
 from elenctic.check import check
-from elenctic.engine import ground, included_sources
+from elenctic.engine import ground, included_sources, loaded_libraries
+from elenctic.explanation import Explanation
 from elenctic.human import render_run
+from elenctic.inquiry import ask, why
+from elenctic.literals import Literal
 from elenctic.presentation import PLAIN
 from elenctic.program import Fault, Locus, Program
+from elenctic.query import All, Answered
 from elenctic.report import Entry, Run
 from elenctic.spans import (
     Position,
@@ -21,6 +28,7 @@ from elenctic.spans import (
     in_characters,
     in_code,
 )
+from elenctic.verdicts import Report, Verdict
 
 
 @pytest.mark.parametrize(
@@ -332,3 +340,224 @@ def test_an_included_file_that_is_not_utf8_is_refused_not_loaded(tmp_path: Path)
     assert refused.diagnostics[0].message == f"cannot read `{tmp_path / 'lib.lp'}`"
     (note,) = refused.diagnostics[0].children
     assert note.message == "not valid UTF-8 at byte 2: invalid continuation byte"
+
+
+def test_a_library_and_its_includes_are_loaded_and_held_to_the_root(tmp_path: Path) -> None:
+    (tmp_path / "case.lp").write_text("% @expect sat\n")
+    (tmp_path / "base.lp").write_text('#include "leaf.lp".\n')
+    (tmp_path / "leaf.lp").write_text("p.\n")
+    program = Program.read(tmp_path / "case.lp", [tmp_path / "base.lp"])
+    assert included_sources(program) == {
+        tmp_path / name for name in ("case.lp", "base.lp", "leaf.lp")
+    }
+    assert loaded_libraries(program) == (tmp_path / "base.lp",)
+    refused = check(program, root=tmp_path / "elsewhere")
+    assert isinstance(refused, Fault)
+    assert "this case loads" in refused.diagnostics[0].message
+
+
+def test_a_library_already_loaded_is_given_to_clingo_once(tmp_path: Path) -> None:
+    (tmp_path / "case.lp").write_text('#include "base.lp".\n')
+    (tmp_path / "base.lp").write_text('#include "leaf.lp".\n#const n = 1.\n')
+    (tmp_path / "leaf.lp").write_text("p.\n")
+    (tmp_path / "other.lp").write_text("q.\n")
+    named = [
+        tmp_path / "leaf.lp",
+        tmp_path / "other.lp",
+        tmp_path / "base.lp",
+        tmp_path / "other.lp",
+    ]
+    program = Program.read(tmp_path / "case.lp", named)
+    assert loaded_libraries(program) == (tmp_path / "other.lp",)
+    assert not isinstance(ground(program), Fault)
+
+
+def test_a_library_of_a_program_without_a_path_is_loaded_after_its_text(tmp_path: Path) -> None:
+    (tmp_path / "base.lp").write_text("#const n = 1.\nq :- p.\n")
+    program = Program("p.\n", libraries=(tmp_path / "base.lp",))
+    assert loaded_libraries(program) == (tmp_path / "base.lp",)
+    found = check(
+        Program(program.text + "% @expect sat\n% @cautious { q }\n", libraries=program.libraries)
+    )
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+    assert loaded_libraries(Program("p.\n")) == ()
+
+
+@pytest.mark.parametrize(
+    "named", [("base.lp",), ("more.lp",), ("more.lp", "base.lp")], ids=["itself", "by", "both"]
+)
+def test_a_program_without_a_path_loads_a_file_it_and_a_library_include_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, named: tuple[str, ...]
+) -> None:
+    (tmp_path / "base.lp").write_text("#const n = 2.\nnum(1..n).\n")
+    (tmp_path / "more.lp").write_text('#include "base.lp".\n')
+    monkeypatch.chdir(tmp_path)
+    text = '#include "base.lp".\n% @expect sat\n% @cautious { num(2) }\n'
+    program = Program(text, libraries=tuple(map(Path, named)))
+    assert loaded_libraries(program) == tuple(Path(name) for name in named if name != "base.lp")
+    found = check(program)
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+
+
+def test_a_library_named_with_a_quote_or_backslash_loads_after_a_text(tmp_path: Path) -> None:
+    library = tmp_path / 'say "hi" \\ there.lp'
+    library.write_text("q :- p.\n")
+    found = check(Program("p.\n% @expect sat\n% @cautious { q }\n", libraries=(library,)))
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+
+
+def test_an_include_of_a_program_without_a_path_is_held_to_the_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "secret.lp").write_text("secret(42).\n")
+    (tmp_path / "root").mkdir()
+    monkeypatch.chdir(tmp_path)
+    refused = check(Program('#include "secret.lp".\n% @expect sat\n'), root=tmp_path / "root")
+    assert isinstance(refused, Fault)
+    assert f"loads {tmp_path / 'secret.lp'}, which is outside" in refused.diagnostics[0].message
+    assert "secret(42)" not in str(refused)
+
+
+def test_a_library_of_a_text_is_found_as_an_include_is_and_held_to_the_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shelf, root = tmp_path / "shelf", tmp_path / "root"
+    for directory in (shelf, root):
+        directory.mkdir()
+    (shelf / "base.lp").write_text("q :- p.\n")
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("CLINGOPATH", str(shelf))
+    program = Program("p.\n% @expect sat\n% @cautious { q }\n", libraries=(Path("base.lp"),))
+    assert included_sources(program) == {shelf / "base.lp"}
+    refused = check(program, root=root)
+    assert isinstance(refused, Fault)
+    assert f"loads {shelf / 'base.lp'}, which is outside" in refused.diagnostics[0].message
+    found = check(program, root=tmp_path)
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+
+
+def test_a_linked_program_is_held_by_default_to_the_directory_it_resolves_to(
+    tmp_path: Path, link: Link
+) -> None:
+    real, alias = tmp_path / "real", tmp_path / "alias"
+    for directory in (real, alias):
+        directory.mkdir()
+    (real / "case.lp").write_text("p.\n% @expect sat\n")
+    link(alias / "case.lp", real / "case.lp")
+    program = Program.read(alias / "case.lp")
+    found = check(program)
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+    assert isinstance(ask(program, All((Literal("p"),))), Answered)
+    assert isinstance(why(program, Literal("p")), Explanation)
+
+
+def test_a_library_that_is_not_utf8_is_refused_not_loaded(tmp_path: Path) -> None:
+    (tmp_path / "base.lp").write_bytes(b"p(\xe9).\n")
+    (tmp_path / "case.lp").write_text("% @expect sat\n")
+    refused = ground(Program.read(tmp_path / "case.lp", [tmp_path / "base.lp"]))
+    assert isinstance(refused, Fault)
+    assert refused.diagnostics[0].message == f"cannot read `{tmp_path / 'base.lp'}`"
+
+
+def test_a_missing_include_loads_nothing_and_clingo_reports_it(tmp_path: Path) -> None:
+    (tmp_path / "case.lp").write_text('#include "absent.lp".\n% @expect sat\n')
+    program = Program.read(tmp_path / "case.lp")
+    assert included_sources(program) == {tmp_path / "case.lp"}
+    refused = ground(program)
+    assert isinstance(refused, Fault)
+    (diagnostic,) = refused.diagnostics
+    assert diagnostic.message == "file could not be opened:"
+    assert [child.message.strip() for child in diagnostic.children] == ["absent.lp"]
+
+
+def test_a_program_without_a_path_and_without_libraries_never_reads_stdin() -> None:
+    """Clingo reads stdin when it is given no file to parse; elenctic never asks it to."""
+    ran = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from elenctic import Program, solve\n"
+                "found = solve(Program('p.'))\n"
+                "print(sorted(str(a) for s in found.evidence.all for a in s.atoms))\n"
+            ),
+        ],
+        input="q.\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert ran.stdout == "['p']\n"
+
+
+def test_a_program_is_held_by_default_to_the_directory_that_holds_it_and_its_libraries(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    for directory in ("scenarios", "encodings"):
+        (project / directory).mkdir(parents=True)
+    (project / "scenarios" / "case.lp").write_text("q :- p.\n% @expect sat\n% @cautious { q }\n")
+    (project / "encodings" / "base.lp").write_text("p.\n")
+    (tmp_path / "secret.lp").write_text("secret(42).\n")
+    program = Program.read(project / "scenarios" / "case.lp", [project / "encodings" / "base.lp"])
+    found = check(program)
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+    assert isinstance(ask(program, All((Literal("q"),))), Answered)
+    assert isinstance(why(program, Literal("q")), Explanation)
+    escaping = Program(
+        '#include "../../secret.lp".\n' + program.text,
+        program.source,
+        program.path,
+        program.libraries,
+    )
+    refused = check(escaping)
+    assert isinstance(refused, Fault)
+    assert f"which is outside the root {project}" in refused.diagnostics[0].message
+
+
+def test_a_default_root_that_is_the_file_system_root_is_refused_by_the_library(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "case.lp").write_text("% @expect sat\n")
+    library = Path(Path.cwd().anchor, "dev", "null")
+    program = Program.read(tmp_path / "case.lp", [library])
+    for refused in (check(program), why(program, Literal("p")), ask(program, All((Literal("p"),)))):
+        assert isinstance(refused, Fault)
+        (problem,) = refused.diagnostics
+        assert problem.message == f"the default root {library.anchor} is too wide"
+        reason, *_ = problem.children
+        assert reason.message == "it is the root of the file system"
+
+
+def test_the_library_does_not_read_the_home_directory_to_hold_a_program(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "project").mkdir()
+    (tmp_path / "project" / "case.lp").write_text("q :- p.\n% @expect sat\n% @cautious { q }\n")
+    (tmp_path / "base.lp").write_text("p.\n")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    found = check(Program.read(tmp_path / "project" / "case.lp", [tmp_path / "base.lp"]))
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+
+
+def test_a_program_without_a_path_is_held_only_to_a_root_named_for_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for directory in ("encodings", "shared"):
+        (tmp_path / directory).mkdir()
+    (tmp_path / "encodings" / "base.lp").write_text("q :- p.\n")
+    (tmp_path / "shared" / "p.lp").write_text("p.\n")
+    monkeypatch.chdir(tmp_path)
+    text = '#include "shared/p.lp".\n% @expect sat\n% @cautious { q }\n'
+    program = Program(text, libraries=(tmp_path / "encodings" / "base.lp",))
+    found = check(program)
+    assert isinstance(found, Report)
+    assert found.verdict is Verdict.PASS
+    assert isinstance(check(program, root=tmp_path / "encodings"), Fault)

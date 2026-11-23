@@ -5,7 +5,7 @@ import os
 import signal
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum, auto
 from importlib import import_module
 from math import inf
@@ -15,6 +15,7 @@ from typing import Final
 from elenctic.about import VersionExit, package
 from elenctic.check import check
 from elenctic.determination import Range, Truncation, option
+from elenctic.engine import common_root, held_root, loaded_libraries, shared_root
 from elenctic.human import (
     Format,
     Rendered,
@@ -94,13 +95,23 @@ def _limit_reader[N: (int, float)](
     return parse
 
 
-def _directory(text: str) -> Path:
-    """Read the value of `--root`: a directory that exists."""
-    path = Path(text)
-    if not path.is_dir():
-        message = f"`{text}` is not a directory"
-        raise argparse.ArgumentTypeError(message)
-    return path
+def _path_reader(*, directory: bool, otherwise: str) -> Callable[[str], Path]:
+    """Make the reader of a path that is a `directory`, or is not one; else it is `otherwise`."""
+
+    def parse(text: str) -> Path:
+        path = Path(text)
+        if path.is_dir() is not directory:
+            message = f"`{text}` {otherwise}"
+            raise argparse.ArgumentTypeError(message)
+        return path
+
+    return parse
+
+
+_file = _path_reader(directory=False, otherwise="is a directory, not a `.lp` file")
+"""Read the `PATH` of `why` and `ask`: one program, so not a directory."""
+_directory = _path_reader(directory=True, otherwise="is not a directory")
+"""Read the value of `--root`: a directory that exists."""
 
 
 _seconds_limit = _limit_reader(float, "a positive number of seconds")
@@ -158,6 +169,8 @@ DEPRECATED: Final = {"full": "--format text", "short": "--format text --short"}
 """The values of `--format` that 1.0 took, which 1.x still accepts with a note and 2.0 removes."""
 INTERACTIVE: Final = "tui on a terminal when elenctic[tui] is installed, else text"
 """The default of `--format` for the commands that show evidence."""
+CASE_OR_LIBRARY_HELP: Final = "name a case as a path, and a library with `--with`"
+"""The help of a refusal that mixes up a case and a library."""
 
 
 def _view(text: str) -> str:
@@ -212,14 +225,29 @@ def _checking(command: argparse.ArgumentParser, written: str, default: str) -> N
     )
     _written(command, written, default)
     command.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
+    _program_options(command)
+    _limited(command)
+
+
+def _program_options(command: argparse.ArgumentParser) -> None:
+    """Give a command that loads programs its root and libraries, in one place."""
     command.add_argument(
         "--root",
         type=_directory,
         metavar="DIR",
-        help="the directory every path and every `#include` must lie under (default: each "
-        "directory searched, or a named file's own directory)",
+        help="the directory every path, `--with` file and `#include` must lie under (default: with "
+        "`--with`, the directory that holds every path and library; else each directory "
+        "searched, or a named file's own directory)",
     )
-    _limited(command)
+    command.add_argument(
+        "--with",
+        action="append",
+        type=Path,
+        default=[],
+        dest="libraries",
+        metavar="FILE",
+        help="a library loaded with every case, such as a base encoding; may be repeated",
+    )
 
 
 def _depth(command: argparse.ArgumentParser) -> None:
@@ -243,8 +271,9 @@ def _depth(command: argparse.ArgumentParser) -> None:
 
 def _asking(command: argparse.ArgumentParser, written: str) -> None:
     """Give a command that asks about one program its path and the options of its search."""
-    command.add_argument("path", type=Path, metavar="PATH", help="the .lp file asked about")
+    command.add_argument("path", type=_file, metavar="PATH", help="the .lp file asked about")
     _written(command, written, INTERACTIVE)
+    _program_options(command)
     command.add_argument(
         "--over",
         choices=list(Range),
@@ -352,23 +381,88 @@ type _Source = tuple[Path, bool, Path]
 """A `.lp` path to check, whether the user named it, and its root."""
 
 
-def _plan(paths: Sequence[Path], root: Path | None) -> list[_Source | Entry]:
-    """Return each path's sources in the order given; a path outside `root` is refused instead."""
-    boundary = None if root is None else root.resolve()
-    return [item for path in paths for item in _placed(path, boundary)]
+def _plan(
+    paths: Sequence[Path], boundary: Path | None, libraries: Sequence[Path] = ()
+) -> list[_Source | Entry]:
+    """Return each path's sources in the order given; a path outside `boundary` is refused instead.
+
+    So is a file named both as a path and as a library.
+    """
+    shared = {library.resolve() for library in libraries}
+    return [item for path in paths for item in _placed(path, boundary, shared)]
 
 
-def _placed(path: Path, boundary: Path | None) -> list[_Source | Entry]:
+def _placed(path: Path, boundary: Path | None, shared: set[Path]) -> list[_Source | Entry]:
+    refusal = _misplaced(path, boundary, shared)
+    return [*_sources(path, boundary)] if refusal is None else [refusal]
+
+
+def _misplaced(path: Path, boundary: Path | None, shared: set[Path]) -> Entry | None:
+    """Refuse a path outside `boundary`, or a file named with `--with` as well."""
     if boundary is not None and not path.resolve().is_relative_to(boundary):
-        return [_outside(path, boundary)]
-    return [*_sources(path, boundary)]
+        return _outside(path, boundary)
+    if path.resolve() in shared:
+        return _twice(path)
+    return None
+
+
+def _twice(path: Path) -> Entry:
+    problem = failure(
+        None,
+        f"`{path}` is named both as a path and with `--with`",
+        help=(CASE_OR_LIBRARY_HELP,),
+    )
+    return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
+
+
+def _boundary(
+    paths: Sequence[Path], libraries: Sequence[Path], root: Path | None, home: Path | None
+) -> Path | Entry | None:
+    """Return the root every source is held to (`shared_root`), or its refusal as an entry."""
+    held = shared_root(paths, libraries, root, home)
+    if isinstance(held, Fault):
+        return Entry(str(common_root(paths, libraries)), held)
+    return held
+
+
+def _refused_library(library: Path, boundary: Path | None) -> Entry | None:
+    """Refuse a `--with` file outside the root, unreadable, or carrying a contract tag."""
+    if boundary is not None and not library.resolve().is_relative_to(boundary):
+        return _outside(library, boundary)
+    program = _read(library)
+    if isinstance(program, Fault):
+        return Entry(str(library), program)
+    if not is_case(program.text):
+        return None
+    problem = failure(
+        None,
+        f"`{library}` carries a contract tag",
+        notes=("a `--with` file is a library: its claims would not be checked",),
+        help=(CASE_OR_LIBRARY_HELP,),
+    )
+    return Entry(str(library), Fault(Locus.REQUEST, (problem,)), program.text)
+
+
+def _planned(
+    paths: Sequence[Path], libraries: Sequence[Path], root: Path | None, home: Path | None
+) -> tuple[list[Entry], list[_Source | Entry]]:
+    """Return the refusals of the root and the `--with` files, which stop the run, else its plan."""
+    boundary = _boundary(paths, libraries, root, home)
+    if isinstance(boundary, Entry):
+        return [boundary], []
+    refusals = [
+        refusal
+        for library in libraries
+        if (refusal := _refused_library(library, boundary)) is not None
+    ]
+    return refusals, ([] if refusals else _plan(paths, boundary, libraries))
 
 
 def _sources(path: Path, boundary: Path | None) -> list[_Source]:
     """Return the `.lp` files of `path` with their root: `boundary`, else the path's own."""
+    root = held_root(path, boundary)
     if not path.is_dir():
-        return [(path, True, path.parent.resolve() if boundary is None else boundary)]
-    root = path.resolve() if boundary is None else boundary
+        return [(path, True, root)]
     return [(found, False, root) for found in sorted(path.rglob("*.lp"))]
 
 
@@ -381,10 +475,10 @@ def _outside(path: Path, root: Path) -> Entry:
     return Entry(str(path), Fault(Locus.REQUEST, (problem,)))
 
 
-def _read(path: Path) -> Program | Fault:
-    """Read the program at `path`, or refuse it as unreadable."""
+def _read(path: Path, libraries: Sequence[Path] = ()) -> Program | Fault:
+    """Read the program at `path`, loaded with `libraries`, or refuse it as unreadable."""
     try:
-        return Program.read(path)
+        return Program.read(path, libraries)
     except (OSError, UnicodeDecodeError) as error:
         return Fault(Locus.REQUEST, (unreadable(str(path), error),))
 
@@ -432,16 +526,19 @@ def _walked_notes(sources: list[_Source]) -> tuple[Diagnostic, ...]:
     return tuple(found)
 
 
-def _entry(  # noqa: PLR0913
-    path: Path,
-    limits: Limits,
-    interrupt: Interrupt,
-    *,
-    named: bool,
-    root: Path,
-    max_depth: int | Limit | None = None,
-) -> Entry | None:
-    program = _read(path)
+@dataclass(frozen=True, slots=True)
+class _Checking:
+    """How each case of a run is checked: its search, its libraries, and the depth to explain to."""
+
+    limits: Limits
+    interrupt: Interrupt
+    libraries: tuple[Path, ...]
+    max_depth: int | Limit | None
+
+
+def _entry(path: Path, checking: _Checking, *, named: bool, root: Path) -> Entry | None:
+    limits, interrupt, max_depth = checking.limits, checking.interrupt, checking.max_depth
+    program = _read(path, checking.libraries)
     if isinstance(program, Fault):
         return Entry(str(path), program)
     if not is_case(program.text):
@@ -455,21 +552,28 @@ def _entry(  # noqa: PLR0913
                 result, program, limits=limits, interrupt=interrupt, max_depth=max_depth
             )
     except Exception as error:  # noqa: BLE001
-        return Entry(program.source, Internal.of(error), program.text)
-    return None if result is None else Entry(program.source, result, program.text)
+        return _recorded(program, Internal.of(error))
+    return None if result is None else _recorded(program, result)
 
 
-def _checked(
-    item: _Source | Entry,
-    limits: Limits,
-    interrupt: Interrupt,
-    max_depth: int | Limit | None = None,
-) -> Entry | None:
-    """Check a planned source, and explain it if `max_depth` is given; a refusal stands as it is."""
+def _recorded(program: Program, result: Report | Fault | Internal) -> Entry:
+    """Record what checking `program` came to, with what `_program` needs to read it again."""
+    loaded = tuple(str(library) for library in loaded_libraries(program))
+    return Entry(program.source, result, program.text, loaded)
+
+
+def _program(entry: Entry) -> Program:
+    """Return the program an entry was checked as: its text, loaded with its libraries."""
+    path = Path(entry.source)
+    return Program(entry.text or "", entry.source, path, tuple(map(Path, entry.libraries)))
+
+
+def _checked(item: _Source | Entry, checking: _Checking) -> Entry | None:
+    """Check a planned source, and explain it if a depth is given; a refusal stands as it is."""
     if isinstance(item, Entry):
         return item
     path, named, root = item
-    return _entry(path, limits, interrupt, named=named, root=root, max_depth=max_depth)
+    return _entry(path, checking, named=named, root=root)
 
 
 def _presentation(arguments: argparse.Namespace, environment: Environment) -> Presentation:
@@ -538,7 +642,7 @@ def _evidence_of(limits: Limits, interrupt: Interrupt) -> _Evidenced:
     def found(entry: Entry, finding: Finding, depth: int | Limit) -> Finding | Fault | Internal:
         try:
             if entry.source not in opened:
-                program = Program(entry.text or "", entry.source, Path(entry.source))
+                program = _program(entry)
                 solver = entry.result.solver if isinstance(entry.result, Report) else None
                 opened[entry.source] = session(
                     program,
@@ -556,13 +660,15 @@ def _evidence_of(limits: Limits, interrupt: Interrupt) -> _Evidenced:
     return found
 
 
-def _test(arguments: argparse.Namespace, presentation: Presentation) -> Exit:
+def _test(arguments: argparse.Namespace, presentation: Presentation, home: Path | None) -> Exit:
     """Check the paths; for `explain`, give each failed claim its evidence."""
     limits, interrupt = _searching(arguments)
-    plan = _plan(arguments.paths, arguments.root)
+    libraries = tuple(arguments.libraries)
+    refusals, plan = _planned(arguments.paths, libraries, arguments.root, home)
     explaining = arguments.command == "explain"
     max_depth = arguments.max_depth if explaining and arguments.view is not View.TUI else None
-    entries = [_checked(item, limits, interrupt, max_depth) for item in plan]
+    checking = _Checking(limits, interrupt, libraries, max_depth)
+    entries = [*refusals, *(_checked(item, checking) for item in plan)]
     run = Run(
         tuple(entry for entry in entries if entry is not None),
         notes=_walked_notes([item for item in plan if not isinstance(item, Entry)]),
@@ -635,11 +741,47 @@ def _refuse[Outcome: IntEnum](  # noqa: PLR0913
     return outcome
 
 
-def _why(arguments: argparse.Namespace, presentation: Presentation) -> WhyExit:
-    """Explain an atom in the answer set asked for; the CLI only reads and writes."""
-    program = _read(arguments.path)
+def _inquired(
+    arguments: argparse.Namespace, home: Path | None
+) -> tuple[Program, Path] | list[Entry]:
+    """Read the program a question is about, planned as `test` plans a path; else the refusals."""
+    path, libraries = arguments.path, arguments.libraries
+    refusals, plan = _planned([path], libraries, arguments.root, home)
+    refusals += [item for item in plan if isinstance(item, Entry)]
+    if refusals:
+        return refusals
+    program = _read(path, libraries)
     if isinstance(program, Fault):
-        return _refuse("why", program, arguments, presentation, text=None, outcome=WhyExit.FAULT)
+        return [Entry(str(path), program)]
+    _, _, root = next(item for item in plan if not isinstance(item, Entry))  # the file, read
+    return program, root
+
+
+def _refused_all[Outcome: IntEnum](
+    command: str,
+    refusals: list[Entry],
+    arguments: argparse.Namespace,
+    presentation: Presentation,
+    outcome: Outcome,
+) -> Outcome:
+    """Write the refusals of what a question was asked about, each of its own file."""
+    faults = [(entry, entry.result) for entry in refusals if isinstance(entry.result, Fault)]
+    if arguments.view is View.JSON:
+        fault = Fault(Locus.REQUEST, tuple(d for _, each in faults for d in each.diagnostics))
+        sys.stdout.write(inquiry_json(command, fault, outcome))
+        return outcome
+    for entry, fault in faults:
+        form, text = arguments.form, entry.text
+        _write(refused(fault, presentation, form=form, source=entry.source, text=text))
+    return outcome
+
+
+def _why(arguments: argparse.Namespace, presentation: Presentation, home: Path | None) -> WhyExit:
+    """Explain an atom in the answer set asked for; the CLI only reads and writes."""
+    inquired = _inquired(arguments, home)
+    if isinstance(inquired, list):
+        return _refused_all("why", inquired, arguments, presentation, WhyExit.FAULT)
+    program, root = inquired
     read = read_asked(arguments.atom, "ATOM")
     if isinstance(read, Diagnostic):
         return _refuse(
@@ -667,6 +809,7 @@ def _why(arguments: argparse.Namespace, presentation: Presentation) -> WhyExit:
                 limits=limits,
                 interrupt=interrupt,
                 max_depth=depth,
+                root=root,
             )
         except Exception as error:  # noqa: BLE001
             return Internal.of(error)
@@ -712,11 +855,12 @@ def _why(arguments: argparse.Namespace, presentation: Presentation) -> WhyExit:
     return outcome
 
 
-def _ask(arguments: argparse.Namespace, presentation: Presentation) -> AskExit:
+def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path | None) -> AskExit:
     """Answer a query over the answer sets; the CLI only reads and writes."""
-    program = _read(arguments.path)
-    if isinstance(program, Fault):
-        return _refuse("ask", program, arguments, presentation, text=None, outcome=AskExit.FAULT)
+    inquired = _inquired(arguments, home)
+    if isinstance(inquired, list):
+        return _refused_all("ask", inquired, arguments, presentation, AskExit.FAULT)
+    program, root = inquired
     query = read_query(arguments.query, "QUERY")
     if isinstance(query, Diagnostic):
         return _refuse(
@@ -725,7 +869,12 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation) -> AskExit:
     limits, interrupt = _searching(arguments)
     try:
         result: Ask | Internal = ask(
-            program, query, over=arguments.over, limits=limits, interrupt=interrupt
+            program,
+            query,
+            over=arguments.over,
+            limits=limits,
+            interrupt=interrupt,
+            root=root,
         )
     except Exception as error:  # noqa: BLE001
         result = Internal.of(error)
@@ -747,6 +896,7 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation) -> AskExit:
                     limits=limits,
                     interrupt=interrupt,
                     max_depth=depth,
+                    root=root,
                 )
             except Exception as error:  # noqa: BLE001
                 return Internal.of(error)
@@ -863,20 +1013,26 @@ def _tui_refusal(*, terminal: bool) -> Fault | None:
 
 
 def _runner(
-    command: str, arguments: argparse.Namespace, presentation: Presentation
+    command: str, arguments: argparse.Namespace, presentation: Presentation, home: Path | None
 ) -> tuple[Callable[[], Outcome], Outcome]:
     """Name what runs a command, and the outcome of a failure no check anticipated."""
     match command:
         case "test" | "explain":
-            return (lambda: _test(arguments, presentation)), Exit.INTERNAL_ERROR
+            return (lambda: _test(arguments, presentation, home)), Exit.INTERNAL_ERROR
         case "why":
-            return (lambda: _why(arguments, presentation)), WhyExit.INTERNAL_ERROR
+            return (lambda: _why(arguments, presentation, home)), WhyExit.INTERNAL_ERROR
         case "ask":
-            return (lambda: _ask(arguments, presentation)), AskExit.INTERNAL_ERROR
+            return (lambda: _ask(arguments, presentation, home)), AskExit.INTERNAL_ERROR
         case "version":
             return (lambda: _version(presentation)), VersionExit.INTERNAL_ERROR
         case _:
             return (lambda: _reserved(arguments, presentation)), Exit.INTERNAL_ERROR
+
+
+def _home(variables: Mapping[str, str]) -> Path | None:
+    """Read the home directory a default root must not hold: `HOME`, resolved; none if unset."""
+    home = variables.get("HOME")
+    return Path(home).resolve() if home else None
 
 
 def main(argv: Sequence[str] | None = None) -> Outcome:
@@ -885,7 +1041,8 @@ def main(argv: Sequence[str] | None = None) -> Outcome:
     arguments = parser.parse_args(_normalized(sys.argv[1:] if argv is None else argv))
     if arguments.command is None and not arguments.show_version:
         parser.error("the following arguments are required: COMMAND")
-    environment = Environment.of(os.environ)  # the one place that reads the environment
+    variables = os.environ  # the one place that reads the environment
+    environment = Environment.of(variables)
     presentation = _presentation(arguments, environment)
     command = "version" if arguments.show_version else str(arguments.command)
     if command in FAULTS:
@@ -894,7 +1051,7 @@ def main(argv: Sequence[str] | None = None) -> Outcome:
             _write(refused(chosen, presentation))
             return FAULTS[command]
         arguments.view, arguments.form = chosen
-    run, failed = _runner(command, arguments, presentation)
+    run, failed = _runner(command, arguments, presentation, _home(variables))
     return _guarded(run, failed, presentation)
 
 

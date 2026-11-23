@@ -39,6 +39,7 @@ from elenctic.clauses import (
     tuple_text,
 )
 from elenctic.explanation import Rule
+from elenctic.program import source_name
 from elenctic.spans import Position, Span, in_characters, split_lines
 
 _BASE: Final = "_elenctic"
@@ -55,7 +56,7 @@ class Source:
     def span(self, location: Location) -> Span:
         """Locate a statement, in Unicode columns, under the name the program is known by."""
         begin, end = location.begin, location.end
-        source = self.name if begin.filename == "<string>" else begin.filename
+        source = source_name(begin.filename, self.name)
         raw = Span(source, Position(begin.line, begin.column), Position(end.line, end.column))
         text = self.texts.get(begin.filename, self.texts.get(source))
         return raw if text is None else in_characters(raw, text)

@@ -101,6 +101,7 @@ class _Tree:
     nodes: dict[str, Node]
     pen: _Pen
     spans: bool
+    own: str
     drawn: set[str]
     lines: list[str]
 
@@ -121,7 +122,7 @@ class _Tree:
                 continue
             self.drawn.add(handle)
             chained = len(node.children) == 1 and not root
-            self._line(prefix, mark(node), label(node), words(node))
+            self._line(prefix, mark(node), label(node), words(node, self.own))
             self._spans(node, below + ("│   " if node.children and not chained else "    "))
             pending.extend(_beneath(node, below, chained=chained))
         return self.lines
@@ -162,19 +163,20 @@ def explanation_lines(
     style: Style,
     *,
     spans: bool,
-    failed: bool = True,
-    over: Range = Range.ALL,
+    own: str,
+    over: Range | None = None,
 ) -> list[str]:
     """Write the answer set explained, the tree of why each root holds or not, and its guarantee.
 
-    The answer set is a counterexample if a claim `failed` in it, and else one of `over`.
+    The answer set is one asked for `over` a range, else a counterexample to a failed claim. A
+    rule from a file other than the case's `own` is placed by its file as well as its line.
     """
     pen = _Pen(style)
-    found = counterexample(explanation.counterexample, failed=failed, over=over)
+    found = counterexample(explanation.counterexample, over)
     lines = [pen.answer_set(found), pen.margin("  |")]
     if not explanation.roots:
         lines.append(f"  {pen(Role.ASIDE, EXPECTS_NONE)}")
-    tree = _Tree({n.handle: n for n in explanation.nodes}, pen, spans, set(), [])
+    tree = _Tree({n.handle: n for n in explanation.nodes}, pen, spans, own, set(), [])
     lines += tree.draw(explanation.roots)
     lines += [pen.margin("  |"), pen.line(noted(GUARANTEE[explanation.minimality]))]
     if not explanation.complete:
@@ -183,7 +185,7 @@ def explanation_lines(
 
 
 def outranked_lines(
-    outranked: Outranked, style: Style, lines_of: Lines, *, spans: bool
+    outranked: Outranked, style: Style, lines_of: Lines, *, spans: bool, own: str
 ) -> list[str]:
     """Write how the objective ranks the literals below the optimum, and why it lacks them."""
     pen = _Pen(style)
@@ -195,7 +197,7 @@ def outranked_lines(
         for payment in payments:
             lines += map(pen.phrase, paying(payment, lines_of(payment.rule.span), more=more))
     lines.append(pen.margin("  |"))
-    return lines + explanation_lines(outranked.explanation, style, spans=spans)
+    return lines + explanation_lines(outranked.explanation, style, spans=spans, own=own)
 
 
 def evidence_lines(finding: Finding, style: Style, lines_of: Lines, *, spans: bool) -> list[str]:
@@ -209,9 +211,9 @@ def evidence_lines(finding: Finding, style: Style, lines_of: Lines, *, spans: bo
     lines = pen.heading(Role.ERROR, EVIDENCE_HEADING, finding.claim_text, where)
     match evidence:
         case Explanation():
-            lines += explanation_lines(evidence, style, spans=spans)
+            lines += explanation_lines(evidence, style, spans=spans, own=span.source)
         case Outranked():
-            lines += outranked_lines(evidence, style, lines_of, spans=spans)
+            lines += outranked_lines(evidence, style, lines_of, spans=spans, own=span.source)
         case _:
             lines.append(pen.line(unfound(evidence)))
     return [*lines, ""]
@@ -234,7 +236,7 @@ def why_lines(  # noqa: PLR0913
     pen = _Pen(style)
     lines = pen.heading(Role.NOTE, WHY, signed(atom, negated=negated), source)
     if isinstance(result, Explanation):
-        lines += explanation_lines(result, style, spans=spans, failed=False, over=over)
+        lines += explanation_lines(result, style, spans=spans, own=source, over=over)
     else:
         lines.append(pen.line(unfound(result)))
     return [*lines, ""]

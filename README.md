@@ -123,6 +123,7 @@ report = check(Program.read("drinks.lp"), limits=Limits(max_seconds=10))
 | `elenctic [test] PATH…` | check programs against their contracts ([reference](docs/reference/reference.md#command-line)) |
 | `elenctic explain PATH…` | `test`, and why each failed claim fails ([evidence](docs/reference/reference.md#evidence)) |
 | `--format text\|json\|tui` | text, JSON, or the interactive view, the default of `explain`, `why` and `ask` on a terminal with the `tui` extra ([output](docs/reference/reference.md#output), [interactive view](docs/reference/reference.md#the-interactive-view)) |
+| `--with FILE` | load a library, such as a base encoding, with every case ([command line](docs/reference/reference.md#command-line)) |
 | `--short` | one line per diagnostic ([diagnostics](docs/reference/reference.md#diagnostics)) |
 | Exit `0` / `1` / `2` / `3` | claims hold, claim unmet, fault, internal error ([exit codes](docs/reference/reference.md#exit-codes)) |
 

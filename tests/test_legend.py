@@ -30,6 +30,7 @@ from elenctic.legend import (
     GUARANTEE,
     MARKS,
     Mark,
+    cited,
     ended,
     label,
     listed,
@@ -116,7 +117,17 @@ def test_every_kind_of_reason_has_one_mark_and_is_worded() -> None:
         node = Node("1/p", "p", holds=not isinstance(reason, Blocked), reason=reason)
         assert mark(node) is expected
         assert plain(label(node))
-        assert plain(words(node))
+        assert plain(words(node, "t.lp"))
+
+
+def test_a_rule_from_another_source_is_placed_by_its_file_and_line() -> None:
+    placed = 0
+    for reason, _ in REASONS:
+        node = Node("1/p", "p", holds=not isinstance(reason, Blocked), reason=reason)
+        own, other = plain(words(node, "t.lp")), plain(words(node, "case.lp"))
+        assert other == own.replace("line 2", "t.lp:2")
+        placed += "line 2" in own
+    assert placed == sum(cited(reason) is not None for reason, _ in REASONS)
 
 
 def test_a_phrase_is_its_pieces_one_after_another() -> None:

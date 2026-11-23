@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import Link
 from elenctic import check as real_check
 from elenctic.cli import main
 from elenctic.determination import Truncation, option
@@ -644,6 +645,327 @@ def test_a_symbolic_link_loop_is_unreadable_not_a_crash(
         assert code == Exit.FAULT
         assert "cannot read" in err
         assert "error" in out
+
+
+def base_and_scenarios(tmp_path: Path, base: str = "#const n = 2.\nnum(1..n).\n") -> Path:
+    """Lay out a base under `encodings/` and a case in each of two sibling scenario subtrees."""
+    (tmp_path / "encodings").mkdir(parents=True)
+    library = write(tmp_path / "encodings", "base.lp", base)
+    for name, claim in (("a", "@cautious { num(2) }"), ("b", "@count 1")):
+        (tmp_path / "scenarios" / name).mkdir(parents=True)
+        write(tmp_path / "scenarios" / name, "case.lp", f"% @expect sat\n% {claim}\n")
+    return library
+
+
+def test_with_loads_a_library_with_every_walked_case_under_the_common_root(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = base_and_scenarios(tmp_path)
+    scenarios = tmp_path / "scenarios"
+    assert run(capsys, scenarios, "--with", library) == (Exit.CLAIMS_HOLD, "2/2 passed\n")
+    named = (scenarios / "a" / "case.lp", scenarios / "b" / "case.lp")
+    assert run(capsys, *named, "--with", library) == (Exit.CLAIMS_HOLD, "2/2 passed\n")
+    code, _out, err = run_both(capsys, scenarios)
+    assert code == Exit.CLAIM_UNMET
+    assert err == ""
+
+
+def test_with_and_explain_find_evidence_in_the_library(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = write(tmp_path, "base.lp", "num(1..2).\nbig :- num(2).\n")
+    case = write(tmp_path, "case.lp", "% @expect sat\n% @query no { big }\n")
+    code, out = run(capsys, "explain", case, "--with", library, "--format", "text", "--spans")
+    assert code == Exit.CLAIM_UNMET
+    assert "[FAIL] @query no { big }" in out
+    assert f"= {library}:2: big :- num(2)." in out
+
+
+@pytest.mark.parametrize("asked", [("why", "case.lp", "top"), ("explain", "case.lp")])
+def test_a_rule_from_another_file_is_labelled_with_its_file_and_line(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    asked: tuple[str, ...],
+) -> None:
+    write(tmp_path, "case.lp", "top :- derived(1).\n% @expect sat\n% @query no { top }\n")
+    write(tmp_path, "enc.lp", "base(1).\nderived(X) :- base(X).\n")
+    monkeypatch.chdir(tmp_path)
+    _code, out = run(capsys, *asked, "--with", "enc.lp", "--format", "text")
+    steps = [
+        line.strip() for line in out.splitlines() if line.strip().startswith(("top", "└", "base"))
+    ]
+    assert [step.split()[-1] for step in steps] == ["1", "enc.lp:2", "enc.lp:1"]
+    assert steps[0].endswith("  line 1")
+    assert steps[2].endswith("  fact, enc.lp:1")
+
+
+def test_with_keeps_the_order_given_and_json_lists_what_each_case_loads(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first = write(tmp_path, "first.lp", "p.\n")
+    second = write(tmp_path, "second.lp", "q :- p.\n")
+    loading = write(
+        tmp_path, "loading.lp", '#include "second.lp".\n% @expect sat\n% @cautious { q }\n'
+    )
+    plain = write(tmp_path, "plain.lp", "% @expect sat\n% @cautious { q }\n")
+    argv = ["--json", loading, plain, "--with", first, "--with", second]
+    code, out = run(capsys, *argv)
+    assert code == Exit.CLAIMS_HOLD
+    entries = json.loads(out)["run"]["entries"]
+    assert [entry.get("libraries") for entry in entries] == [
+        [str(first)],
+        [str(first), str(second)],
+    ]
+    _code, out = run(capsys, "--json", plain)
+    assert "libraries" not in json.loads(out)["run"]["entries"][0]
+
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_a_library_the_case_already_includes_is_loaded_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], *, linked: bool
+) -> None:
+    """A second load of the base would define `n` twice, an error on any platform."""
+    library = base_and_scenarios(tmp_path)
+    case = write(
+        tmp_path / "scenarios" / "a",
+        "case.lp",
+        '#include "../../encodings/base.lp".\n% @expect sat\n% @cautious { num(2) }\n',
+    )
+    named = library
+    if linked:
+        named = tmp_path / "encodings" / "link.lp"
+        named.symlink_to(library)
+    code, out, err = run_both(capsys, "--json", case, "--with", named)
+    assert (code, err) == (Exit.CLAIMS_HOLD, "")
+    assert "libraries" not in json.loads(out)["run"]["entries"][0]
+
+
+def test_with_a_root_given_a_library_outside_it_is_refused_and_no_case_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = base_and_scenarios(tmp_path)
+    scenarios = tmp_path / "scenarios"
+    code, out, err = run_both(capsys, "--root", scenarios, scenarios, "--with", library)
+    assert code == Exit.FAULT
+    assert err.splitlines()[0] == f"error: `{library}` is outside the root {scenarios}"
+    assert out == "0/1 passed, 1 error\n"
+
+
+def test_an_include_of_a_library_is_held_to_the_root(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    outside = write(tmp_path, "secret.lp", "secret(42).\n")
+    project = tmp_path / "project"
+    project.mkdir()
+    library = write(project, "base.lp", f'#include "{outside}".\n')
+    case = write(project, "case.lp", "% @expect sat\n")
+    code, out, err = run_both(capsys, case, "--with", library)
+    assert code == Exit.FAULT
+    assert f"this case loads {outside}, which is outside the root {project}" in err
+    assert "secret(42)" not in err + out
+
+
+def test_a_library_that_carries_a_contract_tag_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = write(tmp_path, "case.lp", "% @expect sat\n")
+    tagged = write(tmp_path, "other.lp", "p.\n% @expect sat\n")
+    code, out, err = run_both(capsys, case, "--with", tagged)
+    assert code == Exit.FAULT
+    assert err.splitlines()[0] == f"error: `{tagged}` carries a contract tag"
+    assert "= note: a `--with` file is a library: its claims would not be checked" in err
+    assert "= help: name a case as a path, and a library with `--with`" in err
+    assert out == "0/1 passed, 1 error\n"
+
+
+def test_a_file_named_both_as_a_path_and_with_with_is_refused_and_the_rest_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = write(tmp_path, "base.lp", "p.\n")
+    case = write(tmp_path, "case.lp", "% @expect sat\n% @cautious { p }\n")
+    code, out, err = run_both(capsys, case, library, "--with", library)
+    assert code == Exit.FAULT
+    assert err.splitlines()[0] == f"error: `{library}` is named both as a path and with `--with`"
+    assert "carries no contract tag" not in err
+    assert out == "1/2 passed, 1 error\n"
+
+
+def test_a_library_that_cannot_be_read_is_refused_as_any_path_is(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = write(tmp_path, "case.lp", "% @expect sat\n")
+    (tmp_path / "latin1.lp").write_bytes(b"p(\xe9).\n")
+    for library, note in (
+        (tmp_path / "absent.lp", "No such file or directory"),
+        (tmp_path / "latin1.lp", "not valid UTF-8 at byte 2: invalid continuation byte"),
+    ):
+        code, _out, err = run_both(capsys, case, "--with", library)
+        assert code == Exit.FAULT
+        assert err.splitlines()[0] == f"error: cannot read `{library}`"
+        assert note in err
+
+
+def test_a_syntax_error_in_a_library_points_into_the_library(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = write(tmp_path, "base.lp", "p.\nq :- p(.\n")
+    case = write(tmp_path, "case.lp", "% @expect sat\n")
+    code, _out, err = run_both(capsys, "--short", case, "--with", library)
+    assert code == Exit.FAULT
+    assert err.startswith(f"{library}:2:")
+
+
+def test_a_default_root_inside_the_home_directory_is_kept(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = base_and_scenarios(tmp_path / "home" / "me")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    scenarios = tmp_path / "home" / "me" / "scenarios"
+    assert run(capsys, scenarios, "--with", library) == (Exit.CLAIMS_HOLD, "2/2 passed\n")
+
+
+@pytest.mark.parametrize(
+    ("home", "why"),
+    [
+        ("home/me", "it is the home directory"),
+        ("home/me/deep", "it holds the home directory"),
+    ],
+)
+def test_a_default_root_that_holds_the_home_directory_is_refused(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    home: str,
+    why: str,
+) -> None:
+    me = tmp_path / "home" / "me"
+    (me / "project").mkdir(parents=True)
+    case = write(me / "project", "case.lp", "% @expect sat\n")
+    library = write(me, "base.lp", "p.\n")
+    monkeypatch.setenv("HOME", str(tmp_path / home))
+    code, out, err = run_both(capsys, case, "--with", library)
+    assert code == Exit.FAULT
+    assert err.splitlines()[0] == f"error: the default root {me} is too wide"
+    assert f"= note: {why}" in err
+    assert "= help: name the project's directory as the root (`--root` on the command line" in err
+    assert out == "0/1 passed, 1 error\n"
+    assert run(capsys, case, "--with", library, "--root", me)[0] == Exit.CLAIMS_HOLD
+    monkeypatch.delenv("HOME")
+    assert run(capsys, case, "--with", library)[0] == Exit.CLAIMS_HOLD
+
+
+@pytest.mark.parametrize(
+    "asked", [("why", "p", WhyExit.FAULT), ("ask", "{ p }", AskExit.FAULT)], ids=["why", "ask"]
+)
+def test_why_and_ask_refuse_a_default_root_that_holds_the_home_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    asked: tuple[str, str, int],
+) -> None:
+    command, question, fault = asked
+    me = tmp_path / "me"
+    (me / "project").mkdir(parents=True)
+    case = write(me / "project", "case.lp", "q.\n")
+    library = write(me, "base.lp", "p.\n")
+    monkeypatch.setenv("HOME", str(me))
+    code, _out, err = run_both(
+        capsys, command, case, question, "--with", library, "--format", "text"
+    )
+    assert code == fault
+    assert err.splitlines()[0] == f"error: the default root {me} is too wide"
+
+
+@pytest.mark.parametrize("command", ["why", "ask"])
+def test_why_and_ask_refuse_a_directory_as_a_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    with pytest.raises(SystemExit) as usage:
+        main([command, str(tmp_path), "p"])
+    assert usage.value.code == Exit.FAULT
+    assert f"`{tmp_path}` is a directory, not a `.lp` file" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "asked",
+    [("test",), ("explain",), ("why", "p"), ("ask", "{ p }")],
+    ids=["test", "explain", "why", "ask"],
+)
+def test_a_linked_case_is_held_to_the_directory_it_resolves_to(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], link: Link, asked: tuple[str, ...]
+) -> None:
+    real, alias = tmp_path / "real", tmp_path / "alias"
+    for directory in (real, alias):
+        directory.mkdir()
+    write(real, "case.lp", "q :- p.\n% @expect sat\n% @cautious { q }\n")
+    library = write(alias, "base.lp", "p.\n")
+    link(alias / "case.lp", real / "case.lp")
+    command, *question = asked
+    argv = [command, alias / "case.lp", *question, "--with", library, "--format", "text"]
+    code, _out, err = run_both(capsys, *argv)
+    assert (code, err) == (0, "")
+
+
+def test_a_default_root_that_is_the_file_system_root_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = write(tmp_path, "case.lp", "% @expect sat\n")
+    library = Path(Path.cwd().anchor, "dev", "null")
+    code, _out, err = run_both(capsys, case, "--with", library)
+    assert code == Exit.FAULT
+    assert err.splitlines()[0] == f"error: the default root {library.anchor} is too wide"
+    assert "= note: it is the root of the file system" in err
+
+
+def test_why_and_ask_take_the_library_and_the_root_as_test_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = base_and_scenarios(tmp_path)
+    case = tmp_path / "scenarios" / "a" / "case.lp"
+    code, out = run(capsys, "why", case, "num(2)", "--with", library, "--format", "text")
+    assert (code, out.splitlines()[0]) == (WhyExit.EXPLAINED, "why: num(2)")
+    code, out = run(capsys, "ask", case, "num(2)", "--with", library, "--format", "json")
+    assert (code, json.loads(out)["ask"]["kind"]) == (AskExit.ANSWERED, "answered")
+    including = write(case.parent, "including.lp", '#include "../../encodings/base.lp".\n')
+    for command in (["why", including, "num(2)"], ["ask", including, "num(2)"]):
+        code, out = run(capsys, *command, "--format", "json")
+        assert code == WhyExit.FAULT
+        assert "which is outside the root" in out
+        assert run(capsys, *command, "--root", tmp_path, "--format", "json")[0] == 0
+
+
+@pytest.mark.parametrize("command", [["why", "{path}", "p"], ["ask", "{path}", "p"]])
+def test_why_and_ask_refuse_each_library_under_its_own_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: list[str]
+) -> None:
+    case = write(tmp_path, "case.lp", "p.\n")
+    tagged = write(tmp_path, "tagged.lp", "p.\n% @expect sat\n")
+    absent = tmp_path / "absent.lp"
+    argv = [part.format(path=case) for part in command]
+    code, _out, err = run_both(
+        capsys, *argv, "--with", tagged, "--with", absent, "--format", "text"
+    )
+    assert code == WhyExit.FAULT
+    assert f"error: `{tagged}` carries a contract tag\n --> {tagged}\n" in err
+    assert f"error: cannot read `{absent}`\n --> {absent}\n" in err
+    code, out = run(capsys, *argv, "--with", tagged, "--with", absent, "--json")
+    messages = [d["message"] for d in json.loads(out)[command[0]]["diagnostics"]]
+    assert messages == [f"`{tagged}` carries a contract tag", f"cannot read `{absent}`"]
+
+
+def test_why_refuses_a_program_outside_its_root_or_named_with_with(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    case = write(tmp_path, "case.lp", "p.\n")
+    code, _out, err = run_both(capsys, "why", case, "p", "--root", root, "--format", "text")
+    assert code == WhyExit.FAULT
+    assert err.splitlines()[0] == f"error: `{case}` is outside the root {root}"
+    code, _out, err = run_both(capsys, "why", case, "p", "--with", case, "--format", "text")
+    assert code == WhyExit.FAULT
+    assert err.splitlines()[0] == f"error: `{case}` is named both as a path and with `--with`"
 
 
 def test_a_walked_note_on_a_renamed_tag_gives_its_spelling(

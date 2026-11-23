@@ -64,8 +64,14 @@ def _record(value: object) -> Json:
 
 
 def _unasked(value: object, name: str) -> bool:
-    """Say whether a field is left out: a finding's evidence, when none was asked for or found."""
-    return isinstance(value, Finding) and name == "evidence" and value.evidence is None
+    """Say whether a field is left out: evidence none was asked for or found, or no libraries."""
+    match value:
+        case Finding():
+            return name == "evidence" and value.evidence is None
+        case Entry():
+            return name == "libraries" and not value.libraries
+        case _:
+            return False
 
 
 def _listed(items: frozenset[object] | set[object]) -> Json:
@@ -183,7 +189,7 @@ def _schema_alternative(hint: object) -> Json:
 
 _OPTIONAL_FIELDS: Final = {
     "diagnostic": frozenset({"label", "children"}),
-    "entry": frozenset({"text"}),
+    "entry": frozenset({"text", "libraries"}),
     "finding": frozenset({"evidence"}),
     "report": frozenset({"lints"}),
     "run": frozenset({"notes"}),

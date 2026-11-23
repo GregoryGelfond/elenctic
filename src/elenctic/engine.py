@@ -5,7 +5,7 @@ import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Final, override
+from typing import Final, overload, override
 
 from clingo import Control, Symbol
 from clingo.ast import AST, ProgramBuilder, parse_files, parse_string
@@ -16,7 +16,7 @@ from elenctic.determination import AnswerSets, Determination
 from elenctic.facts import Facts, objective_at, shown_by, theory_at
 from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
-from elenctic.program import Fault, Locus, Program
+from elenctic.program import TEXT, Fault, Locus, Program, source_name
 from elenctic.search import Interrupt, Limits
 from elenctic.spans import (
     Diagnostic,
@@ -48,13 +48,13 @@ def _clarified(diagnostic: Diagnostic) -> Diagnostic:
 
 
 def _relocated(diagnostic: Diagnostic, source: str) -> Diagnostic:
-    if diagnostic.span is None or diagnostic.span.source != "<string>":
+    if (span := diagnostic.span) is None:
         return diagnostic
-    return replace(diagnostic, span=replace(diagnostic.span, source=source))
+    return replace(diagnostic, span=replace(span, source=source_name(span.source, source)))
 
 
 def source_texts(program: Program) -> dict[str, str]:
-    """Map each source name to its text: the program and every `#include` it reaches."""
+    """Map each source name to its text: the program and every file it loads."""
     texts = {program.source: program.text}
     for loaded in _loaded(program):
         if isinstance(loaded.text, str):
@@ -74,10 +74,14 @@ def _fault(messages: list[str], error: RuntimeError, program: Program) -> Fault:
 
 
 def _parse(program: Program, add: Callable[[AST], None], logger: Callable[..., None]) -> None:
-    if program.path is None:
-        parse_string(program.text, add, logger=logger)
-    else:
-        parse_files([str(program.path)], add, logger=logger)
+    """Give clingo the program and its libraries in one call, so it loads no file twice."""
+    shared = [str(library) for library in loaded_libraries(program)]
+    if program.path is not None:
+        parse_files([str(program.path), *shared], add, logger=logger)
+        return
+    # A text has no file to list: its libraries are included after it, from where it is run.
+    included = "".join(f'\n#include "{_escaped(library)}".' for library in shared)
+    parse_string(program.text + included, add, logger=logger)
 
 
 class _Objective(Observer):
@@ -122,6 +126,14 @@ _DIRECTIVE: Final = re.compile("#include")
 _BLANK: Final = frozenset(" \t\r\n")
 _ESCAPED: Final = re.compile(r"\\(.)")
 _UNESCAPED: Final = {"n": "\n", "\\": "\\", '"': '"'}
+
+
+_ESCAPES: Final = {character: f"\\{name}" for name, character in _UNESCAPED.items()}
+
+
+def _escaped(target: str) -> str:
+    """Write `target` as an `#include` string, the inverse of how `_include_targets` reads one."""
+    return "".join(_ESCAPES.get(character, character) for character in target)
 
 
 def _past_blanks(text: str, index: int, comments: Mapping[int, Lexeme]) -> int:
@@ -172,15 +184,17 @@ def _found(target: str, including: str) -> Path | None:
 
 @dataclass(frozen=True, slots=True)
 class _Loaded:
-    """A file clingo loads by `#include`: where it is, its name to clingo, and its text.
+    """A file clingo loads: where it is, its name to clingo, its text, and whether it is a library.
 
     The text is the decoding error for a file that is not UTF-8, and `None` for one that cannot
-    be read (clingo reports that itself).
+    be read (clingo reports that itself). A library is one of the program's `libraries`; every
+    other file is loaded by `#include`.
     """
 
     path: Path
     name: str
     text: str | UnicodeDecodeError | None
+    library: bool = False
 
 
 def _read(path: Path) -> str | UnicodeDecodeError | None:
@@ -192,13 +206,10 @@ def _read(path: Path) -> str | UnicodeDecodeError | None:
         return None
 
 
-def _loaded(program: Program) -> Iterator[_Loaded]:
-    """Yield each file clingo loads for `program`'s `#include`s, in the order it loads them."""
-    if program.path is None:
-        return
-    seen = {program.path.resolve()}
+def _included(including: str, text: str, seen: set[Path]) -> Iterator[_Loaded]:
+    """Yield each file the `#include`s of `text` load that is not yet `seen`, depth first."""
     # Depth first, as clingo reads an included file where its directive stands.
-    pending = [(str(program.path), iter(_include_targets(program.text)))]
+    pending = [(including, iter(_include_targets(text)))]
     while pending:
         including, targets = pending[-1]
         if (target := next(targets, None)) is None:
@@ -214,20 +225,117 @@ def _loaded(program: Program) -> Iterator[_Loaded]:
             pending.append((loaded.name, iter(_include_targets(loaded.text))))
 
 
-def included_sources(program: Program) -> frozenset[Path]:
-    """Return this program's path and every file its `#include`s load, readable or not."""
-    if program.path is None:
-        return frozenset()
-    return frozenset((program.path.resolve(), *(loaded.path for loaded in _loaded(program))))
+def _loaded(program: Program) -> Iterator[_Loaded]:
+    """Yield each file clingo loads for `program` besides its text, in the order it loads them.
 
-
-def containment(program: Program, root: Path) -> Fault | None:
-    """Refuse a program that `#include`s a file outside `root`, the directory the run is held to.
-
-    The diagnostic names escaping paths only — never their contents — so a refused include cannot
-    publish another file through elenctic's own report.
+    First what the text's `#include`s load, then each library and what its own load. A file
+    already loaded is not loaded again, compared by its resolved path, so a library the program
+    already includes is dropped: clingo is never given a file twice, on any platform. It reads
+    the files afresh at each call.
     """
-    root = root.resolve()
+    if program.path is None:
+        seen: set[Path] = set()
+        yield from _included(TEXT, program.text, seen)
+    else:
+        seen = {program.path.resolve()}
+        yield from _included(str(program.path), program.text, seen)
+    for library in program.libraries:
+        # A text's libraries are `#include`d after it (`_parse`), so clingo finds them as it does.
+        found = None if program.path is not None else _found(str(library), TEXT)
+        located = found or library
+        if (path := located.resolve()) in seen:
+            continue
+        seen.add(path)
+        yield (loaded := _Loaded(path, str(located), _read(path), library=True))
+        if isinstance(loaded.text, str):
+            yield from _included(loaded.name, loaded.text, seen)
+
+
+def default_root(path: Path) -> Path:
+    """Return the root a path is held to when none is named: a directory itself, else its file's.
+
+    Links and `..` are resolved first, as every comparison with a root resolves them.
+    """
+    resolved = path.resolve()
+    return resolved if resolved.is_dir() else resolved.parent
+
+
+def common_root(paths: Sequence[Path], libraries: Sequence[Path]) -> Path:
+    """Return the directory that holds every one of `paths` and `libraries`, links resolved."""
+    return Path(os.path.commonpath([*map(default_root, paths), *map(default_root, libraries)]))
+
+
+def shared_root(
+    paths: Sequence[Path], libraries: Sequence[Path], root: Path | None, home: Path | None
+) -> Path | Fault | None:
+    """Return the root `paths` are held to together; `None` when each is held to its own.
+
+    It is `root`, else, with `libraries`, the directory that holds every path and library. That
+    default is refused when it is the file system's root or holds `home`, since a root so wide
+    would contain nothing. A text, with no path, is held only to `root`.
+    """
+    if root is not None:
+        return root.resolve()
+    if not paths or not libraries:
+        return None
+    common = common_root(paths, libraries)
+    if common == Path(common.anchor):
+        why = "it is the root of the file system"
+    elif home is not None and home.is_relative_to(common):
+        why = "it is the home directory" if home == common else "it holds the home directory"
+    else:
+        return common
+    problem = failure(
+        None,
+        f"the default root {common} is too wide",
+        notes=(why, "it is the directory that holds every path and library"),
+        help=(
+            (
+                "name the project's directory as the root "
+                "(`--root` on the command line, `root=` to `check`)"
+            ),
+        ),
+    )
+    return Fault(Locus.REQUEST, (problem,))
+
+
+@overload
+def held_root(path: Path, root: Path | None) -> Path: ...
+@overload
+def held_root(path: Path | None, root: Path | None) -> Path | None: ...
+def held_root(path: Path | None, root: Path | None) -> Path | None:
+    """Return the root `path` is held to: `root` if named, else its default; a text has none."""
+    if root is not None:
+        return root
+    return None if path is None else default_root(path)
+
+
+def loaded_libraries(program: Program) -> tuple[Path, ...]:
+    """Return the libraries clingo is given with `program`: those not already loaded before them."""
+    return tuple(Path(loaded.name) for loaded in _loaded(program) if loaded.library)
+
+
+def included_sources(program: Program) -> frozenset[Path]:
+    """Return this program's path and every file it loads, by `#include` or as a library."""
+    own = () if program.path is None else (program.path.resolve(),)
+    return frozenset((*own, *(loaded.path for loaded in _loaded(program))))
+
+
+def containment(program: Program, root: Path | None) -> Fault | None:
+    """Refuse a program that loads a file outside the root it is held to, or a root too wide.
+
+    The root is `shared_root`'s for the program's path and libraries. The library reads no home
+    directory, so only the file system's root is too wide here. The diagnostic names escaping
+    paths only — never their contents — so a refused include cannot publish another file through
+    elenctic's own report.
+    """
+    paths = () if program.path is None else (program.path,)
+    shared = shared_root(paths, program.libraries, root, None)
+    if isinstance(shared, Fault):
+        return shared
+    if (held := held_root(program.path, shared)) is None:
+        return None
+    root = held.resolve()
     escaped = sorted(path for path in included_sources(program) if not path.is_relative_to(root))
     if not escaped:
         return None
@@ -251,7 +359,7 @@ def containment(program: Program, root: Path) -> Fault | None:
 
 
 def _lexable(program: Program) -> Fault | None:
-    """Refuse program text (and `#include`d files) that would abort pyclingo's logger."""
+    """Refuse program text (and the files it loads) that would abort pyclingo's logger."""
     if (refused := first_unlexable(program.text, program.source)) is not None:
         return Fault(Locus.PROGRAM, (refused,))
     for loaded in _loaded(program):

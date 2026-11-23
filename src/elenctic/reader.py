@@ -9,6 +9,7 @@ from elenctic.determination import Range
 from elenctic.directives import declared
 from elenctic.literals import Scenario
 from elenctic.operands import after, assumptions
+from elenctic.program import TEXT
 from elenctic.queries import query
 from elenctic.readings import assign, brave, cautious, cost, count, expect, witness
 from elenctic.spans import Diagnostic, Parsed, failure
@@ -81,7 +82,7 @@ def _claims(each: list[Block]) -> tuple[list[Claim], list[Diagnostic]]:
     )
 
 
-def parse_contract(text: str, source: str = "<string>") -> Contract:
+def parse_contract(text: str, source: str = TEXT) -> Contract:
     """Read each tag of `text`: a claim for every one that reads, a diagnostic for the rest."""
     each = blocks(text, source)
     claims, problems = _claims(each)

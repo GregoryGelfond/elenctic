@@ -81,8 +81,7 @@ def _opened(
     root: Path | None = None,
 ) -> Session | Fault:
     """Open `program` as `check` would: contained under `root`, by its contract's solver."""
-    boundary = root if root is not None or program.path is None else program.path.parent.resolve()
-    if boundary is not None and (refused := containment(program, boundary)) is not None:
+    if (refused := containment(program, root)) is not None:
         return refused
     solver = Solver.CLINGO
     if is_case(program.text):

@@ -17,7 +17,8 @@ like a command is written `./why`.
 | `--icons[=WHEN]` | mark claims with Nerd Font glyphs: `auto`, `always` or `never`; given bare it is `auto`, left out it is `never`. A value takes an equals sign: `--icons always` names a path |
 | `--max-seconds SECONDS\|all` | time allowed per search, in seconds (a positive number), or `all` for no limit (default: 30) |
 | `--max-answer-sets N\|all` | most answer sets read per search (a positive integer), or `all` for no limit (default: 100,000) |
-| `--root DIR` | the root: the directory every path and every `#include` must lie under (default: each directory searched, or a named file's own directory) |
+| `--root DIR` | the root: the directory every path, `--with` file and `#include` must lie under (default: below) |
+| `--with FILE` | a library loaded with every case, as clingo loads the files it is given, such as a base encoding; may be repeated |
 
 `--format full` and `--format short`, the spellings of 1.0, still work: they are `--format text`
 and `--format text --short`, with a warning on stderr naming the new spelling. 2.0 removes them.
@@ -25,15 +26,28 @@ and `--format text --short`, with a warning on stderr naming the new spelling. 2
 Zero and negative values of `--max-seconds` and `--max-answer-sets` are a usage error (`FAULT`, 2). In the library the same
 choice is `Limits(max_seconds=…, max_answer_sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has default limits.
 
-Every file a case reaches by `#include` must lie under its root once symbolic links and `..` are
-resolved; the root is `--root DIR`, else the directory searched, else a named file's own directory.
+Every file a case reaches by `#include` or `--with` must lie under its root once symbolic links
+and `..` are resolved; the root is `--root DIR`, else, with `--with`, the directory that holds every
+path and `--with` file, else the directory searched, else a named file's own directory. A default
+root that is the file system's root or holds the home directory is refused (`FAULT`, 2): name one
+with `--root`.
 An `#include "…"` is found as clingo finds it: as written, from the working directory, then beside
 the including file, then under each directory of `CLINGOPATH`. Write it relative to the including
 file and keep the working directory free of a file by the same name.
 A case that includes a file outside it is refused (`FAULT`, 2) before it runs, naming the path and
 never its contents. With `--root`, a path not under DIR is refused the same way and the other paths
 still run; a `--root` that is not a directory is a usage error. In the library the root is
-`check(program, root=…)`, by default the program's own directory.
+`check(program, root=…)`, by default chosen as on the command line for the program's file and its
+libraries; the library reads no home directory, so only the file system's root is too wide.
+
+A `--with` path is read from the working directory, as a `PATH` is, and its `#include`s are found
+as a case's are. Each case is loaded with every `--with` file, in the order given, after its own
+text; a `--with` file the case already loads, by `#include` or an earlier `--with`, is not loaded
+again (compared once links and `..` are resolved), so a `#const` in it cannot be defined twice. A
+`--with` file that cannot be read, lies outside `--root`, or carries a contract tag is refused
+(`FAULT`, 2) and no case runs; so is a file named both as a `PATH` and with `--with`. In the library
+the same is `Program(…, libraries=…)`, whose libraries `check` holds to its root as it does an
+included file; a program without a path finds its libraries as it finds an `#include`.
 
 `elenctic version`, `elenctic --version` and `elenctic -V` print the same two lines on stdout and
 exit `REPORTED` (0); `version` is a command, so a file of that name is written `./version`.
@@ -60,9 +74,10 @@ unless `--format` says otherwise.
 `elenctic why PATH ATOM` explains why the ground literal `ATOM` holds, or not, in one answer set of
 the program at `PATH`; a leading `not` is dropped, since the answer set says which. `elenctic ask
 PATH QUERY` answers a query, written as `@query` writes it (`{ a, -b }`, or one pattern `{ p(X) }`;
-braces optional), over every answer set. Each takes `--format`, `--short`, `--json`,
-`--max-seconds` and `--max-answer-sets` as `test` does, and opens the interactive view as `explain`
-does; and these:
+braces optional), over every answer set. Each takes `--format`, `--short`, `--json`, `--root`,
+`--with`, `--max-seconds` and `--max-answer-sets` as `test` does, a refused root or `--with` file
+stopping it before it runs, and opens the interactive view as `explain` does; a `PATH` that is a
+directory is a usage error. And these:
 
 | Option | Meaning |
 |---|---|
@@ -112,7 +127,8 @@ aside `3`, italic (substitutions, guards, counts) and reference `2`, dim (a rule
 `explain` writes a block for each failed claim: `evidence:` and the claim, its place, the
 counterexample (`answer set K`, and `of N` when the search read all N, as a claim over the optimal
 answer sets or a `@query` does), then a tree with one line for each atom. A line that a rule instance accounts for shows the instance, its
-variables replaced by their values, and the rule's line:
+variables replaced by their values, and the rule's line; a rule from a file other than the case's
+is placed as `--spans` places it, `enc.lp:2`:
 
 | Line | Says |
 |---|---|
@@ -321,9 +337,8 @@ is then an object, `{"kind": "ended", "cut": "max_seconds", "optimum_unproven": 
 
 ## Library
 
-Everything in `elenctic.__all__`, and nothing else is promised; from 1.0 it follows semver, and
-until then the changelog's Unreleased section is the record. Results are frozen dataclasses; spans
-are half-open, `[start, end)`, one-based. Use one search at a time per `Grounded`; this is not
+Everything in `elenctic.__all__`, and nothing else is promised; it follows semver. Results are
+frozen dataclasses; spans are half-open, `[start, end)`, one-based. Use one search at a time per `Grounded`; this is not
 enforced. Every elenctic type that a public signature names is among them (a test checks it),
 so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any` is not `typing.Any`.
 
@@ -361,7 +376,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 
 | Name | What it is |
 |---|---|
-| `Program` | ASP source text and where it came from |
+| `Program` | ASP source text, where it came from, and the `libraries` loaded after it |
 | `Grounded` | a program grounded once, to be searched under any number of scenarios |
 | `ground` | ground a program for a `Solver`: a `Grounded`, or a `Fault` saying why not |
 | `solve` | enumerate the answer sets of a program under a scenario |
@@ -522,7 +537,9 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 dataclass becomes `{"kind": type_name, field: …}`, the `kind` being the type's name in snake case (`Census` is `census`, `AnswerSet` is `answer_set`), an enum its value, a set a sorted list. Keys and enum values are snake_case (`max_answer_sets`);
 the command-line flags keep their hyphens (`--max-answer-sets`). A `Substitution` is a string,
 `"{X=b, Y=c}"`, as a literal is. A finding has an `evidence` key only when it has evidence, so a
-`test` run is written as before. The published JSON Schema of that document is [`output-v1.schema.json`](output-v1.schema.json), generated from the same types by `scripts/write_output_schema.py` (`elenctic.json_view.schema_document`); a test fails if it is stale.
+`test` run is written as before; an entry has a `libraries` key, the `--with` files loaded with
+it, only when there are any; a `--with` file it already loads is not listed, so an absent key
+does not mean no `--with` was given. The published JSON Schema of that document is [`output-v1.schema.json`](output-v1.schema.json), generated from the same types by `scripts/write_output_schema.py` (`elenctic.json_view.schema_document`); a test fails if it is stale.
 
 ## Examples
 

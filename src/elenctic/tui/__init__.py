@@ -9,7 +9,7 @@ from itertools import count
 
 from elenctic.determination import Range
 from elenctic.explanation import Explanation
-from elenctic.legend import tally, titled
+from elenctic.legend import signed, tally, titled
 from elenctic.literals import Literal
 from elenctic.patterns import Pattern
 from elenctic.presentation import Style
@@ -103,9 +103,10 @@ def why_view(  # noqa: PLR0913
         again = explained(depth)
         if isinstance(again, Fault | Internal):
             return _refused(diagnosed, again, text, source)
-        return outline.explaining(again, glyphs, over=over)
+        return outline.explaining(again, glyphs, own=source, over=over)
 
-    rows = outline.why(atom, result, glyphs, over=over, negated=negated)
+    asked = signed(atom, negated=negated)
+    rows = outline.why(asked, result, glyphs, own=source, over=over)
     return View(titled("why", source), (), rows, lines_of, max_depth, found)
 
 

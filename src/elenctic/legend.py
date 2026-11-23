@@ -115,9 +115,10 @@ def faulted(source: str, diagnostics: int) -> Phrase:
 def judged(finding: Finding) -> Phrase:
     """Word a finding after its mark: its claim, the claim's line, and what was found."""
     detail = finding.detail
+    span = finding.claim.span  # a claim is written in its case's own source
     return (
         Piece(f"{finding.claim_text} "),
-        Piece(f"({_line(finding)})", Role.MARGIN),
+        Piece(f"({_line(span, span.source)})", Role.MARGIN),
         Piece(f": {ended(detail) if isinstance(detail, Ended) else detail}"),
     )
 
@@ -257,10 +258,10 @@ def shared(node: Node) -> tuple[Phrase, Phrase]:
     return (_signed(node),), (Piece(f"shown above [{node.handle}]", Role.HELP),)
 
 
-def _line(rule: Rule | Finding) -> str:
-    """Name the line a rule, or a finding's claim, starts on."""
-    span = rule.span if isinstance(rule, Rule) else rule.claim.span
-    return f"line {span.start.line}"
+def _line(span: Span, own: str) -> str:
+    """Name the line a span starts on: `line N` in the case's `own` source, else `file:N`."""
+    line = span.start.line
+    return f"line {line}" if span.source == own else f"{span.source}:{line}"
 
 
 def _bounds(lower: int | None, upper: int | None) -> str:
@@ -271,18 +272,18 @@ def _plural(count: int, word: str) -> str:
     return f"{count} {word}{'' if count == 1 else 's'}"
 
 
-def words(node: Node) -> Phrase:  # noqa: PLR0911
-    """Word what a node's line says of it, after its label."""
+def words(node: Node, own: str) -> Phrase:  # noqa: PLR0911
+    """Word what a node's line says of it, after its label; `own` names the case's source."""
     match node.reason:
         case Fact(rule):
-            return (Piece(f"fact, {_line(rule)}", Role.REFERENCE),)
+            return (Piece(f"fact, {_line(rule.span, own)}", Role.REFERENCE),)
         case Derived(rule):
-            return (Piece(_line(rule), Role.REFERENCE),)
+            return (Piece(_line(rule.span, own), Role.REFERENCE),)
         case Chosen() | NotChosen():
-            return _choice(node.reason)
+            return _choice(node.reason, own)
         case Aggregate(rule, _, _, _, value, guard):
             return (
-                Piece(f"aggregate, {_line(rule)}:", Role.REFERENCE),
+                Piece(f"aggregate, {_line(rule.span, own)}:", Role.REFERENCE),
                 Piece(" "),
                 Piece(f"is {value}, needs {guard}", Role.ASIDE),
             )
@@ -295,23 +296,27 @@ def words(node: Node) -> Phrase:  # noqa: PLR0911
             )
         case Blocked(rule, _, _, literal):
             return (
-                Piece(f"{_line(rule)}:", Role.REFERENCE),
+                Piece(f"{_line(rule.span, own)}:", Role.REFERENCE),
                 Piece(" blocked by "),
                 Piece(literal, Role.ERROR),
             )
         case _:
-            return (_unfounded(node.reason),)
+            return (_unfounded(node.reason, own),)
 
 
-def _choice(reason: Chosen | NotChosen) -> Phrase:
+def _choice(reason: Chosen | NotChosen, own: str) -> Phrase:
     """Word a choice made, or one that could have made the atom and did not."""
     bounded = reason.lower is not None or reason.upper is not None
     of = f" of {_bounds(reason.lower, reason.upper)}" if bounded else ""
     counted = Piece(f"({reason.chosen}{of} chosen)", Role.ASIDE)
     if isinstance(reason, Chosen):
-        return (Piece(f"chosen, {_line(reason.rule)}", Role.REFERENCE), Piece(" "), counted)
+        return (
+            Piece(f"chosen, {_line(reason.rule.span, own)}", Role.REFERENCE),
+            Piece(" "),
+            counted,
+        )
     return (
-        Piece(f"{_line(reason.rule)}:", Role.REFERENCE),
+        Piece(f"{_line(reason.rule.span, own)}:", Role.REFERENCE),
         Piece(" "),
         Piece("not chosen", Role.WARNING),
         Piece(" "),
@@ -319,7 +324,7 @@ def _choice(reason: Chosen | NotChosen) -> Phrase:
     )
 
 
-def _unfounded(reason: Unsupported | NoRule | Unexpanded | Unexplained) -> Piece:
+def _unfounded(reason: Unsupported | NoRule | Unexpanded | Unexplained, own: str) -> Piece:
     """Word an atom no instance derives, or one the explanation stops at."""
     match reason:
         case Unsupported(candidates):
@@ -329,7 +334,7 @@ def _unfounded(reason: Unsupported | NoRule | Unexpanded | Unexplained) -> Piece
         case Unexpanded(depth):
             return Piece(f"not expanded (depth {depth}); {_FURTHER}", Role.WARNING)
         case Unexplained(rule):
-            where = "" if rule is None else f", {_line(rule)}"
+            where = "" if rule is None else f", {_line(rule.span, own)}"
             return Piece(f"not explained: no reason covers its rule yet{where}", Role.WARNING)
 
 
@@ -367,10 +372,10 @@ def _shown(head: str, found: AnswerSet) -> Phrase:
     return (*phrase, Piece(" "), Piece(f"where {bound(found.assignment)}", Role.ASIDE))
 
 
-def counterexample(found: Counterexample, *, failed: bool, over: Range) -> Phrase:
-    """Word the answer set explained: the one a claim fails in, or the one asked for by `over`."""
-    named = answer_set(found.index, found.read, over)
-    return _shown(f"counterexample: {named}" if failed else named, found.answer_set)
+def counterexample(found: Counterexample, over: Range | None) -> Phrase:
+    """Word the answer set explained: one asked for `over` a range, else one a claim fails in."""
+    named = answer_set(found.index, found.read, Range.ALL if over is None else over)
+    return _shown(named if over is not None else f"counterexample: {named}", found.answer_set)
 
 
 WHY: Final = "why"

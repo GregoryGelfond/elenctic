@@ -42,6 +42,8 @@ class Entry:
     result: Report | Fault | Internal
     text: str | None = None
     """The program text, kept so a diagnostic can show a snippet; none when unread."""
+    libraries: tuple[str, ...] = ()
+    """The `--with` files loaded with the source: none it, or an earlier one, already loads."""
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from pathlib import Path
+
 import clingo.ast
 import pytest
 
@@ -28,3 +31,19 @@ class _BuildsNoNodes:
 def _no_clingo_node_is_built(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test builds a clingo node, by a constructor or `AST.update`; `tree.renamed` says why."""
     monkeypatch.setattr(clingo.ast, "_lib", _BuildsNoNodes(vars(clingo.ast)["_lib"]))
+
+
+type Link = Callable[[Path, Path], None]
+
+
+@pytest.fixture
+def link() -> Link:
+    """Make a symbolic link at a path to a target, or skip where links cannot be made."""
+
+    def made(at: Path, target: Path) -> None:
+        try:
+            at.symlink_to(target, target_is_directory=target.is_dir())
+        except OSError as error:  # Windows without the privilege to make links
+            pytest.skip(f"symbolic links cannot be made here: {error}")
+
+    return made

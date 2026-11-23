@@ -10,7 +10,7 @@ from clingo.ast import AST, ASTType, Location, UnaryOperator
 
 from elenctic import tree
 from elenctic.literals import Signature, is_function
-from elenctic.program import Program
+from elenctic.program import Program, source_name
 from elenctic.spans import Position, Span
 
 
@@ -141,8 +141,11 @@ def _objective(node: AST) -> bool:
 
 def _span(location: Location, program: Program) -> Span:
     begin, end = location.begin, location.end
-    source = program.source if begin.filename == "<string>" else begin.filename
-    return Span(source, Position(begin.line, begin.column), Position(end.line, end.column))
+    return Span(
+        source_name(begin.filename, program.source),
+        Position(begin.line, begin.column),
+        Position(end.line, end.column),
+    )
 
 
 def _first(

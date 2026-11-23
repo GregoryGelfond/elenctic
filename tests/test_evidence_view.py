@@ -262,7 +262,7 @@ def test_a_step_no_reason_covers_names_its_rule_when_there_is_one() -> None:
     counterexample = Counterexample(AnswerSet(frozenset({Literal("p")}), frozenset()), 1, None)
     alone = Node("1/p", "p", holds=True, reason=Unexplained(None))
     found = Explanation(counterexample, ("1/p",), (alone,), Minimality.NONE, 3, complete=True)
-    lines = explanation_lines(found, PLAIN_STYLE, spans=False)
+    lines = explanation_lines(found, PLAIN_STYLE, spans=False, own="t.lp")
     assert (
         "  p                                 not explained: no reason covers its rule yet" in lines
     )
@@ -274,7 +274,10 @@ def test_a_weak_constraint_whose_source_is_not_at_hand_is_shown_as_written() -> 
     found = evidenced(report, example("laptop.lp"))
     assert isinstance(found, Report)
     ranked = next(f.evidence for f in found.findings if isinstance(f.evidence, Outranked))
-    text = "\n".join(outranked_lines(ranked, PLAIN_STYLE, lambda _source: None, spans=False))
+    own = example("laptop.lp").source
+    text = "\n".join(
+        outranked_lines(ranked, PLAIN_STYLE, lambda _source: None, spans=False, own=own)
+    )
     assert "  | 300@1,ram : ram(32) +300 at priority 1" in text
     assert "^" not in text
 

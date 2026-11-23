@@ -18,7 +18,7 @@ from rich.style import Style as Look
 from elenctic import cli
 from elenctic.cli import main
 from elenctic.contract import Solver
-from elenctic.determination import Consistent, Range
+from elenctic.determination import Consistent
 from elenctic.evidence_view import explanation_lines
 from elenctic.explanation import Counterexample
 from elenctic.glyphs import Glyphs
@@ -35,6 +35,7 @@ from elenctic.legend import (
     PRESSED,
     SEARCHING,
 )
+from elenctic.literals import Literal
 from elenctic.paint import Color, Piece, Role, plain
 from elenctic.presentation import Style
 from elenctic.program import Program
@@ -234,8 +235,8 @@ def test_every_row_of_any_explanation_is_the_text_views_line(
     opened, found = explained
     explanation = opened.explain(ATOMS, found, max_depth=depth)
     style = Style(Color.OFF, glyphs)
-    text = "\n".join(explanation_lines(explanation, style, spans=False))
-    rows = outline.explained(explanation, glyphs, 0, failed=True, over=Range.ALL)
+    text = "\n".join(explanation_lines(explanation, style, spans=False, own="t.lp"))
+    rows = outline.explained(explanation, glyphs, 0, own="t.lp", over=None)
     assert follows_the_text_view(rows, style, text)
 
 
@@ -1408,6 +1409,53 @@ def test_explain_finds_the_evidence_of_each_claim_it_opens_once_it_is_open(
     drive(view, style, act)
     assert calls == [(0, cli.DEFAULT_MAX_DEPTH)]
     assert painted(claim.children[0], style) == "evidence: @query no { reach(c), reach(d) }"
+
+
+def test_explain_finds_evidence_with_the_libraries_the_case_was_checked_with(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The view finds evidence again; it must load what `--with` loaded, as the check did."""
+    lines = (EXAMPLES / "chain.lp").read_text().splitlines(keepends=True)
+    base, case = tmp_path / "base.lp", tmp_path / "case.lp"
+    base.write_text("".join(lines[:-2]))
+    case.write_text("".join(lines[-2:]))
+    shown: list[list[str]] = []
+    for argv in (
+        ["explain", str(case), "--with", str(base)],
+        ["explain", str(EXAMPLES / "chain.lp")],
+    ):
+        _, view, style = viewed(monkeypatch, *argv)
+        claim = next(row for row in flat(view.rows) if isinstance(row.about, Block))
+
+        async def act(pilot: Pilot[None]) -> None:
+            del pilot
+
+        drive(view, style, act)
+        shown.append([painted(row, style) for row in flat(claim.children)])
+    with_base, whole = shown
+    assert with_base == [re.sub(r"\bline (\d+)", rf"{base}:\1", line) for line in whole]
+    assert "reach(c) :- reach(b), open(b,c).  line 8" in whole
+    assert f"reach(c) :- reach(b), open(b,c).  {base}:8" in with_base
+
+
+def test_why_from_an_answer_finds_it_with_the_libraries_and_root_ask_was_given(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project = tmp_path / "project"
+    (project / "encodings").mkdir(parents=True)
+    (project / "scenarios").mkdir()
+    (tmp_path / "shared.lp").write_text("big :- num(2).\n")
+    base = project / "encodings" / "base.lp"
+    base.write_text("num(1..2).\n")
+    case = project / "scenarios" / "case.lp"
+    case.write_text('#include "../../shared.lp".\n')
+    argv = ["ask", str(case), "num(2)", "--with", str(base), "--root", str(tmp_path)]
+    _, view, style = viewed(monkeypatch, *argv)
+    made = view.why
+    assert made is not None
+    explained = made(Asking(Literal.parse("num(2)"), 1))
+    shown = [painted(row, style) for row in flat(explained.rows)]
+    assert f"num(2)  fact, {base}:1" in shown, shown
 
 
 def test_enter_again_while_why_is_being_found_asks_nothing_more(

@@ -39,7 +39,6 @@ from elenctic.legend import (
     said,
     shared,
     shows_why,
-    signed,
     stopped,
     taken,
     unfound,
@@ -148,7 +147,7 @@ def _answer_set(phrase: Phrase, glyphs: Glyphs) -> tuple[Phrase, Phrase]:
     return (Piece("=", Role.MARGIN), Piece(" "), *_glyph(Mark.COUNTEREXAMPLE, glyphs)), phrase
 
 
-def steps(explanation: Explanation, glyphs: Glyphs, block: int) -> list[Row]:
+def steps(explanation: Explanation, glyphs: Glyphs, block: int, own: str) -> list[Row]:
     """Build the rows of an explanation's tree, each root first; a shared node is drawn once.
 
     The text view's shape: the only child of a step that is not a root follows it at its indent,
@@ -169,7 +168,9 @@ def steps(explanation: Explanation, glyphs: Glyphs, block: int) -> list[Row]:
             continue
         drawn.add(handle)
         chained = len(node.children) == 1 and not root
-        row = Row(_glyph(mark(node), glyphs), label(node), words(node), about=Step(node, block))
+        row = Row(
+            _glyph(mark(node), glyphs), label(node), words(node, own), about=Step(node, block)
+        )
         into.append(row)
         beneath = into if chained else row.children
         pending.extend((child, False, beneath) for child in reversed(node.children))
@@ -177,14 +178,17 @@ def steps(explanation: Explanation, glyphs: Glyphs, block: int) -> list[Row]:
 
 
 def explained(
-    explanation: Explanation, glyphs: Glyphs, block: int, *, failed: bool, over: Range
+    explanation: Explanation, glyphs: Glyphs, block: int, *, own: str, over: Range | None
 ) -> list[Row]:
-    """Build the rows of an explanation: the answer set explained, its tree and its notes."""
-    found = counterexample(explanation.counterexample, failed=failed, over=over)
+    """Build the rows of an explanation: the answer set explained, its tree and its notes.
+
+    As the text view's: the answer set is one asked for `over` a range, else a counterexample.
+    """
+    found = counterexample(explanation.counterexample, over)
     rows = [Row(*_answer_set(found, glyphs))]
     if not explanation.roots:
         rows.append(Row((), (Piece(EXPECTS_NONE, Role.ASIDE),)))
-    rows += steps(explanation, glyphs, block)
+    rows += steps(explanation, glyphs, block, own)
     rows.append(Row((), noted(GUARANTEE[explanation.minimality])))
     if not explanation.complete:
         rows.append(Row((), noted(stopped(explanation.max_depth))))
@@ -213,16 +217,17 @@ def evidence(finding: Finding, glyphs: Glyphs, lines_of: Lines, block: int) -> l
     if finding.evidence is None:
         return []
     rows = [Row((), heading(Role.ERROR, EVIDENCE_HEADING, finding.claim_text))]
+    own = finding.claim.span.source
     match finding.evidence:
         case Explanation() as explanation:
-            rows += explained(explanation, glyphs, block, failed=True, over=Range.ALL)
+            rows += explained(explanation, glyphs, block, own=own, over=None)
         case Outranked() as outranked:
             ranked = _paying(outranked)
             mark = _glyph(Mark.OUTRANKED, glyphs)
             rows.append(Row(mark, (Piece(OUTRANKED, Role.EMPHASIS),), about=ranked))
             rows += [Row((), phrase, about=ranked) for phrase in ranking(outranked)]
             rows += _payments(ranked, lines_of)
-            rows += explained(outranked.explanation, glyphs, block, failed=True, over=Range.ALL)
+            rows += explained(outranked.explanation, glyphs, block, own=own, over=None)
         case found:
             rows.append(Row((), unfound(found)))
     return rows
@@ -293,25 +298,24 @@ def entry(  # noqa: PLR0913
 
 
 def explaining(
-    result: Explanation | Refutation | Ended, glyphs: Glyphs, *, over: Range
+    result: Explanation | Refutation | Ended, glyphs: Glyphs, *, own: str, over: Range
 ) -> list[Row]:
     """Build the rows of what `why` found: its explanation, the block numbered 0, or why none."""
     if isinstance(result, Explanation):
-        return explained(result, glyphs, 0, failed=False, over=over)
+        return explained(result, glyphs, 0, own=own, over=over)
     return [Row((), unfound(result))]
 
 
 def why(
-    atom: Literal,
+    asked: str,
     result: Explanation | Refutation | Ended,
     glyphs: Glyphs,
     *,
+    own: str,
     over: Range,
-    negated: bool,
 ) -> list[Row]:
-    """Build the rows of what `why` found, beneath its heading: the atom as it was asked."""
-    below = explaining(result, glyphs, over=over)
-    asked = signed(atom, negated=negated)
+    """Build the rows of what `why` found, beneath its heading: the atom `asked`, as written."""
+    below = explaining(result, glyphs, own=own, over=over)
     return [Row((), heading(Role.NOTE, WHY, asked), children=below, about=Block(0))]
 
 

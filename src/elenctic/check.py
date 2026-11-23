@@ -162,19 +162,11 @@ def _natively(
     return [decided.get(claim, finding) for claim, finding in zip(group, findings, strict=True)]
 
 
-def _root(program: Program, root: Path | None) -> Path | None:
-    """Return the containment boundary: `root`, else the program's directory, else none."""
-    if root is not None:
-        return root
-    return None if program.path is None else program.path.parent.resolve()
-
-
 def _prepared(program: Program, root: Path | None) -> tuple[Contract, Grounded] | Fault | None:
     """Parse, contain, ground and soundness-check `program`; `None` if it is not a case."""
     if not is_case(program.text):
         return None
-    boundary = _root(program, root)
-    if boundary is not None and (refused := containment(program, boundary)) is not None:
+    if (refused := containment(program, root)) is not None:
         return refused
     contract = parse_contract(program.text, program.source)
     if contract.diagnostics:
@@ -196,8 +188,10 @@ def check(
 ) -> Report | Fault | None:
     """Check the contract written in `program`; `None` if it carries none.
 
-    `root` is the containment boundary: every `#include` must resolve under it. When omitted
-    and the program has a path, the program's directory is the boundary (a named file's own dir).
+    `root` is the containment boundary: every file the program loads must lie under it. When
+    omitted and the program has a path, it is the directory that holds its file and libraries,
+    links resolved. A text has no default root. Only the file system's root is too wide: the
+    library reads no home directory.
     """
     opened = _prepared(program, root)
     if opened is None or isinstance(opened, Fault):

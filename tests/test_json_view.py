@@ -246,6 +246,23 @@ def test_the_schema_adds_to_schema_one_and_makes_evidence_optional() -> None:
     assert "substitution" not in defs
 
 
+def test_an_entry_lists_its_libraries_only_when_it_has_some_and_the_schema_allows_both() -> None:
+    defs = schema_document()["$defs"]
+    assert isinstance(defs, dict)
+    schema = defs["entry"]
+    assert isinstance(schema, dict)
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    assert schema["required"] == ["kind", "source", "result"]
+    assert properties["libraries"] == {"type": "array", "items": {"type": "string"}}
+    bare = entry(FAILING, "b.lp")
+    shared = dataclasses.replace(bare, libraries=("base.lp", "more.lp"))
+    for each, listed in ((bare, None), (shared, ["base.lp", "more.lp"])):
+        document = json.loads(to_json(Run((each,))))
+        _keys_follow_schema(document["run"])
+        assert document["run"]["entries"][0].get("libraries") == listed
+
+
 def test_a_set_of_literals_is_listed_in_the_order_the_text_lists_it() -> None:
     literals = frozenset(Literal.parse(f"p({n})") for n in (10, 2, 1))
     assert encode(literals) == ["p(1)", "p(2)", "p(10)"]
