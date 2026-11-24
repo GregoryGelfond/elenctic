@@ -3,7 +3,7 @@
 from dataclasses import replace
 from typing import Final
 
-from clingo.ast import AST, ASTType, Location, parse_string
+from clingo.ast import AST, ASTType, parse_string
 
 from elenctic import tree
 from elenctic.spans import (
@@ -26,11 +26,9 @@ def prefixed(text: str) -> str:
     return PREFIX + text + "."
 
 
-def span_of(location: Location, text: str) -> Span:
-    """Return where clingo says `location` is, with columns counted in Unicode scalars."""
-    begin, end = location.begin, location.end
-    raw = Span(begin.filename, Position(begin.line, begin.column), Position(end.line, end.column))
-    return in_characters(raw, text)
+def span_of(node: AST, text: str) -> Span:
+    """Return where clingo says `node` is, with columns counted in Unicode scalars."""
+    return in_characters(tree.span(node), text)
 
 
 def place(where: Span, inner: Span) -> Span:

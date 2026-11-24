@@ -96,11 +96,11 @@ def test_clingo_byte_columns_become_character_columns_on_non_ascii() -> None:
     parse_string(text, found.append)
     function = found[1].head.atom.symbol  # type: ignore[attr-defined]
     argument = function.arguments[0]
-    location = tree.location(argument)
-    assert location.end.column - location.begin.column == len('"café"'.encode())
-    converted = span_of(location, text)
+    reported = tree.span(argument)
+    assert reported.end.column - reported.start.column == len('"café"'.encode())
+    converted = span_of(argument, text)
     assert converted.end.column - converted.start.column == len('"café"')
-    assert char_column('p("café")', location.end.column) == converted.end.column
+    assert char_column('p("café")', reported.end.column) == converted.end.column
 
 
 def test_carets_match_the_primary_span_width() -> None:
@@ -136,9 +136,9 @@ def test_clingo_reports_byte_columns_and_we_convert_them_before_carets() -> None
     parse_string(source, found.append)
     function = found[1].head.atom.symbol  # type: ignore[attr-defined]
     argument = function.arguments[0]
-    location = tree.location(argument)
-    assert location.end.column - location.begin.column == len('"café"'.encode())
-    assert char_column(source, location.begin.column) == source.index('"') + 1
+    reported = tree.span(argument)
+    assert reported.end.column - reported.start.column == len('"café"'.encode())
+    assert char_column(source, reported.start.column) == source.index('"') + 1
     text = 'q.\n% @expect sat\n% @query yes { p("café", 1..2) }\n'
     result = check(Program(text, "t.lp"))
     assert isinstance(result, Fault)

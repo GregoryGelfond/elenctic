@@ -1,8 +1,10 @@
 import pytest
 from clingo import Number
-from clingo.ast import AST, ASTType, SymbolicTerm, parse_string
+from clingo.ast import AST, ASTType, Location, SymbolicTerm, parse_string
+from clingo.ast import Position as At
 
 from elenctic import tree
+from elenctic.spans import Position, Span
 from nesting import nested
 
 
@@ -24,7 +26,6 @@ def test_numbers_and_flags_are_read_as_what_they_are() -> None:
     shown = statement("#show p/2.")
     assert tree.number(shown, "arity") == 2
     assert tree.holds_flag(shown, "positive")
-    assert tree.location(shown).begin.line == 1
     atom = tree.child(tree.child(statement("p(1)."), "head"), "atom")
     (argument,) = tree.children(tree.child(atom, "symbol"), "arguments")
     assert tree.symbol(argument).number == 1
@@ -64,6 +65,10 @@ def test_a_renamed_copy_renames_each_variable_in_the_order_written() -> None:
     assert str(rule) == "p(X,_) :- q(Y,X); Z = #count { W: r(W,_) }."
 
 
+def test_a_node_is_placed_where_clingo_says_under_its_name_in_utf8_columns() -> None:
+    assert tree.span(statement('p("é").')) == Span("<string>", Position(1, 1), Position(1, 9))
+
+
 def test_a_renamed_copy_reaches_any_depth() -> None:
     deep = statement(f"p({nested()}, X).")
     assert str(tree.renamed(deep, str.lower)).endswith(",x).")
@@ -71,4 +76,4 @@ def test_a_renamed_copy_reaches_any_depth() -> None:
 
 def test_building_a_clingo_node_is_refused_in_every_test() -> None:
     with pytest.raises(AssertionError, match="a clingo node was built"):
-        SymbolicTerm(tree.location(statement("p.")), Number(1))
+        SymbolicTerm(Location(At("<string>", 1, 1), At("<string>", 1, 3)), Number(1))

@@ -101,8 +101,8 @@ layers = [
     "elenctic.classes | elenctic.patterns | elenctic.rows | elenctic.search",
     "elenctic.facts | elenctic.normalize | elenctic.relation | elenctic.substitution | elenctic.theory",
     "elenctic.body | elenctic.determination | elenctic.extension | elenctic.program | elenctic.tags | elenctic.terms",
-    "elenctic.about | elenctic.braces | elenctic.display | elenctic.literals | elenctic.paint | elenctic.partition | elenctic.spans | elenctic.tree",
-    "elenctic.traversal",
+    "elenctic.about | elenctic.braces | elenctic.display | elenctic.literals | elenctic.paint | elenctic.partition | elenctic.tree",
+    "elenctic.spans | elenctic.traversal",
 ]
 
 [[tool.importlinter.contracts]]

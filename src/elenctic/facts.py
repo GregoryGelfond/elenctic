@@ -6,12 +6,12 @@ from functools import reduce
 from typing import Final
 
 from clingo import Control
-from clingo.ast import AST, ASTType, Location, UnaryOperator
+from clingo.ast import AST, ASTType, UnaryOperator
 
 from elenctic import tree
 from elenctic.literals import Signature, is_function
-from elenctic.program import Program, source_name
-from elenctic.spans import Position, Span
+from elenctic.program import Program, named
+from elenctic.spans import Span
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,21 +139,12 @@ def _objective(node: AST) -> bool:
     )
 
 
-def _span(location: Location, program: Program) -> Span:
-    begin, end = location.begin, location.end
-    return Span(
-        source_name(begin.filename, program.source),
-        Position(begin.line, begin.column),
-        Position(end.line, end.column),
-    )
-
-
 def _first(
     statements: Iterable[AST], holds: Callable[[AST], bool], program: Program
 ) -> Span | None:
     """Locate the first statement for which `holds`."""
     found = next((s for s in statements if holds(s)), None)
-    return None if found is None else _span(tree.location(found), program)
+    return None if found is None else named(tree.span(found), program.source)
 
 
 def theory_at(control: Control, statements: Iterable[AST], program: Program) -> Span | None:

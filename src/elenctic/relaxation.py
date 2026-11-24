@@ -13,7 +13,6 @@ from typing import Final
 from clingo.ast import (
     AST,
     ASTType,
-    Location,
     Sign,
 )
 
@@ -39,7 +38,7 @@ from elenctic.clauses import (
     tuple_text,
 )
 from elenctic.explanation import Rule
-from elenctic.program import source_name
+from elenctic.program import named
 from elenctic.spans import Position, Span, in_characters, split_lines
 
 _BASE: Final = "_elenctic"
@@ -53,12 +52,11 @@ class Source:
     name: str
     texts: Mapping[str, str]
 
-    def span(self, location: Location) -> Span:
+    def span(self, statement: AST) -> Span:
         """Locate a statement, in Unicode columns, under the name the program is known by."""
-        begin, end = location.begin, location.end
-        source = source_name(begin.filename, self.name)
-        raw = Span(source, Position(begin.line, begin.column), Position(end.line, end.column))
-        text = self.texts.get(begin.filename, self.texts.get(source))
+        reported = tree.span(statement)
+        raw = named(reported, self.name)
+        text = self.texts.get(reported.source, self.texts.get(raw.source))
         return raw if text is None else in_characters(raw, text)
 
     def text(self, span: Span) -> str:
@@ -134,7 +132,7 @@ def _minimize_rules(statements: Sequence[AST], source: Source) -> dict[int, Rule
     for index, statement in enumerate(statements):
         if tree.kind(statement) is not ASTType.Minimize:
             continue
-        span = source.span(tree.location(statement))
+        span = source.span(statement)
         key = (span.source, span.start.line, span.start.column)
         start = previous.get(key, span.start)
         start = _after_separator(source, Span(span.source, start, span.end))
@@ -168,7 +166,7 @@ def read(statements: Sequence[AST], source: Source) -> Reading:
     for index, statement in enumerate(statements):
         match tree.kind(statement):
             case ASTType.Rule:
-                span = source.span(tree.location(statement))
+                span = source.span(statement)
                 rule = Rule(index, span, source.text(span))
                 for piece in statement.unpool():
                     _read_rule(reading, rule, anonymous_named(piece, reading.fresh))

@@ -38,7 +38,7 @@ def _pattern(atom: AST) -> Pattern | NotAPattern | None:
 
 
 def _item(where: Span, literal: AST, source: str) -> Parsed[Item]:
-    span = place(where, span_of(tree.location(literal), source))
+    span = place(where, span_of(literal, source))
     simple = (
         tree.kind(literal) is ASTType.Literal
         and tree.kind(tree.child(literal, "atom")) is ASTType.SymbolicAtom
@@ -94,7 +94,7 @@ def _all[T](parsed: Iterable[Parsed[T]]) -> Parsed[tuple[T, ...]]:
 
 def _valuation(where: Span, literal: AST, source: str) -> Parsed[Valuation]:
     return _equation(literal) or failure(
-        place(where, span_of(tree.location(literal), source)),
+        place(where, span_of(literal, source)),
         f"expected `term = integer`, found `{literal}`",
         label="expected `term = integer`",
     )

@@ -171,6 +171,12 @@ def test_valuations_read_a_term_and_the_integer_it_equals() -> None:
     )
 
 
+def test_a_refused_valuation_is_placed_in_characters_after_non_ascii_text() -> None:
+    found = read_valuations('x("é") = 1, y("é")', WHERE)
+    assert isinstance(found, Diagnostic)
+    assert found.span == Span("c.lp", Position(7, 24), Position(7, 30))
+
+
 @pytest.mark.parametrize(
     ("text", "start"),
     [

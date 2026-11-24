@@ -7,6 +7,7 @@ from typing import TypeGuard
 from clingo import Symbol
 from clingo.ast import AST, ASTSequence, ASTType, Location
 
+from elenctic.spans import Position, Span
 from elenctic.traversal import fold
 
 
@@ -49,9 +50,11 @@ def symbol(node: AST) -> Symbol:
     return _field(node, "symbol", Symbol)
 
 
-def location(node: AST) -> Location:
-    """Return where `node` was written."""
-    return _field(node, "location", Location)
+def span(node: AST) -> Span:
+    """Return where clingo says `node` was written: the name it reports, columns in UTF-8 bytes."""
+    location = _field(node, "location", Location)
+    begin, end = location.begin, location.end
+    return Span(begin.filename, Position(begin.line, begin.column), Position(end.line, end.column))
 
 
 def holds_flag(node: AST, key: str) -> bool:

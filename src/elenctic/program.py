@@ -1,21 +1,21 @@
 """A program to be asked about, and the failure of asking."""
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum, auto
 from os import PathLike
 from pathlib import Path
 from typing import Final, Self
 
-from elenctic.spans import Diagnostic
+from elenctic.spans import Diagnostic, Span
 
 TEXT: Final = "<string>"
 """The name clingo gives a program read from text rather than a file."""
 
 
-def source_name(reported: str, name: str) -> str:
-    """Return the name of the source clingo reports as `reported`: `name`, if it is the text."""
-    return name if reported == TEXT else reported
+def named(span: Span, name: str) -> Span:
+    """Return `span` under `name` if clingo placed it in the text, else as clingo placed it."""
+    return replace(span, source=name) if span.source == TEXT else span
 
 
 @dataclass(frozen=True, slots=True)

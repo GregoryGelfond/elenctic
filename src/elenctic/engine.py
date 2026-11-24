@@ -16,7 +16,7 @@ from elenctic.determination import AnswerSets, Determination
 from elenctic.facts import Facts, objective_at, shown_by, theory_at
 from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
-from elenctic.program import TEXT, Fault, Locus, Program, source_name
+from elenctic.program import TEXT, Fault, Locus, Program, named
 from elenctic.search import Interrupt, Limits
 from elenctic.spans import (
     Diagnostic,
@@ -50,7 +50,7 @@ def _clarified(diagnostic: Diagnostic) -> Diagnostic:
 def _relocated(diagnostic: Diagnostic, source: str) -> Diagnostic:
     if (span := diagnostic.span) is None:
         return diagnostic
-    return replace(diagnostic, span=replace(span, source=source_name(span.source, source)))
+    return replace(diagnostic, span=named(span, source))
 
 
 def source_texts(program: Program) -> dict[str, str]:
