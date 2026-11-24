@@ -99,6 +99,7 @@ from elenctic.query import (
     answers,
     bindings,
     evaluate,
+    stream,
 )
 from elenctic.reader import parse_contract
 from elenctic.report import Internal
@@ -238,6 +239,7 @@ __all__ = [
     "render",
     "session",
     "solve",
+    "stream",
     "unify",
     "why",
     "world_view",

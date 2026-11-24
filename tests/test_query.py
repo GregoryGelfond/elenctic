@@ -5,12 +5,13 @@ from clingo import Function, Number, String, Symbol, parse_term
 from hypothesis import given
 from hypothesis import strategies as st
 
-from elenctic.determination import AnswerSet, WorldView
+from elenctic.determination import AnswerSet, Range, Truncation, WorldView
 from elenctic.literals import Atoms, Literal
 from elenctic.patterns import Pattern
 from elenctic.query import (
     All,
     Answer,
+    Answered,
     AnswerMode,
     Answers,
     Any,
@@ -21,9 +22,12 @@ from elenctic.query import (
     Taken,
     Truth,
     answer,
+    answered,
     answers,
     bindings,
+    bravely,
     evaluate,
+    stream,
 )
 from elenctic.terms import Compound, Term, Variable
 
@@ -458,3 +462,49 @@ def test_a_pattern_alone_by_default_is_answered_as_its_unifiers_with_the_consequ
     assert found.giving(Answer.YES) == yes
     assert found.giving(Answer.NO) == no
     assert found.giving(Answer.UNKNOWN) == entertained - yes - no
+
+
+def test_the_stream_shows_yes_then_no_bindings_and_unknown_ones_only_on_request() -> None:
+    members = read(lits("p(3)", "p(1)", "-p(2)", "p(4)"), lits("p(3)", "p(1)", "-p(2)"))
+    found = answered(Pattern("p", (X,)), members)
+    assert [(b.values, b.answer) for b in stream(found)] == [
+        ((Number(1),), Answer.YES),
+        ((Number(3),), Answer.YES),
+        ((Number(2),), Answer.NO),
+    ]
+    assert [b.values for b in stream(found, unknown=True)][-1] == (Number(4),)
+
+
+@pytest.mark.parametrize("mode", [AnswerMode.CAUTIOUS, AnswerMode.BRAVE])
+def test_the_stream_of_a_cautious_or_brave_query_shows_only_its_yes_bindings(
+    mode: AnswerMode,
+) -> None:
+    found = answered(REACH, ROADS, mode=mode)
+    assert {b.answer for b in stream(found, unknown=True)} == {Answer.YES}
+
+
+def test_the_stream_of_a_ground_query_is_its_one_answer_with_no_values() -> None:
+    found = answered(All((Literal("r", (sym("a"),)),)), ROADS)
+    assert list(stream(found)) == [Bound((), Answer.YES, found.taken)]
+
+
+def test_a_brave_search_cut_keeps_the_yes_bindings_it_found_and_says_what_cut_it() -> None:
+    first, _ = ROADS
+    found = bravely(REACH, (first,), Range.ALL, Truncation.MAX_ANSWER_SETS)
+    assert isinstance(found, Answered)
+    assert isinstance(found.answer, Answers)
+    assert [b.values for b in found.answer.bound] == [(sym("a"),)]
+    assert (found.read, found.cut, found.mode) == (
+        None,
+        Truncation.MAX_ANSWER_SETS,
+        AnswerMode.BRAVE,
+    )
+
+
+def test_a_brave_search_cut_before_any_yes_has_nothing_to_show() -> None:
+    nothing = read(lits("c(a)"))
+    assert bravely(REACH, nothing, Range.ALL, Truncation.MAX_ANSWER_SETS) is None
+    assert bravely(All((Literal("zz"),)), nothing, Range.ALL, Truncation.MAX_SECONDS) is None
+    ground = bravely(All((Literal("c", (sym("a"),)),)), nothing, Range.ALL, Truncation.MAX_SECONDS)
+    assert ground is not None
+    assert (ground.answer, ground.cut) == (Answer.YES, Truncation.MAX_SECONDS)

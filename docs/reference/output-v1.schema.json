@@ -212,7 +212,8 @@
         "taken",
         "read",
         "unreached",
-        "mode"
+        "mode",
+        "cut"
       ],
       "properties": {
         "kind": {
@@ -286,6 +287,21 @@
             "default",
             "cautious",
             "brave"
+          ]
+        },
+        "cut": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "max_answer_sets",
+                "max_seconds",
+                "interrupted"
+              ]
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },

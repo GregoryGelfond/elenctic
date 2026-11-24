@@ -43,13 +43,12 @@ from elenctic.explanation import (
 from elenctic.glyphs import Glyph
 from elenctic.literals import Assumption, Literal, Symbol
 from elenctic.paint import Phrase, Piece, Role
-from elenctic.patterns import Pattern
-from elenctic.query import All, Answer, Answered, Answers, Taken, Unreached
+from elenctic.query import ANSWERS, All, Answer, Answered, Answers, Taken, Unreached, stream
 from elenctic.report import Run
 from elenctic.search import Limit
 from elenctic.spans import Severity, Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
-from elenctic.writer import bound, braces, rows
+from elenctic.writer import bound, braces
 
 MARKS: Final[Mapping[Verdict, Glyph]] = {
     verdict: Glyph(nerd, f"[{verdict.name}]")
@@ -503,12 +502,24 @@ def _valued(answer: Answer, query: All) -> str:
             return "neither true nor false"
 
 
-def bindings_of(answer: Answer, query: Pattern | All, found: Answers) -> Phrase:
-    """Word the bindings of a query that give one answer, as `@query … = { … }` writes them."""
-    return (
-        Piece(f"{worded(answer)} bindings", Role.EMPHASIS),
-        Piece(f": {rows(query, found.giving(answer))}"),
-    )
+def streamed(result: Answered, found: Answers, *, unknown: bool) -> list[Phrase]:
+    """Word a query's bindings as `stream` yields them: how many give each answer, then each.
+
+    The last line says the stream ended, or what cut the search before it read every answer set.
+    """
+    if result.cut is not None:
+        counts = f"{found.count(Answer.YES)} yes so far"
+    else:
+        counts = ", ".join(f"{found.count(each)} {worded(each)}" for each in ANSWERS[result.mode])
+    hidden = not unknown and found.count(Answer.UNKNOWN) > 0
+    aside = " (`--unknown` shows them)" if hidden else ""
+    lines = [said((Piece("bindings", Role.EMPHASIS), Piece(f": {counts}{aside}")))]
+    for each in stream(result, unknown=unknown):
+        named = zip(found.variables, each.values, strict=True)
+        values = ", ".join(f"{name} = {value}" for name, value in named)
+        lines.append(said((Piece(worded(each.answer), Role.EMPHASIS), Piece(f": {values}"))))
+    end = NO_MORE if result.cut is None else unfound(Ended(result.cut))
+    return [*lines, end]
 
 
 def shows_why(source: str, literal: Literal, found: Taken, over: Range) -> str:
@@ -567,6 +578,8 @@ def written(rule: Rule, substitution: str) -> Phrase:
 
 EVIDENCE_HEADING: Final = "evidence"
 REFUTATION: Final = "refutation"
+NO_MORE: Final = said((Piece("no more bindings", Role.ASIDE),))
+"""The line that ends a query's bindings; Prolog's `false.` there would read as `no`."""
 OUTRANKED: Final = "outranked: the objective ranks it below the optimum"
 COST: Final = "cost"
 OPTIMUM: Final = "optimum"

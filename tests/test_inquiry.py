@@ -6,10 +6,12 @@ from elenctic.determination import NoAssumptions, Range, These, Truncation
 from elenctic.explanation import Explanation
 from elenctic.inquiry import AskExit, WhyExit, ask, why
 from elenctic.literals import Assumption, Literal
+from elenctic.patterns import Pattern
 from elenctic.program import Fault, Locus, Program
-from elenctic.query import All, Answer, Answered
+from elenctic.query import All, Answer, Answered, AnswerMode
 from elenctic.report import Internal
 from elenctic.search import Limits
+from elenctic.terms import Variable
 from elenctic.verdicts import Ended
 
 CHAIN = "edge(a,b). edge(b,c). reach(a). reach(Y) :- reach(X), edge(X,Y).\n"
@@ -104,3 +106,11 @@ def test_ask_without_answer_sets_and_on_a_cut_search_does_not_answer() -> None:
     ended = ask(Program("{ a; b }.", "t.lp"), both, limits=Limits(max_answer_sets=1))
     assert AskExit.of(ended) is AskExit.ENDED
     assert AskExit.of(Internal("ValueError", "x")) is AskExit.INTERNAL_ERROR
+
+
+def test_a_brave_answer_found_before_the_search_was_cut_exits_as_cut() -> None:
+    pattern = Pattern("p", (Variable("X"),))
+    program = Program("p(1). { p(2) }.", "t.lp")
+    found = ask(program, pattern, mode=AnswerMode.BRAVE, limits=Limits(max_answer_sets=1))
+    assert isinstance(found, Answered)
+    assert (found.cut, AskExit.of(found)) == (Truncation.MAX_ANSWER_SETS, AskExit.ENDED)

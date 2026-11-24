@@ -122,6 +122,7 @@ def ask_view(  # noqa: PLR0913
     why_of: Callable[[Literal, int, Depth], Explanation | outline.Unfound | Fault | Internal],
     max_depth: Depth,
     text: str | None,
+    unknown: bool = False,
 ) -> View:
     """Make the view of what `ask` found; an answer set it names opens `why` on its literal."""
 
@@ -144,7 +145,7 @@ def ask_view(  # noqa: PLR0913
             text=text,
         )
 
-    rows = outline.ask(source, query, result, style.glyphs)
+    rows = outline.ask(source, query, result, style.glyphs, unknown=unknown)
     return View(
         titled("ask", source), (), rows, lines_of, max_depth, lambda _b, _d: [], why, steps=False
     )

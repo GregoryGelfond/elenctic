@@ -89,6 +89,7 @@ directory is a usage error. And these:
 | `--assuming L,…` | `why`: literals assumed, `p` or `not p`, as `assuming { … }` writes them |
 | `--max-depth N\|all`, `--spans` | `why`: as for `explain` |
 | `--mode default\|cautious\|brave` | `ask`: how the query is answered ([Semantics](../explanation/semantics.md)); default, the Gelfond–Kahl three-valued semantics |
+| `--unknown` | `ask`: write the bindings whose answer is `unknown` too, not only their count; refused for a query without variables |
 
 `repl` is reserved: it writes a note on stderr and exits `FAULT` (2). `--color` and `--icons`
 apply to every command.
@@ -164,9 +165,11 @@ stops at the first answer set to give the last of them. If a limit stops it firs
 still answered, and an answer it did not reach is `true in an answer set past the 100000 read:
 search ended: …`. A conjunction, a disjunction, or a query `--over optimal` reads every answer set,
 and names them `answer set 3 of 7`. A one-literal query ends with a `= help:` line giving the `why` command for that
-answer set. A query with variables writes `= yes bindings: { … }`, and the `no` and `unknown`
-bindings when there are any. With no answer set, each shows the refutation; a search cut short shows
-what ended it.
+answer set. A query with variables writes how many bindings give each answer, `= bindings: 2 yes,
+1 no, 3 unknown`, then a line for each, `= yes: X = a, Y = 1`, in the order `stream` yields them:
+`yes`, then `no` by default, and `unknown` only with `--unknown`; it ends `= no more bindings`. With
+no answer set, each shows the refutation; a search cut short shows what ended it, after the `yes`
+bindings a brave search found before it was cut.
 
 An outranked result first shows the costs with and without the claim's literals, by priority, and
 the weak-constraint instances paid differently, each at its place in the source. A refuted `@expect
@@ -458,12 +461,13 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `answered` | a query answered over answer sets given in the order read: an `Answered` |
 | `Answers` | the `Bound` instances of a query's variables, in its mode's answer order then value order; `giving(answer)` selects the values of one, `count(answer)` counts them |
 | `answers` | the `Answers` of a query with variables over answer sets, as `mode=` answers it: each instance of its positive parts entertained is grounded and answered |
-| `Answered` | a query's `answer`, or its `Answers` for a query with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached` |
+| `Answered` | a query's `answer`, or its `Answers` for a query with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached`, and, for a brave answer found before the search was `cut`, what cut it |
 | `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it |
 | `Unreached` | an `answer` a query takes in some answer set alone, past the `read` answer sets a search read before `cut` stopped it |
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
 | `bindings` | the `Bindings` of a `Pattern` or a conjunction with variables over a `WorldView`: its default `answers` grouped by answer |
 | `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set |
+| `stream` | the bindings of an `Answered` as `ask` writes them, one per `next()`: `yes`, then `no` by default, `unknown` too with `unknown=True`; a ground query yields its one answer with no values |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |

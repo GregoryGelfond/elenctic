@@ -12,6 +12,8 @@ is `yes` for an `l` nothing derives, though `l` is `unknown`.
 `cautious` is `yes` if the query is true in every answer set and `not entailed` otherwise; `brave`
 is `yes` if it is true in some answer set and `none holds` otherwise. So `default` and `cautious`
 agree on `yes`, and a `default` `no` is a `brave` `none holds`. `@query` answers by default.
+A `brave` `yes` stays true whatever answer sets follow, so a search cut short still gives the `yes`
+it found; every other answer needs every answer set.
 
 **Queries range over the full answer sets.** `@query` reads every atom of each answer set, not
 only those `#show` selects. `#show` still governs what `@answer-set`, `@count`, `@cautious` and

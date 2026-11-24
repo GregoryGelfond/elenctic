@@ -70,7 +70,9 @@ class AskExit(IntEnum):
     @classmethod
     def of(cls, result: Ask | Internal) -> AskExit:
         """Name the status a result exits with: `why`'s, with an answer for the explanation."""
-        return cls.ANSWERED if isinstance(result, Answered) else cls(WhyExit.of(result))
+        if isinstance(result, Answered):
+            return cls.ENDED if result.cut is not None else cls.ANSWERED
+        return cls(WhyExit.of(result))
 
 
 def _opened(

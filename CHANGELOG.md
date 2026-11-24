@@ -22,7 +22,11 @@ All notable changes are recorded here. The format follows
   (true in every answer set or not), or `yes` / `none holds` (true in some or none); `Answer`
   gains `NOT_ENTAILED` and `NONE_HOLDS`, and `Answered` its `mode`. A query with variables may be a
   conjunction, `{ p(X), not q(X) }`, each instance answered over every answer set: `answers`,
-  `Answers` of `Bound`, and the JSON `answers` kind, which replaces `bindings` in `ask` output. Each exits with its own outcome, `WhyExit` or `AskExit`;
+  `Answers` of `Bound`, and the JSON `answers` kind, which replaces `bindings` in `ask` output.
+  `ask` writes the bindings one a line, `= yes: X = a`, after their counts, and ends with `= no
+  more bindings`, in place of the grouped `= yes bindings: { … }`; `unknown` ones only with
+  `--unknown`. `stream` yields them in that order. A brave search cut short keeps the `yes` it
+  found, `Answered.cut` saying what cut it, and exits 1. Each exits with its own outcome, `WhyExit` or `AskExit`;
   `repl` stays reserved.
 - `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base
   encoding, loaded with every case after its own text, as clingo loads the files it is given. A

@@ -44,7 +44,7 @@ from elenctic.presentation import (
 )
 from elenctic.program import Fault, Locus, Program, regular_text
 from elenctic.queries import read_query
-from elenctic.query import AnswerMode
+from elenctic.query import AnswerMode, variables_of
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
@@ -354,6 +354,11 @@ def _parser() -> argparse.ArgumentParser:
         help="default: the Gelfond\N{EN DASH}Kahl three-valued semantics, yes if true in every "
         "answer set, no if false in every one, else unknown; cautious: yes if true in every one, "
         "else not entailed; brave: yes if true in some, else none holds (default: default)",
+    )
+    ask.add_argument(
+        "--unknown",
+        action="store_true",
+        help="show the bindings whose answer is unknown too, not only their count",
     )
     commands.add_parser(
         "version",
@@ -909,6 +914,12 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         return _refused_all("ask", inquired, arguments, presentation, AskExit.FAULT)
     program, root = inquired
     query = read_query(arguments.query, "QUERY")
+    if not isinstance(query, Diagnostic) and arguments.unknown and not variables_of(query):
+        query = failure(
+            None,
+            "a query without variables has no unknown bindings to show",
+            help=("drop `--unknown`, which shows the unknown bindings of a query with variables",),
+        )
     if isinstance(query, Diagnostic):
         return _refuse(
             "ask", query, arguments, presentation, text=arguments.query, outcome=AskExit.FAULT
@@ -961,11 +972,15 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
             why_of=why_of,
             max_depth=DEFAULT_MAX_DEPTH,
             text=program.text,
+            unknown=arguments.unknown,
         )
         tui.show(shown, style)
         return outcome
     form = arguments.form
-    _write(render_ask(source, query, result, presentation, form=form, text=program.text))
+    rendered = render_ask(
+        source, query, result, presentation, form=form, text=program.text, unknown=arguments.unknown
+    )
+    _write(rendered)
     return outcome
 
 

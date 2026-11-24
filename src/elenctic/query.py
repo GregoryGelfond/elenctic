@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum, auto
 from typing import Final, override
 
@@ -403,6 +403,7 @@ class Answered:
     read: int | None
     unreached: tuple[Unreached, ...] = ()
     mode: AnswerMode = AnswerMode.DEFAULT
+    cut: Truncation | None = None
 
 
 _ALONE: Final = {Truth.TRUE: Answer.YES, Truth.FALSE: Answer.NO, Truth.UNKNOWN: Answer.UNKNOWN}
@@ -424,6 +425,45 @@ def answered(
         return Answered(query, over, answers(query, members, mode=mode), (), read, mode=mode)
     found = answer(query, WorldView(frozenset(member.atoms for member in members), over), mode=mode)
     return Answered(query, over, found, taken(query, members), read, mode=mode)
+
+
+def bravely(
+    query: Query, members: Sequence[AnswerSet], over: Range, cut: Truncation
+) -> Answered | None:
+    """Answer `query` bravely from the answer sets a search read before `cut` stopped it.
+
+    A `yes` found holds whatever the search would have read next, so it is kept, and `cut` says the
+    rest is unread; with no `yes`, there is nothing to say.
+    """
+    found = answered(query, members, over, AnswerMode.BRAVE)
+    kept = found.answer
+    if isinstance(kept, Answers):
+        yes = tuple(each for each in kept.bound if each.answer is Answer.YES)
+        kept = Answers(kept.variables, yes)
+    held = kept.count(Answer.YES) if isinstance(kept, Answers) else kept is Answer.YES
+    return replace(found, answer=kept, read=None, cut=cut) if held else None
+
+
+_SHOWN: Final[Mapping[AnswerMode, frozenset[Answer]]] = {
+    AnswerMode.DEFAULT: frozenset({Answer.YES, Answer.NO}),
+    AnswerMode.CAUTIOUS: frozenset({Answer.YES}),
+    AnswerMode.BRAVE: frozenset({Answer.YES}),
+}
+"""The answers whose bindings are shown in each mode; the others are only counted."""
+
+
+def stream(result: Answered, *, unknown: bool = False) -> Iterator[Bound]:
+    """Yield the bindings of an answered query in the order they are shown, each one a `;`.
+
+    A ground query yields its one answer, with no values. Bindings with `unknown` are yielded only
+    when asked for, and in cautious and brave modes only `yes` bindings are.
+    """
+    found = result.answer
+    if not isinstance(found, Answers):
+        yield Bound((), found, result.taken)
+        return
+    shown = _SHOWN[result.mode] | {Answer.UNKNOWN} if unknown else _SHOWN[result.mode]
+    yield from (each for each in found.bound if each.answer in shown)
 
 
 @dataclass(frozen=True, slots=True)

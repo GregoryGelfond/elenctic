@@ -22,7 +22,6 @@ from elenctic.legend import (
     WHY,
     Mark,
     answering,
-    bindings_of,
     cited,
     counterexample,
     heading,
@@ -37,6 +36,7 @@ from elenctic.legend import (
     shows_why,
     signed,
     stopped,
+    streamed,
     taken,
     unfound,
     unreached,
@@ -47,7 +47,7 @@ from elenctic.literals import Literal
 from elenctic.paint import Phrase, Role, paint, plain
 from elenctic.patterns import Pattern
 from elenctic.presentation import Style
-from elenctic.query import ANSWERS, All, Answer, Answered, Answers
+from elenctic.query import All, Answered, Answers
 from elenctic.spans import Span
 from elenctic.verdicts import Ended, Finding
 from elenctic.writer import queried
@@ -243,20 +243,24 @@ def why_lines(  # noqa: PLR0913
 
 
 def ask_lines(
-    source: str, query: All | Pattern, result: Answered | Refutation | Ended, style: Style
+    source: str,
+    query: All | Pattern,
+    result: Answered | Refutation | Ended,
+    style: Style,
+    *,
+    unknown: bool = False,
 ) -> list[str]:
     """Write the block that shows a query's answer and the first answer set giving each value.
 
-    A pattern with variables shows its bindings instead: those giving yes, and any others.
+    A query with variables shows its bindings instead, one a line, those `unknown` if asked.
     """
     pen = _Pen(style)
     lines = pen.heading(Role.NOTE, ASK, queried(query), source)
     if not isinstance(result, Answered):
         return [*lines, pen.line(unfound(result)), ""]
     if isinstance(result.answer, Answers):
-        found = result.answer
-        shown = [each for each in ANSWERS[result.mode] if each is Answer.YES or found.count(each)]
-        return [*lines, *(pen.line(said(bindings_of(each, query, found))) for each in shown), ""]
+        found = streamed(result, result.answer, unknown=unknown)
+        return [*lines, *(pen.line(each) for each in found), ""]
     conjunction = cast("All", query)
     lines.append(pen.line(said(answering(result.answer))))
     lines += [pen.answer_set(taken(each, conjunction, result)) for each in result.taken]

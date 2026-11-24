@@ -24,7 +24,6 @@ from elenctic.legend import (
     WHY,
     Mark,
     answering,
-    bindings_of,
     counterexample,
     faulted,
     heading,
@@ -40,6 +39,7 @@ from elenctic.legend import (
     shared,
     shows_why,
     stopped,
+    streamed,
     taken,
     unfound,
     unreached,
@@ -49,7 +49,7 @@ from elenctic.literals import Literal
 from elenctic.paint import Phrase, Piece, Role
 from elenctic.patterns import Pattern
 from elenctic.program import Fault
-from elenctic.query import ANSWERS, All, Answer, Answered, AnswerMode, Answers
+from elenctic.query import All, Answered, Answers
 from elenctic.report import Entry, Internal
 from elenctic.spans import Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
@@ -320,30 +320,35 @@ def why(
 
 
 def ask(
-    source: str, query: All | Pattern, result: Answered | Refutation | Ended, glyphs: Glyphs
+    source: str,
+    query: All | Pattern,
+    result: Answered | Refutation | Ended,
+    glyphs: Glyphs,
+    *,
+    unknown: bool = False,
 ) -> list[Row]:
     """Build the rows of what `ask` found, beneath its heading.
 
-    Each answer set that gives a value of a one-literal query can be asked `why`.
+    Each answer set that gives a value of a one-literal query can be asked `why`; a query with
+    variables has a row for each binding, those `unknown` if asked.
     """
     top = Row((), heading(Role.NOTE, ASK, queried(query)))
-    top.children = _answered(source, query, result, glyphs)
+    top.children = _answered(source, query, result, glyphs, unknown=unknown)
     return [top]
 
 
-def _bound(found: Answers, query: All | Pattern, mode: AnswerMode) -> list[Row]:
-    """Build the rows of a query's bindings: its `yes` bindings, and the others it has."""
-    shown = [each for each in ANSWERS[mode] if each is Answer.YES or found.count(each)]
-    return [Row((), said(bindings_of(each, query, found))) for each in shown]
-
-
 def _answered(
-    source: str, query: All | Pattern, result: Answered | Refutation | Ended, glyphs: Glyphs
+    source: str,
+    query: All | Pattern,
+    result: Answered | Refutation | Ended,
+    glyphs: Glyphs,
+    *,
+    unknown: bool,
 ) -> list[Row]:
     if not isinstance(result, Answered):
         return [Row((), unfound(result))]
     if isinstance(result.answer, Answers):
-        return _bound(result.answer, query, result.mode)
+        return [Row((), each) for each in streamed(result, result.answer, unknown=unknown)]
     conjunction = cast("All", query)
     rows = [Row((), said(answering(result.answer)))]
     alone = conjunction.parts[0] if len(conjunction.parts) == 1 else None

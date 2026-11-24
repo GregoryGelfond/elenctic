@@ -11,9 +11,12 @@ from conftest import Link
 from elenctic import check as real_check
 from elenctic.cli import main
 from elenctic.determination import Truncation, option
-from elenctic.inquiry import AskExit, WhyExit
+from elenctic.inquiry import AskExit, WhyExit, ask
+from elenctic.patterns import Pattern
 from elenctic.program import Program
+from elenctic.query import Answered, stream
 from elenctic.report import Exit
+from elenctic.terms import Variable
 from interrupting import at_first_answer_set
 
 DRINKS = "1 { tea; coffee } 1.\nbiscuit.\n#show tea/0. #show coffee/0. #show biscuit/0.\n"
@@ -1284,10 +1287,46 @@ def test_ask_of_a_pattern_writes_its_bindings(
     _, out = run(capsys, "ask", path, "{ p(X) }")
     assert out == (
         f"ask: {{ p(X) }}\n --> {path}\n  |\n"
-        "  = yes bindings: { 1 }\n  = no bindings: { 3 }\n  = unknown bindings: { 2 }\n\n"
+        "  = bindings: 1 yes, 1 no, 1 unknown (`--unknown` shows them)\n"
+        "  = yes: X = 1\n  = no: X = 3\n  = no more bindings\n\n"
     )
-    _, out = run(capsys, "ask", write(tmp_path, "q.lp", "q(1).\n"), "q(X)")
-    assert out.endswith("  = yes bindings: { 1 }\n\n")
+    _, out = run(capsys, "ask", path, "{ p(X) }", "--unknown")
+    assert out.endswith(
+        "  = bindings: 1 yes, 1 no, 1 unknown\n"
+        "  = yes: X = 1\n  = no: X = 3\n  = unknown: X = 2\n  = no more bindings\n\n"
+    )
+    _, out = run(capsys, "ask", write(tmp_path, "q.lp", "q(1, a).\n"), "q(X, Y)")
+    assert out.endswith(
+        "  = bindings: 1 yes, 0 no, 0 unknown\n  = yes: X = 1, Y = a\n  = no more bindings\n\n"
+    )
+
+
+def test_ask_of_a_cautious_query_counts_the_bindings_not_entailed_and_shows_its_yes_ones(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "r.lp", "r(a). r(b). { c(b); c(c) } = 1.\n")
+    _, out = run(capsys, "ask", path, "r(X), not c(X)", "--mode", "cautious")
+    assert out.endswith(
+        "  = bindings: 1 yes, 1 not entailed\n  = yes: X = a\n  = no more bindings\n\n"
+    )
+
+
+def test_ask_of_a_brave_query_cut_short_shows_the_yes_bindings_found_and_what_cut_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "p(1). { p(2) }.\n")
+    code, out = run(capsys, "ask", path, "p(X)", "--mode", "brave", "--max-answer-sets", "1")
+    assert code == AskExit.ENDED
+    assert "  = bindings: 1 yes so far\n  = yes: X = 1\n" in out
+    assert out.endswith("  = search ended: answer-set limit reached (--max-answer-sets)\n\n")
+
+
+def test_ask_refuses_unknown_bindings_for_a_query_without_variables(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out, err = run_both(capsys, "ask", write(tmp_path, "a.lp", "a.\n"), "a", "--unknown")
+    assert (code, out) == (AskExit.FAULT, "")
+    assert err.startswith("error: a query without variables has no unknown bindings to show\n")
 
 
 def test_ask_refuses_a_query_the_query_tag_refuses(
@@ -1522,3 +1561,15 @@ def test_ask_of_a_conjunction_with_variables_writes_its_bindings_in_each_mode(
     code, out = run(capsys, "ask", path, "r(X), not c(X)", "--mode", "brave", "--json")
     found = json.loads(out)["ask"]["answer"]
     assert [(b["values"], b["answer"]) for b in found["bound"]] == [(["a"], "yes"), (["b"], "yes")]
+
+
+def test_the_stream_of_the_library_is_the_order_ask_writes_its_bindings_in(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    text = "p(3). p(1). { p(2); p(4) }. -p(5). -p(0).\n"
+    _, out = run(capsys, "ask", write(tmp_path, "p.lp", text), "p(X)", "--unknown")
+    written = [line.removeprefix("  = ") for line in out.splitlines()[4:-2]]
+    found = ask(Program(text, "p.lp"), Pattern("p", (Variable("X"),)))
+    assert isinstance(found, Answered)
+    assert written == [f"{b.answer}: X = {b.values[0]}" for b in stream(found, unknown=True)]
+    assert written[0] == "yes: X = 1"

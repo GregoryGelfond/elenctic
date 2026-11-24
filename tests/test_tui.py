@@ -192,7 +192,11 @@ def test_a_pattern_nothing_binds_still_says_it_has_no_yes_bindings(
 ) -> None:
     _, view, style = viewed(monkeypatch, "ask", str(EXAMPLES / "team.lp"), "{ nobody(X) }")
     rows = [painted(row, style) for row in flat(view.rows)]
-    assert rows == ["ask: { nobody(X) }", "= yes bindings: { }"]
+    assert rows == [
+        "ask: { nobody(X) }",
+        "= bindings: 0 yes, 0 no, 0 unknown",
+        "= no more bindings",
+    ]
 
 
 def test_a_source_that_could_not_be_checked_starts_closed_with_its_one_reason() -> None:

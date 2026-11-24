@@ -47,6 +47,7 @@ from elenctic.query import (
     ReadAnswers,
     Truth,
     answered,
+    bravely,
     evaluate,
     literal_of,
     settled,
@@ -339,7 +340,10 @@ class Session(Grounded):
         if not isinstance(members, _Reading):
             return members
         if members.read is None:
-            return Ended(Truncation(members.conclusion))
+            cut = Truncation(members.conclusion)
+            if mode is AnswerMode.BRAVE and (yes := bravely(query, members.sets, over, cut)):
+                return yes
+            return Ended(cut)
         return answered(query, members.sets, over, mode)
 
     def _settled(

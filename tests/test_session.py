@@ -44,7 +44,18 @@ from elenctic.explanation import (
 from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
 from elenctic.program import Fault, Program
-from elenctic.query import All, Answer, Answered, Answers, Any, Not, Truth, Unreached, evaluate
+from elenctic.query import (
+    All,
+    Answer,
+    Answered,
+    AnswerMode,
+    Answers,
+    Any,
+    Not,
+    Truth,
+    Unreached,
+    evaluate,
+)
 from elenctic.search import KEEP_SHOWN, Interrupt, Limit, Limits
 from elenctic.session import Session, evidenced, session
 from elenctic.terms import Variable
@@ -1337,3 +1348,16 @@ def test_an_optimization_the_limits_cut_is_asked_again() -> None:
     assert isinstance(opened.counterexample(1, over=Range.OPTIMAL), Ended)
     opened.interrupt = Interrupt()
     assert isinstance(opened.counterexample(1, over=Range.OPTIMAL), Counterexample)
+
+
+def test_a_brave_query_cut_short_keeps_the_yes_bindings_it_found() -> None:
+    made = session(Program("p(1). { p(2); p(3) }.", "t.lp"), limits=Limits(max_answer_sets=1))
+    assert isinstance(made, Session)
+    pattern = Pattern("p", (Variable("X"),))
+    found = made.answer(pattern, mode=AnswerMode.BRAVE)
+    assert isinstance(found, Answered)
+    assert isinstance(found.answer, Answers)
+    assert (Number(1),) in found.answer.giving(Answer.YES)
+    assert {b.answer for b in found.answer.bound} == {Answer.YES}
+    assert found.cut is Truncation.MAX_ANSWER_SETS
+    assert made.answer(pattern, mode=AnswerMode.CAUTIOUS) == Ended(Truncation.MAX_ANSWER_SETS)

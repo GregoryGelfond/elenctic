@@ -313,11 +313,13 @@ def render_ask(  # noqa: PLR0913
     *,
     form: Format = Format.FULL,
     text: str | None = None,
+    unknown: bool = False,
 ) -> Rendered:
     """Write what `ask` found, or, as diagnostics, why it could not look."""
     if isinstance(result, Fault | Internal):
         return refused(result, presentation, form=form, source=source, text=text)
-    return Rendered(_lines(ask_lines(source, query, result, presentation.stdout)), "")
+    lines = ask_lines(source, query, result, presentation.stdout, unknown=unknown)
+    return Rendered(_lines(lines), "")
 
 
 def reserved(command: str, style: Style) -> str:
