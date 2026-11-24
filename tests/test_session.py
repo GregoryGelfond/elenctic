@@ -1452,3 +1452,21 @@ def test_a_warrant_of_values_the_query_did_not_bind_is_refused() -> None:
     assert isinstance(answered, Answered)
     with pytest.raises(ValueError, match="no binding"):
         made.warrant(answered, (Number(2),))
+    ground = made.answer(All((Literal("p", (Number(1),)),)))
+    assert isinstance(ground, Answered)
+    with pytest.raises(ValueError, match="no binding"):
+        made.warrant(ground, (Number(1),))
+
+
+def test_a_witness_past_the_answer_sets_a_cut_search_read_is_left_to_what_it_did_not_reach() -> (
+    None
+):
+    made = session(Program("{ a; -a } = 1.", "t.lp"), limits=Limits(max_answer_sets=1))
+    assert isinstance(made, Session)
+    answered = made.answer(All((Literal("a", ()),)))
+    assert isinstance(answered, Answered)
+    assert answered.answer is Answer.UNKNOWN
+    warrant = made.warrant(answered)
+    assert isinstance(warrant, Warrant)
+    assert set(warrant.witnesses) <= set(answered.taken)
+    assert len(answered.taken) == 1

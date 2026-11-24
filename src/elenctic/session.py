@@ -408,14 +408,15 @@ class Session(Grounded):
         sets that would overturn it; over the optima, the search having read them all shows it.
         `Ended` when that search is cut. Raises `ValueError` for values the query has no binding to.
         """
-        query = instance_of(answered.query, values)
         answer, taken = answered.answer, answered.taken
-        if isinstance(answer, Answers):
-            found = [each for each in answer.bound if each.values == values]
+        if isinstance(answer, Answers) or values:
+            bound = answer.bound if isinstance(answer, Answers) else ()
+            found = [each for each in bound if each.values == values]
             if not found:
                 message = f"the query has no binding to {', '.join(map(str, values))}"
                 raise ValueError(message)
             answer, taken = found[0].answer, found[0].taken
+        query = instance_of(answered.query, values)
         refuted = REFUTED.get((answered.mode, answer))
         refutation = None
         if refuted is not None and answered.over is Range.ALL:

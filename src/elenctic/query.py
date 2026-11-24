@@ -530,6 +530,7 @@ class Warrant:
     one where it is true for a `yes`, false for a `no`; for an `unknown`, one where it is not true
     and one where it is not false, one answer set when it is unknown there. An answer that needs
     every answer set also has the `refutation` of the program asked for one that would overturn it.
+    A witness past the answer sets a cut search read is not here: the answer's `unreached` names it.
     """
 
     query: Query
@@ -552,11 +553,15 @@ _WITNESSED: Final[Mapping[Answer, tuple[frozenset[Answer], ...]]] = {
 
 
 def witnessed(answer: Answer, taken: Sequence[Taken]) -> tuple[Taken, ...]:
-    """Choose the witnesses of an answer from the first answer sets to give each answer alone."""
+    """Choose the witnesses of an answer from the first answer sets to give each answer alone.
+
+    One a search did not read is not chosen.
+    """
     found: list[Taken] = []
     for wanted in _WITNESSED[answer]:
-        first = min((each for each in taken if each.answer in wanted), key=lambda each: each.index)
-        if first not in found:
+        given = [each for each in taken if each.answer in wanted]
+        first = min(given, key=lambda each: each.index, default=None)
+        if first is not None and first not in found:
             found.append(first)
     return tuple(found)
 
