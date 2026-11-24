@@ -44,6 +44,7 @@ from elenctic.presentation import (
 )
 from elenctic.program import Fault, Locus, Program, regular_text
 from elenctic.queries import read_query
+from elenctic.query import AnswerMode
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
@@ -344,6 +345,15 @@ def _parser() -> argparse.ArgumentParser:
         metavar="QUERY",
         help="literals, `not` before any, `{ a, not -b }`, or one pattern `{ p(X) }`, "
         "as `@query`; a full stop may end it",
+    )
+    ask.add_argument(
+        "--mode",
+        choices=list(AnswerMode),
+        type=AnswerMode,
+        default=AnswerMode.DEFAULT,
+        help="default: the Gelfond\N{EN DASH}Kahl three-valued semantics, yes if true in every "
+        "answer set, no if false in every one, else unknown; cautious: yes if true in every one, "
+        "else not entailed; brave: yes if true in some, else none holds (default: default)",
     )
     commands.add_parser(
         "version",
@@ -908,6 +918,7 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         result: Ask | Internal = ask(
             program,
             query,
+            mode=arguments.mode,
             over=arguments.over,
             limits=limits,
             interrupt=interrupt,

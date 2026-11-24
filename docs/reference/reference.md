@@ -88,6 +88,7 @@ directory is a usage error. And these:
 | `--answer-set K` | `why`: the answer set explained, counted from 1 among those `--over` reads (default: 1) |
 | `--assuming L,…` | `why`: literals assumed, `p` or `not p`, as `assuming { … }` writes them |
 | `--max-depth N\|all`, `--spans` | `why`: as for `explain` |
+| `--mode default\|cautious\|brave` | `ask`: how the query is answered ([Semantics](../explanation/semantics.md)); default, the Gelfond–Kahl three-valued semantics |
 
 `repl` is reserved: it writes a note on stderr and exits `FAULT` (2). `--color` and `--icons`
 apply to every command.
@@ -449,10 +450,11 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Not` | default negation of a literal or pattern: true in an answer set exactly when it is not in it |
 | `All` | the conjunction of its parts |
 | `Any` | the disjunction of its parts; not `typing.Any` |
-| `Answer` | `YES`, `NO` or `UNKNOWN`: a query true in every answer set, false in every one, or neither |
+| `Answer` | `YES`, `NO` or `UNKNOWN`: a query true in every answer set, false in every one, or neither; `NOT_ENTAILED` (cautious) or `NONE_HOLDS` (brave) where those modes say no |
+| `AnswerMode` | how a query is answered from its `Truth` in each answer set: `DEFAULT` (Gelfond and Kahl), `CAUTIOUS` (yes if true in every one) or `BRAVE` (yes if true in some) |
 | `Truth` | truth in one answer set, ordered `FALSE < UNKNOWN < TRUE`, so that conjunction is `min` and disjunction `max` |
 | `evaluate` | a query's `Truth` in one answer set |
-| `answer` | a query's `Answer` over a `WorldView` |
+| `answer` | a query's `Answer` over a `WorldView`, as `mode=` answers it (default `AnswerMode.DEFAULT`) |
 | `answered` | a query answered over answer sets given in the order read: an `Answered` |
 | `Answered` | a query's `answer`, or its `Bindings` for a pattern with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached` |
 | `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it |

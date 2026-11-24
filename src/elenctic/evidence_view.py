@@ -47,7 +47,7 @@ from elenctic.literals import Literal
 from elenctic.paint import Phrase, Role, paint, plain
 from elenctic.patterns import Pattern
 from elenctic.presentation import Style
-from elenctic.query import All, Answer, Answered, Bindings
+from elenctic.query import ANSWERS, All, Answer, Answered, AnswerMode, Bindings
 from elenctic.spans import Span
 from elenctic.verdicts import Ended, Finding
 from elenctic.writer import queried
@@ -255,7 +255,9 @@ def ask_lines(
         return [*lines, pen.line(unfound(result)), ""]
     if isinstance(result.answer, Bindings):
         found = result.answer
-        shown = [each for each in Answer if each is Answer.YES or found.giving(each)]
+        shown = [
+            each for each in ANSWERS[AnswerMode.DEFAULT] if each is Answer.YES or found.giving(each)
+        ]
         pattern = cast("Pattern", query)
         return [*lines, *(pen.line(said(bindings_of(each, pattern, found))) for each in shown), ""]
     conjunction = cast("All", query)

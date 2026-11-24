@@ -463,8 +463,8 @@ def keyed(actions: Sequence[str]) -> tuple[Phrase, ...]:
 
 
 def answering(answer: Answer) -> Phrase:
-    """Word the answer a query comes to over the answer sets."""
-    return (Piece(ANSWER, Role.EMPHASIS), Piece(f": {answer.value}"))
+    """Word the answer a query comes to over the answer sets: `not entailed`, as said."""
+    return (Piece(ANSWER, Role.EMPHASIS), Piece(f": {answer.value.replace('_', ' ')}"))
 
 
 def taken(found: Taken, query: All, answered: Answered) -> Phrase:

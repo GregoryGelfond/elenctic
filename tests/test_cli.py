@@ -1470,3 +1470,37 @@ def test_root_holds_an_include_that_clingo_finds_from_the_working_directory(
     else:
         assert code == Exit.FAULT
         assert f"this case loads {tmp_path / escaped}, which is outside the root" in err
+
+
+@pytest.mark.parametrize(
+    ("mode", "literal", "expected"),
+    [
+        ("default", "c", "no"),
+        ("cautious", "c", "not entailed"),
+        ("cautious", "a", "not entailed"),
+        ("brave", "a", "yes"),
+        ("brave", "c", "none holds"),
+        ("brave", "not zz", "yes"),
+    ],
+)
+def test_ask_takes_the_mode_its_help_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], mode: str, literal: str, expected: str
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    code, out = run(capsys, "ask", path, literal, "--mode", mode)
+    assert code == AskExit.ANSWERED
+    assert f"  = answer: {expected}\n" in out
+    code, out = run(capsys, "ask", path, literal, "--mode", mode, "--json")
+    result = json.loads(out)["ask"]
+    assert code == 0
+    assert result["answer"] == expected.replace(" ", "_")
+    assert result["mode"] == mode
+
+
+def test_ask_help_names_the_default_semantics(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exit_:
+        main(["ask", "--help"])
+    assert exit_.value.code == 0
+    help_ = capsys.readouterr().out
+    assert "Gelfond\N{EN DASH}Kahl three-valued" in help_
+    assert "gk" not in help_

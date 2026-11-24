@@ -1,6 +1,6 @@
 """Three-valued queries over a world view (Gelfond and Kahl, Definition 2.2.2, with its errata)."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum, auto
@@ -25,11 +25,34 @@ class Truth(IntEnum):
 
 
 class Answer(StrEnum):
-    """The three-valued answer of a query: yes, no, or unknown."""
+    """The answer of a query: yes, no or unknown by default; yes, or what else each mode says."""
 
     YES = auto()
     NO = auto()
     UNKNOWN = auto()
+    NOT_ENTAILED = auto()
+    """Cautious: false or unknown in some answer set."""
+    NONE_HOLDS = auto()
+    """Brave: true in no answer set."""
+
+
+class AnswerMode(StrEnum):
+    """How a query is answered over the answer sets, from its truth in each one."""
+
+    DEFAULT = auto()
+    """Gelfond and Kahl's three values: yes if true in every one, no if false in every one."""
+    CAUTIOUS = auto()
+    """Yes if true in every one, else not entailed."""
+    BRAVE = auto()
+    """Yes if true in some one, else none holds."""
+
+
+ANSWERS: Final[Mapping[AnswerMode, tuple[Answer, ...]]] = {
+    AnswerMode.DEFAULT: (Answer.YES, Answer.NO, Answer.UNKNOWN),
+    AnswerMode.CAUTIOUS: (Answer.YES, Answer.NOT_ENTAILED),
+    AnswerMode.BRAVE: (Answer.YES, Answer.NONE_HOLDS),
+}
+"""The answers each mode gives, in the order they are shown."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,31 +125,26 @@ def literal_of(query: Query) -> Literal | None:
             return None
 
 
-def answer(query: Query, view: WorldView) -> Answer:
-    """Yes if `query` is true in every answer set, no if false in every one, else unknown.
+def answer(query: Query, view: WorldView, *, mode: AnswerMode = AnswerMode.DEFAULT) -> Answer:
+    """Answer `query` over the answer sets of `view`, from its truth in each, as `mode` does."""
+    return decided({evaluate(query, member) for member in view.members}, mode)
 
-    A literal is true in every answer set when it is a cautious consequence and false in every one
-    when its contrary is, so it is answered from the cautious consequences alone.
+
+def decided(truths: AbstractSet[Truth], mode: AnswerMode = AnswerMode.DEFAULT) -> Answer:
+    """Answer from the truths a query takes in the answer sets, as `mode` does.
+
+    Default: yes if only true, no if only false, else unknown. Cautious: yes if only true, else
+    not entailed. Brave: yes if ever true, else none holds.
     """
-    if isinstance(query, Pattern):
-        query = _closed(query)
-    if isinstance(query, Literal):
-        cautious = view.cautious
-        return (
-            Answer.YES
-            if query in cautious
-            else Answer.NO
-            if query.contrary in cautious
-            else Answer.UNKNOWN
-        )
-    return decided({evaluate(query, member) for member in view.members})
-
-
-def decided(truths: AbstractSet[Truth]) -> Answer:
-    """Answer from the truths a query takes: yes if only true, no if only false, else unknown."""
-    if truths == {Truth.TRUE}:
-        return Answer.YES
-    return Answer.NO if truths == {Truth.FALSE} else Answer.UNKNOWN
+    match mode:
+        case AnswerMode.DEFAULT if truths == {Truth.TRUE}:
+            return Answer.YES
+        case AnswerMode.DEFAULT:
+            return Answer.NO if truths == {Truth.FALSE} else Answer.UNKNOWN
+        case AnswerMode.CAUTIOUS:
+            return Answer.YES if truths == {Truth.TRUE} else Answer.NOT_ENTAILED
+        case AnswerMode.BRAVE:
+            return Answer.YES if Truth.TRUE in truths else Answer.NONE_HOLDS
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,44 +249,64 @@ class Answered:
     taken: tuple[Taken, ...]
     read: int | None
     unreached: tuple[Unreached, ...] = ()
+    mode: AnswerMode = AnswerMode.DEFAULT
 
 
 _ALONE: Final = {Truth.TRUE: Answer.YES, Truth.FALSE: Answer.NO, Truth.UNKNOWN: Answer.UNKNOWN}
 """The answer a query has in one answer set, from its truth there."""
 
 
-def answered(query: Query, members: Sequence[AnswerSet], over: Range = Range.ALL) -> Answered:
-    """Answer `query` over every answer set of a search, given in the order it read them.
+def answered(
+    query: Query,
+    members: Sequence[AnswerSet],
+    over: Range = Range.ALL,
+    mode: AnswerMode = AnswerMode.DEFAULT,
+) -> Answered:
+    """Answer `query` as `mode` does over every answer set of a search, in the order it read them.
 
     A pattern with variables is answered by its bindings; it takes no one answer in an answer set.
     """
     view = WorldView(frozenset(member.atoms for member in members), over)
+    read = len(members)
     if isinstance(query, Pattern) and query.variables:
-        return Answered(query, over, bindings(query, view), (), len(members))
-    return Answered(query, over, answer(query, view), taken(query, members), len(members))
+        if mode is not AnswerMode.DEFAULT:
+            message = f"`{query}` has variables, whose bindings are answered in the default mode"
+            raise ValueError(message)
+        return Answered(query, over, bindings(query, view), (), read)
+    found = answer(query, view, mode=mode)
+    return Answered(query, over, found, taken(query, members), read, mode=mode)
+
+
+@dataclass(frozen=True, slots=True)
+class ReadAnswers:
+    """How a search read answer sets: those read, what cut it, and the count if exhausted."""
+
+    members: Sequence[AnswerSet]
+    cut: Truncation | None
+    count: int | None
 
 
 def settled(
     query: Query,
-    members: Sequence[AnswerSet],
+    reading: ReadAnswers,
     truths: AbstractSet[Truth],
-    cut: Truncation | None,
-    read: int | None,
+    mode: AnswerMode = AnswerMode.DEFAULT,
 ) -> Answered:
     """Answer `query` from the truths some answer set gives it, and the first of `members` to.
 
     `members` are the answer sets a search read, in its order, until each truth was given or `cut`
     stopped it: an answer none of them gives is unreached. `read` counts them if they are all.
     """
+    members, cut, read = reading.members, reading.cut, reading.count
     first = taken(query, members)
     given = {each.answer for each in first}
     wanted = {_ALONE[truth] for truth in truths}
     unreached = tuple(
         Unreached(each, len(members), cut)
-        for each in Answer
+        for each in ANSWERS[AnswerMode.DEFAULT]
         if cut is not None and each in wanted and each not in given
     )
-    return Answered(query, Range.ALL, decided(truths), first, read, unreached)
+    return Answered(query, Range.ALL, decided(truths, mode), first, read, unreached, mode)
 
 
 def taken(query: Query, members: Sequence[AnswerSet]) -> tuple[Taken, ...]:

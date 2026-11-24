@@ -42,7 +42,9 @@ from elenctic.program import Fault, Program
 from elenctic.query import (
     Answer,
     Answered,
+    AnswerMode,
     Query,
+    ReadAnswers,
     Truth,
     answered,
     evaluate,
@@ -316,26 +318,32 @@ class Session(Grounded):
         return None if found.read is not None else Ended(Truncation(found.conclusion))
 
     def answer(
-        self, query: Query, scenario: Scenario = frozenset(), *, over: Range = Range.ALL
+        self,
+        query: Query,
+        scenario: Scenario = frozenset(),
+        *,
+        over: Range = Range.ALL,
+        mode: AnswerMode = AnswerMode.DEFAULT,
     ) -> Answered | Refutation | Ended:
-        """Answer `query` over the answer sets of `scenario`, all or the optima, as `@query` does.
+        """Answer `query` as `mode` does over the answer sets of `scenario`, all or the optima.
 
-        A query of one literal, over all the answer sets, is answered once the search has read the
-        first answer set to give each answer some answer set gives. The refutation when there is
-        none; `Ended` when the search stopped before reading what the answer needs.
+        By default it is answered as `@query` answers it. A query of one literal, over all the
+        answer sets, is answered once the search has read the first answer set to give each answer
+        some answer set gives. The refutation when there is none; `Ended` when the search stopped
+        before reading what the answer needs.
         """
         literal = literal_of(query)
         if over is Range.ALL and literal is not None:
-            return self._settled(query, literal, scenario)
+            return self._settled(query, literal, scenario, mode)
         members = self._members(scenario, over)
         if not isinstance(members, _Reading):
             return members
         if members.read is None:
             return Ended(Truncation(members.conclusion))
-        return answered(query, members.sets, over)
+        return answered(query, members.sets, over, mode)
 
     def _settled(
-        self, query: Query, literal: Literal, scenario: Scenario
+        self, query: Query, literal: Literal, scenario: Scenario, mode: AnswerMode
     ) -> Answered | Refutation | Ended:
         """Answer a query of one literal from its truths, read until each is first taken.
 
@@ -355,7 +363,7 @@ class Session(Grounded):
         if not isinstance(reading, _Reading):
             return reading
         cut = reading.conclusion if isinstance(reading.conclusion, Truncation) else None
-        return settled(query, reading.sets, truths, cut, reading.read)
+        return settled(query, ReadAnswers(reading.sets, cut, reading.read), truths, mode)
 
     def _truths(self, literal: Literal, scenario: Scenario) -> frozenset[Truth] | Ended:
         """Find the truths some answer set of `scenario` gives `literal`, on the grounding apart."""

@@ -11,6 +11,7 @@ from elenctic.patterns import Pattern
 from elenctic.query import (
     All,
     Answer,
+    AnswerMode,
     Any,
     Bindings,
     Not,
@@ -310,3 +311,33 @@ def test_a_pattern_nested_a_hundred_thousand_deep_has_bindings_without_recursion
 def test_a_ground_literal_conjunction_is_answered_not_bound() -> None:
     both = All((Literal("p", (Number(1),)), Literal("q", (Number(1),))))
     assert answer(both, world(lits("p(1)", "q(1)", "q(2)"))) is Answer.YES
+
+
+@pytest.mark.parametrize(
+    ("members", "default", "cautious", "brave"),
+    [
+        ([{P}, {P, Q}], Answer.YES, Answer.YES, Answer.YES),
+        ([{P.contrary}, {P.contrary, Q}], Answer.NO, Answer.NOT_ENTAILED, Answer.NONE_HOLDS),
+        ([{P}, set()], Answer.UNKNOWN, Answer.NOT_ENTAILED, Answer.YES),
+        ([set()], Answer.UNKNOWN, Answer.NOT_ENTAILED, Answer.NONE_HOLDS),
+    ],
+)
+def test_each_mode_answers_from_the_same_per_member_truths(
+    members: list[set[Literal]], default: Answer, cautious: Answer, brave: Answer
+) -> None:
+    view = world(*members)
+    assert [answer(P, view, mode=mode) for mode in AnswerMode] == [default, cautious, brave]
+
+
+@given(views, queries)
+def test_cautious_and_brave_quantify_true_and_default_no_quantifies_false(
+    view: WorldView, query: Query
+) -> None:
+    truths = [evaluate(query, member) for member in view.members]
+    assert (answer(query, view, mode=AnswerMode.CAUTIOUS) is Answer.YES) is all(
+        truth is Truth.TRUE for truth in truths
+    )
+    assert (answer(query, view, mode=AnswerMode.BRAVE) is Answer.YES) is any(
+        truth is Truth.TRUE for truth in truths
+    )
+    assert (answer(query, view) is Answer.NO) is all(truth is Truth.FALSE for truth in truths)

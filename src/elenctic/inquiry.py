@@ -13,8 +13,9 @@ from elenctic.determination import Range, Refutation
 from elenctic.engine import containment
 from elenctic.explanation import Counterexample, Explanation
 from elenctic.literals import Literal, Scenario
+from elenctic.patterns import Pattern
 from elenctic.program import Fault, Locus, Program
-from elenctic.query import Answered, Query
+from elenctic.query import Answered, AnswerMode, Query
 from elenctic.reader import parse_contract
 from elenctic.report import Internal
 from elenctic.search import Interrupt, Limit, Limits
@@ -141,9 +142,16 @@ def ask(  # noqa: PLR0913
     limits: Limits = Limits(),
     interrupt: Interrupt | None = None,
     root: Path | None = None,
+    mode: AnswerMode = AnswerMode.DEFAULT,
 ) -> Ask:
-    """Answer `query` over every answer set of `scenario`, or only the optima, as `@query` does."""
+    """Answer `query` as `mode` does over every answer set of `scenario`, or only the optima.
+
+    By default it is answered as `@query` answers it.
+    """
+    if mode is not AnswerMode.DEFAULT and isinstance(query, Pattern) and query.variables:
+        problem = failure(None, "bindings are answered in the default mode only")
+        return Fault(Locus.REQUEST, (problem,))
     session_ = _opened(program, limits=limits, interrupt=interrupt, root=root)
     if isinstance(session_, Fault):
         return session_
-    return session_.answer(query, scenario, over=over)
+    return session_.answer(query, scenario, over=over, mode=mode)

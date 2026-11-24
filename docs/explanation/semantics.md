@@ -8,6 +8,11 @@ every ground query). A query may put `not` before a literal: `not l` is true in 
 without `l` and false in one with it, as in a rule body, so it is never unknown there, and `not l`
 is `yes` for an `l` nothing derives, though `l` is `unknown`.
 
+**`ask` answers in one of three modes, from the same truths.** `--mode default` is the rule above.
+`cautious` is `yes` if the query is true in every answer set and `not entailed` otherwise; `brave`
+is `yes` if it is true in some answer set and `none holds` otherwise. So `default` and `cautious`
+agree on `yes`, and a `default` `no` is a `brave` `none holds`. `@query` answers by default.
+
 **Queries range over the full answer sets.** `@query` reads every atom of each answer set, not
 only those `#show` selects. `#show` still governs what `@answer-set`, `@count`, `@cautious` and
 `@brave` report, and those claims (when they need no full answer set) enumerate under projection onto `#show`. When a query reads a literal (or its contrary) the program can derive and does not `#show`,

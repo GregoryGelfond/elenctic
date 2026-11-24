@@ -211,7 +211,8 @@
         "answer",
         "taken",
         "read",
-        "unreached"
+        "unreached",
+        "mode"
       ],
       "properties": {
         "kind": {
@@ -247,7 +248,9 @@
               "enum": [
                 "yes",
                 "no",
-                "unknown"
+                "unknown",
+                "not_entailed",
+                "none_holds"
               ]
             },
             {
@@ -276,6 +279,14 @@
           "items": {
             "$ref": "#/$defs/unreached"
           }
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "cautious",
+            "brave"
+          ]
         }
       },
       "additionalProperties": false
@@ -329,7 +340,9 @@
           "enum": [
             "yes",
             "no",
-            "unknown"
+            "unknown",
+            "not_entailed",
+            "none_holds"
           ]
         },
         "query": {
@@ -452,7 +465,9 @@
           "enum": [
             "yes",
             "no",
-            "unknown"
+            "unknown",
+            "not_entailed",
+            "none_holds"
           ]
         },
         "pattern": {
@@ -1510,7 +1525,9 @@
           "enum": [
             "yes",
             "no",
-            "unknown"
+            "unknown",
+            "not_entailed",
+            "none_holds"
           ]
         },
         "index": {
@@ -1624,7 +1641,9 @@
           "enum": [
             "yes",
             "no",
-            "unknown"
+            "unknown",
+            "not_entailed",
+            "none_holds"
           ]
         },
         "read": {

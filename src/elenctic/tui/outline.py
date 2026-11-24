@@ -49,7 +49,7 @@ from elenctic.literals import Literal
 from elenctic.paint import Phrase, Piece, Role
 from elenctic.patterns import Pattern
 from elenctic.program import Fault
-from elenctic.query import All, Answer, Answered, Bindings
+from elenctic.query import ANSWERS, All, Answer, Answered, AnswerMode, Bindings
 from elenctic.report import Entry, Internal
 from elenctic.spans import Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
@@ -333,7 +333,9 @@ def ask(
 
 def _bound(found: Bindings, pattern: Pattern) -> list[Row]:
     """Build the rows of a pattern's bindings: its `yes` bindings, and the others it has."""
-    shown = [each for each in Answer if each is Answer.YES or found.giving(each)]
+    shown = [
+        each for each in ANSWERS[AnswerMode.DEFAULT] if each is Answer.YES or found.giving(each)
+    ]
     return [Row((), said(bindings_of(each, pattern, found))) for each in shown]
 
 
