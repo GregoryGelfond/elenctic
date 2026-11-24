@@ -19,6 +19,7 @@ from elenctic.query import (
     Bound,
     Not,
     Query,
+    ReadAnswers,
     Taken,
     Truth,
     answer,
@@ -29,6 +30,7 @@ from elenctic.query import (
     bravely,
     evaluate,
     instance_of,
+    settled,
     stream,
 )
 from elenctic.terms import Compound, Term, Variable
@@ -551,3 +553,26 @@ def test_rule_bodies_need_a_ground_query_and_a_true_or_false_truth() -> None:
         bodies(Pattern("p", (X,)), Truth.TRUE)
     with pytest.raises(ValueError, match="neither true nor false"):
         bodies(P, Truth.UNKNOWN)
+
+
+def test_a_brave_answer_names_only_the_answer_sets_where_the_query_is_true() -> None:
+    members = read(lits(), lits("p"), lits("-p"))
+    bravely = answered(All((P,)), members, mode=AnswerMode.BRAVE)
+    assert [(each.answer, each.index) for each in bravely.taken] == [(Answer.YES, 2)]
+    by_default = answered(All((P,)), members)
+    assert [each.answer for each in by_default.taken] == [Answer.UNKNOWN, Answer.YES, Answer.NO]
+    none = answered(All((P,)), read(lits("-p"), lits()), mode=AnswerMode.BRAVE)
+    assert (none.answer, none.taken) == (Answer.NONE_HOLDS, ())
+
+
+def test_a_brave_binding_names_only_the_answer_sets_where_it_is_true() -> None:
+    members = read(lits("-p(1)"), lits("p(1)", "-p(2)"))
+    found = answers(Pattern("p", (X,)), members, mode=AnswerMode.BRAVE)
+    assert [(b.values, [t.index for t in b.taken]) for b in found.bound] == [((Number(1),), [2])]
+
+
+def test_a_brave_answer_cut_short_names_only_where_it_is_true_past_what_was_read() -> None:
+    reading = ReadAnswers(read(lits()), Truncation.MAX_ANSWER_SETS, None)
+    found = settled(All((P,)), reading, {Truth.TRUE, Truth.UNKNOWN}, AnswerMode.BRAVE)
+    assert (found.answer, found.taken) == (Answer.YES, ())
+    assert [each.answer for each in found.unreached] == [Answer.YES]

@@ -57,6 +57,7 @@ from elenctic.query import (
     instance_of,
     literal_of,
     settled,
+    settles,
     witnessed,
 )
 from elenctic.relaxation import Reading, read
@@ -361,7 +362,7 @@ class Session(Grounded):
         The answer is known before the search reads: one that stops it first leaves the truths not
         yet taken unreached.
         """
-        truths = self._truths(literal, scenario)
+        truths = self._truths(literal, scenario, mode)
         if isinstance(truths, Ended):
             return truths
         left = set(truths)
@@ -376,8 +377,13 @@ class Session(Grounded):
         cut = reading.conclusion if isinstance(reading.conclusion, Truncation) else None
         return settled(query, ReadAnswers(reading.sets, cut, reading.read), truths, mode)
 
-    def _truths(self, literal: Literal, scenario: Scenario) -> frozenset[Truth] | Ended:
-        """Find the truths some answer set of `scenario` gives `literal`, on the grounding apart."""
+    def _truths(
+        self, literal: Literal, scenario: Scenario, mode: AnswerMode
+    ) -> frozenset[Truth] | Ended:
+        """Find the truths some answer set of `scenario` gives `literal`, on the grounding apart.
+
+        `Ended` only when a truth the search could not settle would change what `mode` answers.
+        """
         contrary = literal.contrary
         giving = {
             Truth.TRUE: {Assumption(literal)},
@@ -386,16 +392,19 @@ class Session(Grounded):
         }
         limits = replace(self.limits, max_answer_sets=1)
         truths: set[Truth] = set()
+        unsettled: dict[Truth, Truncation] = {}
         for truth, assumed in giving.items():
             match self._apart("").solve(
                 scenario | assumed, limits=limits, interrupt=self.interrupt
             ):
                 case Inconclusive(cut):
-                    return Ended(cut)
+                    unsettled[truth] = cut
                 case Consistent():
                     truths.add(truth)
                 case Inconsistent():
                     pass
+        if unsettled and not settles(truths, set(unsettled), mode):
+            return Ended(next(iter(unsettled.values())))
         return frozenset(truths)
 
     def warrant(

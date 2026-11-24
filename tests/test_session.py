@@ -8,7 +8,7 @@ from clingo import Function, Number, Symbol
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from elenctic import engine, failures
+from elenctic import engine, failures, grounded
 from elenctic.check import check
 from elenctic.contract import Solver
 from elenctic.determination import (
@@ -42,7 +42,7 @@ from elenctic.explanation import (
     Unexplained,
     Unsupported,
 )
-from elenctic.literals import Assumption, Literal
+from elenctic.literals import Assumption, Literal, Scenario
 from elenctic.patterns import Pattern
 from elenctic.program import Fault, Program
 from elenctic.query import (
@@ -1514,3 +1514,33 @@ def test_an_atom_no_answer_set_can_hold_cannot_be_assumed_true_but_can_be_assume
     report = check(Program(f"{UNFOUNDED}\n{claims}", "t.lp"))
     assert isinstance(report, Report)
     assert report.verdict is Verdict.PASS
+
+
+def _unknown_cut(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cut every search that assumes literals false, as asking apart whether one is unknown does."""
+    solve = grounded.Grounded.solve
+
+    def cut(self: grounded.Grounded, scenario: Scenario = frozenset(), **given: object) -> object:
+        if any(not each.holds for each in scenario):
+            return Inconclusive(Truncation.MAX_SECONDS)
+        return solve(self, scenario, **given)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(grounded.Grounded, "solve", cut)
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [(AnswerMode.BRAVE, Answer.NONE_HOLDS), (AnswerMode.CAUTIOUS, Answer.NOT_ENTAILED)],
+)
+def test_a_cut_that_could_not_change_an_answer_does_not_end_it(
+    monkeypatch: pytest.MonkeyPatch, mode: AnswerMode, expected: Answer
+) -> None:
+    _unknown_cut(monkeypatch)
+    answered = opened("-p.").answer(All((Literal("p"),)), mode=mode)
+    assert isinstance(answered, Answered)
+    assert answered.answer is expected
+
+
+def test_a_cut_that_could_change_an_answer_ends_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    _unknown_cut(monkeypatch)
+    assert opened("-p.").answer(All((Literal("p"),))) == Ended(Truncation.MAX_SECONDS)

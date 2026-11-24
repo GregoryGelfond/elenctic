@@ -4,6 +4,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum, auto
+from itertools import chain, combinations
 from typing import Final, override
 
 from elenctic.determination import AnswerSet, Range, Refutation, Truncation, WorldView
@@ -147,6 +148,18 @@ def decided(truths: AbstractSet[Truth], mode: AnswerMode = AnswerMode.DEFAULT) -
             return Answer.YES if truths == {Truth.TRUE} else Answer.NOT_ENTAILED
         case AnswerMode.BRAVE:
             return Answer.YES if Truth.TRUE in truths else Answer.NONE_HOLDS
+
+
+def settles(truths: AbstractSet[Truth], unsettled: AbstractSet[Truth], mode: AnswerMode) -> bool:
+    """Say whether `truths` decide what `mode` answers, whichever of `unsettled` also occur."""
+    found = {
+        decided(truths | set(more), mode)
+        for more in chain.from_iterable(
+            combinations(unsettled, n) for n in range(len(unsettled) + 1)
+        )
+        if truths or more
+    }
+    return len(found) <= 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -367,7 +380,11 @@ def answers(
             Bound(
                 values,
                 answer_,
-                tuple(Taken(each, at, members[at - 1]) for each, at in first.items()),
+                tuple(
+                    Taken(each, at, members[at - 1])
+                    for each, at in first.items()
+                    if each in _NAMED[mode]
+                ),
             )
             for values, answer_, first in judged
         ),
@@ -408,6 +425,13 @@ class Answered:
     cut: Truncation | None = None
 
 
+_NAMED: Final[Mapping[AnswerMode, frozenset[Answer]]] = {
+    AnswerMode.DEFAULT: frozenset(ANSWERS[AnswerMode.DEFAULT]),
+    AnswerMode.CAUTIOUS: frozenset(ANSWERS[AnswerMode.DEFAULT]),
+    AnswerMode.BRAVE: frozenset({Answer.YES}),
+}
+"""The answers alone whose first answer set each mode names: bravely, only where it is true."""
+
 _ALONE: Final = {Truth.TRUE: Answer.YES, Truth.FALSE: Answer.NO, Truth.UNKNOWN: Answer.UNKNOWN}
 """The answer a query has in one answer set, from its truth there."""
 
@@ -426,7 +450,7 @@ def answered(
     if variables_of(query):
         return Answered(query, over, answers(query, members, mode=mode), (), read, mode=mode)
     found = answer(query, WorldView(frozenset(member.atoms for member in members), over), mode=mode)
-    return Answered(query, over, found, taken(query, members), read, mode=mode)
+    return Answered(query, over, found, taken(query, members, mode), read, mode=mode)
 
 
 def bravely(
@@ -603,9 +627,9 @@ def settled(
     stopped it: an answer none of them gives is unreached. `read` counts them if they are all.
     """
     members, cut, read = reading.members, reading.cut, reading.count
-    first = taken(query, members)
+    first = taken(query, members, mode)
     given = {each.answer for each in first}
-    wanted = {_ALONE[truth] for truth in truths}
+    wanted = {_ALONE[truth] for truth in truths} & _NAMED[mode]
     unreached = tuple(
         Unreached(each, len(members), cut)
         for each in ANSWERS[AnswerMode.DEFAULT]
@@ -614,10 +638,17 @@ def settled(
     return Answered(query, Range.ALL, decided(truths, mode), first, read, unreached, mode)
 
 
-def taken(query: Query, members: Sequence[AnswerSet]) -> tuple[Taken, ...]:
-    """Find the first of `members`, in their order, to give each answer `query` takes alone."""
+def taken(
+    query: Query, members: Sequence[AnswerSet], mode: AnswerMode = AnswerMode.DEFAULT
+) -> tuple[Taken, ...]:
+    """Find the first of `members`, in their order, to give each answer `query` takes alone.
+
+    Only the answers `mode` names are found: bravely, an answer set where it is not true says
+    nothing.
+    """
     first: dict[Answer, Taken] = {}
     for index, member in enumerate(members, 1):
         alone = _ALONE[evaluate(query, member.atoms)]
-        first.setdefault(alone, Taken(alone, index, member))
+        if alone in _NAMED[mode]:
+            first.setdefault(alone, Taken(alone, index, member))
     return tuple(first.values())
