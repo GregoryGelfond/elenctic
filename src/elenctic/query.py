@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum, auto
 from typing import Final, override
 
-from elenctic.determination import AnswerSet, Range, Truncation, WorldView
+from elenctic.determination import AnswerSet, Range, Refutation, Truncation, WorldView
 from elenctic.extension import Extension
 from elenctic.literals import Atoms, Literal, Symbol
 from elenctic.patterns import Pattern
@@ -464,6 +464,110 @@ def stream(result: Answered, *, unknown: bool = False) -> Iterator[Bound]:
         return
     shown = _SHOWN[result.mode] | {Answer.UNKNOWN} if unknown else _SHOWN[result.mode]
     yield from (each for each in found.bound if each.answer in shown)
+
+
+def instance_of(query: Query, values: tuple[Symbol, ...]) -> Query:
+    """Ground a query by the values of its variables, in order of first occurrence.
+
+    A query without variables is its own instance; a pattern's is the conjunction of its one part.
+    """
+    variables = variables_of(query)
+    if not variables:
+        return query
+    substitution = Substitution(dict(zip(variables, values, strict=True)))
+    return _instance(_conjuncts(query), substitution)
+
+
+type Body = tuple[str, ...]
+"""The literals of a rule body as clingo writes them, `not` before any."""
+
+
+def bodies(query: Query, truth: Truth) -> tuple[Body, ...]:
+    """Write bodies, one of which holds in an answer set exactly when a ground query has `truth`.
+
+    `l` is true where it is and false where its contrary is; `not l` is true where `l` is not and
+    false where it is. A conjunction is true where all its parts are and false where one is false;
+    a disjunction is the converse. Raises `ValueError` for a truth other than true or false.
+    """
+    if truth is Truth.UNKNOWN:
+        message = "an unknown query has no body: it is neither true nor false"
+        raise ValueError(message)
+    match query:
+        case Literal():
+            return ((str(query if truth is Truth.TRUE else query.contrary),),)
+        case Not(Literal() as part):
+            return ((f"not {part}" if truth is Truth.TRUE else str(part),),)
+        case All(parts) | Any(parts):
+            each = [bodies(part, truth) for part in parts]
+            if (truth is Truth.TRUE) is isinstance(query, All):
+                return _product(each)
+            return tuple(body for found in each for body in found)
+        case _:
+            message = f"`{query}` has variables: ground it first"
+            raise ValueError(message)
+
+
+def _product(each: Sequence[tuple[Body, ...]]) -> tuple[Body, ...]:
+    """Conjoin disjunctions of bodies: one body for each choice of a body from each."""
+    found: tuple[Body, ...] = ((),)
+    for disjunction in each:
+        found = tuple((*left, *right) for left in found for right in disjunction)
+    return found
+
+
+@dataclass(frozen=True, slots=True)
+class Warrant:
+    """What shows the answer of a ground query, or of one binding: the instance it is about.
+
+    `witnesses` are answer sets that show it, each with the answer the instance takes there alone:
+    one where it is true for a `yes`, false for a `no`; for an `unknown`, one where it is not true
+    and one where it is not false, one answer set when it is unknown there. An answer that needs
+    every answer set also has the `refutation` of the program asked for one that would overturn it.
+    """
+
+    query: Query
+    answer: Answer
+    witnesses: tuple[Taken, ...]
+    refutation: Refutation | None
+
+
+_WITNESSED: Final[Mapping[Answer, tuple[frozenset[Answer], ...]]] = {
+    Answer.YES: (frozenset({Answer.YES}),),
+    Answer.NO: (frozenset({Answer.NO}),),
+    Answer.UNKNOWN: (
+        frozenset({Answer.NO, Answer.UNKNOWN}),
+        frozenset({Answer.YES, Answer.UNKNOWN}),
+    ),
+    Answer.NOT_ENTAILED: (frozenset({Answer.NO, Answer.UNKNOWN}),),
+    Answer.NONE_HOLDS: (),
+}
+"""For each answer, the answers alone that each of its witnesses may take, in the order shown."""
+
+
+def witnessed(answer: Answer, taken: Sequence[Taken]) -> tuple[Taken, ...]:
+    """Choose the witnesses of an answer from the first answer sets to give each answer alone."""
+    found: list[Taken] = []
+    for wanted in _WITNESSED[answer]:
+        first = min((each for each in taken if each.answer in wanted), key=lambda each: each.index)
+        if first not in found:
+            found.append(first)
+    return tuple(found)
+
+
+class Held(StrEnum):
+    """Where an answer needs a query to have a truth: in every answer set, or in none."""
+
+    EVERYWHERE = auto()
+    NOWHERE = auto()
+
+
+REFUTED: Final[Mapping[tuple[AnswerMode, Answer], tuple[Truth, Held]]] = {
+    (AnswerMode.DEFAULT, Answer.YES): (Truth.TRUE, Held.EVERYWHERE),
+    (AnswerMode.CAUTIOUS, Answer.YES): (Truth.TRUE, Held.EVERYWHERE),
+    (AnswerMode.DEFAULT, Answer.NO): (Truth.FALSE, Held.EVERYWHERE),
+    (AnswerMode.BRAVE, Answer.NONE_HOLDS): (Truth.TRUE, Held.NOWHERE),
+}
+"""The answers that need every answer set: the truth each needs the query to have, and where."""
 
 
 @dataclass(frozen=True, slots=True)

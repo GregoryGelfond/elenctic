@@ -2,8 +2,9 @@ import importlib
 from dataclasses import replace
 from pathlib import Path
 
+import clingo
 import pytest
-from clingo import Number, Symbol
+from clingo import Function, Number, Symbol
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -52,8 +53,10 @@ from elenctic.query import (
     Answers,
     Any,
     Not,
+    Query,
     Truth,
     Unreached,
+    Warrant,
     evaluate,
 )
 from elenctic.search import KEEP_SHOWN, Interrupt, Limit, Limits
@@ -1361,3 +1364,91 @@ def test_a_brave_query_cut_short_keeps_the_yes_bindings_it_found() -> None:
     assert {b.answer for b in found.answer.bound} == {Answer.YES}
     assert found.cut is Truncation.MAX_ANSWER_SETS
     assert made.answer(pattern, mode=AnswerMode.CAUTIOUS) == Ended(Truncation.MAX_ANSWER_SETS)
+
+
+def _warranted(
+    text: str, query: Query, mode: AnswerMode = AnswerMode.DEFAULT, values: tuple[Symbol, ...] = ()
+) -> Warrant:
+    made = opened(text)
+    answered = made.answer(query, mode=mode)
+    assert isinstance(answered, Answered)
+    found = made.warrant(answered, values)
+    assert isinstance(found, Warrant)
+    for each in found.witnesses:
+        assert evaluate(found.query, each.answer_set.atoms) is _TRUTH[each.answer]
+    return found
+
+
+_TRUTH = {Answer.YES: Truth.TRUE, Answer.NO: Truth.FALSE, Answer.UNKNOWN: Truth.UNKNOWN}
+B = All((Literal("b"),))
+
+
+@pytest.mark.parametrize("mode", [AnswerMode.DEFAULT, AnswerMode.CAUTIOUS])
+def test_a_yes_in_every_answer_set_is_warranted_by_one_and_the_refutation_of_any_other(
+    mode: AnswerMode,
+) -> None:
+    found = _warranted("{ a }. b.", B, mode)
+    assert (found.answer, [w.answer for w in found.witnesses]) == (Answer.YES, [Answer.YES])
+    assert found.refutation == NoAssumptions()
+
+
+def test_a_default_no_is_warranted_by_an_answer_set_with_the_contrary_and_a_refutation() -> None:
+    found = _warranted("{ a }. -b.", B)
+    assert [w.answer for w in found.witnesses] == [Answer.NO]
+    assert found.refutation == NoAssumptions()
+
+
+def test_an_unknown_is_warranted_by_one_answer_set_where_it_is_not_true_and_one_not_false() -> None:
+    found = _warranted("{ b; -b } = 1.", B)
+    assert found.answer is Answer.UNKNOWN
+    assert {w.answer for w in found.witnesses} == {Answer.YES, Answer.NO}
+    assert found.refutation is None
+
+
+def test_an_unknown_nothing_mentions_is_warranted_by_one_answer_set_for_both() -> None:
+    found = _warranted("{ a }.", All((Literal("zz"),)))
+    assert [w.answer for w in found.witnesses] == [Answer.UNKNOWN]
+
+
+def test_not_entailed_is_warranted_by_a_counter_witness_alone() -> None:
+    found = _warranted("{ b }.", B, AnswerMode.CAUTIOUS)
+    assert found.answer is Answer.NOT_ENTAILED
+    assert [w.answer for w in found.witnesses] == [Answer.UNKNOWN]
+    assert found.refutation is None
+
+
+def test_a_brave_yes_is_one_witness_and_none_holds_is_the_refutation_of_any() -> None:
+    found = _warranted("{ b }.", B, AnswerMode.BRAVE)
+    assert ([w.answer for w in found.witnesses], found.refutation) == ([Answer.YES], None)
+    none = _warranted("{ a }. -b.", B, AnswerMode.BRAVE)
+    assert (none.answer, none.witnesses, none.refutation) == (
+        Answer.NONE_HOLDS,
+        (),
+        NoAssumptions(),
+    )
+
+
+def test_a_binding_is_warranted_as_its_instance_is() -> None:
+    reach = All((Pattern("r", (Variable("X"),)), Not(Pattern("c", (Variable("X"),)))))
+    text = "r(a). r(b). { c(b) }. c(c)."
+    found = _warranted(text, reach, values=(Function("a"),))
+    assert found.query == All((Literal("r", (Function("a"),)), Not(Literal("c", (Function("a"),)))))
+    assert (found.answer, found.refutation) == (Answer.YES, NoAssumptions())
+    unknown = _warranted(text, reach, values=(Function("b"),))
+    assert unknown.answer is Answer.UNKNOWN
+
+
+def test_the_refutation_a_warrant_gives_is_found_again_by_plain_clingo() -> None:
+    """`:- r(a), not c(a).` removes every answer set where the instance is true; none is left."""
+    control = clingo.Control(["0"])
+    control.add("base", [], "r(a). r(b). { c(b) }. c(c).\n:- r(a), not c(a).\n")
+    control.ground([("base", [])])
+    assert control.solve().unsatisfiable
+
+
+def test_a_warrant_of_values_the_query_did_not_bind_is_refused() -> None:
+    made = opened("p(1).")
+    answered = made.answer(Pattern("p", (Variable("X"),)))
+    assert isinstance(answered, Answered)
+    with pytest.raises(ValueError, match="no binding"):
+        made.warrant(answered, (Number(2),))

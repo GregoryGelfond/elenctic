@@ -40,17 +40,24 @@ from elenctic.instances import Instances, Payment, instances
 from elenctic.literals import Assumption, Atoms, Literal, Scenario, Symbol, is_function
 from elenctic.program import Fault, Program
 from elenctic.query import (
+    REFUTED,
     Answer,
     Answered,
     AnswerMode,
+    Answers,
+    Held,
     Query,
     ReadAnswers,
     Truth,
+    Warrant,
     answered,
+    bodies,
     bravely,
     evaluate,
+    instance_of,
     literal_of,
     settled,
+    witnessed,
 )
 from elenctic.relaxation import Reading, read
 from elenctic.search import KEEP_ALL, Interrupt, Keep, Limit, Limits, Seen, seen
@@ -103,7 +110,7 @@ class Session(Grounded):
         *,
         limits: Limits,
         interrupt: Interrupt | None,
-        apart: Callable[[], Grounded],
+        apart: Callable[[str], Grounded],
     ) -> None:
         super().__init__(grounded.control, grounded.facts, grounded.theory)
         self._instances = instances
@@ -380,7 +387,9 @@ class Session(Grounded):
         limits = replace(self.limits, max_answer_sets=1)
         truths: set[Truth] = set()
         for truth, assumed in giving.items():
-            match self._apart().solve(scenario | assumed, limits=limits, interrupt=self.interrupt):
+            match self._apart("").solve(
+                scenario | assumed, limits=limits, interrupt=self.interrupt
+            ):
                 case Inconclusive(cut):
                     return Ended(cut)
                 case Consistent():
@@ -388,6 +397,54 @@ class Session(Grounded):
                 case Inconsistent():
                     pass
         return frozenset(truths)
+
+    def warrant(
+        self, answered: Answered, values: tuple[Symbol, ...] = (), scenario: Scenario = frozenset()
+    ) -> Warrant | Ended:
+        """Find what shows an answer this session gave, of the query or of its binding to `values`.
+
+        Its witnesses are answer sets the search read. An answer that needs every answer set is
+        also shown by the refutation of the program with a constraint that keeps only the answer
+        sets that would overturn it; over the optima, the search having read them all shows it.
+        `Ended` when that search is cut. Raises `ValueError` for values the query has no binding to.
+        """
+        query = instance_of(answered.query, values)
+        answer, taken = answered.answer, answered.taken
+        if isinstance(answer, Answers):
+            found = [each for each in answer.bound if each.values == values]
+            if not found:
+                message = f"the query has no binding to {', '.join(map(str, values))}"
+                raise ValueError(message)
+            answer, taken = found[0].answer, found[0].taken
+        refuted = REFUTED.get((answered.mode, answer))
+        refutation = None
+        if refuted is not None and answered.over is Range.ALL:
+            overturned = self._overturned(query, *refuted, scenario)
+            if isinstance(overturned, Ended):
+                return overturned
+            refutation = overturned
+        return Warrant(query, answer, witnessed(answer, taken), refutation)
+
+    def _overturned(
+        self, query: Query, truth: Truth, held: Held, scenario: Scenario
+    ) -> Refutation | Ended:
+        """Refute the program kept to the answer sets where `query` lacks `truth`, or has it."""
+        head = f"{self._prefix}_holds"
+        rules = [
+            f"{head} :- {', '.join(body)}." if body else f"{head}." for body in bodies(query, truth)
+        ]
+        rules.append(f":- {head}." if held is Held.EVERYWHERE else f":- not {head}.")
+        limits = replace(self.limits, max_answer_sets=1)
+        match self._apart("\n".join(rules)).solve(
+            scenario, limits=limits, interrupt=self.interrupt
+        ):
+            case Inconclusive(cut):
+                return Ended(cut)
+            case Inconsistent(refutation):
+                return refutation
+            case Consistent():
+                message = "an answer every answer set gives is not overturned by one"
+                raise AssertionError(message)
 
     def _members(self, scenario: Scenario, over: Range) -> _Reading | Ended | Refutation:
         """Search for every answer set of `scenario`, of all or the optima."""
@@ -511,9 +568,14 @@ def _none(_at: int, _answer_set: AnswerSet) -> bool:
     return False
 
 
-def _apart(program: Program, solver: Solver) -> Grounded:
-    """Ground `program` again, plainly, for searches that must leave the session's order alone."""
-    match ground(program, solver):
+def _apart(program: Program, solver: Solver, rules: str) -> Grounded:
+    """Ground `program` again, plainly, with `rules` added, for searches apart from the session.
+
+    Its order is left alone. The rules head only names the session's prefix keeps apart from the
+    program's, so its answer sets are the program's, each with those heads it derives.
+    """
+    added = f"{program.text}\n#program base.\n{rules}" if rules else program.text
+    match ground(replace(program, text=added), solver):
         case Fault():
             message = "the program grounded once, so it grounds again"
             raise AssertionError(message)

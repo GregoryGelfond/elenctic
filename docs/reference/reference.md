@@ -359,6 +359,7 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 | Why does a claim fail? | `evidenced(report, program)`, or `Session.evidence(finding)` | each failed `Finding` with its `evidence` |
 | Which is the k-th answer set, of all or of the optima? | `Session.counterexample(k, scenario, over=range)` | a `Counterexample`, the search stopping at it; the `Refutation` when there is none; `Ended`; or `None` past the last |
 | What does a query come to over the answer sets? | `Session.answer(query, scenario, over=range)` | an `Answered`, the `Refutation` when there are none, or `Ended` |
+| What shows an answer `Session.answer` gave, or one binding's? | `Session.warrant(answered, values, scenario)` | a `Warrant`: its witnesses, and for an answer that needs every answer set, over all of them, the `Refutation` of the program kept to those that would overturn it; or `Ended` |
 | Why does an atom hold, or not, in an answer set? | `session(program).explain(literals, counterexample)` | an `Explanation` |
 | Why does an atom hold, or not, in the k-th answer set? | `why(program, atom, index=k, scenario=…, over=…)` | an `Explanation`, the `Refutation`, `Ended`, or a `Fault` |
 | What does a query come to over a program's answer sets? | `ask(program, query, over=…)` | an `Answered`, the `Refutation`, `Ended`, or a `Fault` |
@@ -468,6 +469,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `bindings` | the `Bindings` of a `Pattern` or a conjunction with variables over a `WorldView`: its default `answers` grouped by answer |
 | `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set |
 | `stream` | the bindings of an `Answered` as `ask` writes them, one per `next()`: `yes`, then `no` by default, `unknown` too with `unknown=True`; a ground query yields its one answer with no values |
+| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, and the `refutation` that no answer set overturns it, when the answer needs every one |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |
@@ -510,7 +512,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | Name | What it is |
 |---|---|
 | `session` | ground a program for a `Solver` into a `Session`, or a `Fault` saying why not |
-| `Session` | a `Grounded` that can explain what it finds: `counterexample`, `answer`, `explain`, `outrank`, `evidence` |
+| `Session` | a `Grounded` that can explain what it finds: `counterexample`, `answer`, `warrant`, `explain`, `outrank`, `evidence` |
 | `evidenced` | a `Report` with the `evidence` of each failed finding, or a `Fault` |
 | `Evidence` | why a claim fails: an `Explanation`, a `Refutation` or an `Outranked` |
 | `Explanation` | why each root holds or not in a `Counterexample`: its `nodes` in first-visit order, each once; `minimality`, `max_depth`, and `complete` when no node is `Unexpanded` |

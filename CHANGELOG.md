@@ -26,7 +26,10 @@ All notable changes are recorded here. The format follows
   `ask` writes the bindings one a line, `= yes: X = a`, after their counts, and ends with `= no
   more bindings`, in place of the grouped `= yes bindings: { … }`; `unknown` ones only with
   `--unknown`. `stream` yields them in that order. A brave search cut short keeps the `yes` it
-  found, `Answered.cut` saying what cut it, and exits 1. Each exits with its own outcome, `WhyExit` or `AskExit`;
+  found, `Answered.cut` saying what cut it, and exits 1. `Session.warrant` gives what shows an answer, or
+  a binding's: `Warrant`, its witnesses (one answer set where it is true for `yes`; for `unknown`,
+  one where it is not true and one where it is not false) and, for an answer every answer set must
+  give, the refutation of the program kept to the answer sets that would overturn it. Each exits with its own outcome, `WhyExit` or `AskExit`;
   `repl` stays reserved.
 - `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base
   encoding, loaded with every case after its own text, as clingo loads the files it is given. A
