@@ -20,7 +20,6 @@ from elenctic.program import Fault, Locus, Program
 from elenctic.reader import parse_contract
 from elenctic.report import Entry, Run
 from elenctic.spans import Diagnostic, Position, Severity, Span, char_column
-from elenctic.verdicts import Report, Verdict
 from elenctic.wellformed import wellformed
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "elenctic"
@@ -489,13 +488,15 @@ def test_an_include_found_but_unreadable_is_looked_for_further_only_without_glib
 def test_an_empty_include_is_looked_for_beside_its_file_not_in_the_working_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "root").mkdir()
+    # Clingo opens the directory beside the file, which is not a regular file; the working
+    # directory, outside the root, is not looked in.
+    (root := tmp_path / "root").mkdir()
     (tmp_path / "elsewhere").mkdir()
-    (case := tmp_path / "root" / "case.lp").write_text('#include "".\n% @expect sat\n')
+    (case := root / "case.lp").write_text('#include "".\n% @expect sat\n')
     monkeypatch.chdir(tmp_path / "elsewhere")
-    result = check(Program.read(case), root=tmp_path / "root")
-    assert isinstance(result, Report)
-    assert result.verdict is Verdict.PASS
+    refused = check(Program.read(case), root=root)
+    assert isinstance(refused, Fault)
+    assert refused.diagnostics[0].message == f"cannot read `{root}/`"
 
 
 def test_an_empty_include_in_a_file_named_from_the_working_directory_opens_what_its_clingo_does(
@@ -503,20 +504,20 @@ def test_an_empty_include_in_a_file_named_from_the_working_directory_opens_what_
 ) -> None:
     # Beside `./inner.lp`, clingo built with glibc finds no directory (`dirname` gives "."), so it
     # opens the `CLINGOPATH` directory, outside the root. Otherwise the directory is ".", and it
-    # opens "./", the working directory, inside the root.
+    # opens "./", the working directory: inside the root, but not a regular file.
     (root := tmp_path / "root").mkdir()
     (outside := tmp_path / "outside").mkdir()
     (root / "inner.lp").write_text('#include "".\n')
     (root / "case.lp").write_text('#include "./inner.lp".\n% @expect sat\n')
     monkeypatch.setenv("CLINGOPATH", str(outside))
     monkeypatch.chdir(root)
-    result = check(Program.read("case.lp"), root=root)
-    if GLIBC:
-        assert isinstance(result, Fault)
-        assert "outside the root" in result.diagnostics[0].message
-    else:
-        assert isinstance(result, Report)
-        assert result.verdict is Verdict.PASS
+    refused = check(Program.read("case.lp"), root=root)
+    assert isinstance(refused, Fault)
+    assert refused.diagnostics[0].message == (
+        f"this case loads {outside}, which is outside the root {root}"
+        if GLIBC
+        else "cannot read `./`"
+    )
 
 
 def test_an_include_naming_a_nul_is_refused_as_clingo_lexes_it() -> None:

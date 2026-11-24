@@ -41,7 +41,7 @@ from elenctic.presentation import (
     interactive,
     resolve,
 )
-from elenctic.program import Fault, Locus, Program
+from elenctic.program import Fault, Locus, Program, regular_text
 from elenctic.queries import read_query
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
@@ -514,7 +514,7 @@ def _walked_notes(sources: list[_Source]) -> tuple[Diagnostic, ...]:
         if named:
             continue
         try:
-            text = path.read_text(encoding="utf-8")
+            text = regular_text(path)
         except OSError, UnicodeDecodeError:
             continue
         if is_case(text):

@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum, auto
 from os import PathLike
 from pathlib import Path
+from stat import S_ISDIR, S_ISFIFO, S_ISREG, S_ISSOCK
 from typing import Final, Self
 
 from elenctic.spans import Diagnostic, Span, in_characters, split_lines
@@ -55,7 +56,42 @@ class Program:
     @classmethod
     def read(cls, path: str | PathLike[str], libraries: Iterable[str | PathLike[str]] = ()) -> Self:
         file = Path(path)
-        return cls(file.read_text(encoding="utf-8"), str(file), file, tuple(map(Path, libraries)))
+        return cls(regular_text(file), str(file), file, tuple(map(Path, libraries)))
+
+
+class IrregularFileError(OSError):
+    """That a file is not a regular file: clingo would wait on it, or read nothing from it."""
+
+
+def irregular(path: Path) -> IrregularFileError | None:
+    """Say why `path` is not a regular file; `None` if it is one, or is not there to tell.
+
+    `stat` follows links, as clingo's open does, so a link to a regular file is one. Nothing is
+    opened: opening a FIFO waits for a writer.
+    """
+    try:
+        mode = path.stat().st_mode
+    except OSError:
+        return None
+    if S_ISREG(mode):
+        return None
+    kind = (
+        "a directory"
+        if S_ISDIR(mode)
+        else "a FIFO"
+        if S_ISFIFO(mode)
+        else "a socket"
+        if S_ISSOCK(mode)
+        else "a device"
+    )
+    return IrregularFileError(f"it is {kind}, not a regular file")
+
+
+def regular_text(path: Path) -> str:
+    """Return the text of the regular file at `path`; raise `IrregularFileError` for any other."""
+    if (refused := irregular(path)) is not None:
+        raise refused
+    return path.read_text(encoding="utf-8")
 
 
 class Locus(StrEnum):

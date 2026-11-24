@@ -119,6 +119,9 @@ All notable changes are recorded here. The format follows
 - A file clingo loads is named as clingo names it, so its spans are in Unicode columns too: one
   included as `./x.lp` or `sub//x.lp`, through a `CLINGOPATH` directory ending in `/`, or by both
   the program and a library sat in bytes.
+- A case, `--with` file or included file that is not a regular file is refused (`cannot read`,
+  naming it as clingo does) before it is read: a FIFO hung the run, and a directory or a device
+  such as `/dev/null` loaded as an empty file.
 
 ## [1.0.0] - 2026-11-06
 

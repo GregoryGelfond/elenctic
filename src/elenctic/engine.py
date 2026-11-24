@@ -18,7 +18,16 @@ from elenctic.determination import AnswerSets, Determination
 from elenctic.facts import Facts, objective_at, shown_by, theory_at
 from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
-from elenctic.program import TEXT, Fault, Locus, Program, Source
+from elenctic.program import (
+    TEXT,
+    Fault,
+    IrregularFileError,
+    Locus,
+    Program,
+    Source,
+    irregular,
+    regular_text,
+)
 from elenctic.search import Interrupt, Limits
 from elenctic.spans import (
     Diagnostic,
@@ -168,6 +177,8 @@ _GLIBC: Final = platform.libc_ver()[0] == "glibc"
 
 _SLASH: Final = "\\" if sys.platform == "win32" else "/"
 _SLASHES: Final = "/\\" if sys.platform == "win32" else "/"
+_UNWAITING: Final = 0 if sys.platform == "win32" else os.O_NONBLOCK
+"""Open a FIFO without waiting for a writer, as clingo's open would once one came."""
 
 
 def _directory(name: str) -> str:
@@ -195,7 +206,7 @@ def _opened(name: str) -> str | None:
         if _GLIBC:
             # A strict `realpath` fails where `stat` does, but takes "" for the working directory.
             return os.path.realpath(name, strict=True) if name else None
-        os.close(os.open(name, os.O_RDONLY))
+        os.close(os.open(name, os.O_RDONLY | _UNWAITING))
     except OSError, ValueError:  # ValueError: a name with a NUL, which clingo's lexer refuses
         return None
     return name
@@ -226,19 +237,19 @@ def _found(target: str, including: str) -> tuple[str, str] | None:
 class _Loaded:
     """A file clingo loads: where it is, the name clingo reports it by, and its text.
 
-    The text is the decoding error for a file that is not UTF-8, and `None` for one that cannot
-    be read (clingo reports that itself).
+    The text is the decoding error for a file that is not UTF-8, the refusal of one that is not a
+    regular file, and `None` for one that cannot be read (clingo reports that itself).
     """
 
     path: Path
     name: str
-    text: str | UnicodeDecodeError | None
+    text: str | UnicodeDecodeError | IrregularFileError | None
 
 
-def _read(path: Path) -> str | UnicodeDecodeError | None:
+def _read(path: Path) -> str | UnicodeDecodeError | IrregularFileError | None:
     try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError as error:
+        return regular_text(path)
+    except (UnicodeDecodeError, IrregularFileError) as error:
         return error
     except OSError:
         return None
@@ -427,19 +438,27 @@ def containment(program: Program, root: Path | None) -> Fault | None:
     )
 
 
+def _unloadable(loaded: _Loaded) -> Diagnostic | None:
+    """Say why clingo must not be given a file it loads: not regular, not UTF-8, or not lexable."""
+    match loaded.text:
+        case IrregularFileError() as error:
+            return unreadable(loaded.name, error)
+        case UnicodeDecodeError() as error:
+            return unreadable(str(loaded.path), error)
+        case str() as text:
+            return first_unlexable(text, str(loaded.path))
+        case None:
+            return None
+
+
 def _lexable(program: Program) -> Fault | None:
-    """Refuse program text (and the files it loads) that would abort pyclingo's logger."""
-    if (refused := first_unlexable(program.text, program.source)) is not None:
-        return Fault(Locus.PROGRAM, (refused,))
-    for loaded in _loaded(program):
-        match loaded.text:
-            case UnicodeDecodeError() as error:
-                return Fault(Locus.PROGRAM, (unreadable(str(loaded.path), error),))
-            case str() as text if (refused := first_unlexable(text, str(loaded.path))) is not None:
-                return Fault(Locus.PROGRAM, (refused,))
-            case _:
-                pass
-    return None
+    """Refuse a file that is not regular, and program text that would abort pyclingo's logger."""
+    if program.path is not None and (irregular_file := irregular(program.path)) is not None:
+        return Fault(Locus.REQUEST, (unreadable(str(program.path), irregular_file),))
+    refused = first_unlexable(program.text, program.source) or next(
+        filter(None, map(_unloadable, _loaded(program))), None
+    )
+    return None if refused is None else Fault(Locus.PROGRAM, (refused,))
 
 
 type Extension = Callable[[Sequence[AST]], Sequence[AST]]
