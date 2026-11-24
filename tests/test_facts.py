@@ -4,7 +4,7 @@ from clingo.ast import AST, parse_files, parse_string
 
 from elenctic.facts import Shown, objective_at, shown_by
 from elenctic.literals import Signature
-from elenctic.program import Program
+from elenctic.program import Source
 from elenctic.spans import Position, Span
 from nesting import DEEP_NESTING
 
@@ -49,16 +49,17 @@ def test_a_variable_show_does_not_cover_every_predicate() -> None:
     assert not found.covers(Signature("q", 1))
 
 
-def test_an_objective_is_placed_under_the_programs_name_or_its_file_in_clingos_columns(
+def test_an_objective_is_placed_under_the_programs_name_or_its_file_in_characters(
     tmp_path: Path,
 ) -> None:
     text = 'p("é"). &minimize { x }.\n'
     statements: list[AST] = []
     parse_string(text, statements.append)
-    at = Span("t.lp", Position(1, 10), Position(1, 26))
-    assert objective_at(statements, Program(text, "t.lp")) == at
+    at = Span("t.lp", Position(1, 9), Position(1, 25))
+    assert objective_at(statements, Source("t.lp", {"t.lp": text})) == at
     library = tmp_path / "lib.lp"
     library.write_text(text, encoding="utf-8")
     loaded: list[AST] = []
     parse_files([str(library)], loaded.append)
-    assert objective_at(loaded, Program("", "t.lp")) == Span(str(library), at.start, at.end)
+    found = objective_at(loaded, Source("t.lp", {str(library): text}))
+    assert found == Span(str(library), at.start, at.end)

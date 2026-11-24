@@ -1,6 +1,6 @@
 from time import perf_counter
 
-from elenctic.relaxation import Source
+from elenctic.program import Source
 from elenctic.spans import (
     Child,
     Diagnostic,
@@ -48,6 +48,11 @@ def test_an_unlocated_message_is_kept_whole() -> None:
     (found,) = diagnose("something went wrong")
     assert found.span is None
     assert found.message == "something went wrong"
+
+
+def test_an_empty_message_yields_no_diagnostic() -> None:
+    assert diagnose("") == ()
+    assert diagnose(" \n") == ()
 
 
 def test_a_span_prints_as_editors_expect() -> None:
@@ -103,3 +108,11 @@ def test_locating_eight_times_as_many_lines_takes_about_eight_times_as_long_not_
     small = min(seconds_to_locate_every_line(1_000) for _ in range(3))
     large = min(seconds_to_locate_every_line(8_000) for _ in range(3))
     assert large < 24 * small
+
+
+def test_the_text_of_a_span_is_what_it_covers_and_empty_where_it_reaches_past_its_source() -> None:
+    source = Source("t.lp", {"t.lp": "p.\nq :- p.\n"})
+    assert source.text(Span("t.lp", Position(2, 1), Position(2, 3))) == "q "
+    assert source.text(Span("t.lp", Position(1, 2), Position(2, 2))) == ".\nq"
+    assert source.text(Span("t.lp", Position(4, 1), Position(4, 2))) == ""
+    assert source.text(Span("u.lp", Position(1, 1), Position(1, 2))) == ""

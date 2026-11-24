@@ -6,7 +6,7 @@ have simplified away. Each instance is recorded with what its body literals and 
 so the answer set it is judged in only needs to be looked up.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Final
 
@@ -38,41 +38,11 @@ from elenctic.clauses import (
     tuple_text,
 )
 from elenctic.explanation import Rule
-from elenctic.program import named
-from elenctic.spans import Position, Span, in_characters, split_lines
+from elenctic.program import Source
+from elenctic.spans import Position, Span, split_lines
 
 _BASE: Final = "_elenctic"
 _FRESH: Final = "_E"
-
-
-@dataclass(frozen=True, slots=True)
-class Source:
-    """The text of each source a program reads, by the name clingo reports it under."""
-
-    name: str
-    texts: Mapping[str, str]
-
-    def span(self, statement: AST) -> Span:
-        """Locate a statement, in Unicode columns, under the name the program is known by."""
-        reported = tree.span(statement)
-        raw = named(reported, self.name)
-        text = self.texts.get(reported.source, self.texts.get(raw.source))
-        return raw if text is None else in_characters(raw, text)
-
-    def text(self, span: Span) -> str:
-        """Return the source text a span covers, or `""` when the source is not at hand."""
-        text = self.texts.get(span.source)
-        if text is None:
-            return ""
-        lines = split_lines(text)
-        if not 1 <= span.start.line <= span.end.line <= len(lines):
-            return ""
-        if span.start.line == span.end.line:
-            return lines[span.start.line - 1][span.start.column - 1 : span.end.column - 1]
-        first = lines[span.start.line - 1][span.start.column - 1 :]
-        middle = lines[span.start.line : span.end.line - 1]
-        last = lines[span.end.line - 1][: span.end.column - 1]
-        return "\n".join([first, *middle, last])
 
 
 def _apart(written: str, base: str) -> str:
@@ -132,7 +102,7 @@ def _minimize_rules(statements: Sequence[AST], source: Source) -> dict[int, Rule
     for index, statement in enumerate(statements):
         if tree.kind(statement) is not ASTType.Minimize:
             continue
-        span = source.span(statement)
+        span = source.placed(tree.span(statement))
         key = (span.source, span.start.line, span.start.column)
         start = previous.get(key, span.start)
         start = _after_separator(source, Span(span.source, start, span.end))
@@ -166,7 +136,7 @@ def read(statements: Sequence[AST], source: Source) -> Reading:
     for index, statement in enumerate(statements):
         match tree.kind(statement):
             case ASTType.Rule:
-                span = source.span(statement)
+                span = source.placed(tree.span(statement))
                 rule = Rule(index, span, source.text(span))
                 for piece in statement.unpool():
                     _read_rule(reading, rule, anonymous_named(piece, reading.fresh))

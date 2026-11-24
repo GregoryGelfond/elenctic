@@ -2,7 +2,8 @@ from pathlib import Path
 
 from clingo.ast import AST, parse_files, parse_string
 
-from elenctic.relaxation import Source, read
+from elenctic.program import Source
+from elenctic.relaxation import read
 from elenctic.spans import Position, Span
 
 TEXT = 'p("é"). q :- p("é").\n'

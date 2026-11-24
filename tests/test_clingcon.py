@@ -10,6 +10,7 @@ from elenctic.determination import Consistent, Exhausted, Optimum, Valuation
 from elenctic.engine import ground, solve
 from elenctic.program import Fault, Program
 from elenctic.report import Exit
+from elenctic.spans import Position, Span
 from elenctic.verdicts import Report, Verdict
 from nesting import nested
 
@@ -177,3 +178,29 @@ def test_a_deeply_nested_theory_term_is_checked_not_a_recursion_error() -> None:
     deep = nested()
     text = CLINGCON + f"&dom {{ 0..3 }} = {deep}. &sum {{ {deep} }} >= 0.\n% @expect sat\n"
     assert verdicts(text) == [P]
+
+
+def test_a_theory_objective_after_non_ascii_text_is_placed_in_characters() -> None:
+    tags = '% @expect sat\n% @cautious { p("é") }\n'
+    text = '% @elenctic solver clingcon\np("é"). &minimize { x }.\n' + tags
+    result = check(Program(text, "t.lp"))
+    assert isinstance(result, Fault)
+    (diagnostic,) = result.diagnostics
+    assert diagnostic.message == "theory objective is not seen by the cost"
+    assert diagnostic.span == Span("t.lp", Position(2, 9), Position(2, 25))
+
+
+@pytest.mark.parametrize("included", [False, True], ids=["library", "include"])
+def test_a_theory_objective_in_another_file_is_placed_in_its_characters(
+    tmp_path: Path, included: bool
+) -> None:
+    library = tmp_path / "lib.lp"
+    library.write_text('p("éé"). &minimize { x }.\n', encoding="utf-8")
+    case = tmp_path / "case.lp"
+    loading = '#include "lib.lp".\n' if included else ""
+    tags = '% @expect sat\n% @cautious { p("éé") }\n'
+    case.write_text("% @elenctic solver clingcon\n" + loading + tags, encoding="utf-8")
+    result = check(Program.read(case, () if included else (library,)))
+    assert isinstance(result, Fault)
+    (diagnostic,) = result.diagnostics
+    assert diagnostic.span == Span(str(library), Position(1, 10), Position(1, 26))

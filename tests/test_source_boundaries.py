@@ -384,6 +384,35 @@ def test_a_library_of_a_program_without_a_path_is_loaded_after_its_text(tmp_path
     assert loaded_libraries(Program("p.\n")) == ()
 
 
+def test_a_library_that_is_the_program_itself_is_not_given_again(tmp_path: Path) -> None:
+    (case := tmp_path / "case.lp").write_text("#const n = 1.\n% @expect sat\n")
+    program = Program.read(case, [case])
+    assert loaded_libraries(program) == ()
+    assert isinstance(check(program), Report)
+
+
+def test_a_library_found_on_clingopath_is_recorded_under_the_path_it_was_found_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "lib").mkdir()
+    (base := tmp_path / "lib" / "base.lp").write_text("q.\n")
+    monkeypatch.setenv("CLINGOPATH", f"{tmp_path}/lib/")
+    monkeypatch.chdir(tmp_path)
+    program = Program("p.\n", libraries=(Path("base.lp"),))
+    assert loaded_libraries(program) == (base,)
+
+
+def test_a_library_of_a_text_is_found_as_clingo_finds_it_and_dropped_if_the_text_loads_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "base.lp").write_text("#const n = 1.\n")
+    monkeypatch.setenv("CLINGOPATH", str(tmp_path / "lib"))
+    monkeypatch.chdir(tmp_path)
+    program = Program('#include "base.lp".\n', libraries=(Path("base.lp"),))
+    assert loaded_libraries(program) == ()
+
+
 @pytest.mark.parametrize(
     "named", [("base.lp",), ("more.lp",), ("more.lp", "base.lp")], ids=["itself", "by", "both"]
 )

@@ -33,7 +33,7 @@ from elenctic.determination import (
     Refutation,
     Truncation,
 )
-from elenctic.engine import Controlled, controlled, ground, parsed, possible_atoms, source_texts
+from elenctic.engine import Controlled, controlled, ground, parsed, possible_atoms, sources
 from elenctic.explanation import Counterexample, Evidence, Explanation, Outranked, Paid
 from elenctic.grounded import Grounded
 from elenctic.instances import Instances, Payment, instances
@@ -49,7 +49,7 @@ from elenctic.query import (
     literal_of,
     settled,
 )
-from elenctic.relaxation import Reading, Source, read
+from elenctic.relaxation import Reading, read
 from elenctic.search import KEEP_ALL, Interrupt, Keep, Limit, Limits, Seen, seen
 from elenctic.substitution import Substitution
 from elenctic.support import explain
@@ -531,7 +531,7 @@ def session(
 ) -> Session | Fault:
     """Ground `program` for `solver` into a session that can explain it, or say why it cannot be."""
     prepared = _Prepared()
-    source = Source(program.source, source_texts(program))
+    source = sources(program)
 
     def extend(statements: Sequence[AST]) -> Sequence[AST]:
         reading = read(statements, source)

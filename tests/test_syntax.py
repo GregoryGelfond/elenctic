@@ -171,6 +171,12 @@ def test_valuations_read_a_term_and_the_integer_it_equals() -> None:
     )
 
 
+def test_a_syntax_error_in_a_list_is_placed_in_characters_after_non_ascii_text() -> None:
+    found = read_literals('p("é"), )', WHERE)
+    assert isinstance(found, Diagnostic)
+    assert found.span == Span("c.lp", Position(7, 20), Position(7, 21))
+
+
 def test_a_refused_valuation_is_placed_in_characters_after_non_ascii_text() -> None:
     found = read_valuations('x("é") = 1, y("é")', WHERE)
     assert isinstance(found, Diagnostic)

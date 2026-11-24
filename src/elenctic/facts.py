@@ -10,7 +10,7 @@ from clingo.ast import AST, ASTType, UnaryOperator
 
 from elenctic import tree
 from elenctic.literals import Signature, is_function
-from elenctic.program import Program, named
+from elenctic.program import Source
 from elenctic.spans import Span
 
 
@@ -139,21 +139,19 @@ def _objective(node: AST) -> bool:
     )
 
 
-def _first(
-    statements: Iterable[AST], holds: Callable[[AST], bool], program: Program
-) -> Span | None:
+def _first(statements: Iterable[AST], holds: Callable[[AST], bool], source: Source) -> Span | None:
     """Locate the first statement for which `holds`."""
     found = next((s for s in statements if holds(s)), None)
-    return None if found is None else named(tree.span(found), program.source)
+    return None if found is None else source.placed(tree.span(found))
 
 
-def theory_at(control: Control, statements: Iterable[AST], program: Program) -> Span | None:
+def theory_at(control: Control, statements: Iterable[AST], source: Source) -> Span | None:
     """Locate the first statement with a theory atom, if grounding left any theory atom."""
     if next(iter(control.theory_atoms), None) is None:
         return None
-    return _first(statements, _theoretical, program)
+    return _first(statements, _theoretical, source)
 
 
-def objective_at(statements: Iterable[AST], program: Program) -> Span | None:
+def objective_at(statements: Iterable[AST], source: Source) -> Span | None:
     """Locate the first statement with a theory objective."""
-    return _first(statements, _objective, program)
+    return _first(statements, _objective, source)

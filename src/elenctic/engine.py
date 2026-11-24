@@ -1,7 +1,9 @@
 """The one place that makes a clingo `Control`: it grounds a program to run searches over."""
 
 import os
+import platform
 import re
+import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -16,7 +18,7 @@ from elenctic.determination import AnswerSets, Determination
 from elenctic.facts import Facts, objective_at, shown_by, theory_at
 from elenctic.grounded import Grounded
 from elenctic.literals import Scenario
-from elenctic.program import TEXT, Fault, Locus, Program, named
+from elenctic.program import TEXT, Fault, Locus, Program, Source
 from elenctic.search import Interrupt, Limits
 from elenctic.spans import (
     Diagnostic,
@@ -47,41 +49,35 @@ def _clarified(diagnostic: Diagnostic) -> Diagnostic:
     )
 
 
-def _relocated(diagnostic: Diagnostic, source: str) -> Diagnostic:
+def _relocated(diagnostic: Diagnostic, source: Source) -> Diagnostic:
     if (span := diagnostic.span) is None:
         return diagnostic
-    return replace(diagnostic, span=named(span, source))
+    return replace(diagnostic, span=source.placed(span))
 
 
-def source_texts(program: Program) -> dict[str, str]:
-    """Map each source name to its text: the program and every file it loads."""
+def sources(program: Program) -> Source:
+    """Return the text of the program and of every file it loads, by the name clingo reports."""
     texts = {program.source: program.text}
     for loaded in _loaded(program):
         if isinstance(loaded.text, str):
-            # Under its own path, and under the name clingo reports it by.
-            texts[str(loaded.path)] = texts[loaded.name] = loaded.text
-    return texts
+            texts[loaded.name] = loaded.text
+    return Source(program.source, texts)
 
 
-def _fault(messages: list[str], error: RuntimeError, program: Program) -> Fault:
+def _fault(messages: list[str], error: RuntimeError, source: Source) -> Fault:
     # The logger may be silent (e.g. missing python/lua support); the exception text still locates.
     joined = "".join(messages) or str(error)
-    diagnostics = tuple(
-        _clarified(_relocated(d, program.source))
-        for d in diagnose(joined, texts=source_texts(program))
-    )
+    diagnostics = tuple(_clarified(_relocated(d, source)) for d in diagnose(joined))
     return Fault(Locus.PROGRAM, diagnostics or (failure(None, str(error).strip()),))
 
 
 def _parse(program: Program, add: Callable[[AST], None], logger: Callable[..., None]) -> None:
     """Give clingo the program and its libraries in one call, so it loads no file twice."""
-    shared = [str(library) for library in loaded_libraries(program)]
-    if program.path is not None:
-        parse_files([str(program.path), *shared], add, logger=logger)
-        return
-    # A text has no file to list: its libraries are included after it, from where it is run.
-    included = "".join(f'\n#include "{_escaped(library)}".' for library in shared)
-    parse_string(program.text + included, add, logger=logger)
+    match _given(program):
+        case str() as text:
+            parse_string(text, add, logger=logger)
+        case files:
+            parse_files(files, add, logger=logger)
 
 
 class _Objective(Observer):
@@ -167,34 +163,76 @@ def _include_targets(text: str) -> tuple[str, ...]:
     return tuple(targets)
 
 
-def _found(target: str, including: str) -> Path | None:
-    """Return the path clingo opens for `#include "target"` in the file named `including`.
+_GLIBC: Final = platform.libc_ver()[0] == "glibc"
+"""Whether clingo is built against glibc: its include search is compiled one of two ways by it."""
 
-    Clingo tries `target` as written (from the working directory), then beside the including
-    file, then under each directory of `CLINGOPATH`; the first that exists wins.
+_SLASH: Final = "\\" if sys.platform == "win32" else "/"
+_SLASHES: Final = "/\\" if sys.platform == "win32" else "/"
+
+
+def _directory(name: str) -> str:
+    """Return the directory clingo looks in beside the file it names `name`, or "" for none.
+
+    Built with glibc it takes `dirname` (with "." for none); otherwise the name up to its last
+    slash. A loaded file's name never ends with a slash.
     """
+    last = max(map(name.rfind, _SLASHES))
+    if last < 0:
+        return ""
+    if not _GLIBC:
+        return name[:last]
+    directory = name[:last].rstrip("/") or ("//" if last == 1 else "/")
+    return "" if directory == "." else directory
+
+
+def _opened(name: str) -> str | None:
+    """Return what clingo tells the file it opens as `name` apart by, or `None` if it opens none.
+
+    Built with glibc, a file is there if `stat` finds it, and is told apart by its canonical path;
+    otherwise it is there if it opens for reading, and is told apart by its name.
+    """
+    try:
+        if _GLIBC:
+            # A strict `realpath` fails where `stat` does, but takes "" for the working directory.
+            return os.path.realpath(name, strict=True) if name else None
+        os.close(os.open(name, os.O_RDONLY))
+    except OSError, ValueError:  # ValueError: a name with a NUL, which clingo's lexer refuses
+        return None
+    return name
+
+
+def _searched() -> list[str]:
+    """Return the directories of `CLINGOPATH`, split at each ':' as clingo splits it."""
     searched = os.environ.get("CLINGOPATH")
-    directories = (
-        Path(),
-        Path(including).parent,
-        *(() if searched is None else map(Path, searched.split(":"))),
-    )
-    return next((path for d in directories if (path := d / target).exists()), None)
+    return [] if searched is None else searched.split(":")
+
+
+def _found(target: str, including: str) -> tuple[str, str] | None:
+    """Return the name and identity of the file `#include "target"` opens in the file `including`.
+
+    Clingo tries `target` as written (from the working directory); then beside the including
+    file, unless built with glibc and `target` is absolute; then joined to each directory of
+    `CLINGOPATH`. The first it opens wins, under the name it joined, never normalized.
+    """
+    beside = "" if _GLIBC and target.startswith("/") else _directory(including)
+    for directory in ("", beside, *_searched()):
+        name = f"{directory}{_SLASH}{target}" if directory else target
+        if (identity := _opened(name)) is not None:
+            return name, identity
+    return None
 
 
 @dataclass(frozen=True, slots=True)
 class _Loaded:
-    """A file clingo loads: where it is, its name to clingo, its text, and whether it is a library.
+    """A file clingo loads: where it is, the name clingo reports it by, and its text.
 
     The text is the decoding error for a file that is not UTF-8, and `None` for one that cannot
-    be read (clingo reports that itself). A library is one of the program's `libraries`; every
-    other file is loaded by `#include`.
+    be read (clingo reports that itself).
     """
 
     path: Path
     name: str
     text: str | UnicodeDecodeError | None
-    library: bool = False
 
 
 def _read(path: Path) -> str | UnicodeDecodeError | None:
@@ -206,8 +244,8 @@ def _read(path: Path) -> str | UnicodeDecodeError | None:
         return None
 
 
-def _included(including: str, text: str, seen: set[Path]) -> Iterator[_Loaded]:
-    """Yield each file the `#include`s of `text` load that is not yet `seen`, depth first."""
+def _included(including: str, text: str, opened: set[str]) -> Iterator[_Loaded]:
+    """Yield each file the `#include`s of `text` load that clingo has not `opened`, depth first."""
     # Depth first, as clingo reads an included file where its directive stands.
     pending = [(including, iter(_include_targets(text)))]
     while pending:
@@ -217,38 +255,69 @@ def _included(including: str, text: str, seen: set[Path]) -> Iterator[_Loaded]:
             continue
         if (found := _found(target, including)) is None:
             continue  # clingo reports the missing include
-        if (path := found.resolve()) in seen:
-            continue
-        seen.add(path)
-        yield (loaded := _Loaded(path, str(found), _read(path)))
+        name, identity = found
+        if identity in opened:
+            continue  # clingo reports the file already included
+        opened.add(identity)
+        yield (loaded := _Loaded(Path(name).resolve(), name, _read(Path(name))))
         if isinstance(loaded.text, str):
-            pending.append((loaded.name, iter(_include_targets(loaded.text))))
+            pending.append((name, iter(_include_targets(loaded.text))))
+
+
+def _reached(including: str, text: str) -> set[Path]:
+    """Return the resolved path of every file the `#include`s of `text` load, on their own."""
+    return {loaded.path for loaded in _included(including, text, set())}
+
+
+def _kept(program: Program) -> tuple[str, ...]:
+    """Return the name clingo is given each library of `program` by: each not loaded before it.
+
+    A library the program or an earlier library already loads, compared by resolved path, is
+    dropped, so clingo is never given a file twice, on any platform. A text's libraries are
+    included after it, so clingo looks for them as for its own includes.
+    """
+    including = TEXT if program.path is None else str(program.path)
+    seen = _reached(including, program.text)
+    if program.path is not None:
+        seen.add(program.path.resolve())
+    kept: list[str] = []
+    for library in program.libraries:
+        found = None if program.path is not None else _found(str(library), TEXT)
+        name = str(library) if found is None else found[0]
+        if (path := Path(name).resolve()) in seen:
+            continue
+        kept.append(name)
+        seen.add(path)
+        if isinstance(text := _read(path), str):
+            seen |= _reached(name, text)
+    return tuple(kept)
+
+
+def _given(program: Program) -> str | tuple[str, *tuple[str, ...]]:
+    """Return what clingo is given for `program`: a text with its libraries, or files to load."""
+    libraries = _kept(program)
+    if program.path is None:
+        # A text has no file to list: its libraries are included after it, from where it is run.
+        return program.text + "".join(f'\n#include "{_escaped(name)}".' for name in libraries)
+    return (str(program.path), *libraries)
 
 
 def _loaded(program: Program) -> Iterator[_Loaded]:
-    """Yield each file clingo loads for `program` besides its text, in the order it loads them.
+    """Yield each file clingo loads for `program` besides its own text, in the order it reads them.
 
-    First what the text's `#include`s load, then each library and what its own load. A file
-    already loaded is not loaded again, compared by its resolved path, so a library the program
-    already includes is dropped: clingo is never given a file twice, on any platform. It reads
-    the files afresh at each call.
+    Clingo opens every file it is given before it reads any, then reads the last first, and each
+    file's includes where they stand. It reads the files afresh at each call.
     """
-    if program.path is None:
-        seen: set[Path] = set()
-        yield from _included(TEXT, program.text, seen)
-    else:
-        seen = {program.path.resolve()}
-        yield from _included(str(program.path), program.text, seen)
-    for library in program.libraries:
-        # A text's libraries are `#include`d after it (`_parse`), so clingo finds them as it does.
-        found = None if program.path is not None else _found(str(library), TEXT)
-        located = found or library
-        if (path := located.resolve()) in seen:
-            continue
-        seen.add(path)
-        yield (loaded := _Loaded(path, str(located), _read(path), library=True))
-        if isinstance(loaded.text, str):
-            yield from _included(loaded.name, loaded.text, seen)
+    match _given(program):
+        case str() as text:
+            yield from _included(TEXT, text, {TEXT})
+        case (own, *libraries) as files:
+            opened = {identity for name in files if (identity := _opened(name)) is not None}
+            for name in reversed(libraries):
+                yield (loaded := _Loaded(Path(name).resolve(), name, _read(Path(name))))
+                if isinstance(loaded.text, str):
+                    yield from _included(name, loaded.text, opened)
+            yield from _included(own, program.text, opened)
 
 
 def default_root(path: Path) -> Path:
@@ -312,7 +381,7 @@ def held_root(path: Path | None, root: Path | None) -> Path | None:
 
 def loaded_libraries(program: Program) -> tuple[Path, ...]:
     """Return the libraries clingo is given with `program`: those not already loaded before them."""
-    return tuple(Path(loaded.name) for loaded in _loaded(program) if loaded.library)
+    return tuple(map(Path, _kept(program)))
 
 
 def included_sources(program: Program) -> frozenset[Path]:
@@ -412,6 +481,7 @@ def controlled(
     objective = _Objective()
     control.register_observer(objective)
     statements: list[AST] = []
+    source = sources(program)
     try:
         _parse(program, statements.append, log)
         with ProgramBuilder(control) as builder:
@@ -420,12 +490,12 @@ def controlled(
         control.ground([("base", [])])
         theory.prepare(control)
     except RuntimeError as error:
-        return _fault(messages, error, program)
+        return _fault(messages, error, source)
     facts = Facts(
         shown_by(statements),
         objective.seen,
-        theory_at(control, statements, program),
-        objective_at(statements, program) if solver is Solver.CLINGCON else None,
+        theory_at(control, statements, source),
+        objective_at(statements, source) if solver is Solver.CLINGCON else None,
     )
     priorities = tuple(sorted(objective.priorities, reverse=True))
     return Controlled(control, facts, theory, tuple(statements), priorities)
