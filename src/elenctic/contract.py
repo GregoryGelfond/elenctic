@@ -89,10 +89,13 @@ class Asks:
 
 @dataclass(frozen=True, slots=True)
 class Binds:
-    """`@query [optimal] A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B`."""
+    """`@query [optimal] A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B`.
+
+    `pattern` is one pattern, or, since 1.1, a conjunction of parts with variables.
+    """
 
     answer: Answer
-    pattern: Pattern
+    pattern: Pattern | All
     bindings: frozenset[tuple[Symbol, ...]]
     over: Range = Range.ALL
 

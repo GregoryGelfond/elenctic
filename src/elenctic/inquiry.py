@@ -13,7 +13,6 @@ from elenctic.determination import Range, Refutation
 from elenctic.engine import containment
 from elenctic.explanation import Counterexample, Explanation
 from elenctic.literals import Literal, Scenario
-from elenctic.patterns import Pattern
 from elenctic.program import Fault, Locus, Program
 from elenctic.query import Answered, AnswerMode, Query
 from elenctic.reader import parse_contract
@@ -148,9 +147,6 @@ def ask(  # noqa: PLR0913
 
     By default it is answered as `@query` answers it.
     """
-    if mode is not AnswerMode.DEFAULT and isinstance(query, Pattern) and query.variables:
-        problem = failure(None, "bindings are answered in the default mode only")
-        return Fault(Locus.REQUEST, (problem,))
     session_ = _opened(program, limits=limits, interrupt=interrupt, root=root)
     if isinstance(session_, Fault):
         return session_

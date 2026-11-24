@@ -44,7 +44,7 @@ from elenctic.explanation import (
 from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
 from elenctic.program import Fault, Program
-from elenctic.query import All, Answer, Answered, Any, Bindings, Not, Truth, Unreached, evaluate
+from elenctic.query import All, Answer, Answered, Answers, Any, Not, Truth, Unreached, evaluate
 from elenctic.search import KEEP_SHOWN, Interrupt, Limit, Limits
 from elenctic.session import Session, evidenced, session
 from elenctic.terms import Variable
@@ -1026,9 +1026,12 @@ def test_a_pattern_with_variables_is_answered_by_its_bindings() -> None:
     pattern = Pattern("p", (Variable("X"),))
     answered = opened("p(1). { p(2) }. -p(3).").answer(pattern)
     assert isinstance(answered, Answered)
-    assert answered.answer == Bindings(
-        frozenset({(Number(1),)}), frozenset({(Number(3),)}), frozenset({(Number(2),)})
-    )
+    assert isinstance(answered.answer, Answers)
+    assert [(b.values, b.answer) for b in answered.answer.bound] == [
+        ((Number(1),), Answer.YES),
+        ((Number(3),), Answer.NO),
+        ((Number(2),), Answer.UNKNOWN),
+    ]
     assert answered.taken == ()
 
 

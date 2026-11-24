@@ -18,7 +18,7 @@ from elenctic.contract import (
 from elenctic.determination import Assignment, Range
 from elenctic.literals import Literal, Symbol
 from elenctic.patterns import Pattern
-from elenctic.query import All, Not, Query
+from elenctic.query import All, Not, Query, variables_of
 
 
 def braces(literals: Iterable[Literal]) -> str:
@@ -27,13 +27,13 @@ def braces(literals: Iterable[Literal]) -> str:
     return "{ }" if not parts else "{ " + parts + " }"
 
 
-def rows(pattern: Pattern, found: Iterable[tuple[Symbol, ...]]) -> str:
-    """Write bindings of a pattern as the `{ ... }` the contract syntax uses, in symbol order.
+def rows(pattern: Pattern | All, found: Iterable[tuple[Symbol, ...]]) -> str:
+    """Write bindings of a query as the `{ ... }` the contract syntax uses, in symbol order.
 
     A binding of one variable is written bare, `2`; of several, as a tuple, `(b,2)`.
     """
     terms = [",".join(map(str, row)) for row in sorted(found)]
-    written = terms if len(pattern.variables) == 1 else [f"({each})" for each in terms]
+    written = terms if len(variables_of(pattern)) == 1 else [f"({each})" for each in terms]
     return "{ }" if not written else "{ " + ", ".join(written) + " }"
 
 
@@ -104,7 +104,9 @@ def _reading(reading: Reading) -> str:
         case Asks(answer, query, over):
             return f"@query {_optimally(over)}{answer} {queried(query)}"
         case Binds(answer, pattern, bindings, over):
-            return f"@query {_optimally(over)}{answer} {{ {pattern} }} = {rows(pattern, bindings)}"
+            return (
+                f"@query {_optimally(over)}{answer} {queried(pattern)} = {rows(pattern, bindings)}"
+            )
 
 
 def render(claim: Claim) -> str:

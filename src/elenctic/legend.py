@@ -44,7 +44,7 @@ from elenctic.glyphs import Glyph
 from elenctic.literals import Assumption, Literal, Symbol
 from elenctic.paint import Phrase, Piece, Role
 from elenctic.patterns import Pattern
-from elenctic.query import All, Answer, Answered, Bindings, Taken, Unreached
+from elenctic.query import All, Answer, Answered, Answers, Taken, Unreached
 from elenctic.report import Run
 from elenctic.search import Limit
 from elenctic.spans import Severity, Span
@@ -463,8 +463,13 @@ def keyed(actions: Sequence[str]) -> tuple[Phrase, ...]:
 
 
 def answering(answer: Answer) -> Phrase:
-    """Word the answer a query comes to over the answer sets: `not entailed`, as said."""
-    return (Piece(ANSWER, Role.EMPHASIS), Piece(f": {answer.value.replace('_', ' ')}"))
+    """Word the answer a query comes to over the answer sets."""
+    return (Piece(ANSWER, Role.EMPHASIS), Piece(f": {worded(answer)}"))
+
+
+def worded(answer: Answer) -> str:
+    """Word an answer as it is said, `not entailed`, not as JSON names it."""
+    return answer.value.replace("_", " ")
 
 
 def taken(found: Taken, query: All, answered: Answered) -> Phrase:
@@ -498,11 +503,11 @@ def _valued(answer: Answer, query: All) -> str:
             return "neither true nor false"
 
 
-def bindings_of(answer: Answer, pattern: Pattern, found: Bindings) -> Phrase:
-    """Word the bindings of a pattern that give one answer, as `@query … = { … }` writes them."""
+def bindings_of(answer: Answer, query: Pattern | All, found: Answers) -> Phrase:
+    """Word the bindings of a query that give one answer, as `@query … = { … }` writes them."""
     return (
-        Piece(f"{answer.value} bindings", Role.EMPHASIS),
-        Piece(f": {rows(pattern, found.giving(answer))}"),
+        Piece(f"{worded(answer)} bindings", Role.EMPHASIS),
+        Piece(f": {rows(query, found.giving(answer))}"),
     )
 
 

@@ -24,7 +24,7 @@ from elenctic.tags import is_case
 from elenctic.terms import Compound, Variable
 from elenctic.writer import render
 
-X = Variable("X")
+X, Y = Variable("X"), Variable("Y")
 P = Position
 
 
@@ -89,9 +89,23 @@ def test_a_binding_query_states_the_bindings_it_expects() -> None:
     )
 
 
+def test_a_binding_query_may_be_a_conjunction_with_not() -> None:
+    claim = only("% @query yes { p(X), not q(X, Y), r(Y) } = { (1, a) }")
+    p, q, r = Pattern("p", (X,)), Pattern("q", (X, Y)), Pattern("r", (Y,))
+    assert claim.reading == Binds(
+        Answer.YES, All((p, Not(q), r)), frozenset({(Number(1), parse_term("a"))})
+    )
+
+
+def test_a_binding_query_with_a_variable_only_under_not_is_refused() -> None:
+    found = only_diagnostic("% @query yes { p(X), not q(Y) } = { 1 }")
+    assert found.message == "variable `Y` occurs only under `not`"
+
+
 def test_a_binding_query_may_nest_its_variables_and_keeps_their_order_of_first_occurrence() -> None:
     claim = only("% @query yes { p(f(Y, g(X)), X) } = { (1, 2) }")
     assert isinstance(claim.reading, Binds)
+    assert isinstance(claim.reading.pattern, Pattern)
     assert claim.reading.pattern.variables == (Variable("Y"), X)
     assert claim.reading.pattern.arguments[0] == Compound("f", (Variable("Y"), Compound("g", (X,))))
     assert claim.reading.bindings == {(Number(1), Number(2))}
@@ -172,6 +186,7 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
         "@query unknown { p(1), -q }",
         "@query no { p, not -q }",
         "@query yes { p(X,b) } = { 1, 2 }",
+        "@query no { p(X), not q(X,Y), r(Y) } = { (1,a) }",
         "@query no { p(X,Y) } = { (a,1), (b,2) }",
         "@query yes { p(f(X),b) } = { 1, 2 }",
         "@query no { p(f(g(X,1),a),(Y,-h(X))) } = { (1,2) }",
@@ -255,14 +270,14 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
             P(2, 24),
         ),
         (
-            "% @query yes { p(X), q(Y) } = { 1 }",
-            "expected one positive pattern before `=`, found `{ p(X), q(Y) }`",
-            P(2, 15),
-            P(2, 27),
+            "% @query yes { p(X), q(Y) } x { 1 }",
+            "expected `=` before the bindings, found `x`",
+            P(2, 29),
+            P(2, 30),
         ),
         (
             "% @query yes { not p(X) } = { 1 }",
-            "expected one positive pattern before `=`, found `{ not p(X) }`",
+            "variable `X` occurs only under `not`",
             P(2, 15),
             P(2, 25),
         ),
@@ -507,10 +522,6 @@ def test_an_assumption_with_a_variable_is_refused_as_not_ground() -> None:
     ("lines", "message"),
     [
         (("% @query yes { p.", "%   q }"), "expected a list of literals, found `p. q`"),
-        (
-            ("% @query yes { p(X),", "%   q(Y) } = { 1 }"),
-            "expected one positive pattern before `=`, found `{ p(X), q(Y) }`",
-        ),
         (
             ("% @query yes { p(X) } = { 1 +,", "%   2 }"),
             "expected a set of terms, found `1 +, 2`",

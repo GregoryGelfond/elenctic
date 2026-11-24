@@ -298,7 +298,8 @@ def test_why_and_ask_documents_add_to_schema_one_under_their_names() -> None:
     assert alternatives == [{"required": ["run"]}, {"required": ["why"]}, {"required": ["ask"]}]
     defs = document["$defs"]
     assert isinstance(defs, dict)
-    assert {"answered", "taken", "bindings", "explanation", "internal", "fault"} <= set(defs)
+    expected = {"answered", "taken", "answers", "bound", "explanation", "internal", "fault"}
+    assert expected <= set(defs)
 
 
 def test_an_answer_is_written_with_the_answer_sets_that_give_it() -> None:
@@ -311,12 +312,12 @@ def test_an_answer_is_written_with_the_answer_sets_that_give_it() -> None:
     _keys_follow_schema(document)
     pattern = ask(Program("p(1). { p(2) }.", "p.lp"), Pattern("p", (Variable("X"),)))
     bound = json.loads(inquiry_json("ask", pattern, AskExit.of(pattern)))
-    assert bound["ask"]["answer"] == {
-        "kind": "bindings",
-        "yes": [["1"]],
-        "no": [],
-        "unknown": [["2"]],
-    }
+    found = bound["ask"]["answer"]
+    assert (found["kind"], found["variables"]) == ("answers", ["X"])
+    assert [(b["values"], b["answer"]) for b in found["bound"]] == [
+        (["1"], "yes"),
+        (["2"], "unknown"),
+    ]
     _keys_follow_schema(bound)
     explained = why(program, Literal("a"), index=3)
     _keys_follow_schema(json.loads(inquiry_json("why", explained, WhyExit.of(explained))))

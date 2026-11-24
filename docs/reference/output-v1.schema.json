@@ -254,7 +254,7 @@
               ]
             },
             {
-              "$ref": "#/$defs/bindings"
+              "$ref": "#/$defs/answers"
             }
           ]
         },
@@ -287,6 +287,32 @@
             "cautious",
             "brave"
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "answers": {
+      "type": "object",
+      "required": [
+        "kind",
+        "variables",
+        "bound"
+      ],
+      "properties": {
+        "kind": {
+          "const": "answers"
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "bound": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bound"
+          }
         }
       },
       "additionalProperties": false
@@ -405,48 +431,6 @@
       },
       "additionalProperties": false
     },
-    "bindings": {
-      "type": "object",
-      "required": [
-        "kind",
-        "yes",
-        "no",
-        "unknown"
-      ],
-      "properties": {
-        "kind": {
-          "const": "bindings"
-        },
-        "yes": {
-          "type": "array",
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "no": {
-          "type": "array",
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "unknown": {
-          "type": "array",
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
     "binds": {
       "type": "object",
       "required": [
@@ -471,7 +455,14 @@
           ]
         },
         "pattern": {
-          "type": "string"
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/all"
+            }
+          ]
         },
         "bindings": {
           "type": "array",
@@ -516,6 +507,43 @@
         },
         "literal": {
           "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "bound": {
+      "type": "object",
+      "required": [
+        "kind",
+        "values",
+        "answer",
+        "taken"
+      ],
+      "properties": {
+        "kind": {
+          "const": "bound"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "answer": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown",
+            "not_entailed",
+            "none_holds"
+          ]
+        },
+        "taken": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/taken"
+          }
         }
       },
       "additionalProperties": false

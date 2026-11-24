@@ -20,7 +20,9 @@ All notable changes are recorded here. The format follows
   that starts with `-`, `ask PATH -p(X)`, is not taken for an option. `ask --mode
   default|cautious|brave`: the Gelfond–Kahl three-valued answer, or `yes` / `not entailed`
   (true in every answer set or not), or `yes` / `none holds` (true in some or none); `Answer`
-  gains `NOT_ENTAILED` and `NONE_HOLDS`, and `Answered` its `mode`. Each exits with its own outcome, `WhyExit` or `AskExit`;
+  gains `NOT_ENTAILED` and `NONE_HOLDS`, and `Answered` its `mode`. A query with variables may be a
+  conjunction, `{ p(X), not q(X) }`, each instance answered over every answer set: `answers`,
+  `Answers` of `Bound`, and the JSON `answers` kind, which replaces `bindings` in `ask` output. Each exits with its own outcome, `WhyExit` or `AskExit`;
   `repl` stays reserved.
 - `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base
   encoding, loaded with every case after its own text, as clingo loads the files it is given. A

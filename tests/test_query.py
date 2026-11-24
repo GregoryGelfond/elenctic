@@ -5,19 +5,23 @@ from clingo import Function, Number, String, Symbol, parse_term
 from hypothesis import given
 from hypothesis import strategies as st
 
-from elenctic.determination import WorldView
+from elenctic.determination import AnswerSet, WorldView
 from elenctic.literals import Atoms, Literal
 from elenctic.patterns import Pattern
 from elenctic.query import (
     All,
     Answer,
     AnswerMode,
+    Answers,
     Any,
     Bindings,
+    Bound,
     Not,
     Query,
+    Taken,
     Truth,
     answer,
+    answers,
     bindings,
     evaluate,
 )
@@ -182,11 +186,13 @@ def test_a_pattern_that_repeats_a_variable_beneath_a_function_binds_it_once() ->
     assert bindings(twice, view).yes == {(Number(1), Number(2)), (Number(5), Number(6))}
 
 
-def test_bindings_takes_a_pattern_not_a_compound_query() -> None:
-    """Compound queries are answered by `answer`; `bindings` is for one pattern (1.0)."""
+def test_bindings_keeps_its_pattern_parameter_and_takes_a_conjunction_too() -> None:
+    """`bindings(pattern=…)` is 1.0's; since 1.1 the pattern may be a conjunction."""
     view = world(lits("p(1)", "q(1)"))
-    assert bindings(Pattern("p", (X,)), view).yes == frozenset({(Number(1),)})
-    assert get_type_hints(bindings)["pattern"] is Pattern
+    assert bindings(pattern=Pattern("p", (X,)), view=view).yes == frozenset({(Number(1),)})
+    both = All((Pattern("p", (X,)), Not(Pattern("q", (X,)))))
+    assert bindings(both, world(lits("p(1)", "p(2)", "q(1)"))).yes == {(Number(2),)}
+    assert get_type_hints(bindings)["pattern"] == Pattern | All
 
 
 def test_a_conjunction_is_answered_over_the_world_view() -> None:
@@ -341,3 +347,114 @@ def test_cautious_and_brave_quantify_true_and_default_no_quantifies_false(
         truth is Truth.TRUE for truth in truths
     )
     assert (answer(query, view) is Answer.NO) is all(truth is Truth.FALSE for truth in truths)
+
+
+def read(*members: set[Literal]) -> tuple[AnswerSet, ...]:
+    return tuple(AnswerSet(frozenset(m), frozenset(m)) for m in members)
+
+
+REACH = All((Pattern("r", (X,)), Not(Pattern("c", (X,)))))
+ROADS = read(lits("r(a)", "r(b)", "c(b)"), lits("r(a)", "r(b)", "c(c)"))
+
+
+def test_a_conjunction_with_variables_answers_each_binding_its_positive_parts_entertain() -> None:
+    first, second = ROADS
+    found = answers(REACH, ROADS)
+    assert found == Answers(
+        ("X",),
+        (
+            Bound((sym("a"),), Answer.YES, (Taken(Answer.YES, 1, first),)),
+            Bound(
+                (sym("b"),),
+                Answer.UNKNOWN,
+                (Taken(Answer.NO, 1, first), Taken(Answer.YES, 2, second)),
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        (AnswerMode.DEFAULT, [("a", Answer.YES), ("b", Answer.UNKNOWN)]),
+        (AnswerMode.CAUTIOUS, [("a", Answer.YES), ("b", Answer.NOT_ENTAILED)]),
+        (AnswerMode.BRAVE, [("a", Answer.YES), ("b", Answer.YES)]),
+    ],
+)
+def test_each_binding_is_answered_as_the_mode_answers_its_instance(
+    mode: AnswerMode, expected: list[tuple[str, Answer]]
+) -> None:
+    found = answers(REACH, ROADS, mode=mode)
+    assert [(str(b.values[0]), b.answer) for b in found.bound] == expected
+
+
+def test_bindings_are_shown_yes_first_then_as_their_mode_orders_answers_then_by_value() -> None:
+    members = read(lits("p(3)", "p(1)", "-p(2)", "p(4)"), lits("p(3)", "p(1)", "-p(2)"))
+    found = answers(Pattern("p", (X,)), members)
+    assert [(b.values, b.answer) for b in found.bound] == [
+        ((Number(1),), Answer.YES),
+        ((Number(3),), Answer.YES),
+        ((Number(2),), Answer.NO),
+        ((Number(4),), Answer.UNKNOWN),
+    ]
+    assert [found.count(each) for each in (Answer.YES, Answer.NO, Answer.UNKNOWN)] == [2, 1, 1]
+
+
+def test_a_binding_false_in_every_answer_set_is_no() -> None:
+    members = read(lits("p(1)", "-q(1)"), lits("p(1)", "-q(1)", "q(2)"))
+    found = answers(All((Pattern("p", (X,)), Pattern("q", (X,)))), members)
+    assert [(b.values, b.answer) for b in found.bound] == [((Number(1),), Answer.NO)]
+
+
+def test_parts_that_share_a_variable_join_on_it() -> None:
+    members = read(lits("p(1)", "e(1,2)", "e(3,4)", "p(5)"))
+    found = answers(All((Pattern("p", (X,)), Pattern("e", (X, Y)))), members)
+    assert found.variables == ("X", "Y")
+    assert found.giving(Answer.YES) == {(Number(1), Number(2))}
+    assert len(found.bound) == 1
+
+
+def test_a_ground_part_no_answer_set_entertains_leaves_no_binding_to_answer() -> None:
+    members = read(lits("p(1)"))
+    assert answers(All((Pattern("p", (X,)), Literal("zz"))), members).bound == ()
+    found = answers(All((Pattern("p", (X,)), Not(Literal("zz")))), members)
+    assert found.giving(Answer.YES) == {(Number(1),)}
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        All((Not(Pattern("q", (X,))),)),
+        All((Pattern("p", (X,)), Not(Pattern("q", (X, Y))))),
+    ],
+)
+def test_a_variable_only_under_not_is_unsafe_and_refused(query: Query) -> None:
+    with pytest.raises(ValueError, match="only under `not`"):
+        answers(query, read(lits("p(1)")))
+
+
+def test_a_disjunction_with_variables_has_no_bindings_to_give() -> None:
+    with pytest.raises(ValueError, match="disjunction"):
+        answers(Any((Pattern("p", (X,)), P)), read(lits("p(1)")))
+
+
+def test_bindings_over_a_world_view_group_the_answers_of_its_members() -> None:
+    view = world(lits("r(a)", "r(b)", "c(b)"), lits("r(a)", "r(b)", "c(c)"))
+    assert bindings(REACH, view) == Bindings(
+        frozenset({(sym("a"),)}), frozenset(), frozenset({(sym("b"),)})
+    )
+
+
+@given(numbered_views)
+def test_a_pattern_alone_by_default_is_answered_as_its_unifiers_with_the_consequences(
+    view: WorldView,
+) -> None:
+    pattern = Pattern("p", (X,))
+    cautious, brave = view.cautious, view.brave
+    yes = {lit.arguments for lit in cautious if lit.positive}
+    no = {lit.arguments for lit in cautious if not lit.positive}
+    entertained = {lit.arguments for lit in brave}
+    found = answers(pattern, tuple(AnswerSet(m, m) for m in view.members))
+    assert found.giving(Answer.YES) == yes
+    assert found.giving(Answer.NO) == no
+    assert found.giving(Answer.UNKNOWN) == entertained - yes - no

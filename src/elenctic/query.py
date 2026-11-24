@@ -1,6 +1,6 @@
 """Three-valued queries over a world view (Gelfond and Kahl, Definition 2.2.2, with its errata)."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum, auto
@@ -198,21 +198,6 @@ def _entertained(pattern: Pattern, brave: Extension) -> Relation:
     return _unifiers(pattern, brave).union(_unifiers(pattern.contrary, brave))
 
 
-def bindings(pattern: Pattern, view: WorldView) -> Bindings:
-    """Partition the instances of `pattern` some answer set entertains by their answer.
-
-    The cautious consequences are the facts the pattern is unified with: an instance is yes when
-    it is one of them and no when its contrary is. The brave consequences add only the instances
-    entertained and neither. Compound queries (conjunction, disjunction) are answered by `answer`;
-    their bindings are not listed here.
-    """
-    cautious = Extension(view.cautious)
-    brave = Extension(view.brave)
-    yes = _unifiers(pattern, cautious).rows
-    no = _unifiers(pattern.contrary, cautious).rows
-    return Bindings(yes, no, _entertained(pattern, brave).rows - yes - no)
-
-
 @dataclass(frozen=True, slots=True)
 class Taken:
     """An answer a query takes in one answer set alone, and the first answer set that gives it."""
@@ -235,6 +220,174 @@ class Unreached:
 
 
 @dataclass(frozen=True, slots=True)
+class Bound:
+    """A binding of a query's variables, their values in order of first occurrence, and its answer.
+
+    `taken` names the first answer set to give each answer its instance takes there alone.
+    """
+
+    values: tuple[Symbol, ...]
+    answer: Answer
+    taken: tuple[Taken, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Answers:
+    """The bindings of a query's variables, each with its answer, in the order they are shown.
+
+    They are in the order their mode shows its answers, yes first, then in symbol order. Only the
+    bindings each part without `not` entertains are answered: another instance is in no answer set.
+    """
+
+    variables: tuple[str, ...]
+    bound: tuple[Bound, ...]
+
+    def giving(self, answer: Answer) -> frozenset[tuple[Symbol, ...]]:
+        """Return the values of the bindings with `answer`."""
+        return frozenset(each.values for each in self.bound if each.answer is answer)
+
+    def count(self, answer: Answer) -> int:
+        """Count the bindings with `answer`."""
+        return sum(1 for each in self.bound if each.answer is answer)
+
+
+type _Part = Literal | Pattern | Not
+
+
+def _pattern(part: Literal | Pattern) -> Pattern:
+    return part if isinstance(part, Pattern) else Pattern.of(part)
+
+
+def _leaves(query: Query) -> Iterator[tuple[Pattern, bool]]:
+    """Yield the literals and patterns a query reads, each with whether `not` is before it."""
+    match query:
+        case All(parts) | Any(parts):
+            for part in parts:
+                yield from _leaves(part)
+        case Not(part):
+            yield _pattern(part), True
+        case _:
+            yield _pattern(query), False
+
+
+def variables_of(query: Query) -> tuple[Variable, ...]:
+    """Return the distinct named variables of a query, in order of first occurrence."""
+    return tuple(dict.fromkeys(v for pattern, _ in _leaves(query) for v in pattern.variables))
+
+
+def _conjuncts(query: Query) -> tuple[_Part, ...]:
+    """Return the parts of a conjunction, nested ones taken apart; a disjunction is refused."""
+    match query:
+        case All(parts):
+            return tuple(each for part in parts for each in _conjuncts(part))
+        case Any():
+            message = f"`{query}` is a disjunction, whose variables have no bindings to give"
+            raise ValueError(message)
+        case _:
+            return (query,)
+
+
+def unbound_of(query: Query) -> tuple[Variable, ...]:
+    """Return the variables of a query that occur only under `not`, which no other part binds."""
+    bound = {v for pattern, negated in _leaves(query) if not negated for v in pattern.variables}
+    return tuple(v for v in variables_of(query) if v not in bound)
+
+
+def _safe(query: Query) -> None:
+    """Refuse a query with a variable only under `not`: its instances have no bound."""
+    unbound = unbound_of(query)
+    if unbound:
+        message = f"variable `{unbound[0].name}` occurs only under `not`, so no part binds it"
+        raise ValueError(message)
+
+
+def _candidates(parts: tuple[_Part, ...], brave: Extension, mode: AnswerMode) -> Relation:
+    """Return the bindings each part without `not` entertains: some answer set has its instance.
+
+    By default an instance whose contrary some answer set has is entertained too, for it may be
+    false; cautious and brave read only its truth.
+    """
+    found = Relation((), frozenset({()}))
+    for part in parts:
+        if not isinstance(part, Not):
+            pattern = _pattern(part)
+            read = _entertained if mode is AnswerMode.DEFAULT else _unifiers
+            found = found.join(read(pattern, brave))
+    return found
+
+
+def _instance(parts: tuple[_Part, ...], substitution: Substitution) -> All:
+    """Return the conjunction of the parts' instances under `substitution`, which grounds them."""
+
+    def closed(part: Literal | Pattern) -> Literal:
+        return _closed(_pattern(part).apply(substitution))
+
+    return All(tuple(Not(closed(p.part)) if isinstance(p, Not) else closed(p) for p in parts))
+
+
+type _Judged = tuple[Row, Answer, dict[Answer, int]]
+"""A binding's values, its answer, and the index of the first member to give each answer alone."""
+
+
+def _judged(query: Query, members: Sequence[Atoms], mode: AnswerMode) -> list[_Judged]:
+    """Answer each binding of `query` some member entertains, in the order they are shown."""
+    parts = _conjuncts(query)
+    _safe(query)
+    variables = variables_of(query)
+    candidates = _candidates(parts, Extension(frozenset[Literal]().union(*members)), mode)
+    at = candidates.indices(variables)
+    judged: list[_Judged] = []
+    for row in candidates.rows:
+        values = tuple(row[i] for i in at)
+        instance = _instance(parts, Substitution(dict(zip(variables, values, strict=True))))
+        truths: set[Truth] = set()
+        first: dict[Answer, int] = {}
+        for index, member in enumerate(members, 1):
+            truth = evaluate(instance, member)
+            truths.add(truth)
+            first.setdefault(_ALONE[truth], index)
+        judged.append((values, decided(truths, mode), first))
+    order = ANSWERS[mode]
+    return sorted(judged, key=lambda each: (order.index(each[1]), each[0]))
+
+
+def answers(
+    query: Query, members: Sequence[AnswerSet], *, mode: AnswerMode = AnswerMode.DEFAULT
+) -> Answers:
+    """Answer each binding of a query's variables over answer sets given in the order read.
+
+    Raises `ValueError` for a disjunction, a variable only under `not`, or `_`.
+    """
+    judged = _judged(query, [member.atoms for member in members], mode)
+    return Answers(
+        tuple(v.name for v in variables_of(query)),
+        tuple(
+            Bound(
+                values,
+                answer_,
+                tuple(Taken(each, at, members[at - 1]) for each, at in first.items()),
+            )
+            for values, answer_, first in judged
+        ),
+    )
+
+
+def bindings(pattern: Pattern | All, view: WorldView) -> Bindings:
+    """Partition the bindings of a pattern, or a conjunction, by their answer over `view`.
+
+    Each binding its parts without `not` entertain is answered by default over the answer sets.
+    For one pattern, that is its unifiers with the cautious consequences (yes) and with their
+    contraries (no), and with the brave ones for the rest it entertains (unknown).
+    """
+    judged = _judged(pattern, tuple(view.members), AnswerMode.DEFAULT)
+    grouped = {
+        each: frozenset(v for v, a, _ in judged if a is each)
+        for each in ANSWERS[AnswerMode.DEFAULT]
+    }
+    return Bindings(grouped[Answer.YES], grouped[Answer.NO], grouped[Answer.UNKNOWN])
+
+
+@dataclass(frozen=True, slots=True)
 class Answered:
     """A query answered over the answer sets of a search, and the first to give each answer alone.
 
@@ -245,7 +398,7 @@ class Answered:
 
     query: Query
     over: Range
-    answer: Answer | Bindings
+    answer: Answer | Answers
     taken: tuple[Taken, ...]
     read: int | None
     unreached: tuple[Unreached, ...] = ()
@@ -264,16 +417,12 @@ def answered(
 ) -> Answered:
     """Answer `query` as `mode` does over every answer set of a search, in the order it read them.
 
-    A pattern with variables is answered by its bindings; it takes no one answer in an answer set.
+    A query with variables is answered by its bindings; it takes no one answer in an answer set.
     """
-    view = WorldView(frozenset(member.atoms for member in members), over)
     read = len(members)
-    if isinstance(query, Pattern) and query.variables:
-        if mode is not AnswerMode.DEFAULT:
-            message = f"`{query}` has variables, whose bindings are answered in the default mode"
-            raise ValueError(message)
-        return Answered(query, over, bindings(query, view), (), read)
-    found = answer(query, view, mode=mode)
+    if variables_of(query):
+        return Answered(query, over, answers(query, members, mode=mode), (), read, mode=mode)
+    found = answer(query, WorldView(frozenset(member.atoms for member in members), over), mode=mode)
     return Answered(query, over, found, taken(query, members), read, mode=mode)
 
 

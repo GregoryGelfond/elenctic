@@ -1504,3 +1504,21 @@ def test_ask_help_names_the_default_semantics(capsys: pytest.CaptureFixture[str]
     help_ = capsys.readouterr().out
     assert "Gelfond\N{EN DASH}Kahl three-valued" in help_
     assert "gk" not in help_
+
+
+def test_ask_of_a_conjunction_with_variables_writes_its_bindings_in_each_mode(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "r.lp", "r(a). r(b). { c(b); c(c) } = 1.\n")
+    code, out = run(capsys, "ask", path, "--json", "r(X), not c(X)")
+    found = json.loads(out)["ask"]["answer"]
+    assert code == AskExit.ANSWERED
+    assert found["kind"] == "answers"
+    assert found["variables"] == ["X"]
+    assert [(b["values"], b["answer"]) for b in found["bound"]] == [
+        (["a"], "yes"),
+        (["b"], "unknown"),
+    ]
+    code, out = run(capsys, "ask", path, "r(X), not c(X)", "--mode", "brave", "--json")
+    found = json.loads(out)["ask"]["answer"]
+    assert [(b["values"], b["answer"]) for b in found["bound"]] == [(["a"], "yes"), (["b"], "yes")]

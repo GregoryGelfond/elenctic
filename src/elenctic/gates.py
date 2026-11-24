@@ -48,10 +48,8 @@ def _signatures(part: Literal | Pattern | Not) -> frozenset[Signature]:
 def _read(reading: Reading) -> frozenset[Signature]:
     """Name the predicates a query reads, including each contrary, whatever its answer."""
     match reading:
-        case Asks(_, query):
+        case Asks(_, query) | Binds(_, query, _):
             return frozenset[Signature]().union(*(_signatures(part) for part in _parts(query)))
-        case Binds(_, pattern, _):
-            return _signatures(pattern)
         case _:
             return frozenset()
 

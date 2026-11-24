@@ -49,7 +49,7 @@ from elenctic.literals import Literal
 from elenctic.paint import Phrase, Piece, Role
 from elenctic.patterns import Pattern
 from elenctic.program import Fault
-from elenctic.query import ANSWERS, All, Answer, Answered, AnswerMode, Bindings
+from elenctic.query import ANSWERS, All, Answer, Answered, AnswerMode, Answers
 from elenctic.report import Entry, Internal
 from elenctic.spans import Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
@@ -331,12 +331,10 @@ def ask(
     return [top]
 
 
-def _bound(found: Bindings, pattern: Pattern) -> list[Row]:
-    """Build the rows of a pattern's bindings: its `yes` bindings, and the others it has."""
-    shown = [
-        each for each in ANSWERS[AnswerMode.DEFAULT] if each is Answer.YES or found.giving(each)
-    ]
-    return [Row((), said(bindings_of(each, pattern, found))) for each in shown]
+def _bound(found: Answers, query: All | Pattern, mode: AnswerMode) -> list[Row]:
+    """Build the rows of a query's bindings: its `yes` bindings, and the others it has."""
+    shown = [each for each in ANSWERS[mode] if each is Answer.YES or found.count(each)]
+    return [Row((), said(bindings_of(each, query, found))) for each in shown]
 
 
 def _answered(
@@ -344,8 +342,8 @@ def _answered(
 ) -> list[Row]:
     if not isinstance(result, Answered):
         return [Row((), unfound(result))]
-    if isinstance(result.answer, Bindings):
-        return _bound(result.answer, cast("Pattern", query))
+    if isinstance(result.answer, Answers):
+        return _bound(result.answer, query, result.mode)
     conjunction = cast("All", query)
     rows = [Row((), said(answering(result.answer)))]
     alone = conjunction.parts[0] if len(conjunction.parts) == 1 else None

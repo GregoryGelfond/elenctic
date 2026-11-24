@@ -343,7 +343,7 @@ def _parser() -> argparse.ArgumentParser:
         "query",
         type=_literal,
         metavar="QUERY",
-        help="literals, `not` before any, `{ a, not -b }`, or one pattern `{ p(X) }`, "
+        help="literals, `not` before any, `{ a, not -b }`, with variables `{ p(X), not q(X) }`, "
         "as `@query`; a full stop may end it",
     )
     ask.add_argument(

@@ -636,3 +636,12 @@ def test_optimal_counts_project_before_applying_the_answer_set_limit() -> None:
         "{ h(1..5) }. { a }. #minimize { 1 : a }. #show a/0.\n% @expect sat\n% @count optimal 1\n"
     )
     assert verdicts(text, limits=Limits(max_answer_sets=2)) == [P, P]
+
+
+def test_a_binding_query_over_a_conjunction_holds_when_its_bindings_are_exactly_stated() -> None:
+    text = "p(1). p(2). q(2). {r}.\n% @expect sat\n% @query yes { p(X), not q(X) } = { 1 }\n"
+    assert verdicts(text) == [Verdict.PASS, Verdict.PASS]
+    wrong = "p(1). p(2). q(2).\n% @expect sat\n% @query yes { p(X), not q(X) } = { 1, 2 }\n"
+    report = run(wrong)
+    assert [f.verdict for f in report.findings] == [Verdict.PASS, Verdict.FAIL]
+    assert report.findings[1].detail == "yes bindings expected { 1, 2 }, found { 1 }"

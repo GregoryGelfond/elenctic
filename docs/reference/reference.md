@@ -76,8 +76,8 @@ unless `--format` says otherwise.
 
 `elenctic why PATH ATOM` explains why the ground literal `ATOM` holds, or not, in one answer set of
 the program at `PATH`; a leading `not` is dropped, since the answer set says which. `elenctic ask
-PATH QUERY` answers a query, written as `@query` writes it (`{ a, not -b }`, or one pattern
-`{ p(X) }`; braces and a final full stop optional), over every answer set. Each takes `--format`, `--short`, `--json`, `--root`,
+PATH QUERY` answers a query, written as `@query` writes it (`{ a, not -b }`, or with variables,
+`{ p(X), not q(X) }`; braces and a final full stop optional), over every answer set. Each takes `--format`, `--short`, `--json`, `--root`,
 `--with`, `--max-seconds` and `--max-answer-sets` as `test` does, a refused root or `--with` file
 stopping it before it runs, and opens the interactive view as `explain` does; a `PATH` that is a
 directory is a usage error. And these:
@@ -164,7 +164,7 @@ stops at the first answer set to give the last of them. If a limit stops it firs
 still answered, and an answer it did not reach is `true in an answer set past the 100000 read:
 search ended: …`. A conjunction, a disjunction, or a query `--over optimal` reads every answer set,
 and names them `answer set 3 of 7`. A one-literal query ends with a `= help:` line giving the `why` command for that
-answer set. A pattern with variables writes `= yes bindings: { … }`, and the `no` and `unknown`
+answer set. A query with variables writes `= yes bindings: { … }`, and the `no` and `unknown`
 bindings when there are any. With no answer set, each shows the refutation; a search cut short shows
 what ended it.
 
@@ -291,7 +291,7 @@ of the same kind are independent claims: two `@answer-set` claims are two existe
 | `@cautious { L }` | `L` is in every answer set (⋂ AS(P)); computed by the solver |
 | `@brave { L }` | `L` is in some answer set (∪ AS(P)); computed by the solver |
 | `@query A { L, not L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`), over AS(P); only `,` separates its parts (`;` is refused) |
-| `@query A { p(X, b) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these; every variable is named (`_` is refused) |
+| `@query A { p(X, b), not q(X) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these; every variable is named (`_` is refused) and one part without `not` binds it |
 | `@query optimal A { L, … }`, `@query optimal A { p(X) } = { … }` | the same, over the optimal answer sets Opt(P) |
 | `@answer-set optimal { L }`, `@cautious optimal { L }`, `@brave optimal { L }` | the same, over the optimal answer sets Opt(P); `@optimal { L }` is `@answer-set optimal { L }` |
 | `@assign optimal { x=1, … }` | the same, over the optimal answer sets |
@@ -368,7 +368,7 @@ having the same name, and returns a `Unifier`: the two renamed patterns, the `Su
 makes them one, and `instance`, the pattern both become (the most general common instance). `unify`
 is the same unifier without the renaming: a variable of one pattern is the variable of the other with
 its name. Both rest on one algorithm (Martelli and Montanari, near-linear, without recursion), and
-queries are answered by it: a pattern's bindings are its unifiers with the cautious and brave
+queries are answered by it: a query's candidate bindings are its parts' unifiers with the brave
 consequences ([Semantics](../explanation/semantics.md)). Against a ground pattern there is nothing
 to rename, and `unify` and `mgu` find the same unifier.
 
@@ -456,11 +456,14 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `evaluate` | a query's `Truth` in one answer set |
 | `answer` | a query's `Answer` over a `WorldView`, as `mode=` answers it (default `AnswerMode.DEFAULT`) |
 | `answered` | a query answered over answer sets given in the order read: an `Answered` |
-| `Answered` | a query's `answer`, or its `Bindings` for a pattern with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached` |
+| `Answers` | the `Bound` instances of a query's variables, in its mode's answer order then value order; `giving(answer)` selects the values of one, `count(answer)` counts them |
+| `answers` | the `Answers` of a query with variables over answer sets, as `mode=` answers it: each instance of its positive parts entertained is grounded and answered |
+| `Answered` | a query's `answer`, or its `Answers` for a query with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached` |
 | `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it |
 | `Unreached` | an `answer` a query takes in some answer set alone, past the `read` answer sets a search read before `cut` stopped it |
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
-| `bindings` | the `Bindings` of a `Pattern` over a `WorldView`: its unifiers with the cautious consequences (yes, and no by the contrary), and with the brave ones for the rest it entertains (unknown) |
+| `bindings` | the `Bindings` of a `Pattern` or a conjunction with variables over a `WorldView`: its default `answers` grouped by answer |
+| `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |
@@ -490,7 +493,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `Entails` | `@cautious [optimal] { L }` and `@brave [optimal] { L }` |
 | `Costs` | `@cost { c1 c2 ... }` |
 | `Asks` | `@query [optimal] A { L, ... }`: a conjunction of ground literals has the answer `A` |
-| `Binds` | `@query [optimal] A { q(X, ...) } = { B }`: the bindings giving `A` are exactly `B` |
+| `Binds` | `@query [optimal] A { L, not L, ... } = { B }`, with variables: the bindings giving `A` are exactly `B` |
 | `Finding` | a claim, the verdict on it, its `Detail`: what was expected against what was found, and its `evidence`, `None` unless `explain` found some |
 | `Detail` | text, or an `Ended` when the search ended before it could settle the claim |
 | `Ended` | the `Truncation` that truncated the search, and whether an optimum went unproven; the text view words it, and in JSON it is the finding's `detail` |

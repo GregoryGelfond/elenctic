@@ -288,6 +288,14 @@ def test_a_query_reads_as_the_query_tag_reads_it() -> None:
     assert read_query("{ p(X, 1) }", "QUERY") == Pattern("p", (X, Number(1)))
 
 
+def test_a_query_with_variables_is_a_conjunction_of_its_parts_as_written() -> None:
+    reach, closed = Pattern("reach", (X,)), Pattern("closed", (X,))
+    assert read_query("reach(X), not closed(X)", "QUERY") == All((reach, Not(closed)))
+    assert read_query("{ not closed(X), reach(X), q }", "QUERY") == All(
+        (Not(closed), reach, Literal("q"))
+    )
+
+
 def test_a_query_reads_not_as_default_negation_of_the_literal_after_it() -> None:
     assert read_query("{ a, not -b }", "QUERY") == All(
         (Literal("a"), Not(Literal("b", positive=False)))
@@ -326,7 +334,9 @@ def test_a_syntax_error_in_a_query_is_placed_within_what_was_written(text: str) 
     ("text", "message"),
     [
         ("{ not not a }", "expected a literal"),
-        ("{ p(X), q }", "query with variables has one pattern"),
+        ("{ not p(X) }", "variable `X` occurs only under `not`"),
+        ("{ p(X), not q(X, Y) }", "variable `Y` occurs only under `not`"),
+        ("{ p(X), q(_) }", "anonymous variable"),
         ("{ p(_) }", "anonymous variable"),
         ("{ }", "expected at least one atom"),
     ],
