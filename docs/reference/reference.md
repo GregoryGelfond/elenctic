@@ -40,14 +40,15 @@ still run; a `--root` that is not a directory is a usage error. In the library t
 `check(program, root=…)`, by default chosen as on the command line for the program's file and its
 libraries; the library reads no home directory, so only the file system's root is too wide.
 
-A `--with` path is read from the working directory, as a `PATH` is, and its `#include`s are found
-as a case's are. Each case is loaded with every `--with` file, in the order given, after its own
-text; a `--with` file the case already loads, by `#include` or an earlier `--with`, is not loaded
-again (compared once links and `..` are resolved), so a `#const` in it cannot be defined twice. A
-`--with` file that cannot be read, lies outside `--root`, or carries a contract tag is refused
-(`FAULT`, 2) and no case runs; so is a file named both as a `PATH` and with `--with`. In the library
-the same is `Program(…, libraries=…)`, whose libraries `check` holds to its root as it does an
-included file; a program without a path finds its libraries as it finds an `#include`.
+A `--with` path is read from the working directory, as a `PATH` is, and its `#include`s are found as
+a case's are. Each case is loaded with every `--with` file, which clingo reads before the case's own
+text, the last given first; a `--with` file the case already loads, by `#include` or an earlier
+`--with`, is not loaded again (compared once links and `..` are resolved), so a `#const` in it
+cannot be defined twice. A `--with` file that cannot be read, lies outside `--root`, or carries a
+contract tag is refused (`FAULT`, 2) and no case runs; so is a file named both as a `PATH` and with
+`--with`. In the library the same is `Program(…, libraries=…)`, whose libraries `check` holds to its
+root as it does an included file; a program without a path finds its libraries as it finds an
+`#include`, and reads them after its text, in the order given.
 
 `elenctic version`, `elenctic --version` and `elenctic -V` print the same two lines on stdout and
 exit `REPORTED` (0); `version` is a command, so a file of that name is written `./version`.
