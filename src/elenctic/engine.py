@@ -441,12 +441,10 @@ def containment(program: Program, root: Path | None) -> Fault | None:
 def _unloadable(loaded: _Loaded) -> Diagnostic | None:
     """Say why clingo must not be given a file it loads: not regular, not UTF-8, or not lexable."""
     match loaded.text:
-        case IrregularFileError() as error:
+        case IrregularFileError() | UnicodeDecodeError() as error:
             return unreadable(loaded.name, error)
-        case UnicodeDecodeError() as error:
-            return unreadable(str(loaded.path), error)
         case str() as text:
-            return first_unlexable(text, str(loaded.path))
+            return first_unlexable(text, loaded.name)
         case None:
             return None
 

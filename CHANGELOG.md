@@ -111,8 +111,8 @@ All notable changes are recorded here. The format follows
   comments out the rest of its line, `#!` starts a comment, and a string ends on its line. A
   directive in a nested comment is not followed, one with a comment before its file is, and
   non-ASCII after a `"` that opens no string is refused instead of aborting the process.
-- An included file that is not UTF-8 is refused (`cannot read`, naming it) instead of aborting the
-  process.
+- An included file that is not UTF-8 is refused (`cannot read`) instead of aborting the process.
+  It, and one refused for non-ASCII outside strings, is named as clingo names it, not resolved.
 - A theory atom or objective, and a syntax or grounding error in a program given as text under a
   name, is placed in Unicode columns, as every other span is: after a string with non-ASCII text on
   the same line, its column and caret sat one place right for each extra byte.
