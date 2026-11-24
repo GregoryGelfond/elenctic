@@ -90,23 +90,25 @@ def evaluate(query: Query, member: Atoms) -> Truth:
     variables has bindings rather than a truth, and is refused.
     """
     match query:
-        case Pattern():
-            return evaluate(_closed(query), member)
+        case Pattern() | Literal():
+            return _present(_ground(query), member)
         case Not(part):
-            literal = _closed(part) if isinstance(part, Pattern) else part
-            return Truth.FALSE if literal in member else Truth.TRUE
-        case Literal():
-            return (
-                Truth.TRUE
-                if query in member
-                else Truth.FALSE
-                if query.contrary in member
-                else Truth.UNKNOWN
-            )
+            return Truth.FALSE if _ground(part) in member else Truth.TRUE
         case All(parts):
             return min((evaluate(part, member) for part in parts), default=Truth.TRUE)
         case Any(parts):
             return max((evaluate(part, member) for part in parts), default=Truth.FALSE)
+
+
+def _ground(part: Literal | Pattern) -> Literal:
+    return _closed(part) if isinstance(part, Pattern) else part
+
+
+def _present(literal: Literal, member: Atoms) -> Truth:
+    """Evaluate a literal in one answer set: true if in it, false if its contrary is."""
+    if literal in member:
+        return Truth.TRUE
+    return Truth.FALSE if literal.contrary in member else Truth.UNKNOWN
 
 
 def literal_of(query: Query) -> Literal | None:
@@ -492,19 +494,24 @@ def bodies(query: Query, truth: Truth) -> tuple[Body, ...]:
     if truth is Truth.UNKNOWN:
         message = "an unknown query has no body: it is neither true nor false"
         raise ValueError(message)
-    match query:
-        case Literal():
-            return ((str(query if truth is Truth.TRUE else query.contrary),),)
-        case Not(Literal() as part):
-            return ((f"not {part}" if truth is Truth.TRUE else str(part),),)
-        case All(parts) | Any(parts):
-            each = [bodies(part, truth) for part in parts]
-            if (truth is Truth.TRUE) is isinstance(query, All):
-                return _product(each)
-            return tuple(body for found in each for body in found)
-        case _:
-            message = f"`{query}` has variables: ground it first"
-            raise ValueError(message)
+    if variables_of(query):
+        message = f"`{query}` has variables: ground it first"
+        raise ValueError(message)
+    if not isinstance(query, All | Any):
+        return (_leaf(query, truth),)
+    each = [bodies(part, truth) for part in query.parts]
+    if (truth is Truth.TRUE) is isinstance(query, All):
+        return _product(each)
+    return tuple(body for found in each for body in found)
+
+
+def _leaf(part: _Part, truth: Truth) -> Body:
+    """Write the one literal that holds where a ground part has `truth`, true or false."""
+    if isinstance(part, Not):
+        literal = _ground(part.part)
+        return (f"not {literal}" if truth is Truth.TRUE else str(literal),)
+    literal = _ground(part)
+    return (str(literal if truth is Truth.TRUE else literal.contrary),)
 
 
 def _product(each: Sequence[tuple[Body, ...]]) -> tuple[Body, ...]:

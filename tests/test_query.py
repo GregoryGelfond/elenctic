@@ -25,6 +25,7 @@ from elenctic.query import (
     answered,
     answers,
     bindings,
+    bodies,
     bravely,
     evaluate,
     stream,
@@ -508,3 +509,30 @@ def test_a_brave_search_cut_before_any_yes_has_nothing_to_show() -> None:
     ground = bravely(All((Literal("c", (sym("a"),)),)), nothing, Range.ALL, Truncation.MAX_SECONDS)
     assert ground is not None
     assert (ground.answer, ground.cut) == (Answer.YES, Truncation.MAX_SECONDS)
+
+
+@pytest.mark.parametrize(
+    ("query", "true", "false"),
+    [
+        (P, (("p",),), (("-p",),)),
+        (Not(P), (("not p",),), (("p",),)),
+        (All((P, Not(Q))), (("p", "not q"),), (("-p",), ("q",))),
+        (Any((P, Not(Q))), (("p",), ("not q",)), (("-p", "q"),)),
+        (All(()), ((),), ()),
+        (Any(()), (), ((),)),
+        (Pattern("p", ()), (("p",),), (("-p",),)),
+        (Not(Pattern("p", ())), (("not p",),), (("p",),)),
+    ],
+)
+def test_rule_bodies_hold_exactly_where_the_query_is_true_or_false(
+    query: Query, true: tuple[tuple[str, ...], ...], false: tuple[tuple[str, ...], ...]
+) -> None:
+    assert bodies(query, Truth.TRUE) == true
+    assert bodies(query, Truth.FALSE) == false
+
+
+def test_rule_bodies_need_a_ground_query_and_a_true_or_false_truth() -> None:
+    with pytest.raises(ValueError, match="variables"):
+        bodies(Pattern("p", (X,)), Truth.TRUE)
+    with pytest.raises(ValueError, match="neither true nor false"):
+        bodies(P, Truth.UNKNOWN)

@@ -1,5 +1,6 @@
 """The query tag: a question put to the answer sets, with bindings if it has variables."""
 
+import re
 from typing import Final
 
 from elenctic.contract import Asks, Binds, Reading
@@ -87,18 +88,17 @@ def _open(items: tuple[Item, ...], where: Span) -> Parsed[Pattern | All]:
             return query
 
 
+_STRING: Final = re.compile(r'"(?:[^"\\]|\\.)*(?:"|\Z)', re.DOTALL)
+"""A string, which may hold `;` and parentheses; one left open runs to the end of the text."""
+
+
 def _separator(text: str) -> int | None:
     """Find the first `;` between the literals of `text`: outside strings and parentheses."""
-    depth, quoted, escaped = 0, False, False
-    for at, character in enumerate(text):
-        if quoted:
-            quoted = escaped or character != '"'
-            escaped = not escaped and character == "\\"
-        elif character == '"':
-            quoted = True
-        elif character in "()":
-            depth += 1 if character == "(" else -1
-        elif character == ";" and depth == 0:
+    bare = _STRING.sub(lambda found: " " * len(found.group()), text)
+    depth = 0
+    for at, character in enumerate(bare):
+        depth += {"(": 1, ")": -1}.get(character, 0)
+        if character == ";" and depth == 0:
             return at
     return None
 

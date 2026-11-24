@@ -33,6 +33,7 @@ from elenctic.human import (
 from elenctic.inquiry import Ask, AskExit, Why, WhyExit, ask, why
 from elenctic.json_view import inquiry_json, to_json
 from elenctic.literals import Literal, Scenario
+from elenctic.patterns import Pattern
 from elenctic.presentation import (
     Environment,
     Presentation,
@@ -44,7 +45,7 @@ from elenctic.presentation import (
 )
 from elenctic.program import Fault, Locus, Program, regular_text
 from elenctic.queries import read_query
-from elenctic.query import AnswerMode, variables_of
+from elenctic.query import All, AnswerMode, variables_of
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
@@ -907,19 +908,25 @@ def _why(arguments: argparse.Namespace, presentation: Presentation, home: Path |
     return outcome
 
 
+def _asked_query(arguments: argparse.Namespace) -> Parsed[All | Pattern]:
+    """Read the query `ask` was given, which `--unknown` needs to have variables."""
+    query = read_query(arguments.query, "QUERY")
+    if isinstance(query, Diagnostic) or not arguments.unknown or variables_of(query):
+        return query
+    return failure(
+        None,
+        "a query without variables has no unknown bindings to show",
+        help=("drop `--unknown`, which shows the unknown bindings of a query with variables",),
+    )
+
+
 def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path | None) -> AskExit:
     """Answer a query over the answer sets; the CLI only reads and writes."""
     inquired = _inquired(arguments, home)
     if isinstance(inquired, list):
         return _refused_all("ask", inquired, arguments, presentation, AskExit.FAULT)
     program, root = inquired
-    query = read_query(arguments.query, "QUERY")
-    if not isinstance(query, Diagnostic) and arguments.unknown and not variables_of(query):
-        query = failure(
-            None,
-            "a query without variables has no unknown bindings to show",
-            help=("drop `--unknown`, which shows the unknown bindings of a query with variables",),
-        )
+    query = _asked_query(arguments)
     if isinstance(query, Diagnostic):
         return _refuse(
             "ask", query, arguments, presentation, text=arguments.query, outcome=AskExit.FAULT

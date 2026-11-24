@@ -50,16 +50,18 @@ def roots(query: Query, atoms: Atoms, answer: Answer) -> list[Literal]:
 def _parts(query: Query) -> list[Literal | Not]:
     """List the ground parts a query is built of, in the order written."""
     match query:
-        case Literal():
-            return [query]
-        case Pattern():
-            closed = query.as_literal()
-            return [] if closed is None else [closed]
-        case Not(part):
-            closed = part.as_literal() if isinstance(part, Pattern) else part
-            return [] if closed is None else [Not(closed)]
         case All(parts) | Any(parts):
             return [each for part in parts for each in _parts(part)]
+        case Not(part):
+            return [Not(closed) for closed in _closed(part)]
+        case _:
+            return list(_closed(query))
+
+
+def _closed(part: Literal | Pattern) -> list[Literal]:
+    """Return the literal a part is, a ground pattern's included; none for one with variables."""
+    closed = part.as_literal() if isinstance(part, Pattern) else part
+    return [] if closed is None else [closed]
 
 
 def _root(part: Literal | Not, atoms: Atoms, answer: Answer) -> Literal | None:
