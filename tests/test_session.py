@@ -1470,3 +1470,19 @@ def test_a_witness_past_the_answer_sets_a_cut_search_read_is_left_to_what_it_did
     assert isinstance(warrant, Warrant)
     assert set(warrant.witnesses) <= set(answered.taken)
     assert len(answered.taken) == 1
+
+
+def test_an_unknowns_witnesses_are_the_first_answer_sets_not_true_and_not_false() -> None:
+    made = opened("{ x; y; z } = 1. a :- x. -a :- y.")
+    answered = made.answer(All((Literal("a", ()),)))
+    assert isinstance(answered, Answered)
+    assert answered.answer is Answer.UNKNOWN
+    warrant = made.warrant(answered)
+    assert isinstance(warrant, Warrant)
+
+    def first(*answers: Answer) -> int:
+        return min(each.index for each in answered.taken if each.answer in answers)
+
+    firsts = [first(Answer.NO, Answer.UNKNOWN), first(Answer.YES, Answer.UNKNOWN)]
+    assert [each.index for each in warrant.witnesses] == list(dict.fromkeys(firsts))
+    assert len(answered.taken) == 3

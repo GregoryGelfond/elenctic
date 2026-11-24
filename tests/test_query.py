@@ -28,6 +28,7 @@ from elenctic.query import (
     bodies,
     bravely,
     evaluate,
+    instance_of,
     stream,
 )
 from elenctic.terms import Compound, Term, Variable
@@ -403,6 +404,20 @@ def test_bindings_are_shown_yes_first_then_as_their_mode_orders_answers_then_by_
         ((Number(4),), Answer.UNKNOWN),
     ]
     assert [found.count(each) for each in (Answer.YES, Answer.NO, Answer.UNKNOWN)] == [2, 1, 1]
+
+
+def test_bindings_of_one_answer_are_in_order_of_value_however_many_there_are() -> None:
+    texts = [f"p({n})" for n in (17, 3, 29, 8, 41, 0, 12, 36, 5, 23, 2, 30, 11, 47, 19, 6)]
+    texts += ['p("b")', "p(c)", 'p("a")', "p(f(1))", "p(a)"]
+    found = answers(Pattern("p", (X,)), read(lits(*texts)))
+    values = [b.values for b in found.bound]
+    assert values == sorted(values)
+    assert len(values) == len(texts)
+
+
+def test_an_instance_needs_a_value_for_each_variable() -> None:
+    with pytest.raises(ValueError, match="shorter"):
+        instance_of(All((Pattern("p", (X, Y)),)), (Number(1),))
 
 
 def test_a_binding_false_in_every_answer_set_is_no() -> None:

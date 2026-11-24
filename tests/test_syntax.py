@@ -10,8 +10,9 @@ from elenctic.queries import read_query
 from elenctic.query import All, Not
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Position, Span
-from elenctic.syntax import Item, read_asked, read_literals, read_scenario, read_valuations
+from elenctic.syntax import Item, asked, read_asked, read_literals, read_scenario, read_valuations
 from elenctic.terms import Compound, Variable
+from elenctic.writer import queried
 from elenctic.writer import rows as rows_written
 
 WHERE = Span("c.lp", Position(7, 12), Position(7, 40))
@@ -308,13 +309,30 @@ def test_a_query_may_end_with_a_full_stop(text: str) -> None:
     assert read_query(text, "QUERY") == All((Literal("reach", (parse_term("b"),)),))
 
 
-@pytest.mark.parametrize(("text", "column"), [("a; b", 2), ("{ a, b ; c }", 8), ("a;", 2)])
+@pytest.mark.parametrize(
+    ("text", "column"), [("a; b", 2), ("{ a, b ; c }", 8), ("a;", 2), ("p(1); q", 5)]
+)
 def test_a_semicolon_between_literals_is_refused_where_it_stands(text: str, column: int) -> None:
     refused = read_query(text, "QUERY")
     assert isinstance(refused, Diagnostic)
     assert refused.message == "query uses a semicolon"
     assert refused.span == Span("QUERY", Position(1, column), Position(1, column + 1))
     assert [child.message for child in refused.children] == ["separate the literals with `,`"]
+
+
+def test_a_semicolon_in_a_pool_is_refused_as_the_pool_not_as_a_separator() -> None:
+    refused = read_query("p(a, (b;c))", "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert (refused.message, refused.label) == (
+        "`(b;c)` is not a pattern",
+        "a pool stands for several terms",
+    )
+
+
+def test_a_semicolon_on_a_later_line_is_refused_where_it_stands() -> None:
+    refused = read_query("a,\n b; c", "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert refused.span == Span("QUERY", Position(2, 3), Position(2, 4))
 
 
 def test_a_semicolon_inside_a_string_is_part_of_the_string() -> None:
@@ -350,3 +368,27 @@ def test_a_query_the_query_tag_would_refuse_is_refused(text: str, message: str) 
 @pytest.mark.parametrize("text", ["{ ab", "ab }"])
 def test_a_brace_left_open_is_not_taken_for_braces(text: str) -> None:
     assert isinstance(read_query(text, "QUERY"), Diagnostic)
+
+
+def test_what_a_command_was_given_is_placed_inside_its_braces_and_before_its_full_stop() -> None:
+    placed = asked(" { p(1) }. ", "QUERY")
+    assert placed.text == " p(1) "
+    assert placed.at == Span("QUERY", Position(1, 3), Position(1, 9))
+    assert placed.whole == Span("QUERY", Position(1, 1), Position(1, 12))
+
+
+def test_a_ground_query_is_written_with_not_after_the_literal_without_it() -> None:
+    p, q = Literal("p"), Literal("q")
+    assert queried(All((Not(p), q, p))) == "{ p, not p, q }"
+
+
+@pytest.mark.parametrize(
+    ("text", "start", "end"),
+    [("a,\n p(", Position(2, 3), Position(2, 4)), ("{ a,\n}", Position(2, 1), Position(2, 1))],
+)
+def test_a_syntax_error_past_a_later_line_is_placed_at_its_end(
+    text: str, start: Position, end: Position
+) -> None:
+    refused = read_query(text, "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert refused.span == Span("QUERY", start, end)
