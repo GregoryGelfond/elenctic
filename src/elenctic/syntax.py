@@ -142,10 +142,14 @@ def read_binding(text: str, variables: tuple[str, ...], source: str) -> Parsed[t
         return values
     missing = next((each for each in variables if each not in values), None)
     if missing is not None:
-        shape = ", ".join(f"{each} = \N{HORIZONTAL ELLIPSIS}" for each in variables)
-        bind = f"bind each of the query's variables: `{shape}`"
+        bind = f"bind each of the query's variables: `{binding_shape(variables)}`"
         return failure(where, f"the binding gives `{missing}` no value", help=(bind,))
     return tuple(values[each] for each in variables)
+
+
+def binding_shape(variables: tuple[str, ...]) -> str:
+    """Write the shape of a binding of `variables`, `X = …, Y = …`, as `ask` writes one."""
+    return ", ".join(f"{each} = \N{HORIZONTAL ELLIPSIS}" for each in variables)
 
 
 def _values(

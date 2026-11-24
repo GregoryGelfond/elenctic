@@ -1624,6 +1624,16 @@ def test_why_of_an_unknown_names_one_answer_set_where_it_is_not_true_and_one_not
     assert "refutation" not in out
 
 
+@pytest.mark.parametrize("query", ["a", "not a"])
+def test_why_names_its_witnesses_in_the_order_ask_names_them(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], query: str
+) -> None:
+    path = write(tmp_path, "ab.lp", "{ a; -a } = 1.\n")
+    _, asked = run(capsys, "ask", path, query)
+    _, warranted = run(capsys, "why", path, query)
+    assert warranted.splitlines()[3:6] == asked.splitlines()[3:6]
+
+
 @pytest.mark.parametrize(
     ("mode", "lines"),
     [
@@ -1697,7 +1707,6 @@ def test_why_of_a_query_with_variables_warrants_the_binding_written_as_ask_write
 @pytest.mark.parametrize(
     ("argv", "error"),
     [
-        (["{ r(X) }"], "error: a query with variables is warranted one binding at a time\n"),
         (["{ r(X) }", "--binding", "X = z"], "error: the query has no binding to X = z\n"),
         (["{ r(X) }", "--binding", "Y = a"], "error: `Y` is not a variable of the query\n"),
         (["r(a)", "--binding", "X = a"], "error: `X` is not a variable of the query\n"),
@@ -1715,6 +1724,19 @@ def test_why_refuses_a_query_binding_or_option_as_ask_does_where_it_does_nothing
     code, out, err = run_both(capsys, "why", path, *argv)
     assert (code, out) == (WhyExit.FAULT, "")
     assert err.startswith(error)
+
+
+def test_why_of_a_query_with_variables_and_no_binding_says_how_to_name_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "r.lp", "r(a).\n")
+    code, out, err = run_both(capsys, "why", path, "{ r(X), r(Y) }")
+    assert (code, out) == (WhyExit.FAULT, "")
+    assert err == (
+        f"error: a query with variables is warranted one binding at a time\n --> {path}\n  |\n"
+        "  = help: name one with `--binding 'X = \N{HORIZONTAL ELLIPSIS},"
+        " Y = \N{HORIZONTAL ELLIPSIS}'`, as `ask` writes it\n"
+    )
 
 
 def test_why_of_a_query_without_answer_sets_or_cut_short_says_why_as_ask_does(

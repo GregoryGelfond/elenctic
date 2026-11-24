@@ -13,27 +13,29 @@ All notable changes are recorded here. The format follows
   `--max-depth N|all` bounds how many absences deep it goes (default 3).
 - `elenctic why PATH QUERY`: what warrants the answer `ask` gives a query, in its `--mode`, or one
   binding's, `--binding 'X = a'`, under `--assuming L,…`, of all or `--over optimal`: the
-  `Warrant` below, in `ask`'s block, headed `why:` and the instance. `--answer-set K`: why `QUERY`, a ground literal, holds, or not, in the K-th answer set; the block
-  of `explain`, headed `why:` and the atom as it was asked, `not` kept. An option of one form given
-  to the other is refused. `elenctic ask PATH QUERY`: a query,
-  written as `@query` writes it, answered over the answer sets, with the first answer set taking
-  each value, or a pattern's bindings. A query, in `ask` and `@query`, may put `not` before a
-  literal (true where the literal is absent), may end with a full stop, and refuses `;`; a query
-  that starts with `-`, `ask PATH -p(X)`, is not taken for an option. `ask --mode
-  default|cautious|brave`: the Gelfond–Kahl three-valued answer, or `yes` / `not entailed`
-  (true in every answer set or not), or `yes` / `none holds` (true in some or none, naming only
-  answer sets where it is true); `Answer`
-  gains `NOT_ENTAILED` and `NONE_HOLDS`, and `Answered` its `mode`. A query with variables may be a
-  conjunction, `{ p(X), not q(X) }`, each instance answered over every answer set: `answers`,
-  `Answers` of `Bound`, and the JSON `answers` kind, which replaces `bindings` in `ask` output.
-  `ask` writes the bindings one a line, `= yes: X = a`, after their counts, and ends with `= no
-  more bindings`, in place of the grouped `= yes bindings: { … }`; `unknown` ones only with
-  `--unknown`. `stream` yields them in that order. A brave search cut short keeps the `yes` it
-  found, `Answered.cut` saying what cut it, and exits 1. `Session.warrant` gives what shows an answer, or
-  a binding's: `Warrant`, its witnesses (one answer set where it is true for `yes`; for `unknown`,
-  one where it is not true and one where it is not false) and, for an answer every answer set must
-  give, the refutation of the program kept to the answer sets that would overturn it. Each exits with its own outcome, `WhyExit` or `AskExit`;
-  `repl` stays reserved.
+  `Warrant` below, in `ask`'s block, headed `why:` and the instance. `--answer-set K`: why
+  `QUERY`, a ground literal, holds, or not, in the K-th answer set; the block of `explain`, headed
+  `why:` and the atom as it was asked, `not` kept. An option of one form given to the other is
+  refused.
+- `elenctic ask PATH QUERY`: a query, written as `@query` writes it, answered over the answer sets,
+  with the first answer set taking each value, or a pattern's bindings. A query, in `ask`, `why`
+  and `@query`, may put `not` before a literal (true where the literal is absent), may end with a
+  full stop, and refuses `;`; a query that starts with `-`, `ask PATH -p(X)`, is not taken for an
+  option. `ask --mode default|cautious|brave`: the Gelfond–Kahl three-valued answer, or `yes` /
+  `not entailed` (true in every answer set or not), or `yes` / `none holds` (true in some or none,
+  naming only answer sets where it is true); `Answer` gains `NOT_ENTAILED` and `NONE_HOLDS`, and
+  `Answered` its `mode`.
+- A query with variables may be a conjunction, `{ p(X), not q(X) }`, each instance answered over
+  every answer set: `answers`, `Answers` of `Bound`, and the JSON `answers` kind, which replaces
+  `bindings` in `ask` output. `ask` writes the bindings one a line, `= yes: X = a`, after their
+  counts, and ends with `= no more bindings`, in place of the grouped `= yes bindings: { … }`;
+  `unknown` ones only with `--unknown`. `stream` yields them in that order. A brave search cut
+  short keeps the `yes` it found, `Answered.cut` saying what cut it, and exits 1.
+- `Session.warrant` gives what shows an answer, or a binding's: `Warrant`, its witnesses (one
+  answer set where it is true for `yes`; for `unknown`, one where it is not true and one where it
+  is not false) and, for an answer every answer set must give, the refutation of the program kept
+  to the answer sets that would overturn it. `why` and `ask` each exit with their own outcome,
+  `WhyExit` or `AskExit`; `repl` stays reserved.
 - `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base
   encoding, loaded with every case after its own text, as clingo loads the files it is given. A
   file the case already loads is not loaded again. The root defaults to the directory that holds
@@ -44,12 +46,13 @@ All notable changes are recorded here. The format follows
   home directory, so only the file system's root is too wide. A JSON entry lists them as `libraries`.
 - `why` and `ask` take `--root DIR` and `--with` as `test` does, and a refused root or `--with`
   file stops them before they run; a `PATH` that is a directory is a usage error.
-- Library: `why(program, query, …)`, a `Warrant`, or given an `index`, an atom's `Explanation`, and
-  `ask(program, query, …)`; `Session.answer(query, scenario,
-  over=)`, `answered`, `Answered` and `Taken`. `Session.counterexample` gives the refutation when
+- Library: `why(program, query, …)`, a `Warrant`, or given an `index`, an atom's `Explanation`,
+  and `ask(program, query, …)`; `Session.answer(query, scenario, over=)`, `answered`, `Answered`
+  and `Taken`. `Session.counterexample` gives the refutation when
   there is no answer set.
 - JSON: `why` and `ask` write their result under their names, `{"schema": 1, "why": …}`; the schema
-  gains them, `answered`, `taken`, `bindings` and `warrant`, and a run is written as before.
+  gains them, `answered`, `taken`, `answers`, `bound`, `warrant` and the query part `not`, and a
+  run is written as before.
 - Library: `session(program, solver)` and `Session`, a `Grounded` with `counterexample(index,
   scenario, over=)`, `explain(literals, counterexample)`, `outrank(literals, scenario)` and
   `evidence(finding)`; `evidenced(report, program)`; the model: `Explanation`, `Counterexample`,

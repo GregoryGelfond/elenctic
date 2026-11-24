@@ -8,7 +8,7 @@ every rule instance that could derive each atom. Neither changes the answer sets
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from functools import cache, partial
-from typing import override
+from typing import Final, override
 
 from clingo import Model as ClingoModel
 from clingo.ast import AST
@@ -67,6 +67,9 @@ from elenctic.substitution import Substitution
 from elenctic.support import explain
 from elenctic.terms import Variable
 from elenctic.verdicts import Ended, Finding, Report, Verdict
+
+ONE_BINDING: Final = "a query with variables is warranted one binding at a time"
+"""Why a query with variables is not warranted as a whole."""
 
 
 @dataclass(slots=True)
@@ -584,8 +587,7 @@ def _bound(answers: Answers, values: tuple[Symbol, ...], cut: Truncation | None)
     Raise `ValueError` if the query has no such binding.
     """
     if not values:
-        message = "a query with variables is warranted one binding at a time"
-        raise ValueError(message)
+        raise ValueError(ONE_BINDING)
     found = next((each for each in answers.bound if each.values == values), None)
     if found is None and cut is not None:
         return Ended(cut)

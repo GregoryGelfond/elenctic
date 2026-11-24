@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum, auto
+from functools import partial
 from importlib import import_module
 from math import inf
 from pathlib import Path
@@ -51,9 +52,9 @@ from elenctic.query import All, Answered, AnswerMode, Warrant, instance_of, vari
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
-from elenctic.session import Session, evidenced, session
+from elenctic.session import ONE_BINDING, Session, evidenced, session
 from elenctic.spans import Diagnostic, Parsed, failure, first_unlexable, note, unreadable
-from elenctic.syntax import read_asked, read_binding, read_scenario
+from elenctic.syntax import binding_shape, read_asked, read_binding, read_scenario
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
 from elenctic.verdicts import Ended, Finding, Report
@@ -920,22 +921,8 @@ def _explain(
         return outcome
     source, asked = str(arguments.path), signed(atom, negated=negated)
     if arguments.view is View.TUI and not isinstance(result, Fault | Internal):
-        from elenctic import tui  # noqa: PLC0415
-
-        style = presentation.stdout
-        shown = tui.why_view(
-            source,
-            asked,
-            result,
-            style,
-            over=arguments.over,
-            lines_of=source_lines(program.text),
-            diagnosed=_diagnosed(style),
-            explained=lambda deeper: explained(atom, arguments.answer_set, deeper),
-            max_depth=depth,
-            text=program.text,
-        )
-        tui.show(shown, style)
+        deeper = partial(explained, atom, arguments.answer_set)
+        _why_view(arguments, presentation, explained, _Found(asked, result, deeper))
         return outcome
     form, spans, over = arguments.form, arguments.spans, arguments.over
     written = render_why(
@@ -1049,9 +1036,13 @@ def _warrant(
 
 def _binding(text: str | None, query: All | Pattern) -> Parsed[tuple[Symbol, ...]]:
     """Read the values of the binding `--binding` names, in the order of the query's variables."""
+    variables = tuple(each.name for each in variables_of(query))
+    if text is None and variables:
+        name = f"name one with `--binding '{binding_shape(variables)}'`, as `ask` writes it"
+        return failure(None, ONE_BINDING, help=(name,))
     if text is None:
         return ()
-    return read_binding(text, tuple(each.name for each in variables_of(query)), "--binding")
+    return read_binding(text, variables, "--binding")
 
 
 def _show_warrant(
@@ -1072,33 +1063,42 @@ def _show_warrant(
         case Fault() | Internal():
             _write(refused(result, presentation, form=form, source=source, text=text))
         case _ if interactive:
-            _unwarranted_view(source, queried(query), result, presentation, text)
+            unfound = _Found(queried(query), result, lambda _depth: result)
+            _why_view(arguments, presentation, explaining, unfound)
         case _:
             asked = queried(query)
             _write(render_why(source, asked, result, presentation, form=form, spans=False))
 
 
-def _unwarranted_view(
-    source: str,
-    asked: str,
-    result: Refutation | Ended,
+@dataclass(frozen=True, slots=True)
+class _Found:
+    """What `why` found for what was `asked`, and how to explain it `deeper`."""
+
+    asked: str
+    result: Explanation | Refutation | Ended
+    deeper: Callable[[int | Limit], Explanation | Refutation | Ended | Fault | Internal]
+
+
+def _why_view(
+    arguments: argparse.Namespace,
     presentation: Presentation,
-    text: str,
+    explaining: _Explaining,
+    found: _Found,
 ) -> None:
-    """Show in the interactive view why a query has no warrant: no answer set, or a cut search."""
+    """Show what `why` found in the interactive view: an explanation, or why there is none."""
     from elenctic import tui  # noqa: PLC0415
 
-    style = presentation.stdout
+    style, text = presentation.stdout, explaining.program.text
     shown = tui.why_view(
-        source,
-        asked,
-        result,
+        str(arguments.path),
+        found.asked,
+        found.result,
         style,
-        over=Range.ALL,
+        over=explaining.over,
         lines_of=source_lines(text),
         diagnosed=_diagnosed(style),
-        explained=lambda _depth: result,
-        max_depth=DEFAULT_MAX_DEPTH,
+        explained=found.deeper,
+        max_depth=DEFAULT_MAX_DEPTH if arguments.max_depth is None else arguments.max_depth,
         text=text,
     )
     tui.show(shown, style)

@@ -579,7 +579,7 @@ _WITNESSED: Final[Mapping[Answer, tuple[frozenset[Answer], ...]]] = {
     Answer.NOT_ENTAILED: (frozenset({Answer.NO, Answer.UNKNOWN}),),
     Answer.NONE_HOLDS: (),
 }
-"""For each answer, the answers alone that each of its witnesses may take, in the order shown."""
+"""For each answer, the answers alone that each of its witnesses may take."""
 
 
 def witnessed(
@@ -587,7 +587,8 @@ def witnessed(
 ) -> tuple[tuple[Taken, ...], tuple[Unreached, ...]]:
     """Choose the witnesses of an answer from the first answer sets to give each answer alone.
 
-    One a search did not read is not chosen: the answers of `unreached` that would have been are.
+    They keep the order the search read them in, as `ask` names them. One a search did not read is
+    not chosen: the answers of `unreached` that would have been are.
     """
     found: list[Taken] = []
     past: list[Unreached] = []
@@ -598,7 +599,7 @@ def witnessed(
             past += [each for each in unreached if each.answer in wanted and each not in past]
         elif first not in found:
             found.append(first)
-    return tuple(found), tuple(past)
+    return tuple(sorted(found, key=lambda each: each.index)), tuple(past)
 
 
 class Held(StrEnum):
