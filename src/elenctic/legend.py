@@ -43,7 +43,21 @@ from elenctic.explanation import (
 from elenctic.glyphs import Glyph
 from elenctic.literals import Assumption, Literal, Symbol
 from elenctic.paint import Phrase, Piece, Role
-from elenctic.query import ANSWERS, All, Answer, Answered, Answers, Taken, Unreached, stream
+from elenctic.query import (
+    ANSWERS,
+    REFUTED,
+    All,
+    Answer,
+    Answered,
+    Answers,
+    Held,
+    Query,
+    Taken,
+    Truth,
+    Unreached,
+    Warrant,
+    stream,
+)
 from elenctic.report import Run
 from elenctic.search import Limit
 from elenctic.spans import Severity, Span
@@ -471,7 +485,7 @@ def worded(answer: Answer) -> str:
     return answer.value.replace("_", " ")
 
 
-def taken(found: Taken, query: All, answered: Answered) -> Phrase:
+def taken(found: Taken, query: All, answered: Answered | Warrant) -> Phrase:
     """Word an answer a query takes in one answer set alone, and the first that gives it."""
     named = answer_set(found.index, answered.read, answered.over)
     return _shown(f"{_valued(found.answer, query)} in {named}", found.answer_set)
@@ -489,14 +503,55 @@ def unreached(found: Unreached, query: All) -> Phrase:
     )
 
 
+_KEPT: Final[Mapping[tuple[Truth, Held], str]] = {
+    (Truth.TRUE, Held.EVERYWHERE): "not true",
+    (Truth.FALSE, Held.EVERYWHERE): "not false",
+    (Truth.TRUE, Held.NOWHERE): "true",
+}
+"""What a query is in the answer sets that would overturn an answer every answer set must give."""
+
+
+def overturned(warrant: Warrant) -> Phrase | None:
+    """Word what shows that no answer set overturns an answer every one must give; else `None`.
+
+    Over all of them it is the refutation of the program kept to those that would; over the
+    optima, the search that read them all.
+    """
+    needed = REFUTED.get((warrant.mode, warrant.answer))
+    if needed is None:
+        return None
+    if warrant.refutation is None:
+        count = "" if warrant.read is None else f"{warrant.read} "
+        return said((Piece(READ, Role.EMPHASIS), Piece(f": all {count}optimal answer sets")))
+    kept = f"kept to the answer sets where it is {_KEPT[needed]}"
+    return said(
+        (Piece(REFUTATION, Role.EMPHASIS), Piece(f": {kept}, {refuted(warrant.refutation)}"))
+    )
+
+
+def conjoined(query: Query) -> All:
+    """Take a ground query as the conjunction a block writes: itself, or of its one part."""
+    return query if isinstance(query, All) else All((query,))
+
+
+def alone_of(query: All) -> Literal | None:
+    """Return the literal a query is of alone, if it is of one; `why` explains only such a query."""
+    match query.parts:
+        case (Literal() as alone,):
+            return alone
+        case _:
+            return None
+
+
 def _valued(answer: Answer, query: All) -> str:
     """Word the truth that gives `answer` in one answer set: of the query's literal, if alone."""
-    match answer, query.parts:
-        case Answer.YES, _:
+    alone = alone_of(query)
+    match answer:
+        case Answer.YES:
             return "true"
-        case Answer.NO, _:
+        case Answer.NO:
             return "false"
-        case _, (Literal() as alone,):
+        case _ if alone is not None:
             return f"neither {alone} nor {alone.contrary}"
         case _:
             return "neither true nor false"
@@ -578,6 +633,7 @@ def written(rule: Rule, substitution: str) -> Phrase:
 
 EVIDENCE_HEADING: Final = "evidence"
 REFUTATION: Final = "refutation"
+READ: Final = "read"
 NO_MORE: Final = said((Piece("no more bindings", Role.ASIDE),))
 """The line that ends a query's bindings; Prolog's `false.` there would read as `no`."""
 OUTRANKED: Final = "outranked: the objective ranks it below the optimum"

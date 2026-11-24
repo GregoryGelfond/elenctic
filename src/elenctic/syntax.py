@@ -103,6 +103,18 @@ def _valuation(where: Span, literal: AST, source: str) -> Parsed[Valuation]:
 
 def _equation(literal: AST) -> Valuation | None:
     """Read `term = integer` from a body literal, or None when it is anything else."""
+    sides = _equated(literal)
+    if sides is None:
+        return None
+    variable, value = (evaluate(str(side)) for side in sides)
+    if isinstance(variable, Symbol) and isinstance(value, Symbol):
+        number = integer(value)
+        return None if number is None else Valuation(variable, number)
+    return None
+
+
+def _equated(literal: AST) -> tuple[AST, AST] | None:
+    """Read the two sides of `a = b` from a body literal, or None when it is anything else."""
     atom = tree.child(literal, "atom")
     if tree.kind(literal) is not ASTType.Literal or tree.kind(atom) is not ASTType.Comparison:
         return None
@@ -110,13 +122,61 @@ def _equation(literal: AST) -> Valuation | None:
     if tree.number(literal, "sign") != Sign.NoSign or len(guards) != 1:
         return None
     guard = guards[0]
-    variable = evaluate(str(tree.child(atom, "term")))
-    value = evaluate(str(tree.child(guard, "term")))
-    equal = tree.number(guard, "comparison") == ComparisonOperator.Equal
-    if equal and isinstance(variable, Symbol) and isinstance(value, Symbol):
-        number = integer(value)
-        return None if number is None else Valuation(variable, number)
-    return None
+    if tree.number(guard, "comparison") != ComparisonOperator.Equal:
+        return None
+    return tree.child(atom, "term"), tree.child(guard, "term")
+
+
+def read_binding(text: str, variables: tuple[str, ...], source: str) -> Parsed[tuple[Symbol, ...]]:
+    """Read a binding of a query's variables as `ask` writes it, `X = a, Y = 1`, in their order.
+
+    Braces and a full stop may enclose and end it, as they do a query. Each variable takes one
+    value, and only the query's variables take one.
+    """
+    body, at, where = asked(text, source)
+    read = read_body(body, at)
+    if isinstance(read, Diagnostic):
+        return read
+    values = _values(read, variables, at, prefixed(body))
+    if isinstance(values, Diagnostic):
+        return values
+    missing = next((each for each in variables if each not in values), None)
+    if missing is not None:
+        shape = ", ".join(f"{each} = \N{HORIZONTAL ELLIPSIS}" for each in variables)
+        bind = f"bind each of the query's variables: `{shape}`"
+        return failure(where, f"the binding gives `{missing}` no value", help=(bind,))
+    return tuple(values[each] for each in variables)
+
+
+def _values(
+    literals: tuple[AST, ...], variables: tuple[str, ...], at: Span, given: str
+) -> Parsed[dict[str, Symbol]]:
+    """Read the value each `variable = term` gives, refusing anything else where it stands."""
+    values: dict[str, Symbol] = {}
+    for literal in literals:
+        span = place(at, span_of(literal, given))
+        pair = _binding(literal)
+        if pair is None:
+            expected = "expected `variable = term`"
+            return failure(span, f"{expected}, found `{literal}`", label=expected)
+        name, value = pair
+        if name not in variables:
+            return failure(
+                span, f"`{name}` is not a variable of the query", label="not in the query"
+            )
+        if name in values:
+            return failure(span, f"`{name}` is bound twice", label="bound before")
+        values[name] = value
+    return values
+
+
+def _binding(literal: AST) -> tuple[str, Symbol] | None:
+    """Read `variable = term` from a body literal, or None when it is anything else."""
+    sides = _equated(literal)
+    if sides is None or tree.kind(sides[0]) is not ASTType.Variable:
+        return None
+    value = evaluate(str(sides[1]))
+    return None if value is None else (tree.name(sides[0]), value)
 
 
 class Asked(NamedTuple):

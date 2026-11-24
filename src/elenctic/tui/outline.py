@@ -23,7 +23,9 @@ from elenctic.legend import (
     VERDICT_ROLES,
     WHY,
     Mark,
+    alone_of,
     answering,
+    conjoined,
     counterexample,
     faulted,
     heading,
@@ -32,6 +34,7 @@ from elenctic.legend import (
     label,
     mark,
     noted,
+    overturned,
     paying,
     ranking,
     reported,
@@ -49,7 +52,7 @@ from elenctic.literals import Literal
 from elenctic.paint import Phrase, Piece, Role
 from elenctic.patterns import Pattern
 from elenctic.program import Fault
-from elenctic.query import All, Answered, Answers
+from elenctic.query import All, Answer, Answered, Answers, Taken, Warrant
 from elenctic.report import Entry, Internal
 from elenctic.spans import Span
 from elenctic.verdicts import Ended, Finding, Report, Verdict
@@ -322,43 +325,56 @@ def why(
 def ask(
     source: str,
     query: All | Pattern,
-    result: Answered | Refutation | Ended,
+    result: Answering | Warrant,
     glyphs: Glyphs,
     *,
     unknown: bool = False,
 ) -> list[Row]:
-    """Build the rows of what `ask` found, beneath its heading.
+    """Build the rows of what `ask` found, or of the warrant `why` found, beneath its heading.
 
     Each answer set that gives a value of a one-literal query can be asked `why`; a query with
-    variables has a row for each binding, those `unknown` if asked.
+    variables has a row for each binding, those `unknown` if asked. A warrant is headed by the
+    instance it is of.
     """
+    if isinstance(result, Warrant):
+        instance = conjoined(result.query)
+        top = Row((), heading(Role.NOTE, WHY, queried(instance)))
+        top.children = _answering(source, instance, result, result.answer, glyphs)
+        return [top]
     top = Row((), heading(Role.NOTE, ASK, queried(query)))
-    top.children = _answered(source, query, result, glyphs, unknown=unknown)
+    if not isinstance(result, Answered):
+        top.children = [Row((), unfound(result))]
+    elif isinstance(result.answer, Answers):
+        found = streamed(result, result.answer, unknown=unknown)
+        top.children = [Row((), each) for each in found]
+    else:
+        top.children = _answering(source, cast("All", query), result, result.answer, glyphs)
     return [top]
 
 
-def _answered(
-    source: str,
-    query: All | Pattern,
-    result: Answered | Refutation | Ended,
-    glyphs: Glyphs,
-    *,
-    unknown: bool,
+def _answering(
+    source: str, query: All, result: Answered | Warrant, answer: Answer, glyphs: Glyphs
 ) -> list[Row]:
-    if not isinstance(result, Answered):
-        return [Row((), unfound(result))]
-    if isinstance(result.answer, Answers):
-        return [Row((), each) for each in streamed(result, result.answer, unknown=unknown)]
-    conjunction = cast("All", query)
-    rows = [Row((), said(answering(result.answer)))]
-    alone = conjunction.parts[0] if len(conjunction.parts) == 1 else None
-    for each in result.taken:
-        about = None if not isinstance(alone, Literal) else Asking(alone, each.index)
-        lead, phrase = _answer_set(taken(each, conjunction, result), glyphs)
+    """Build the rows of a ground query's answer and the answer sets that show it, as the text."""
+    shown = result.taken if isinstance(result, Answered) else result.witnesses
+    rows = [Row((), said(answering(answer))), *_named(query, result, shown, glyphs)]
+    rows += [Row(*_answer_set(unreached(past, query), glyphs)) for past in result.unreached]
+    kept = overturned(result) if isinstance(result, Warrant) else None
+    rows += [] if kept is None else [Row((), kept)]
+    alone = alone_of(query)
+    if alone is not None and shown:
+        rows.append(Row((), helped(shows_why(source, alone, shown[0], result.over))))
+    return rows
+
+
+def _named(
+    query: All, result: Answered | Warrant, shown: Sequence[Taken], glyphs: Glyphs
+) -> list[Row]:
+    """Build a row for each answer set an answer names; `why` explains one of a lone literal's."""
+    alone = alone_of(query)
+    rows: list[Row] = []
+    for each in shown:
+        about = None if alone is None else Asking(alone, each.index)
+        lead, phrase = _answer_set(taken(each, query, result), glyphs)
         rows.append(Row(lead, phrase, about=about))
-    for past in result.unreached:
-        lead, phrase = _answer_set(unreached(past, conjunction), glyphs)
-        rows.append(Row(lead, phrase))
-    if isinstance(alone, Literal) and result.taken:
-        rows.append(Row((), helped(shows_why(source, alone, result.taken[0], result.over))))
     return rows

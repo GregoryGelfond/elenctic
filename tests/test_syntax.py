@@ -10,7 +10,15 @@ from elenctic.queries import read_query
 from elenctic.query import All, Not
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Position, Span
-from elenctic.syntax import Item, asked, read_asked, read_literals, read_scenario, read_valuations
+from elenctic.syntax import (
+    Item,
+    asked,
+    read_asked,
+    read_binding,
+    read_literals,
+    read_scenario,
+    read_valuations,
+)
 from elenctic.terms import Compound, Variable
 from elenctic.writer import queried
 from elenctic.writer import rows as rows_written
@@ -392,3 +400,40 @@ def test_a_syntax_error_past_a_later_line_is_placed_at_its_end(
     refused = read_query(text, "QUERY")
     assert isinstance(refused, Diagnostic)
     assert refused.span == Span("QUERY", start, end)
+
+
+def test_a_binding_reads_as_ask_writes_it_in_the_order_of_the_variables() -> None:
+    assert read_binding('Y = "a,b", X = f(1)', ("X", "Y"), "--binding") == (
+        parse_term("f(1)"),
+        String("a,b"),
+    )
+    assert read_binding("{ X = -3 }.", ("X",), "--binding") == (Number(-3),)
+
+
+@pytest.mark.parametrize(
+    ("text", "message", "column"),
+    [
+        ("X = 1, p(Y)", "expected `variable = term`, found `p(Y)`", 8),
+        ("X = Z", "expected `variable = term`, found `X = Z`", 1),
+        ("X < 1", "expected `variable = term`, found `X < 1`", 1),
+        ("X = 1, Z = 2", "`Z` is not a variable of the query", 8),
+        ("X = 1, X = 2", "`X` is bound twice", 8),
+    ],
+)
+def test_a_binding_that_is_not_one_value_for_each_variable_is_refused_where_it_stands(
+    text: str, message: str, column: int
+) -> None:
+    refused = read_binding(text, ("X", "Y"), "--binding")
+    assert isinstance(refused, Diagnostic)
+    assert refused.message == message
+    assert refused.span is not None
+    assert (refused.span.source, refused.span.start.column) == ("--binding", column)
+
+
+def test_a_binding_without_a_value_for_some_variable_is_refused_naming_it() -> None:
+    refused = read_binding("Y = 1", ("X", "Y"), "--binding")
+    assert isinstance(refused, Diagnostic)
+    assert refused.message == "the binding gives `X` no value"
+    assert [child.message for child in refused.children] == [
+        "bind each of the query's variables: `X = …, Y = …`"
+    ]

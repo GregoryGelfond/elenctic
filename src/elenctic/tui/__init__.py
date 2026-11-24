@@ -9,12 +9,12 @@ from itertools import count
 
 from elenctic.determination import Range
 from elenctic.explanation import Explanation
-from elenctic.legend import signed, tally, titled
+from elenctic.legend import ASK, WHY, tally, titled
 from elenctic.literals import Literal
 from elenctic.patterns import Pattern
 from elenctic.presentation import Style
 from elenctic.program import Fault
-from elenctic.query import All
+from elenctic.query import All, Warrant
 from elenctic.report import Entry, Internal, Run
 from elenctic.search import Limit
 from elenctic.tui import outline
@@ -84,19 +84,18 @@ def run_view(  # noqa: PLR0913
 
 def why_view(  # noqa: PLR0913
     source: str,
-    atom: Literal,
+    asked: str,
     result: Explanation | outline.Unfound,
     style: Style,
     *,
     over: Range,
-    negated: bool,
     lines_of: Lines,
     diagnosed: Diagnosed,
     explained: Explained,
     max_depth: Depth,
     text: str | None,
 ) -> View:
-    """Make the view of what `why` found; going deeper explains the atom again, deeper."""
+    """Make the view of what `why` found, headed by what was `asked`; deeper explains it again."""
     glyphs = style.glyphs
 
     def found(_block: int, depth: Depth) -> list[Row]:
@@ -105,15 +104,14 @@ def why_view(  # noqa: PLR0913
             return _refused(diagnosed, again, text, source)
         return outline.explaining(again, glyphs, own=source, over=over)
 
-    asked = signed(atom, negated=negated)
     rows = outline.why(asked, result, glyphs, own=source, over=over)
-    return View(titled("why", source), (), rows, lines_of, max_depth, found)
+    return View(titled(WHY, source), (), rows, lines_of, max_depth, found)
 
 
 def ask_view(  # noqa: PLR0913
     source: str,
     query: All | Pattern,
-    result: outline.Answering,
+    result: outline.Answering | Warrant,
     style: Style,
     *,
     over: Range,
@@ -124,20 +122,22 @@ def ask_view(  # noqa: PLR0913
     text: str | None,
     unknown: bool = False,
 ) -> View:
-    """Make the view of what `ask` found; an answer set it names opens `why` on its literal."""
+    """Make the view of what `ask` found, or the warrant `why` found for a query.
+
+    An answer set it names opens `why` on its literal.
+    """
 
     def why(asking: Asking) -> View:
         first = why_of(asking.literal, asking.index, max_depth)
         if isinstance(first, Fault | Internal):
             rows = _refused(diagnosed, first, text, source)
-            return View(titled("why", source), (), rows, lines_of, max_depth, lambda _b, _d: rows)
+            return View(titled(WHY, source), (), rows, lines_of, max_depth, lambda _b, _d: rows)
         return why_view(
             source,
-            asking.literal,
+            str(asking.literal),
             first,
             style,
             over=over,
-            negated=False,
             lines_of=lines_of,
             diagnosed=diagnosed,
             explained=lambda depth: why_of(asking.literal, asking.index, depth),
@@ -146,8 +146,9 @@ def ask_view(  # noqa: PLR0913
         )
 
     rows = outline.ask(source, query, result, style.glyphs, unknown=unknown)
+    command = WHY if isinstance(result, Warrant) else ASK
     return View(
-        titled("ask", source), (), rows, lines_of, max_depth, lambda _b, _d: [], why, steps=False
+        titled(command, source), (), rows, lines_of, max_depth, lambda _b, _d: [], why, steps=False
     )
 
 

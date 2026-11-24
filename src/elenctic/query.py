@@ -553,14 +553,20 @@ class Warrant:
     `witnesses` are answer sets that show it, each with the answer the instance takes there alone:
     one where it is true for a `yes`, false for a `no`; for an `unknown`, one where it is not true
     and one where it is not false, one answer set when it is unknown there. An answer that needs
-    every answer set also has the `refutation` of the program asked for one that would overturn it.
-    A witness past the answer sets a cut search read is not here: the answer's `unreached` names it.
+    every answer set also has the `refutation` of the program asked for one that would overturn it,
+    over all of them; over the optima, the search having `read` them all shows it. A witness past
+    the answer sets a cut search read is not among them: `unreached` names it. `over` and `mode`
+    are those the query was answered with.
     """
 
     query: Query
     answer: Answer
     witnesses: tuple[Taken, ...]
     refutation: Refutation | None
+    unreached: tuple[Unreached, ...] = ()
+    over: Range = Range.ALL
+    read: int | None = None
+    mode: AnswerMode = AnswerMode.DEFAULT
 
 
 _WITNESSED: Final[Mapping[Answer, tuple[frozenset[Answer], ...]]] = {
@@ -576,18 +582,23 @@ _WITNESSED: Final[Mapping[Answer, tuple[frozenset[Answer], ...]]] = {
 """For each answer, the answers alone that each of its witnesses may take, in the order shown."""
 
 
-def witnessed(answer: Answer, taken: Sequence[Taken]) -> tuple[Taken, ...]:
+def witnessed(
+    answer: Answer, taken: Sequence[Taken], unreached: Sequence[Unreached] = ()
+) -> tuple[tuple[Taken, ...], tuple[Unreached, ...]]:
     """Choose the witnesses of an answer from the first answer sets to give each answer alone.
 
-    One a search did not read is not chosen.
+    One a search did not read is not chosen: the answers of `unreached` that would have been are.
     """
     found: list[Taken] = []
+    past: list[Unreached] = []
     for wanted in _WITNESSED[answer]:
         given = [each for each in taken if each.answer in wanted]
         first = min(given, key=lambda each: each.index, default=None)
-        if first is not None and first not in found:
+        if first is None:
+            past += [each for each in unreached if each.answer in wanted and each not in past]
+        elif first not in found:
             found.append(first)
-    return tuple(found)
+    return tuple(found), tuple(past)
 
 
 class Held(StrEnum):

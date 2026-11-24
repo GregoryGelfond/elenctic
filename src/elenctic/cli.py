@@ -15,8 +15,9 @@ from typing import Final
 
 from elenctic.about import VersionExit, package
 from elenctic.check import check
-from elenctic.determination import Range, Truncation, option
+from elenctic.determination import Range, Refutation, Truncation, option
 from elenctic.engine import common_root, held_root, loaded_libraries, shared_root
+from elenctic.explanation import Explanation
 from elenctic.human import (
     Format,
     Rendered,
@@ -30,9 +31,10 @@ from elenctic.human import (
     source_lines,
     version,
 )
-from elenctic.inquiry import Ask, AskExit, Why, WhyExit, ask, why
+from elenctic.inquiry import Ask, AskExit, WhyExit, ask, why
 from elenctic.json_view import inquiry_json, to_json
-from elenctic.literals import Literal, Scenario
+from elenctic.legend import conjoined, signed
+from elenctic.literals import Literal, Scenario, Symbol
 from elenctic.patterns import Pattern
 from elenctic.presentation import (
     Environment,
@@ -45,16 +47,17 @@ from elenctic.presentation import (
 )
 from elenctic.program import Fault, Locus, Program, regular_text
 from elenctic.queries import read_query
-from elenctic.query import All, AnswerMode, variables_of
+from elenctic.query import All, Answered, AnswerMode, Warrant, instance_of, variables_of
 from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.session import Session, evidenced, session
 from elenctic.spans import Diagnostic, Parsed, failure, first_unlexable, note, unreadable
-from elenctic.syntax import read_asked, read_scenario
+from elenctic.syntax import read_asked, read_binding, read_scenario
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
-from elenctic.verdicts import Finding, Report
+from elenctic.verdicts import Ended, Finding, Report
+from elenctic.writer import queried
 
 DEFAULT_MAX_SECONDS: Final = 30.0
 DEFAULT_MAX_ANSWER_SETS: Final = 100_000
@@ -253,16 +256,19 @@ def _program_options(command: argparse.ArgumentParser) -> None:
     )
 
 
-def _depth(command: argparse.ArgumentParser) -> None:
-    """Give a command that explains the options of how deep and how fully it shows the tree."""
+def _depth(command: argparse.ArgumentParser, default: int | None = DEFAULT_MAX_DEPTH) -> None:
+    """Give a command that explains the options of how deep and how fully it shows the tree.
+
+    A `default` of `None` lets the command tell an option given from one left out.
+    """
     command.add_argument(
         "--max-depth",
         type=_depth_limit,
-        default=DEFAULT_MAX_DEPTH,
+        default=default,
         metavar="N|all",
         help=(
             "how many absent atoms deep an explanation goes, or `all` for no limit "
-            "(default: %(default)s)"
+            f"(default: {DEFAULT_MAX_DEPTH})"
         ),
     )
     command.add_argument(
@@ -285,6 +291,29 @@ def _asking(command: argparse.ArgumentParser, written: str) -> None:
         help="all the answer sets, or only the optimal ones (default: all)",
     )
     _limited(command)
+
+
+QUERY_HELP: Final = (
+    "literals, `not` before any, `{ a, not -b }`, with variables `{ p(X), not q(X) }`, as "
+    "`@query`; a full stop may end it"
+)
+"""The help of the `QUERY` that `ask` and `why` take."""
+
+
+def _mode(command: argparse.ArgumentParser, default: AnswerMode | None) -> None:
+    """Give a command that answers a query the `--mode` it answers in.
+
+    A `default` of `None` lets the command tell the option given from one left out.
+    """
+    command.add_argument(
+        "--mode",
+        choices=list(AnswerMode),
+        type=AnswerMode,
+        default=default,
+        help="default: the Gelfond\N{EN DASH}Kahl three-valued semantics, yes if true in every "
+        "answer set, no if false in every one, else unknown; cautious: yes if true in every one, "
+        "else not entailed; brave: yes if true in some, else none holds (default: default)",
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -315,21 +344,30 @@ def _parser() -> argparse.ArgumentParser:
     _checking(explain, "the run, with the evidence", INTERACTIVE)
     _depth(explain)
     why = commands.add_parser(
-        "why", parents=options, help="show why an atom holds, or not, in an answer set"
+        "why",
+        parents=options,
+        help="show what warrants a query's answer, or why an atom holds, or not, in an answer set",
     )
-    _asking(why, "the explanation")
+    _asking(why, "the warrant or the explanation")
     why.add_argument(
-        "atom",
+        "query",
         type=_literal,
-        metavar="ATOM",
-        help="the ground literal asked about: `p(a)`, `-p`",
+        metavar="QUERY",
+        help=f"{QUERY_HELP}; with --answer-set, one ground literal, `p(a)`, `not -p`",
     )
     why.add_argument(
         "--answer-set",
         type=_index,
-        default=1,
         metavar="K",
-        help="the answer set explained, counted from 1 among those --over reads (default: 1)",
+        help="explain QUERY in the K-th answer set, counted from 1 among those --over reads, "
+        "rather than warrant its answer",
+    )
+    _mode(why, None)
+    why.add_argument(
+        "--binding",
+        metavar="X = V,...",
+        help="the binding of a query with variables whose answer is warranted, as `ask` writes "
+        "it: `X = a, Y = 1`",
     )
     why.add_argument(
         "--assuming",
@@ -337,25 +375,11 @@ def _parser() -> argparse.ArgumentParser:
         metavar="L,...",
         help="literals assumed, `p` or `not p`, as `assuming { ... }` writes them",
     )
-    _depth(why)
+    _depth(why, None)
     ask = commands.add_parser("ask", parents=options, help="answer one query over the answer sets")
     _asking(ask, "the answer")
-    ask.add_argument(
-        "query",
-        type=_literal,
-        metavar="QUERY",
-        help="literals, `not` before any, `{ a, not -b }`, with variables `{ p(X), not q(X) }`, "
-        "as `@query`; a full stop may end it",
-    )
-    ask.add_argument(
-        "--mode",
-        choices=list(AnswerMode),
-        type=AnswerMode,
-        default=AnswerMode.DEFAULT,
-        help="default: the Gelfond\N{EN DASH}Kahl three-valued semantics, yes if true in every "
-        "answer set, no if false in every one, else unknown; cautious: yes if true in every one, "
-        "else not entailed; brave: yes if true in some, else none holds (default: default)",
-    )
+    ask.add_argument("query", type=_literal, metavar="QUERY", help=QUERY_HELP)
+    _mode(ask, AnswerMode.DEFAULT)
     ask.add_argument(
         "--unknown",
         action="store_true",
@@ -829,18 +853,34 @@ def _refused_all[Outcome: IntEnum](
     return outcome
 
 
+_WARRANTING: Final = {"mode": "--mode", "binding": "--binding"}
+"""The options only a query's warrant takes, by their names in the arguments."""
+_EXPLAINING: Final = {"max_depth": "--max-depth", "spans": "--spans"}
+"""The options only an explanation of one answer set takes, by their names in the arguments."""
+
+
+def _unused(arguments: argparse.Namespace) -> Diagnostic | None:
+    """Refuse an option of one form of `why` given to the other, where it would do nothing."""
+    explaining = arguments.answer_set is not None
+    given = _WARRANTING if explaining else _EXPLAINING
+    found = next((f for k, f in given.items() if getattr(arguments, k) not in {None, False}), None)
+    if found is None:
+        return None
+    if explaining:
+        message, takes = f"`{found}` has no effect with `--answer-set`", "a query's warrant takes"
+    else:
+        message, takes = f"`{found}` has no effect without `--answer-set`", "an explanation takes"
+    return failure(None, message, help=(f"drop `{found}`, which only {takes}",))
+
+
 def _why(arguments: argparse.Namespace, presentation: Presentation, home: Path | None) -> WhyExit:
-    """Explain an atom in the answer set asked for; the CLI only reads and writes."""
+    """Warrant a query's answer, or explain an atom in the answer set asked for.
+
+    The CLI only reads and writes.
+    """
     inquired = _inquired(arguments, home)
     if isinstance(inquired, list):
         return _refused_all("why", inquired, arguments, presentation, WhyExit.FAULT)
-    program, root = inquired
-    read = read_asked(arguments.atom, "ATOM")
-    if isinstance(read, Diagnostic):
-        return _refuse(
-            "why", read, arguments, presentation, text=arguments.atom, outcome=WhyExit.FAULT
-        )
-    atom, negated = read
     assumed = arguments.assuming
     scenario: Parsed[Scenario] = (
         frozenset() if assumed is None else read_scenario(assumed, "--assuming")
@@ -849,63 +889,219 @@ def _why(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         return _refuse(
             "why", scenario, arguments, presentation, text=assumed, outcome=WhyExit.FAULT
         )
-    limits, interrupt = _searching(arguments)
+    unused = _unused(arguments)
+    if unused is not None:
+        return _refuse("why", unused, arguments, presentation, text=None, outcome=WhyExit.FAULT)
+    if arguments.answer_set is None:
+        return _warrant(arguments, presentation, inquired, scenario)
+    return _explain(arguments, presentation, inquired, scenario)
 
-    def explained(depth: int | Limit) -> Why | Internal:
-        try:
-            return why(
-                program,
-                atom,
-                index=arguments.answer_set,
-                scenario=scenario,
-                over=arguments.over,
-                limits=limits,
-                interrupt=interrupt,
-                max_depth=depth,
-                root=root,
-            )
-        except Exception as error:  # noqa: BLE001
-            return Internal.of(error)
 
-    result = explained(arguments.max_depth)
+def _explain(
+    arguments: argparse.Namespace,
+    presentation: Presentation,
+    inquired: tuple[Program, Path],
+    scenario: Scenario,
+) -> WhyExit:
+    """Explain an atom in the answer set asked for."""
+    program, root = inquired
+    read = read_asked(arguments.query, "QUERY")
+    if isinstance(read, Diagnostic):
+        return _refuse(
+            "why", read, arguments, presentation, text=arguments.query, outcome=WhyExit.FAULT
+        )
+    atom, negated = read
+    explained = _Explaining(program, root, scenario, arguments.over, _searching(arguments))
+    depth = DEFAULT_MAX_DEPTH if arguments.max_depth is None else arguments.max_depth
+    result = explained(atom, arguments.answer_set, depth)
     outcome = WhyExit.of(result)
     if arguments.view is View.JSON:
         sys.stdout.write(inquiry_json("why", result, outcome))
         return outcome
-    source = str(arguments.path)
+    source, asked = str(arguments.path), signed(atom, negated=negated)
     if arguments.view is View.TUI and not isinstance(result, Fault | Internal):
         from elenctic import tui  # noqa: PLC0415
 
         style = presentation.stdout
         shown = tui.why_view(
             source,
-            atom,
+            asked,
             result,
             style,
             over=arguments.over,
-            negated=negated,
             lines_of=source_lines(program.text),
             diagnosed=_diagnosed(style),
-            explained=explained,
-            max_depth=arguments.max_depth,
+            explained=lambda deeper: explained(atom, arguments.answer_set, deeper),
+            max_depth=depth,
             text=program.text,
         )
         tui.show(shown, style)
         return outcome
-    _write(
-        render_why(
-            source,
-            atom,
-            result,
-            presentation,
-            form=arguments.form,
-            spans=arguments.spans,
-            over=arguments.over,
-            negated=negated,
-            text=program.text,
-        )
+    form, spans, over = arguments.form, arguments.spans, arguments.over
+    written = render_why(
+        source, asked, result, presentation, form=form, spans=spans, over=over, text=program.text
     )
+    _write(written)
     return outcome
+
+
+@dataclass(frozen=True, slots=True)
+class _Explaining:
+    """What explains a literal of `program` in one answer set, as `why --answer-set` does."""
+
+    program: Program
+    root: Path
+    scenario: Scenario
+    over: Range
+    searching: tuple[Limits, Interrupt]
+
+    def __call__(
+        self, literal: Literal, index: int, depth: int | Limit
+    ) -> Explanation | Refutation | Ended | Fault | Internal:
+        """Explain `literal` in the `index`-th answer set, `depth` absences deep."""
+        limits, interrupt = self.searching
+        try:
+            return why(
+                self.program,
+                literal,
+                index=index,
+                scenario=self.scenario,
+                over=self.over,
+                limits=limits,
+                interrupt=interrupt,
+                max_depth=depth,
+                root=self.root,
+            )
+        except Exception as error:  # noqa: BLE001
+            return Internal.of(error)
+
+
+def _answer_view(
+    arguments: argparse.Namespace,
+    presentation: Presentation,
+    query: All | Pattern,
+    result: Answered | Warrant | Refutation | Ended,
+    explaining: _Explaining,
+) -> None:
+    """Show what `ask` found, or `why`'s warrant, in the interactive view."""
+    from elenctic import tui  # noqa: PLC0415
+
+    style, text = presentation.stdout, explaining.program.text
+    shown = tui.ask_view(
+        str(arguments.path),
+        query,
+        result,
+        style,
+        over=arguments.over,
+        lines_of=source_lines(text),
+        diagnosed=_diagnosed(style),
+        why_of=explaining,
+        max_depth=DEFAULT_MAX_DEPTH,
+        text=text,
+        unknown=arguments.command == "ask" and arguments.unknown,
+    )
+    tui.show(shown, style)
+
+
+def _warrant(
+    arguments: argparse.Namespace,
+    presentation: Presentation,
+    inquired: tuple[Program, Path],
+    scenario: Scenario,
+) -> WhyExit:
+    """Show what warrants a query's answer, or that of one binding, as `ask` answers it."""
+    program, root = inquired
+    query = read_query(arguments.query, "QUERY")
+    if isinstance(query, Diagnostic):
+        return _refuse(
+            "why", query, arguments, presentation, text=arguments.query, outcome=WhyExit.FAULT
+        )
+    values = _binding(arguments.binding, query)
+    if isinstance(values, Diagnostic):
+        return _refuse(
+            "why", values, arguments, presentation, text=arguments.binding, outcome=WhyExit.FAULT
+        )
+    explaining = _Explaining(program, root, scenario, arguments.over, _searching(arguments))
+    limits, interrupt = explaining.searching
+    mode = AnswerMode.DEFAULT if arguments.mode is None else arguments.mode
+    try:
+        result: Warrant | Refutation | Ended | Fault | Internal = why(
+            program,
+            query,
+            values=values,
+            mode=mode,
+            scenario=scenario,
+            over=arguments.over,
+            limits=limits,
+            interrupt=interrupt,
+            root=root,
+        )
+    except Exception as error:  # noqa: BLE001
+        result = Internal.of(error)
+    outcome = WhyExit.of(result)
+    if arguments.view is View.JSON:
+        sys.stdout.write(inquiry_json("why", result, outcome))
+    else:
+        asked = conjoined(instance_of(query, values)) if values else query
+        _show_warrant(arguments, presentation, asked, result, explaining)
+    return outcome
+
+
+def _binding(text: str | None, query: All | Pattern) -> Parsed[tuple[Symbol, ...]]:
+    """Read the values of the binding `--binding` names, in the order of the query's variables."""
+    if text is None:
+        return ()
+    return read_binding(text, tuple(each.name for each in variables_of(query)), "--binding")
+
+
+def _show_warrant(
+    arguments: argparse.Namespace,
+    presentation: Presentation,
+    query: All | Pattern,
+    result: Warrant | Refutation | Ended | Fault | Internal,
+    explaining: _Explaining,
+) -> None:
+    """Show `why`'s warrant as `ask`'s answer is shown, or why there is none as `why` shows it."""
+    source, text, form = str(arguments.path), explaining.program.text, arguments.form
+    interactive = arguments.view is View.TUI
+    match result:
+        case Warrant() if interactive:
+            _answer_view(arguments, presentation, query, result, explaining)
+        case Warrant():
+            _write(render_ask(source, query, result, presentation, form=form, text=text))
+        case Fault() | Internal():
+            _write(refused(result, presentation, form=form, source=source, text=text))
+        case _ if interactive:
+            _unwarranted_view(source, queried(query), result, presentation, text)
+        case _:
+            asked = queried(query)
+            _write(render_why(source, asked, result, presentation, form=form, spans=False))
+
+
+def _unwarranted_view(
+    source: str,
+    asked: str,
+    result: Refutation | Ended,
+    presentation: Presentation,
+    text: str,
+) -> None:
+    """Show in the interactive view why a query has no warrant: no answer set, or a cut search."""
+    from elenctic import tui  # noqa: PLC0415
+
+    style = presentation.stdout
+    shown = tui.why_view(
+        source,
+        asked,
+        result,
+        style,
+        over=Range.ALL,
+        lines_of=source_lines(text),
+        diagnosed=_diagnosed(style),
+        explained=lambda _depth: result,
+        max_depth=DEFAULT_MAX_DEPTH,
+        text=text,
+    )
+    tui.show(shown, style)
 
 
 def _asked_query(arguments: argparse.Namespace) -> Parsed[All | Pattern]:
@@ -950,38 +1146,8 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         return outcome
     source = str(arguments.path)
     if arguments.view is View.TUI and not isinstance(result, Fault | Internal):
-        from elenctic import tui  # noqa: PLC0415
-
-        def why_of(literal: Literal, index: int, depth: int | Limit) -> Why | Internal:
-            try:
-                return why(
-                    program,
-                    literal,
-                    index=index,
-                    over=arguments.over,
-                    limits=limits,
-                    interrupt=interrupt,
-                    max_depth=depth,
-                    root=root,
-                )
-            except Exception as error:  # noqa: BLE001
-                return Internal.of(error)
-
-        style = presentation.stdout
-        shown = tui.ask_view(
-            source,
-            query,
-            result,
-            style,
-            over=arguments.over,
-            lines_of=source_lines(program.text),
-            diagnosed=_diagnosed(style),
-            why_of=why_of,
-            max_depth=DEFAULT_MAX_DEPTH,
-            text=program.text,
-            unknown=arguments.unknown,
-        )
-        tui.show(shown, style)
+        explaining = _Explaining(program, root, frozenset(), arguments.over, (limits, interrupt))
+        _answer_view(arguments, presentation, query, result, explaining)
         return outcome
     form = arguments.form
     rendered = render_ask(

@@ -79,13 +79,15 @@ set, with nothing to explain. For `@cautious`, `@brave` and `@expect unsat` the 
 answer set, so its name gives no count: `answer set 1`, not `answer set 1 of 7`. Claims about counts, witnesses, assignments, costs and bindings have no evidence yet, and
 neither has an undecided claim. `test` computes none, so it is as fast as it was.
 
-**`why` explains an answer set it is asked for; `ask` answers as `@query` does.** `why` picks the
-K-th answer set the search reads, of AS(P) or of Opt(P), and explains its atom by the two rules
-below: present, or absent by default negation, whether or not its contrary holds. Which answer set
-is K-th depends on enumeration order, as nothing else here does. `ask` keeps the three values: an
-atom in no answer set and whose contrary is in none is `unknown`, never `no`. Beside the answer it
-names, for each value the query takes in one answer set alone, the first answer set taking it;
-that answer set too depends on order, the answer does not.
+**`ask` answers as `@query` does; `why` warrants that answer, or explains an answer set it is asked
+for.** `ask` keeps the three values: an atom in no answer set and whose contrary is in none is
+`unknown`, never `no`. Beside the answer it names, for each value the query takes in one answer set
+alone, the first answer set taking it; that answer set depends on enumeration order, the answer does
+not. `why` of a query shows that answer by those answer sets, and an answer every answer set must
+give also by a refutation: no answer set of the program would overturn it, which no order changes.
+`why --answer-set K` picks the K-th answer set the search reads, of AS(P) or of Opt(P), and
+explains its atom by the two rules below: present, or absent by default negation, whether or not
+its contrary holds. Which answer set is K-th depends on enumeration order too.
 
 **Presence is well-founded support; it is sound, not minimal.** An atom that holds gets one ground
 rule instance whose body holds, each of whose positive atoms got its own before it, so the support

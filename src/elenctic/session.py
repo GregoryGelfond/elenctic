@@ -33,7 +33,7 @@ from elenctic.determination import (
     Refutation,
     Truncation,
 )
-from elenctic.engine import Controlled, controlled, ground, parsed, possible_atoms, sources
+from elenctic.engine import Controlled, controlled, parsed, possible_atoms, sources
 from elenctic.explanation import Counterexample, Evidence, Explanation, Outranked, Paid
 from elenctic.grounded import Grounded
 from elenctic.instances import Instances, Payment, instances
@@ -45,6 +45,7 @@ from elenctic.query import (
     Answered,
     AnswerMode,
     Answers,
+    Bound,
     Held,
     Query,
     ReadAnswers,
@@ -415,16 +416,18 @@ class Session(Grounded):
         Its witnesses are answer sets the search read. An answer that needs every answer set is
         also shown by the refutation of the program with a constraint that keeps only the answer
         sets that would overturn it; over the optima, the search having read them all shows it.
-        `Ended` when that search is cut. Raises `ValueError` for values the query has no binding to.
+        `Ended` when that search is cut, or the cut search that answered did not read the binding.
+        Raises `ValueError` for values the query has no binding to.
         """
-        answer, taken = answered.answer, answered.taken
-        if isinstance(answer, Answers) or values:
-            bound = answer.bound if isinstance(answer, Answers) else ()
-            found = [each for each in bound if each.values == values]
-            if not found:
-                message = f"the query has no binding to {', '.join(map(str, values))}"
-                raise ValueError(message)
-            answer, taken = found[0].answer, found[0].taken
+        answer, taken, unreached = answered.answer, answered.taken, answered.unreached
+        if isinstance(answer, Answers):
+            bound = _bound(answer, values, answered.cut)
+            if isinstance(bound, Ended):
+                return bound
+            answer, taken, unreached = bound.answer, bound.taken, ()
+        elif values:
+            message = "a query without variables has no binding to warrant"
+            raise ValueError(message)
         query = instance_of(answered.query, values)
         refuted = REFUTED.get((answered.mode, answer))
         refutation = None
@@ -433,7 +436,9 @@ class Session(Grounded):
             if isinstance(overturned, Ended):
                 return overturned
             refutation = overturned
-        return Warrant(query, answer, witnessed(answer, taken), refutation)
+        witnesses, past = witnessed(answer, taken, unreached)
+        over, read, mode = answered.over, answered.read, answered.mode
+        return Warrant(query, answer, witnesses, refutation, past, over, read, mode)
 
     def _overturned(
         self, query: Query, truth: Truth, held: Held, scenario: Scenario
@@ -573,6 +578,24 @@ class Session(Grounded):
         return None
 
 
+def _bound(answers: Answers, values: tuple[Symbol, ...], cut: Truncation | None) -> Bound | Ended:
+    """Find the binding of a query's variables to `values`, unless a `cut` search did not read it.
+
+    Raise `ValueError` if the query has no such binding.
+    """
+    if not values:
+        message = "a query with variables is warranted one binding at a time"
+        raise ValueError(message)
+    found = next((each for each in answers.bound if each.values == values), None)
+    if found is None and cut is not None:
+        return Ended(cut)
+    if found is None:
+        named = zip(answers.variables, values, strict=False)
+        message = f"the query has no binding to {', '.join(f'{n} = {v}' for n, v in named)}"
+        raise ValueError(message)
+    return found
+
+
 def _none(_at: int, _answer_set: AnswerSet) -> bool:
     """Want no answer set in particular, so the search reads them all."""
     return False
@@ -581,16 +604,17 @@ def _none(_at: int, _answer_set: AnswerSet) -> bool:
 def _apart(program: Program, solver: Solver, rules: str) -> Grounded:
     """Ground `program` again, plainly, with `rules` added, for searches apart from the session.
 
-    Its order is left alone. The rules head only names the session's prefix keeps apart from the
-    program's, so its answer sets are the program's, each with those heads it derives.
+    The rules are added as statements, as the session's are, so a program clingo is given as files
+    keeps them. Its order is left alone. The rules head only names the session's prefix keeps
+    apart from the program's, so its answer sets are the program's, each with those heads it
+    derives.
     """
-    added = f"{program.text}\n#program base.\n{rules}" if rules else program.text
-    match ground(replace(program, text=added), solver):
+    match controlled(program, solver, lambda _statements: parsed(rules)):
         case Fault():
             message = "the program grounded once, so it grounds again"
             raise AssertionError(message)
-        case grounded:
-            return grounded
+        case found:
+            return Grounded(found.control, found.facts, found.theory)
 
 
 def _paid(payments: frozenset[Payment]) -> tuple[Paid, ...]:

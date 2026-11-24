@@ -1,20 +1,21 @@
 """Questions asked of one program: why an atom holds or not, and what a query comes to.
 
-`why` explains an atom in one answer set, picked by its index; `ask` answers a query over every
-answer set. Each opens the program as `check` does: contained under its root, and run by the
-solver its contract names, if it has one.
+`why` explains an atom in one answer set, picked by its index, or, given none, shows what warrants
+a query's answer; `ask` answers a query over every answer set. Each opens the program as `check`
+does: contained under its root, and run by the solver its contract names, if it has one.
 """
 
 from enum import IntEnum
 from pathlib import Path
+from typing import TypedDict, Unpack, overload
 
 from elenctic.contract import Solver
 from elenctic.determination import Range, Refutation
 from elenctic.engine import containment
 from elenctic.explanation import Counterexample, Explanation
-from elenctic.literals import Literal, Scenario
+from elenctic.literals import Literal, Scenario, Symbol
 from elenctic.program import Fault, Locus, Program
-from elenctic.query import Answered, AnswerMode, Query
+from elenctic.query import Answered, AnswerMode, Query, Warrant
 from elenctic.reader import parse_contract
 from elenctic.report import Internal
 from elenctic.search import Interrupt, Limit, Limits
@@ -23,8 +24,8 @@ from elenctic.spans import failure
 from elenctic.tags import is_case
 from elenctic.verdicts import Ended
 
-type Why = Explanation | Refutation | Ended | Fault
-"""What `why` comes to: the explanation, or why there is none."""
+type Why = Explanation | Warrant | Refutation | Ended | Fault
+"""What `why` comes to: the explanation, or the warrant, or why there is none."""
 type Ask = Answered | Refutation | Ended | Fault
 """What `ask` comes to: the answer, or why there is none."""
 
@@ -33,11 +34,11 @@ class WhyExit(IntEnum):
     """The status `elenctic why` exits with; the values are fixed."""
 
     EXPLAINED = 0
-    """The atom was explained."""
+    """The atom was explained, or the answer warranted."""
     ENDED = 1
     """The search ended before it reached the answer set."""
     FAULT = 2
-    """The program, the atom or the index was refused, or there is no answer set to explain."""
+    """The program, the query, the index or the binding was refused, or there is no answer set."""
     INTERNAL_ERROR = 3
     """elenctic itself failed."""
 
@@ -45,7 +46,7 @@ class WhyExit(IntEnum):
     def of(cls, result: Why | Internal) -> WhyExit:
         """Name the status a result exits with."""
         match result:
-            case Explanation():
+            case Explanation() | Warrant():
                 return cls.EXPLAINED
             case Ended():
                 return cls.ENDED
@@ -94,11 +95,44 @@ def _opened(
     return session(program, solver, limits=limits, interrupt=interrupt)
 
 
+class _Searched(TypedDict, total=False):
+    """How either form of `why` searches the program."""
+
+    scenario: Scenario
+    over: Range
+    limits: Limits
+    interrupt: Interrupt | None
+    root: Path | None
+
+
+class _Explained(_Searched, total=False):
+    """How deep `why` explains an answer set."""
+
+    max_depth: int | Limit
+
+
+class _Warranted(_Searched, total=False):
+    """The answer, and the binding, that `why` warrants."""
+
+    values: tuple[Symbol, ...]
+    mode: AnswerMode
+
+
+@overload
+def why(
+    program: Program, asked: Literal, *, index: int, **given: Unpack[_Explained]
+) -> Explanation | Refutation | Ended | Fault: ...
+@overload
+def why(
+    program: Program, asked: Query, *, index: None = None, **given: Unpack[_Warranted]
+) -> Warrant | Refutation | Ended | Fault: ...
 def why(  # noqa: PLR0913
     program: Program,
-    atom: Literal,
+    asked: Query,
     *,
-    index: int = 1,
+    index: int | None = None,
+    values: tuple[Symbol, ...] = (),
+    mode: AnswerMode = AnswerMode.DEFAULT,
     scenario: Scenario = frozenset(),
     over: Range = Range.ALL,
     limits: Limits = Limits(),
@@ -106,19 +140,42 @@ def why(  # noqa: PLR0913
     max_depth: int | Limit = Limit.UNBOUNDED,
     root: Path | None = None,
 ) -> Why:
-    """Explain why `atom` holds, or not, in the `index`-th answer set of `scenario`.
+    """Explain why a ground literal holds, or not, in the `index`-th answer set of `scenario`.
 
-    `over` counts all the answer sets or only the optima. Past the last one is a fault.
+    Given no `index`, show what warrants the answer `asked` comes to as `ask` answers it in
+    `mode`, or the answer of its binding to `values`. `over` counts all the answer sets or only
+    the optima. Past the last one is a fault. An index of anything but a literal is a `TypeError`.
     """
+    if index is not None and not isinstance(asked, Literal):
+        message = "an answer set is explained for one ground literal"
+        raise TypeError(message)
     session_ = _opened(program, limits=limits, interrupt=interrupt, root=root)
     if isinstance(session_, Fault):
         return session_
+    if index is None or not isinstance(asked, Literal):
+        answered = session_.answer(asked, scenario, over=over, mode=mode)
+        return _warranted(session_, answered, values, scenario)
     found = session_.counterexample(index, scenario, over=over)
     if found is None:
         return _past(session_, index, scenario, over)
     if not isinstance(found, Counterexample):
         return found
-    return session_.explain((atom,), found, max_depth=max_depth)
+    return session_.explain((asked,), found, max_depth=max_depth)
+
+
+def _warranted(
+    session_: Session,
+    answered: Answered | Refutation | Ended,
+    values: tuple[Symbol, ...],
+    scenario: Scenario,
+) -> Warrant | Refutation | Ended | Fault:
+    """Show what warrants an answer, or its binding to `values`; a refused one is a fault."""
+    if not isinstance(answered, Answered):
+        return answered
+    try:
+        return session_.warrant(answered, values, scenario)
+    except ValueError as refused:
+        return Fault(Locus.REQUEST, (failure(None, str(refused)),))
 
 
 def _past(session_: Session, index: int, scenario: Scenario, over: Range) -> Fault:

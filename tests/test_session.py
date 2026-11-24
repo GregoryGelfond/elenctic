@@ -1,6 +1,8 @@
 import importlib
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Concatenate
 
 import clingo
 import pytest
@@ -1518,14 +1520,22 @@ def test_an_atom_no_answer_set_can_hold_cannot_be_assumed_true_but_can_be_assume
 
 def _unknown_cut(monkeypatch: pytest.MonkeyPatch) -> None:
     """Cut every search that assumes literals false, as asking apart whether one is unknown does."""
-    solve = grounded.Grounded.solve
+    monkeypatch.setattr(grounded.Grounded, "solve", _cutting(grounded.Grounded.solve))
 
-    def cut(self: grounded.Grounded, scenario: Scenario = frozenset(), **given: object) -> object:
+
+def _cutting[**P, T](
+    solve: Callable[Concatenate[grounded.Grounded, Scenario, P], T],
+) -> Callable[Concatenate[grounded.Grounded, Scenario, P], T | Inconclusive]:
+    """Cut `solve` short wherever its scenario assumes a literal false."""
+
+    def cut(
+        self: grounded.Grounded, scenario: Scenario, /, *args: P.args, **kwargs: P.kwargs
+    ) -> T | Inconclusive:
         if any(not each.holds for each in scenario):
             return Inconclusive(Truncation.MAX_SECONDS)
-        return solve(self, scenario, **given)  # type: ignore[arg-type]
+        return solve(self, scenario, *args, **kwargs)
 
-    monkeypatch.setattr(grounded.Grounded, "solve", cut)
+    return cut
 
 
 @pytest.mark.parametrize(
@@ -1544,3 +1554,17 @@ def test_a_cut_that_could_not_change_an_answer_does_not_end_it(
 def test_a_cut_that_could_change_an_answer_ends_it(monkeypatch: pytest.MonkeyPatch) -> None:
     _unknown_cut(monkeypatch)
     assert opened("-p.").answer(All((Literal("p"),))) == Ended(Truncation.MAX_SECONDS)
+
+
+def test_a_warrant_of_a_program_read_from_its_file_refutes_the_answer_sets_that_overturn_it(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "case.lp"
+    path.write_text("{ a }. b.\n")
+    made = session(Program.read(path))
+    assert isinstance(made, Session)
+    answered = made.answer(B)
+    assert isinstance(answered, Answered)
+    assert made.warrant(answered) == Warrant(
+        B, Answer.YES, answered.taken, NoAssumptions(), read=answered.read
+    )

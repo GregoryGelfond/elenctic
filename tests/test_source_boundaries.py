@@ -482,7 +482,7 @@ def test_a_linked_program_is_held_by_default_to_the_directory_it_resolves_to(
     assert isinstance(found, Report)
     assert found.verdict is Verdict.PASS
     assert isinstance(ask(program, All((Literal("p"),))), Answered)
-    assert isinstance(why(program, Literal("p")), Explanation)
+    assert isinstance(why(program, Literal("p"), index=1), Explanation)
 
 
 def test_a_library_that_is_not_utf8_is_refused_not_loaded(tmp_path: Path) -> None:
@@ -538,7 +538,7 @@ def test_a_program_is_held_by_default_to_the_directory_that_holds_it_and_its_lib
     assert isinstance(found, Report)
     assert found.verdict is Verdict.PASS
     assert isinstance(ask(program, All((Literal("q"),))), Answered)
-    assert isinstance(why(program, Literal("q")), Explanation)
+    assert isinstance(why(program, Literal("q"), index=1), Explanation)
     escaping = Program(
         '#include "../../secret.lp".\n' + program.text,
         program.source,
@@ -556,7 +556,11 @@ def test_a_default_root_that_is_the_file_system_root_is_refused_by_the_library(
     (tmp_path / "case.lp").write_text("% @expect sat\n")
     library = Path(Path.cwd().anchor, "dev", "null")
     program = Program.read(tmp_path / "case.lp", [library])
-    for refused in (check(program), why(program, Literal("p")), ask(program, All((Literal("p"),)))):
+    for refused in (
+        check(program),
+        why(program, Literal("p"), index=1),
+        ask(program, All((Literal("p"),))),
+    ):
         assert isinstance(refused, Fault)
         (problem,) = refused.diagnostics
         assert problem.message == f"the default root {library.anchor} is too wide"

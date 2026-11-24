@@ -684,7 +684,9 @@ def test_with_and_explain_find_evidence_in_the_library(
     assert f"= {library}:2: big :- num(2)." in out
 
 
-@pytest.mark.parametrize("asked", [("why", "case.lp", "top"), ("explain", "case.lp")])
+@pytest.mark.parametrize(
+    "asked", [("why", "case.lp", "top", "--answer-set", "1"), ("explain", "case.lp")]
+)
 def test_a_rule_from_another_file_is_labelled_with_its_file_and_line(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -926,12 +928,17 @@ def test_why_and_ask_take_the_library_and_the_root_as_test_does(
 ) -> None:
     library = base_and_scenarios(tmp_path)
     case = tmp_path / "scenarios" / "a" / "case.lp"
-    code, out = run(capsys, "why", case, "num(2)", "--with", library, "--format", "text")
+    code, out = run(
+        capsys, "why", case, "num(2)", "--answer-set", "1", "--with", library, "--format", "text"
+    )
     assert (code, out.splitlines()[0]) == (WhyExit.EXPLAINED, "why: num(2)")
     code, out = run(capsys, "ask", case, "num(2)", "--with", library, "--format", "json")
     assert (code, json.loads(out)["ask"]["kind"]) == (AskExit.ANSWERED, "answered")
     including = write(case.parent, "including.lp", '#include "../../encodings/base.lp".\n')
-    for command in (["why", including, "num(2)"], ["ask", including, "num(2)"]):
+    for command in (
+        ["why", including, "num(2)", "--answer-set", "1"],
+        ["ask", including, "num(2)"],
+    ):
         code, out = run(capsys, *command, "--format", "json")
         assert code == WhyExit.FAULT
         assert "which is outside the root" in out
@@ -963,10 +970,14 @@ def test_why_refuses_a_program_outside_its_root_or_named_with_with(
     root = tmp_path / "root"
     root.mkdir()
     case = write(tmp_path, "case.lp", "p.\n")
-    code, _out, err = run_both(capsys, "why", case, "p", "--root", root, "--format", "text")
+    code, _out, err = run_both(
+        capsys, "why", case, "p", "--answer-set", "1", "--root", root, "--format", "text"
+    )
     assert code == WhyExit.FAULT
     assert err.splitlines()[0] == f"error: `{case}` is outside the root {root}"
-    code, _out, err = run_both(capsys, "why", case, "p", "--with", case, "--format", "text")
+    code, _out, err = run_both(
+        capsys, "why", case, "p", "--answer-set", "1", "--with", case, "--format", "text"
+    )
     assert code == WhyExit.FAULT
     assert err.splitlines()[0] == f"error: `{case}` is named both as a path and with `--with`"
 
@@ -1108,7 +1119,7 @@ def test_why_explains_an_atom_in_the_first_answer_set(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "chain.lp", CHAIN)
-    code, out, err = run_both(capsys, "why", path, "reach(c)")
+    code, out, err = run_both(capsys, "why", path, "reach(c)", "--answer-set", "1")
     assert (code, err) == (WhyExit.EXPLAINED, "")
     assert out == (
         "why: reach(c)\n"
@@ -1143,7 +1154,7 @@ def test_why_under_assumptions_explains_their_answer_sets(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "ab.lp", CHOICE)
-    code, out = run(capsys, "why", path, "a", "--assuming", "{ b, not a }")
+    code, out = run(capsys, "why", path, "a", "--answer-set", "1", "--assuming", "{ b, not a }")
     assert code == WhyExit.EXPLAINED
     assert "  = answer set 1: { b, -c }\n" in out
 
@@ -1152,7 +1163,7 @@ def test_why_without_an_answer_set_shows_the_refutation_and_exits_as_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "ab.lp", CHOICE)
-    code, out = run(capsys, "why", path, "a", "--assuming", "a, not a")
+    code, out = run(capsys, "why", path, "a", "--answer-set", "1", "--assuming", "a, not a")
     assert code == WhyExit.FAULT
     assert out == (
         f"why: a\n --> {path}\n  |\n"
@@ -1189,16 +1200,16 @@ def test_why_refuses_an_atom_that_is_not_ground_where_it_was_written(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "chain.lp", CHAIN)
-    code, out, err = run_both(capsys, "why", path, "p(X)")
+    code, out, err = run_both(capsys, "why", path, "p(X)", "--answer-set", "1")
     assert (code, out) == (WhyExit.FAULT, "")
     assert err == (
         "error: atom asked about is not ground\n"
-        " --> ATOM:1:1\n"
+        " --> QUERY:1:1\n"
         "  |\n"
         "1 | p(X)\n"
         "  | ^^^^ has a variable\n"
     )
-    code, _, err = run_both(capsys, "why", path, "a", "--assuming", "p(X)")
+    code, _, err = run_both(capsys, "why", path, "a", "--answer-set", "1", "--assuming", "p(X)")
     assert code == WhyExit.FAULT
     assert err.startswith("error: assumption is not ground\n --> --assuming:1:1\n")
 
@@ -1383,7 +1394,7 @@ def test_why_and_ask_write_json_under_their_names(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "ab.lp", CHOICE)
-    code, out = run(capsys, "why", path, "a", "--json")
+    code, out = run(capsys, "why", path, "a", "--answer-set", "1", "--json")
     document = json.loads(out)
     assert (code, document["schema"], document["exit_code"]) == (0, 1, 0)
     assert document["why"]["kind"] == "explanation"
@@ -1413,7 +1424,7 @@ def test_an_internal_error_in_why_or_ask_is_one_line_and_exits_3(
 
     monkeypatch.setattr("elenctic.cli.why", broken)
     monkeypatch.setattr("elenctic.cli.ask", broken)
-    code, out, err = run_both(capsys, "why", path, "a")
+    code, out, err = run_both(capsys, "why", path, "a", "--answer-set", "1")
     assert (code, out, err) == (
         WhyExit.INTERNAL_ERROR,
         "",
@@ -1430,16 +1441,18 @@ def test_an_answer_set_index_is_a_positive_integer_or_a_usage_error(
 ) -> None:
     path = write(tmp_path, "ab.lp", CHOICE)
     with pytest.raises(SystemExit) as stopped:
-        main(["why", str(path), "a", f"--answer-set={index}"])
+        main(["why", str(path), "a", "--answer-set", "1", f"--answer-set={index}"])
     assert stopped.value.code == WhyExit.FAULT
     assert f"{index!r} is not a positive integer" in capsys.readouterr().err
 
 
-def test_the_first_answer_set_is_index_one(
+def test_the_answer_set_index_accepts_an_equals_sign(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "ab.lp", CHOICE)
-    assert run(capsys, "why", path, "a", "--answer-set=1") == run(capsys, "why", path, "a")
+    assert run(capsys, "why", path, "a", "--answer-set=1") == run(
+        capsys, "why", path, "a", "--answer-set", "1"
+    )
 
 
 def test_the_why_a_help_line_gives_can_be_pasted_into_a_shell(
@@ -1467,7 +1480,7 @@ def test_why_is_headed_by_the_atom_as_it_was_asked_written_as_a_step_writes_it(
 ) -> None:
     """`not a` asks what `a` does; the heading keeps the `not`, in the legend's spelling."""
     path = write(tmp_path, "ab.lp", CHOICE)
-    _, out = run(capsys, "why", path, "--", asked)
+    _, out = run(capsys, "why", path, "--answer-set", "1", "--", asked)
     assert out.startswith(heading)
 
 
@@ -1477,7 +1490,8 @@ def test_why_as_json_names_the_literal_by_its_roots_with_or_without_not(
     """JSON has no heading: its roots say whether the atom holds, as they did before."""
     path = write(tmp_path, "ab.lp", CHOICE)
     held, unheld = (
-        run(capsys, "why", path, asked, "--format", "json")[1] for asked in ("a", "not a")
+        run(capsys, "why", path, asked, "--answer-set", "1", "--format", "json")[1]
+        for asked in ("a", "not a")
     )
     assert held == unheld
 
@@ -1573,3 +1587,177 @@ def test_the_stream_of_the_library_is_the_order_ask_writes_its_bindings_in(
     assert isinstance(found, Answered)
     assert written == [f"{b.answer}: X = {b.values[0]}" for b in stream(found, unknown=True)]
     assert written[0] == "yes: X = 1"
+
+
+# `why PATH QUERY`: the warrant of the answer `ask` gives, in `ask`'s words.
+
+
+def test_why_of_a_query_shows_what_warrants_its_answer_as_ask_names_the_answer_sets(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    code, out, err = run_both(capsys, "why", path, "-c")
+    assert (code, err) == (WhyExit.EXPLAINED, "")
+    assert out == (
+        "why: { -c }\n"
+        f" --> {path}\n"
+        "  |\n"
+        "  = answer: yes\n"
+        "  = true in answer set 1: { -c }\n"
+        "  = refutation: kept to the answer sets where it is not true, the program has no answer"
+        " set, and nothing is assumed\n"
+        "  |\n"
+        f"  = help: `elenctic why {path} -c --answer-set 1` shows why\n"
+        "\n"
+    )
+    _, asked = run(capsys, "ask", path, "-c")
+    assert asked.splitlines()[3:5] == out.splitlines()[3:5]
+
+
+def test_why_of_an_unknown_names_one_answer_set_where_it_is_not_true_and_one_not_false(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", "{ a; -a } = 1.\n")
+    _, out = run(capsys, "why", path, "a")
+    assert "  = answer: unknown\n  = false in answer set 1: { -a }\n" in out
+    assert "  = true in answer set 2: { a }\n" in out
+    assert "refutation" not in out
+
+
+@pytest.mark.parametrize(
+    ("mode", "lines"),
+    [
+        ("cautious", ["= answer: not entailed", "= neither a nor -a in answer set 1: { -c }"]),
+        ("brave", ["= answer: yes", "= true in answer set 3: { a, -c }"]),
+    ],
+)
+def test_why_takes_the_modes_ask_takes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], mode: str, lines: list[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    _, out = run(capsys, "why", path, "a", "--mode", mode)
+    assert [line.strip() for line in out.splitlines()[3:5]] == lines
+    assert "refutation" not in out
+
+
+def test_why_of_a_brave_answer_none_holds_refutes_any_answer_set_where_it_is_true(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    code, out = run(capsys, "why", path, "c", "--mode", "brave")
+    assert code == WhyExit.EXPLAINED
+    assert out.splitlines()[3:] == [
+        "  = answer: none holds",
+        (
+            "  = refutation: kept to the answer sets where it is true, the program has no"
+            " answer set, and nothing is assumed"
+        ),
+        "",
+    ]
+
+
+def test_why_of_a_binding_a_cut_brave_search_did_not_read_says_the_search_ended(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "{ p(1..3) }.")
+    cut = ["--mode", "brave", "--max-answer-sets", "2"]
+    code, out = run(capsys, "why", path, "p(X)", *cut, "--binding", "X = 3")
+    assert code == WhyExit.ENDED
+    assert out == (
+        f"why: {{ p(3) }}\n --> {path}\n  |\n"
+        "  = search ended: answer-set limit reached (--max-answer-sets)\n\n"
+    )
+
+
+def test_why_over_the_optima_is_shown_by_the_search_that_read_them_all(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    _, out = run(capsys, "why", path, "-c", "--over", "optimal")
+    assert (
+        "  = true in optimal answer set 1 of 4: { -c }\n  = read: all 4 optimal answer sets\n"
+        in out
+    )
+    assert "--answer-set 1 --over optimal` shows why" in out
+
+
+def test_why_of_a_query_with_variables_warrants_the_binding_written_as_ask_writes_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "r.lp", "r(a). r(b). { c(b) }. c(c).\n")
+    _, listed = run(capsys, "ask", path, "{ r(X), not c(X) }")
+    assert "  = yes: X = a\n" in listed
+    code, out = run(capsys, "why", path, "{ r(X), not c(X) }", "--binding", "X = a")
+    assert code == WhyExit.EXPLAINED
+    assert out.startswith("why: { not c(a), r(a) }\n")
+    assert "  = answer: yes\n  = true in answer set 1 of 2: { c(c), r(a), r(b) }\n" in out
+    assert "help" not in out
+
+
+@pytest.mark.parametrize(
+    ("argv", "error"),
+    [
+        (["{ r(X) }"], "error: a query with variables is warranted one binding at a time\n"),
+        (["{ r(X) }", "--binding", "X = z"], "error: the query has no binding to X = z\n"),
+        (["{ r(X) }", "--binding", "Y = a"], "error: `Y` is not a variable of the query\n"),
+        (["r(a)", "--binding", "X = a"], "error: `X` is not a variable of the query\n"),
+        (["r(a)", "--mode", "brave", "--answer-set", "1"], "error: `--mode` has no effect with"),
+        (["r(a)", "--binding", "X = a", "--answer-set", "1"], "error: `--binding` has no effect"),
+        (["r(a)", "--max-depth", "2"], "error: `--max-depth` has no effect without `--answer-set`"),
+        (["r(a)", "--spans"], "error: `--spans` has no effect without `--answer-set`\n"),
+        (["{ r(a) ; c(c) }"], "error: query uses a semicolon\n --> QUERY:1:8\n"),
+    ],
+)
+def test_why_refuses_a_query_binding_or_option_as_ask_does_where_it_does_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str], error: str
+) -> None:
+    path = write(tmp_path, "r.lp", "r(a). r(b). { c(b) }. c(c).\n")
+    code, out, err = run_both(capsys, "why", path, *argv)
+    assert (code, out) == (WhyExit.FAULT, "")
+    assert err.startswith(error)
+
+
+def test_why_of_a_query_without_answer_sets_or_cut_short_says_why_as_ask_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    code, out = run(capsys, "why", path, "a", "--assuming", "a, not a")
+    assert code == WhyExit.FAULT
+    assert out == (
+        f"why: {{ a }}\n --> {path}\n  |\n"
+        "  = refutation: no answer set satisfies the assumptions (not a, a)\n\n"
+    )
+    code, out = run(capsys, "why", path, "{ a, b }", "--max-answer-sets", "1")
+    assert code == WhyExit.ENDED
+    assert "  = search ended: answer-set limit reached (--max-answer-sets)\n" in out
+
+
+def test_why_of_a_query_writes_its_warrant_as_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    code, out = run(capsys, "why", path, "-c", "--json")
+    warrant = json.loads(out)["why"]
+    assert (code, warrant["kind"], warrant["answer"], warrant["mode"]) == (
+        WhyExit.EXPLAINED,
+        "warrant",
+        "yes",
+        "default",
+    )
+    assert [each["index"] for each in warrant["witnesses"]] == [1]
+    assert warrant["refutation"]["kind"] == "no_assumptions"
+
+
+def test_why_help_names_both_forms_and_the_modes_ask_names(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    helps = []
+    for command in ("why", "ask"):
+        with pytest.raises(SystemExit):
+            main([command, "--help"])
+        helps.append(" ".join(capsys.readouterr().out.split()))
+    why_help, ask_help = helps
+    mode = ask_help[ask_help.index("default: the") :].split("--unknown")[0].strip()
+    assert mode in why_help
+    assert "--binding X = V,..." in why_help
+    assert "rather than warrant its answer" in why_help

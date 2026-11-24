@@ -10,10 +10,11 @@ from enum import StrEnum, auto
 from pathlib import Path
 
 from elenctic.about import Package, Solvers
-from elenctic.determination import Range
+from elenctic.determination import Range, Refutation
 from elenctic.display import legible
 from elenctic.evidence_view import ask_lines, evidence_lines, why_lines
-from elenctic.inquiry import Ask, Why
+from elenctic.explanation import Explanation
+from elenctic.inquiry import Ask
 from elenctic.legend import (
     COPYRIGHT,
     MARKS,
@@ -24,15 +25,14 @@ from elenctic.legend import (
     tally,
     underlined,
 )
-from elenctic.literals import Literal
 from elenctic.paint import Role, paint
 from elenctic.patterns import Pattern
 from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
-from elenctic.query import All
+from elenctic.query import All, Warrant
 from elenctic.report import Entry, Internal, Run
 from elenctic.spans import Child, Diagnostic, Severity, Span, split_lines
-from elenctic.verdicts import Finding, Report, Verdict
+from elenctic.verdicts import Ended, Finding, Report, Verdict
 
 
 class Format(StrEnum):
@@ -286,36 +286,33 @@ def refused(
 
 def render_why(  # noqa: PLR0913
     source: str,
-    atom: Literal,
-    result: Why | Internal,
+    asked: str,
+    result: Explanation | Refutation | Ended | Fault | Internal,
     presentation: Presentation,
     *,
     form: Format = Format.FULL,
     spans: bool,
     over: Range = Range.ALL,
-    negated: bool,
     text: str | None = None,
 ) -> Rendered:
-    """Write what `why` found, headed by the atom as it was asked, or why it could not look."""
+    """Write what `why` found, headed by what was `asked`, or why it could not look."""
     if isinstance(result, Fault | Internal):
         return refused(result, presentation, form=form, source=source, text=text)
-    shown = why_lines(
-        source, atom, result, presentation.stdout, spans=spans, over=over, negated=negated
-    )
+    shown = why_lines(source, asked, result, presentation.stdout, spans=spans, over=over)
     return Rendered(_lines(shown), "")
 
 
 def render_ask(  # noqa: PLR0913
     source: str,
     query: All | Pattern,
-    result: Ask | Internal,
+    result: Ask | Warrant | Internal,
     presentation: Presentation,
     *,
     form: Format = Format.FULL,
     text: str | None = None,
     unknown: bool = False,
 ) -> Rendered:
-    """Write what `ask` found, or, as diagnostics, why it could not look."""
+    """Write what `ask` found, or `why`'s warrant, or, as diagnostics, why it could not look."""
     if isinstance(result, Fault | Internal):
         return refused(result, presentation, form=form, source=source, text=text)
     lines = ask_lines(source, query, result, presentation.stdout, unknown=unknown)

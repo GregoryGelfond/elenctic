@@ -21,20 +21,22 @@ from elenctic.legend import (
     OUTRANKED,
     WHY,
     Mark,
+    alone_of,
     answering,
     cited,
+    conjoined,
     counterexample,
     heading,
     helped,
     label,
     mark,
     noted,
+    overturned,
     paying,
     ranking,
     said,
     shared,
     shows_why,
-    signed,
     stopped,
     streamed,
     taken,
@@ -43,11 +45,10 @@ from elenctic.legend import (
     words,
     written,
 )
-from elenctic.literals import Literal
 from elenctic.paint import Phrase, Role, paint, plain
 from elenctic.patterns import Pattern
 from elenctic.presentation import Style
-from elenctic.query import All, Answered, Answers
+from elenctic.query import All, Answer, Answered, Answers, Warrant
 from elenctic.spans import Span
 from elenctic.verdicts import Ended, Finding
 from elenctic.writer import queried
@@ -221,20 +222,20 @@ def evidence_lines(finding: Finding, style: Style, lines_of: Lines, *, spans: bo
 
 def why_lines(  # noqa: PLR0913
     source: str,
-    atom: Literal,
+    asked: str,
     result: Explanation | Refutation | Ended,
     style: Style,
     *,
     spans: bool,
     over: Range,
-    negated: bool,
 ) -> list[str]:
     """Write the block that shows why an atom holds, or not, in the answer set asked for.
 
-    It is headed by the atom as it was asked: `negated` when `not` was written before it.
+    It is headed by what was `asked`, as it was written: the atom, `not` kept, or the query that
+    has no warrant.
     """
     pen = _Pen(style)
-    lines = pen.heading(Role.NOTE, WHY, signed(atom, negated=negated), source)
+    lines = pen.heading(Role.NOTE, WHY, asked, source)
     if isinstance(result, Explanation):
         lines += explanation_lines(result, style, spans=spans, own=source, over=over)
     else:
@@ -245,30 +246,43 @@ def why_lines(  # noqa: PLR0913
 def ask_lines(
     source: str,
     query: All | Pattern,
-    result: Answered | Refutation | Ended,
+    result: Answered | Warrant | Refutation | Ended,
     style: Style,
     *,
     unknown: bool = False,
 ) -> list[str]:
     """Write the block that shows a query's answer and the first answer set giving each value.
 
-    A query with variables shows its bindings instead, one a line, those `unknown` if asked.
+    A query with variables shows its bindings instead, one a line, those `unknown` if asked. A
+    warrant is headed `why:` and the instance it is of, and names the answer sets that witness the
+    answer and, for one every answer set must give, what shows that none overturns it.
     """
     pen = _Pen(style)
+    if isinstance(result, Warrant):
+        instance = conjoined(result.query)
+        lines = pen.heading(Role.NOTE, WHY, queried(instance), source)
+        return [*lines, *_answering(pen, source, instance, result, result.answer), ""]
     lines = pen.heading(Role.NOTE, ASK, queried(query), source)
     if not isinstance(result, Answered):
         return [*lines, pen.line(unfound(result)), ""]
     if isinstance(result.answer, Answers):
         found = streamed(result, result.answer, unknown=unknown)
         return [*lines, *(pen.line(each) for each in found), ""]
-    conjunction = cast("All", query)
-    lines.append(pen.line(said(answering(result.answer))))
-    lines += [pen.answer_set(taken(each, conjunction, result)) for each in result.taken]
-    lines += [pen.answer_set(unreached(each, conjunction)) for each in result.unreached]
-    match conjunction.parts, result.taken:
-        case (Literal() as alone,), (first, *_):
-            helping = helped(shows_why(source, alone, first, result.over))
-            lines += [pen.margin("  |"), pen.line(helping)]
-        case _:
-            pass
-    return [*lines, ""]
+    return [*lines, *_answering(pen, source, cast("All", query), result, result.answer), ""]
+
+
+def _answering(
+    pen: _Pen, source: str, query: All, result: Answered | Warrant, answer: Answer
+) -> list[str]:
+    """Write a ground query's answer, the answer sets that show it, and how to ask `why` of one."""
+    shown = result.taken if isinstance(result, Answered) else result.witnesses
+    lines = [pen.line(said(answering(answer)))]
+    lines += [pen.answer_set(taken(each, query, result)) for each in shown]
+    lines += [pen.answer_set(unreached(each, query)) for each in result.unreached]
+    kept = overturned(result) if isinstance(result, Warrant) else None
+    lines += [] if kept is None else [pen.line(kept)]
+    alone = alone_of(query)
+    if alone is not None and shown:
+        helping = helped(shows_why(source, alone, shown[0], result.over))
+        lines += [pen.margin("  |"), pen.line(helping)]
+    return lines

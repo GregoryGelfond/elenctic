@@ -11,9 +11,11 @@ All notable changes are recorded here. The format follows
   and a tree in which each step shows its ground rule instance and line, `file:line` for a rule
   from a file other than the case's. `--spans` adds each rule as written with its substitution;
   `--max-depth N|all` bounds how many absences deep it goes (default 3).
-- `elenctic why PATH ATOM`: why a ground literal holds, or not, in the first answer set, or the
-  `--answer-set K`-th, of all or `--over optimal`, under `--assuming L,…`; the block of `explain`,
-  headed `why:` and the atom as it was asked, `not` kept. `elenctic ask PATH QUERY`: a query,
+- `elenctic why PATH QUERY`: what warrants the answer `ask` gives a query, in its `--mode`, or one
+  binding's, `--binding 'X = a'`, under `--assuming L,…`, of all or `--over optimal`: the
+  `Warrant` below, in `ask`'s block, headed `why:` and the instance. `--answer-set K`: why `QUERY`, a ground literal, holds, or not, in the K-th answer set; the block
+  of `explain`, headed `why:` and the atom as it was asked, `not` kept. An option of one form given
+  to the other is refused. `elenctic ask PATH QUERY`: a query,
   written as `@query` writes it, answered over the answer sets, with the first answer set taking
   each value, or a pattern's bindings. A query, in `ask` and `@query`, may put `not` before a
   literal (true where the literal is absent), may end with a full stop, and refuses `;`; a query
@@ -42,11 +44,12 @@ All notable changes are recorded here. The format follows
   home directory, so only the file system's root is too wide. A JSON entry lists them as `libraries`.
 - `why` and `ask` take `--root DIR` and `--with` as `test` does, and a refused root or `--with`
   file stops them before they run; a `PATH` that is a directory is a usage error.
-- Library: `why(program, atom, …)` and `ask(program, query, …)`; `Session.answer(query, scenario,
+- Library: `why(program, query, …)`, a `Warrant`, or given an `index`, an atom's `Explanation`, and
+  `ask(program, query, …)`; `Session.answer(query, scenario,
   over=)`, `answered`, `Answered` and `Taken`. `Session.counterexample` gives the refutation when
   there is no answer set.
 - JSON: `why` and `ask` write their result under their names, `{"schema": 1, "why": …}`; the schema
-  gains them, `answered`, `taken` and `bindings`, and a run is written as before.
+  gains them, `answered`, `taken`, `bindings` and `warrant`, and a run is written as before.
 - Library: `session(program, solver)` and `Session`, a `Grounded` with `counterexample(index,
   scenario, over=)`, `explain(literals, counterexample)`, `outrank(literals, scenario)` and
   `evidence(finding)`; `evidenced(report, program)`; the model: `Explanation`, `Counterexample`,

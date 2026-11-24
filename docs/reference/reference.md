@@ -74,10 +74,11 @@ unless `--format` says otherwise.
 | `--max-depth N\|all` | how many absent atoms deep an explanation goes (a positive integer), or `all` for no limit (default: 3) |
 | `--spans` | beneath each rule instance, the rule as written, its place, and its substitution |
 
-`elenctic why PATH ATOM` explains why the ground literal `ATOM` holds, or not, in one answer set of
-the program at `PATH`; a leading `not` is dropped, since the answer set says which. `elenctic ask
-PATH QUERY` answers a query, written as `@query` writes it (`{ a, not -b }`, or with variables,
-`{ p(X), not q(X) }`; braces and a final full stop optional), over every answer set. Each takes `--format`, `--short`, `--json`, `--root`,
+`elenctic ask PATH QUERY` answers a query, written as `@query` writes it (`{ a, not -b }`, or with
+variables, `{ p(X), not q(X) }`; braces and a final full stop optional), over every answer set of
+the program at `PATH`. `elenctic why PATH QUERY` shows what warrants the answer `ask` gives it, or
+one binding's; with `--answer-set K` it explains instead why `QUERY`, one ground literal, holds, or
+not, in the K-th answer set, a leading `not` dropped, since the answer set says which. Each takes `--format`, `--short`, `--json`, `--root`,
 `--with`, `--max-seconds` and `--max-answer-sets` as `test` does, a refused root or `--with` file
 stopping it before it runs, and opens the interactive view as `explain` does; a `PATH` that is a
 directory is a usage error. And these:
@@ -85,11 +86,15 @@ directory is a usage error. And these:
 | Option | Meaning |
 |---|---|
 | `--over all\|optimal` | all the answer sets (default), or only the optimal ones |
-| `--answer-set K` | `why`: the answer set explained, counted from 1 among those `--over` reads (default: 1) |
+| `--answer-set K` | `why`: explain `QUERY` in the K-th answer set, counted from 1 among those `--over` reads, rather than warrant its answer |
 | `--assuming L,…` | `why`: literals assumed, `p` or `not p`, as `assuming { … }` writes them |
-| `--max-depth N\|all`, `--spans` | `why`: as for `explain` |
-| `--mode default\|cautious\|brave` | `ask`: how the query is answered ([Semantics](../explanation/semantics.md)); default, the Gelfond–Kahl three-valued semantics |
+| `--max-depth N\|all`, `--spans` | `why --answer-set`: as for `explain` |
+| `--mode default\|cautious\|brave` | `ask`, and `why` without `--answer-set`: how the query is answered ([Semantics](../explanation/semantics.md)); default, the Gelfond–Kahl three-valued semantics |
+| `--binding 'X = V, …'` | `why`: the binding of a query with variables whose answer is warranted, as `ask` writes it (`X = a, Y = 1`); a query with variables is warranted one binding at a time |
 | `--unknown` | `ask`: write the bindings whose answer is `unknown` too, not only their count; refused for a query without variables |
+
+An option of one form of `why` given to the other, where it does nothing, is refused: `--mode` and
+`--binding` with `--answer-set`, `--max-depth` and `--spans` without it.
 
 `repl` is reserved: it writes a note on stderr and exits `FAULT` (2). `--color` and `--icons`
 apply to every command.
@@ -172,6 +177,13 @@ answer set. A query with variables writes how many bindings give each answer, `=
 no answer set, each shows the refutation; a search cut short shows what ended it, after the `yes`
 bindings a brave search found before it was cut.
 
+`why` of a query writes `ask`'s block for its answer under `why:` and the instance it is of
+(`why: { not c(a), r(a) }` for the binding `X = a`), naming only the answer sets that witness the
+answer. An answer every answer set must give then has `= refutation: kept to the answer sets where
+it is not true, …`, the refutation of the program kept to those that would overturn it, or, `--over
+optimal`, `= read: all 4 optimal answer sets`. A binding a brave search did not reach before it
+was cut shows what ended it.
+
 An outranked result first shows the costs with and without the claim's literals, by priority, and
 the weak-constraint instances paid differently, each at its place in the source. A refuted `@expect
 sat` shows its refutation. A search cut short shows what ended it. The block ends with
@@ -208,7 +220,7 @@ whole. The command exits with its own code when the view is closed, and the diag
 to stderr then.
 
 The view opens once the run is checked, and asks the library for anything more (evidence, `+`,
-`why` from `ask`) off its own thread, one call at a time: the keys answer meanwhile, the row waiting
+`why` from an answer set) off its own thread, one call at a time: the keys answer meanwhile, the row waiting
 reads `searching` and the title `searching · esc cancels`. Esc stops the search and nothing it
 found is shown; Ctrl-C quits, stopping it first. Each call has `--max-seconds` and
 `--max-answer-sets`, as in the text. The window is titled by the command and what it was asked of,
@@ -221,16 +233,16 @@ terminal's grey.
 |---|---|
 | ↑ ↓, `k` `j` | move |
 | → `l`, ← `h` | open, close; ← on a closed row goes to its parent |
-| ⏎ | a shared row: go to its first row; an answer set `ask` names: `why` on it; else open or close |
+| ⏎ | a shared row: go to its first row; an answer set `ask` or `why` of a query names: `why` on it; else open or close |
 | `s` | show or hide the pane: the rule the selected row cites, or the first cited below it |
 | `+` | explain the selected step's block one step deeper |
 | `/`, `n` | find a literal, the next match |
 | `f` | `test`, `explain`: only the sources that did not pass |
 | `e` | `test`, `explain`: open every failed claim's evidence, finding it if need be |
 | `?` | the keys that apply to the view, in these words |
-| `q`, Ctrl-C; Esc | quit; Esc first closes the find box, else stops a search, else closes a `why` opened from `ask` |
+| `q`, Ctrl-C; Esc | quit; Esc first closes the find box, else stops a search, else closes a `why` opened from an answer set |
 
-`f` and `e` apply to `test` and `explain`, `s` and `+` to all but `ask`; neither the footer nor `?`
+`f` and `e` apply to `test` and `explain`, `s` and `+` to all but `ask` and `why` of a query; neither the footer nor `?`
 lists a key that does not apply.
 
 The mouse selects and opens rows, and nothing else.
@@ -277,7 +289,7 @@ values are fixed. `elenctic test`, `elenctic explain` (and the refusal of a rese
 
 A usage error is argparse's, status 2, before any command runs.
 
-Stderr lines use one of two prefixes: `elenctic: …` for a failure of the command (a reserved-command note, or an internal error), and `path:line:col: error: …` (or the rustc multi-line form) for a fault in a source. A fault in an argument of `why` or `ask` names the argument in place of the path: `ATOM:1:1`, `QUERY:1:1`, `--assuming:1:1`.
+Stderr lines use one of two prefixes: `elenctic: …` for a failure of the command (a reserved-command note, or an internal error), and `path:line:col: error: …` (or the rustc multi-line form) for a fault in a source. A fault in an argument of `why` or `ask` names the argument in place of the path: `QUERY:1:1`, `--binding:1:1`, `--assuming:1:1`.
 
 ## Contract syntax
 
@@ -363,6 +375,7 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 | What shows an answer `Session.answer` gave, or one binding's? | `Session.warrant(answered, values, scenario)` | a `Warrant`: its witnesses, and for an answer that needs every answer set, over all of them, the `Refutation` of the program kept to those that would overturn it; or `Ended` |
 | Why does an atom hold, or not, in an answer set? | `session(program).explain(literals, counterexample)` | an `Explanation` |
 | Why does an atom hold, or not, in the k-th answer set? | `why(program, atom, index=k, scenario=…, over=…)` | an `Explanation`, the `Refutation`, `Ended`, or a `Fault` |
+| What warrants the answer a query comes to, or one binding's? | `why(program, query, values=…, mode=…)` | a `Warrant`, the `Refutation`, `Ended`, or a `Fault` |
 | What does a query come to over a program's answer sets? | `ask(program, query, over=…)` | an `Answered`, the `Refutation`, `Ended`, or a `Fault` |
 | How does the objective rank some literals? | `Session.outrank(literals, scenario)` | `Outranked`, `Ended`, or `None` |
 | Do two patterns have a common instance? | `mgu(first, second)` | a `Unifier`, or `None` |
@@ -470,7 +483,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `bindings` | the `Bindings` of a `Pattern` or a conjunction with variables over a `WorldView`: its default `answers` grouped by answer |
 | `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set |
 | `stream` | the bindings of an `Answered` as `ask` writes them, one per `next()`: `yes`, then `no` by default, `unknown` too with `unknown=True`; a ground query yields its one answer with no values |
-| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, and the `refutation` that no answer set overturns it, when the answer needs every one |
+| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, and the `refutation` that no answer set overturns it, when the answer needs every one; the answers a cut search left `unreached`, and the `over`, `read` and `mode` it was answered with |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |
@@ -480,9 +493,9 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | Name | What it is |
 |---|---|
 | `check` | check the contract written in a program: a `Report`, or `None` if it carries none |
-| `why` | explain an atom in one answer set of a program, opened as `check` opens it |
+| `why` | warrant the answer a query comes to, or, given an `index`, explain an atom in one answer set of a program, opened as `check` opens it |
 | `ask` | answer a query over the answer sets of a program, opened as `check` opens it |
-| `Why` | what `why` comes to: `Explanation \| Refutation \| Ended \| Fault` |
+| `Why` | what `why` comes to: `Explanation \| Warrant \| Refutation \| Ended \| Fault` |
 | `Ask` | what `ask` comes to: `Answered \| Refutation \| Ended \| Fault` |
 | `WhyExit` | the status `why` exits with, named by `WhyExit.of(result)`; an `Internal` failure is 3 |
 | `AskExit` | the status `ask` exits with, named by `AskExit.of(result)`; an `Internal` failure is 3 |
@@ -549,7 +562,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 
 ## JSON
 
-`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1, 2, or 3); see `elenctic.json_view.encode`. `why` writes `{"schema": 1, "why": …, "exit_code": n}`, the value an `explanation`, a refutation, `ended`, a `fault` or `internal`; `ask` writes `"ask"` the same way, its value an `answered` in place of the explanation, and `n` is the command's own exit. A
+`{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1, 2, or 3); see `elenctic.json_view.encode`. `why` writes `{"schema": 1, "why": …, "exit_code": n}`, the value an `explanation` or a `warrant`, a refutation, `ended`, a `fault` or `internal`; `ask` writes `"ask"` the same way, its value an `answered` in place of the explanation, and `n` is the command's own exit. A
 dataclass becomes `{"kind": type_name, field: …}`, the `kind` being the type's name in snake case (`Census` is `census`, `AnswerSet` is `answer_set`), an enum its value, a set a sorted list. Keys and enum values are snake_case (`max_answer_sets`);
 the command-line flags keep their hyphens (`--max-answer-sets`). A `Substitution` is a string,
 `"{X=b, Y=c}"`, as a literal is. A finding has an `evidence` key only when it has evidence, so a

@@ -20,6 +20,9 @@
           "$ref": "#/$defs/explanation"
         },
         {
+          "$ref": "#/$defs/warrant"
+        },
+        {
           "$ref": "#/$defs/these"
         },
         {
@@ -1736,6 +1739,105 @@
         },
         "value": {
           "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "warrant": {
+      "type": "object",
+      "required": [
+        "kind",
+        "query",
+        "answer",
+        "witnesses",
+        "refutation",
+        "unreached",
+        "over",
+        "read",
+        "mode"
+      ],
+      "properties": {
+        "kind": {
+          "const": "warrant"
+        },
+        "query": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/not"
+            },
+            {
+              "$ref": "#/$defs/all"
+            },
+            {
+              "$ref": "#/$defs/any"
+            }
+          ]
+        },
+        "answer": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown",
+            "not_entailed",
+            "none_holds"
+          ]
+        },
+        "witnesses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/taken"
+          }
+        },
+        "refutation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/these"
+            },
+            {
+              "$ref": "#/$defs/not_these"
+            },
+            {
+              "$ref": "#/$defs/no_assumptions"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unreached": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/unreached"
+          }
+        },
+        "over": {
+          "type": "string",
+          "enum": [
+            "all",
+            "optimal"
+          ]
+        },
+        "read": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "cautious",
+            "brave"
+          ]
         }
       },
       "additionalProperties": false

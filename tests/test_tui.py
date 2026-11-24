@@ -148,13 +148,17 @@ COMMANDS = [
     ("explain", str(EXAMPLES / "laptop.lp")),
     ("explain", str(EXAMPLES / "why-not.lp")),
     ("explain", str(EXAMPLES / "consequences.lp")),
-    ("why", str(EXAMPLES / "absent.lp"), "not access(ann,db)"),
-    ("why", str(EXAMPLES / "chain.lp"), "reach(d)"),
+    ("why", str(EXAMPLES / "absent.lp"), "not access(ann,db)", "--answer-set", "1"),
+    ("why", str(EXAMPLES / "chain.lp"), "reach(d)", "--answer-set", "1"),
     ("ask", str(EXAMPLES / "team.lp"), "team(ann)"),
     ("ask", str(EXAMPLES / "team.lp"), "{ team(X) }"),
     ("ask", str(EXAMPLES / "team.lp"), "{ team(ann), team(bob) }"),
     ("ask", str(EXAMPLES / "team.lp"), "{ nobody(X) }"),
     ("ask", str(EXAMPLES / "team.lp"), "team(ann)", "--max-answer-sets", "2"),
+    ("why", str(EXAMPLES / "team.lp"), "balanced"),
+    ("why", str(EXAMPLES / "team.lp"), "{ team(X) }", "--binding", "X = ann", "--mode", "brave"),
+    ("why", str(EXAMPLES / "team.lp"), "zz", "--mode", "brave"),
+    ("why", str(EXAMPLES / "team.lp"), "balanced", "--assuming", "team(bob), team(cy)"),
 ]
 
 
@@ -288,7 +292,7 @@ def _without(monkeypatch: pytest.MonkeyPatch, package: str) -> None:
     ("argv", "fault"),
     [
         (("explain", str(EXAMPLES / "chain.lp")), Exit.FAULT),
-        (("why", str(EXAMPLES / "chain.lp"), "reach(d)"), WhyExit.FAULT),
+        (("why", str(EXAMPLES / "chain.lp"), "reach(d)", "--answer-set", "1"), WhyExit.FAULT),
         (("ask", str(EXAMPLES / "chain.lp"), "reach(d)"), AskExit.FAULT),
     ],
 )
@@ -496,7 +500,9 @@ def test_plus_asks_the_library_one_step_deeper(
 ) -> None:
     path = tmp_path / "deep.lp"
     path.write_text("{ x }.\na :- b.\nb :- c.\nc :- x.\n")
-    _, view, style = viewed(monkeypatch, "why", str(path), "a", "--max-depth", "1")
+    _, view, style = viewed(
+        monkeypatch, "why", str(path), "a", "--answer-set", "1", "--max-depth", "1"
+    )
     calls = _counting(view)
     texts: list[str] = []
 
@@ -579,10 +585,10 @@ DEEP = "{ x }.\ne :- b.\ne :- c.\nb :- c.\nc :- x.\n"
     ("argv", "last", "stops"),
     [
         (("explain", str(EXAMPLES / "team.lp")), False, False),
-        (("why", "DEEP", "e"), False, False),
+        (("why", "DEEP", "e", "--answer-set", "1"), False, False),
         # The second `not c` still stops a step deeper; the cursor stays on it, not on the first.
-        (("why", "DEEP", "e"), True, True),
-        (("why", "DEEP", "b"), False, False),
+        (("why", "DEEP", "e", "--answer-set", "1"), True, True),
+        (("why", "DEEP", "b", "--answer-set", "1"), False, False),
     ],
 )
 def test_plus_keeps_the_cursor_on_the_step_it_deepens_with_its_rows_beneath(
@@ -812,7 +818,9 @@ def test_e_keeps_the_cursor_on_its_row_as_every_claim_is_found_and_opened(
 def test_plus_on_a_complete_explanation_says_there_is_nothing_deeper(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, view, style = viewed(monkeypatch, "why", str(EXAMPLES / "chain.lp"), "reach(d)")
+    _, view, style = viewed(
+        monkeypatch, "why", str(EXAMPLES / "chain.lp"), "reach(d)", "--answer-set", "1"
+    )
     calls = _counting(view)
 
     async def act(pilot: Pilot[None]) -> None:
@@ -886,7 +894,9 @@ def test_esc_closes_the_find_box_and_then_quits(monkeypatch: pytest.MonkeyPatch)
 def test_f_and_e_are_offered_only_where_the_rows_are_claims(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, view, style = viewed(monkeypatch, "why", str(EXAMPLES / "absent.lp"), "access(ann,db)")
+    _, view, style = viewed(
+        monkeypatch, "why", str(EXAMPLES / "absent.lp"), "access(ann,db)", "--answer-set", "1"
+    )
     offered: list[set[str]] = []
     counts: list[int] = []
 
@@ -1009,7 +1019,7 @@ def _spans_line(capsys: pytest.CaptureFixture[str], *argv: str) -> list[str]:
 def test_the_pane_on_a_step_is_the_rule_the_text_view_writes_beneath_it(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    argv = ("why", str(EXAMPLES / "absent.lp"), "not access(ann,db)")
+    argv = ("why", str(EXAMPLES / "absent.lp"), "not access(ann,db)", "--answer-set", "1")
     _, view, style = viewed(monkeypatch, *argv)
     seen: list[list[str]] = []
 
@@ -1135,11 +1145,32 @@ def test_enter_on_an_answer_set_asks_why_and_escape_comes_back(
     assert titles == ["why: team(ann)", "ask: { team(ann) }"]
 
 
+def test_enter_on_an_answer_set_a_warrant_names_asks_why_under_its_assumptions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    argv = ("why", str(EXAMPLES / "team.lp"), "team(ann)", "--assuming", "not team(dee)")
+    _, view, style = viewed(monkeypatch, *argv)
+    seen: list[str] = []
+
+    async def act(pilot: Pilot[None]) -> None:
+        app = pilot.app
+        assert isinstance(app, Viewer)
+        await pilot.press("j", "j", "enter")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, Viewing)
+        seen.extend(_normal(painted(row, style)) for row in flat(screen.view.rows))
+
+    drive(view, style, act)
+    assert seen[0] == "why: team(ann)"
+    assert not any("dee" in line for line in seen if "answer set" in line)
+
+
 @pytest.mark.parametrize(
     ("argv", "absent"),
     [
         (("explain", str(EXAMPLES / "chain.lp")), set[str]()),
-        (("why", str(EXAMPLES / "absent.lp"), "access(ann,db)"), {"f", "e"}),
+        (("why", str(EXAMPLES / "absent.lp"), "access(ann,db)", "--answer-set", "1"), {"f", "e"}),
         (("ask", str(EXAMPLES / "team.lp"), "team(ann)"), {"f", "e", "s", "+"}),
     ],
 )
@@ -1519,7 +1550,7 @@ def test_a_call_stops_only_the_search_its_own_thread_makes() -> None:
 
 SNAPSHOTS = [
     *(("explain", str(EXAMPLES / name)) for name in EVIDENCE),
-    ("why", str(EXAMPLES / "absent.lp"), "not access(ann,db)"),
+    ("why", str(EXAMPLES / "absent.lp"), "not access(ann,db)", "--answer-set", "1"),
     ("ask", str(EXAMPLES / "team.lp"), "team(ann)"),
 ]
 """The five examples of evidence, and a `why` and an `ask`."""
@@ -1592,7 +1623,9 @@ def test_plus_brings_the_deeper_rows_to_the_block_they_belong_to(
 ) -> None:
     path = tmp_path / "deep.lp"
     path.write_text("{ x }.\na :- b.\nb :- c.\nc :- x.\n")
-    _, view, style = viewed(monkeypatch, "why", str(path), "a", "--max-depth", "1")
+    _, view, style = viewed(
+        monkeypatch, "why", str(path), "a", "--answer-set", "1", "--max-depth", "1"
+    )
     seen: list[object] = []
 
     async def act(pilot: Pilot[None]) -> None:
@@ -1618,7 +1651,9 @@ def test_plus_again_while_the_library_goes_deeper_asks_it_nothing_more(
 ) -> None:
     path = tmp_path / "deep.lp"
     path.write_text("{ x }.\na :- b.\nb :- c.\nc :- x.\n")
-    _, view, style = viewed(monkeypatch, "why", str(path), "a", "--max-depth", "1")
+    _, view, style = viewed(
+        monkeypatch, "why", str(path), "a", "--answer-set", "1", "--max-depth", "1"
+    )
     gate = Gate(heeds=True)
     view.evidence = gate.evidence
     seen: list[object] = []
@@ -1645,7 +1680,7 @@ def test_plus_where_no_step_is_selected_says_there_is_nothing_deeper(
 ) -> None:
     passing = str(_sources(tmp_path, {"a.lp": PASSES}))
     for argv, keys in (
-        (("why", str(EXAMPLES / "chain.lp"), "reach(d)"), ("plus",)),
+        (("why", str(EXAMPLES / "chain.lp"), "reach(d)", "--answer-set", "1"), ("plus",)),
         (("test", passing), ("f", "plus")),
     ):
         _, view, style = viewed(monkeypatch, *argv)
@@ -1812,7 +1847,9 @@ def test_a_narrow_title_keeps_a_space_before_its_status(monkeypatch: pytest.Monk
 def test_why_is_headed_by_the_atom_as_it_was_asked(
     monkeypatch: pytest.MonkeyPatch, asked: str, heading: str
 ) -> None:
-    _, view, style = viewed(monkeypatch, "why", str(EXAMPLES / "absent.lp"), asked)
+    _, view, style = viewed(
+        monkeypatch, "why", str(EXAMPLES / "absent.lp"), asked, "--answer-set", "1"
+    )
     assert painted(view.rows[0], style) == heading
 
 
