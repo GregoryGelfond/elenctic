@@ -4,7 +4,9 @@
 (singleton, conjunctive or disjunctive) is `yes` if true in every one, `no` if false in every
 one, and `unknown` otherwise. A literal absent from an answer set is unknown there unless its
 contrary is present (Gelfond and Kahl, Definition 2.2.2, with the errata that this rule holds for
-every ground query).
+every ground query). A query may put `not` before a literal: `not l` is true in an answer set
+without `l` and false in one with it, as in a rule body, so it is never unknown there, and `not l`
+is `yes` for an `l` nothing derives, though `l` is `unknown`.
 
 **Queries range over the full answer sets.** `@query` reads every atom of each answer set, not
 only those `#show` selects. `#show` still governs what `@answer-set`, `@count`, `@cautious` and

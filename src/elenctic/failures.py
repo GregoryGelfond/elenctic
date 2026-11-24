@@ -6,7 +6,7 @@ from elenctic.contract import Entails
 from elenctic.determination import AnswerSet, Mode, Truncation
 from elenctic.literals import Atoms, Literal
 from elenctic.patterns import Pattern
-from elenctic.query import All, Answer, Any, Query
+from elenctic.query import All, Answer, Any, Not, Query
 from elenctic.verdicts import Ended
 
 
@@ -35,29 +35,41 @@ def _first_lacking(
     return None
 
 
-def literals_of(query: Query) -> list[Literal]:
-    """Name the literals a query is built of, in the order written."""
+def roots(query: Query, atoms: Atoms, answer: Answer) -> list[Literal]:
+    """Name what keeps a query from having `answer` in one answer set.
+
+    A `yes` wants each part true, a `no` each part false. A literal kept from it is kept by what
+    holds in its place (the other of the literal and its contrary), or else by its own absence;
+    `not l` is kept from it by `l`, present for `yes` and absent for `no`.
+    """
+    if answer is Answer.UNKNOWN:
+        return []
+    return [root for part in _parts(query) if (root := _root(part, atoms, answer)) is not None]
+
+
+def _parts(query: Query) -> list[Literal | Not]:
+    """List the ground parts a query is built of, in the order written."""
     match query:
         case Literal():
             return [query]
         case Pattern():
             closed = query.as_literal()
             return [] if closed is None else [closed]
+        case Not(part):
+            closed = part.as_literal() if isinstance(part, Pattern) else part
+            return [] if closed is None else [Not(closed)]
         case All(parts) | Any(parts):
-            return [literal for part in parts for literal in literals_of(part)]
+            return [each for part in parts for each in _parts(part)]
 
 
-def roots(query: Query, atoms: Atoms, answer: Answer) -> list[Literal]:
-    """Name what keeps a query from having `answer` in one answer set.
-
-    A `yes` wants each literal to hold, a `no` each contrary; one that does not is kept from it by
-    what holds in its place (the other of the two), or else by its own absence.
-    """
-    if answer is Answer.UNKNOWN:
-        return []
-    wanted = [_wanted(literal, answer) for literal in literals_of(query)]
-    return [w.contrary if w.contrary in atoms else w for w in wanted if w not in atoms]
-
-
-def _wanted(literal: Literal, answer: Answer) -> Literal:
-    return literal if answer is Answer.YES else literal.contrary
+def _root(part: Literal | Not, atoms: Atoms, answer: Answer) -> Literal | None:
+    match part:
+        case Not(Literal() as literal):
+            return literal if (literal in atoms) is (answer is Answer.YES) else None
+        case Literal():
+            wanted = part if answer is Answer.YES else part.contrary
+            if wanted in atoms:
+                return None
+            return wanted.contrary if wanted.contrary in atoms else wanted
+        case _:
+            return None

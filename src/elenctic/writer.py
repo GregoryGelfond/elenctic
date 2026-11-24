@@ -1,6 +1,7 @@
 """Write a claim as the tag line that reads back to it."""
 
 from collections.abc import Iterable
+from operator import itemgetter
 
 from elenctic.contract import (
     Asks,
@@ -17,7 +18,7 @@ from elenctic.contract import (
 from elenctic.determination import Assignment, Range
 from elenctic.literals import Literal, Symbol
 from elenctic.patterns import Pattern
-from elenctic.query import All
+from elenctic.query import All, Not, Query
 
 
 def braces(literals: Iterable[Literal]) -> str:
@@ -37,10 +38,32 @@ def rows(pattern: Pattern, found: Iterable[tuple[Symbol, ...]]) -> str:
 
 
 def queried(query: All | Pattern) -> str:
-    """Write a query as `@query` does: its literals in braces, or its one pattern."""
+    """Write a query as `@query` does: its parts in braces, or its one pattern.
+
+    Ground parts are written in a fixed order; parts with variables, as written, since the order
+    their variables first occur in is the order of each binding's values.
+    """
     if isinstance(query, Pattern):
         return f"{{ {query} }}"
-    return braces(part for part in query.parts if isinstance(part, Literal))
+    keys = [_order(part) for part in query.parts]
+    ordered = (
+        query.parts
+        if None in keys
+        else [part for _, part in sorted(zip(keys, query.parts, strict=True), key=itemgetter(0))]
+    )
+    parts = ", ".join(map(str, ordered))
+    return "{ }" if not parts else "{ " + parts + " }"
+
+
+def _order(part: Query) -> tuple[Literal, bool] | None:
+    """Order a ground part by its literal, with `not` after it without; `None` if not ground."""
+    match part:
+        case Literal():
+            return part, False
+        case Not(Literal() as literal):
+            return literal, True
+        case _:
+            return None
 
 
 def _optimally(over: Range) -> str:

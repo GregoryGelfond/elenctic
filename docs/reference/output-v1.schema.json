@@ -148,6 +148,9 @@
                 "type": "string"
               },
               {
+                "$ref": "#/$defs/not"
+              },
+              {
                 "$ref": "#/$defs/all"
               },
               {
@@ -220,6 +223,9 @@
               "type": "string"
             },
             {
+              "$ref": "#/$defs/not"
+            },
+            {
               "$ref": "#/$defs/all"
             },
             {
@@ -290,6 +296,9 @@
             "oneOf": [
               {
                 "type": "string"
+              },
+              {
+                "$ref": "#/$defs/not"
               },
               {
                 "$ref": "#/$defs/all"
@@ -1150,6 +1159,22 @@
           "items": {
             "type": "string"
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "not": {
+      "type": "object",
+      "required": [
+        "kind",
+        "part"
+      ],
+      "properties": {
+        "kind": {
+          "const": "not"
+        },
+        "part": {
+          "type": "string"
         }
       },
       "additionalProperties": false

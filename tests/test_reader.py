@@ -17,7 +17,7 @@ from elenctic.contract import (
 from elenctic.determination import Mode, Range, Valuation
 from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
-from elenctic.query import All, Answer
+from elenctic.query import All, Answer, Not
 from elenctic.reader import parse_contract
 from elenctic.spans import Diagnostic, Position, Span
 from elenctic.tags import is_case
@@ -69,6 +69,17 @@ def test_a_ground_query_is_a_conjunction_with_its_expected_answer() -> None:
         Answer.UNKNOWN,
         All((Literal("p", (Number(1),)), Literal("q", (String("a,b"),), positive=False))),
     )
+
+
+def test_a_ground_query_may_ask_that_a_literal_does_not_hold() -> None:
+    claim = only("% @query yes { p, not -q }")
+    assert claim.reading == Asks(Answer.YES, All((Literal("p"), Not(Literal("q", positive=False)))))
+
+
+def test_a_query_tag_refuses_a_semicolon_as_ask_does() -> None:
+    found = only_diagnostic("% @query yes { p ; q }")
+    assert found.message == "query uses a semicolon"
+    assert found.span == Span("c.lp", Position(2, 18), Position(2, 19))
 
 
 def test_a_binding_query_states_the_bindings_it_expects() -> None:
@@ -159,6 +170,7 @@ def test_a_claim_renders_as_the_line_that_reads_back_to_it() -> None:
         "@cautious { p } assuming { not r, s }",
         '@brave { q("a,b") }',
         "@query unknown { p(1), -q }",
+        "@query no { p, not -q }",
         "@query yes { p(X,b) } = { 1, 2 }",
         "@query no { p(X,Y) } = { (a,1), (b,2) }",
         "@query yes { p(f(X),b) } = { 1, 2 }",

@@ -15,7 +15,9 @@ All notable changes are recorded here. The format follows
   `--answer-set K`-th, of all or `--over optimal`, under `--assuming L,…`; the block of `explain`,
   headed `why:` and the atom as it was asked, `not` kept. `elenctic ask PATH QUERY`: a query,
   written as `@query` writes it, answered over the answer sets, with the first answer set taking
-  each value, or a pattern's bindings. Each exits with its own outcome, `WhyExit` or `AskExit`;
+  each value, or a pattern's bindings. A query, in `ask` and `@query`, may put `not` before a
+  literal (true where the literal is absent), may end with a full stop, and refuses `;`; a query
+  that starts with `-`, `ask PATH -p(X)`, is not taken for an option. Each exits with its own outcome, `WhyExit` or `AskExit`;
   `repl` stays reserved.
 - `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base
   encoding, loaded with every case after its own text, as clingo loads the files it is given. A

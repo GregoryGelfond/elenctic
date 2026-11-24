@@ -76,8 +76,8 @@ unless `--format` says otherwise.
 
 `elenctic why PATH ATOM` explains why the ground literal `ATOM` holds, or not, in one answer set of
 the program at `PATH`; a leading `not` is dropped, since the answer set says which. `elenctic ask
-PATH QUERY` answers a query, written as `@query` writes it (`{ a, -b }`, or one pattern `{ p(X) }`;
-braces optional), over every answer set. Each takes `--format`, `--short`, `--json`, `--root`,
+PATH QUERY` answers a query, written as `@query` writes it (`{ a, not -b }`, or one pattern
+`{ p(X) }`; braces and a final full stop optional), over every answer set. Each takes `--format`, `--short`, `--json`, `--root`,
 `--with`, `--max-seconds` and `--max-answer-sets` as `test` does, a refused root or `--with` file
 stopping it before it runs, and opens the interactive view as `explain` does; a `PATH` that is a
 directory is a usage error. And these:
@@ -289,7 +289,7 @@ of the same kind are independent claims: two `@answer-set` claims are two existe
 | `@assign { x=1, … }` | some answer set assigns each variable that integer (clingcon) |
 | `@cautious { L }` | `L` is in every answer set (⋂ AS(P)); computed by the solver |
 | `@brave { L }` | `L` is in some answer set (∪ AS(P)); computed by the solver |
-| `@query A { L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`), over AS(P) |
+| `@query A { L, not L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`), over AS(P); only `,` separates its parts (`;` is refused) |
 | `@query A { p(X, b) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these; every variable is named (`_` is refused) |
 | `@query optimal A { L, … }`, `@query optimal A { p(X) } = { … }` | the same, over the optimal answer sets Opt(P) |
 | `@answer-set optimal { L }`, `@cautious optimal { L }`, `@brave optimal { L }` | the same, over the optimal answer sets Opt(P); `@optimal { L }` is `@answer-set optimal { L }` |
@@ -445,7 +445,8 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 
 | Name | What it is |
 |---|---|
-| `Query` | what a `WorldView` is asked: `Literal \| Pattern \| All \| Any` |
+| `Query` | what a `WorldView` is asked: `Literal \| Pattern \| Not \| All \| Any` |
+| `Not` | default negation of a literal or pattern: true in an answer set exactly when it is not in it |
 | `All` | the conjunction of its parts |
 | `Any` | the disjunction of its parts; not `typing.Any` |
 | `Answer` | `YES`, `NO` or `UNKNOWN`: a query true in every answer set, false in every one, or neither |

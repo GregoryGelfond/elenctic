@@ -40,12 +40,26 @@ def place(where: Span, inner: Span) -> Span:
     return Span(where.source, unprefixed(inner.start), unprefixed(inner.end)).shifted(where.start)
 
 
-def _first_error(where: Span, messages: list[str], source: str) -> Diagnostic:
-    found = diagnose("".join(messages), source)[0]
+def _first_error(where: Span, messages: list[str], text: str) -> Diagnostic:
+    found = diagnose("".join(messages), prefixed(text))[0]
     if found.span is None:
         return failure(where, found.message)
     notes = tuple(child.message for child in found.children)
-    return failure(place(where, found.span), found.message, notes=notes)
+    return failure(_within(where, text, place(where, found.span)), found.message, notes=notes)
+
+
+def _within(where: Span, text: str, span: Span) -> Span:
+    """Keep a span inside `text`, written at `where`: clingo places the end of its input past it.
+
+    What starts past the text is put on its last character; what ends past it, cut there.
+    """
+    lines = text.split("\n")
+    column = len(lines[-1]) + (where.start.column if len(lines) == 1 else 1)
+    end = Position(where.start.line + len(lines) - 1, column)
+    if span.start >= end:
+        last = Position(end.line, max(1, end.column - 1))
+        return Span(where.source, last, end)
+    return span if span.end <= end else Span(span.source, span.start, end)
 
 
 def read_body(text: str, where: Span) -> Parsed[tuple[AST, ...]]:
@@ -60,7 +74,7 @@ def read_body(text: str, where: Span) -> Parsed[tuple[AST, ...]]:
     try:
         parse_string(source, statements.append, logger=lambda _c, m: errors.append(m))
     except RuntimeError:
-        return _first_error(where, errors, source)
+        return _first_error(where, errors, text)
     statements = [s for s in statements if tree.kind(s) is not ASTType.Program]
     if len(statements) != 1:
         shown = one_line(text) or "{ }"

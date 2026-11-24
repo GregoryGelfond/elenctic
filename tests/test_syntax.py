@@ -7,7 +7,7 @@ from elenctic.determination import Valuation
 from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
 from elenctic.queries import read_query
-from elenctic.query import All
+from elenctic.query import All, Not
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Position, Span
 from elenctic.syntax import Item, read_asked, read_literals, read_scenario, read_valuations
@@ -288,10 +288,44 @@ def test_a_query_reads_as_the_query_tag_reads_it() -> None:
     assert read_query("{ p(X, 1) }", "QUERY") == Pattern("p", (X, Number(1)))
 
 
+def test_a_query_reads_not_as_default_negation_of_the_literal_after_it() -> None:
+    assert read_query("{ a, not -b }", "QUERY") == All(
+        (Literal("a"), Not(Literal("b", positive=False)))
+    )
+    assert read_query("not a", "QUERY") == All((Not(Literal("a")),))
+
+
+@pytest.mark.parametrize("text", ["reach(b).", "{ reach(b) }.", " reach(b) . "])
+def test_a_query_may_end_with_a_full_stop(text: str) -> None:
+    assert read_query(text, "QUERY") == All((Literal("reach", (parse_term("b"),)),))
+
+
+@pytest.mark.parametrize(("text", "column"), [("a; b", 2), ("{ a, b ; c }", 8), ("a;", 2)])
+def test_a_semicolon_between_literals_is_refused_where_it_stands(text: str, column: int) -> None:
+    refused = read_query(text, "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert refused.message == "query uses a semicolon"
+    assert refused.span == Span("QUERY", Position(1, column), Position(1, column + 1))
+    assert [child.message for child in refused.children] == ["separate the literals with `,`"]
+
+
+def test_a_semicolon_inside_a_string_is_part_of_the_string() -> None:
+    assert read_query('p("x;y")', "QUERY") == All((Literal("p", (String("x;y"),)),))
+
+
+@pytest.mark.parametrize("text", ["a..", "a,", "{ a, }", "p(", "{ a :- }"])
+def test_a_syntax_error_in_a_query_is_placed_within_what_was_written(text: str) -> None:
+    refused = read_query(text, "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert refused.span is not None
+    assert refused.span.start.line == refused.span.end.line == 1
+    assert 1 <= refused.span.start.column < refused.span.end.column <= len(text) + 1
+
+
 @pytest.mark.parametrize(
     ("text", "message"),
     [
-        ("{ not a }", "query uses `not`"),
+        ("{ not not a }", "expected a literal"),
         ("{ p(X), q }", "query with variables has one pattern"),
         ("{ p(_) }", "anonymous variable"),
         ("{ }", "expected at least one atom"),

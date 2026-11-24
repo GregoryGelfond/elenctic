@@ -44,7 +44,7 @@ from elenctic.explanation import (
 from elenctic.literals import Assumption, Literal
 from elenctic.patterns import Pattern
 from elenctic.program import Fault, Program
-from elenctic.query import All, Answer, Answered, Any, Bindings, Truth, Unreached, evaluate
+from elenctic.query import All, Answer, Answered, Any, Bindings, Not, Truth, Unreached, evaluate
 from elenctic.search import KEEP_SHOWN, Interrupt, Limit, Limits
 from elenctic.session import Session, evidenced, session
 from elenctic.terms import Variable
@@ -701,11 +701,16 @@ def test_an_optimum_the_search_did_not_prove_ends_the_search(
     assert made.outrank(frozenset({Literal("p")})) == unproven
 
 
-def test_a_query_names_its_closed_patterns_and_not_its_open_ones() -> None:
+def test_a_query_is_kept_from_its_answer_by_its_closed_patterns_and_not_its_open_ones() -> None:
     closed = Pattern("p", (_n(1),))
-    assert failures.literals_of(All((closed, Pattern("q", (Variable("X"),))))) == [
-        Literal("p", (_n(1),))
-    ]
+    query = All((closed, Pattern("q", (Variable("X"),)), Not(closed)))
+    assert failures.roots(query, frozenset(), Answer.YES) == [Literal("p", (_n(1),))]
+
+
+def test_not_is_kept_from_yes_by_its_literal_holding_and_from_no_by_its_absence() -> None:
+    p, q = Literal("p"), Literal("q")
+    assert failures.roots(All((Not(p), Not(q))), frozenset({p}), Answer.YES) == [p]
+    assert failures.roots(All((Not(p), Not(q))), frozenset({p}), Answer.NO) == [q]
 
 
 def test_a_no_query_is_not_kept_from_its_answer_by_a_literal_whose_contrary_holds() -> None:

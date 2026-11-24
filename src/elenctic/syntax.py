@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import NamedTuple
 
 from clingo.ast import AST, ASTType, ComparisonOperator, Sign
 
@@ -118,12 +119,29 @@ def _equation(literal: AST) -> Valuation | None:
     return None
 
 
-def asked(text: str, source: str) -> tuple[str, Span]:
-    """Place what a command was given as its own one-line source, without enclosing braces."""
-    stripped = text.strip()
-    if stripped.startswith("{") and stripped.endswith("}"):
-        stripped = stripped[1:-1]
-    return stripped, Span(source, Position(1, 1), Position(1, len(text) + 1))
+class Asked(NamedTuple):
+    """What a command was given, without its braces or full stop, and where it stands."""
+
+    text: str
+    at: Span
+    """Where `text` stands in what was given, so what is read from it is placed there."""
+    whole: Span
+    """All that was given, for a refusal of it as a whole."""
+
+
+def asked(given: str, source: str) -> Asked:
+    """Place what a command was given as its own one-line source, without braces or full stop.
+
+    A full stop may end it, as one ends a statement; braces may enclose what precedes that.
+    """
+    lead = len(given) - len(given.lstrip())
+    text = given.strip()
+    if text.endswith("."):
+        text = text[:-1].rstrip()
+    if text.startswith("{") and text.endswith("}"):
+        text, lead = text[1:-1], lead + 1
+    at = Span(source, Position(1, lead + 1), Position(1, lead + len(text) + 1))
+    return Asked(text, at, Span(source, Position(1, 1), Position(1, len(given) + 1)))
 
 
 def read_asked(text: str, source: str) -> Parsed[tuple[Literal, bool]]:
@@ -132,8 +150,8 @@ def read_asked(text: str, source: str) -> Parsed[tuple[Literal, bool]]:
     Whether the atom holds is the answer set's to say, so `not p` asks what `p` does; the `not` is
     kept only to head the answer as it was asked.
     """
-    body, where = asked(text, source)
-    items = read_literals(body, where)
+    body, at, where = asked(text, source)
+    items = read_literals(body, at)
     if isinstance(items, Diagnostic):
         return items
     if len(items) != 1:
@@ -147,8 +165,8 @@ def read_asked(text: str, source: str) -> Parsed[tuple[Literal, bool]]:
 
 def read_scenario(text: str, source: str) -> Parsed[Scenario]:
     """Read comma-separated assumptions, `p` or `not p`, as `assuming { … }` writes them."""
-    body, where = asked(text, source)
-    items = read_literals(body, where)
+    body, at, where = asked(text, source)
+    items = read_literals(body, at)
     if isinstance(items, Diagnostic):
         return items
     return scenario_of(items, where)

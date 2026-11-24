@@ -17,11 +17,11 @@ from elenctic.facts import Facts
 from elenctic.grounded import Grounded
 from elenctic.literals import Literal, Signature
 from elenctic.patterns import Pattern
-from elenctic.query import All, Any, Query
+from elenctic.query import All, Any, Not, Query
 from elenctic.spans import Diagnostic, failure, note
 
 
-def _parts(query: Query) -> list[Literal | Pattern]:
+def _parts(query: Query) -> list[Literal | Pattern | Not]:
     """List the literals and patterns a query reads, however deeply it nests them."""
     match query:
         case All(parts) | Any(parts):
@@ -34,8 +34,13 @@ def _contrary(signature: Signature) -> Signature:
     return Signature(signature.name, signature.arity, not signature.positive)
 
 
-def _signatures(part: Literal | Pattern) -> frozenset[Signature]:
-    """Return the signature a part reads, and its contrary (Gelfond-Kahl answers read both)."""
+def _signatures(part: Literal | Pattern | Not) -> frozenset[Signature]:
+    """Return the signature a part reads, and its contrary (Gelfond-Kahl answers read both).
+
+    `not l` reads only whether `l` holds.
+    """
+    if isinstance(part, Not):
+        return frozenset({part.part.signature})
     signature = part.signature
     return frozenset({signature, _contrary(signature)})
 

@@ -13,6 +13,7 @@ from elenctic.query import (
     Answer,
     Any,
     Bindings,
+    Not,
     Query,
     Truth,
     answer,
@@ -57,6 +58,44 @@ def test_a_conjunction_is_as_true_as_its_least_true_part_and_a_disjunction_its_m
     assert evaluate(Any((P, Q)), member) is Truth.TRUE
 
 
+def test_not_is_true_where_its_literal_is_absent_and_false_where_it_holds() -> None:
+    member: Atoms = frozenset({P, Q.contrary})
+    truths = [evaluate(Not(x), member) for x in (P, Q, R, Q.contrary)]
+    assert truths == [Truth.FALSE, Truth.TRUE, Truth.TRUE, Truth.FALSE]
+
+
+@given(consistent_sets, literals)
+def test_not_is_never_unknown_in_an_answer_set(member: Atoms, literal: Literal) -> None:
+    expected = Truth.FALSE if literal in member else Truth.TRUE
+    assert evaluate(Not(literal), member) is expected
+
+
+def test_a_conjunction_with_not_is_true_when_every_part_is_and_false_when_one_part_is() -> None:
+    member: Atoms = frozenset({P})
+    assert evaluate(All((P, Not(Q))), member) is Truth.TRUE
+    assert evaluate(All((R, Not(P))), member) is Truth.FALSE
+    assert evaluate(All((R, Not(Q))), member) is Truth.UNKNOWN
+
+
+def test_not_of_a_literal_no_answer_set_holds_is_yes_though_the_literal_is_unknown() -> None:
+    view = world({P}, {P, Q})
+    assert answer(All((Not(R),)), view) is Answer.YES
+    assert answer(R, view) is Answer.UNKNOWN
+
+
+def test_not_of_a_literal_is_no_where_every_answer_set_holds_it_and_unknown_where_some_do() -> None:
+    view = world({P}, {P, Q})
+    assert answer(All((Not(P),)), view) is Answer.NO
+    assert answer(All((Not(Q),)), view) is Answer.UNKNOWN
+
+
+def test_a_ground_pattern_under_not_is_its_literal_under_not() -> None:
+    member: Atoms = frozenset({Literal("p", (Number(1),))})
+    assert evaluate(Not(Pattern("p", (Number(1),))), member) is Truth.FALSE
+    with pytest.raises(ValueError, match="has variables"):
+        evaluate(Not(Pattern("p", (X,))), member)
+
+
 def test_the_empty_conjunction_is_true_and_the_empty_disjunction_false() -> None:
     assert evaluate(All(()), frozenset()) is Truth.TRUE
     assert evaluate(Any(()), frozenset()) is Truth.FALSE
@@ -82,6 +121,8 @@ def test_negation_swaps_conjunction_and_disjunction(member: Atoms, query: Query)
                 return Any(tuple(dual(p) for p in parts))
             case Any(parts):
                 return All(tuple(dual(p) for p in parts))
+            case Not():
+                pytest.fail("`not` flips no truth to unknown, so it has no dual among queries")
 
     flipped = {Truth.TRUE: Truth.FALSE, Truth.FALSE: Truth.TRUE, Truth.UNKNOWN: Truth.UNKNOWN}
     assert evaluate(dual(query), member) is flipped[evaluate(query, member)]

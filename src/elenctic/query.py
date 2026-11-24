@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum, auto
-from typing import Final
+from typing import Final, override
 
 from elenctic.determination import AnswerSet, Range, Truncation, WorldView
 from elenctic.extension import Extension
@@ -46,17 +46,32 @@ class Any:
     parts: tuple[Query, ...]
 
 
-type Query = Literal | Pattern | All | Any
+@dataclass(frozen=True, slots=True)
+class Not:
+    """Default negation: true in an answer set exactly when its literal is not in it."""
+
+    part: Literal | Pattern
+
+    @override
+    def __str__(self) -> str:
+        return f"not {self.part}"
+
+
+type Query = Literal | Pattern | Not | All | Any
 
 
 def evaluate(query: Query, member: Atoms) -> Truth:
     """Evaluate `query` in one answer set: a literal is true if in it, false if its contrary is.
 
-    A pattern with variables has bindings rather than a truth, and is refused.
+    `not l` is true if `l` is not in it and false if it is, so it is never unknown. A pattern with
+    variables has bindings rather than a truth, and is refused.
     """
     match query:
         case Pattern():
             return evaluate(_closed(query), member)
+        case Not(part):
+            literal = _closed(part) if isinstance(part, Pattern) else part
+            return Truth.FALSE if literal in member else Truth.TRUE
         case Literal():
             return (
                 Truth.TRUE

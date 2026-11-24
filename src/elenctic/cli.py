@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import signal
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -315,7 +316,12 @@ def _parser() -> argparse.ArgumentParser:
         "why", parents=options, help="show why an atom holds, or not, in an answer set"
     )
     _asking(why, "the explanation")
-    why.add_argument("atom", metavar="ATOM", help="the ground literal asked about: `p(a)`, `-p`")
+    why.add_argument(
+        "atom",
+        type=_literal,
+        metavar="ATOM",
+        help="the ground literal asked about: `p(a)`, `-p`",
+    )
     why.add_argument(
         "--answer-set",
         type=_index,
@@ -325,6 +331,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     why.add_argument(
         "--assuming",
+        type=_literal,
         metavar="L,...",
         help="literals assumed, `p` or `not p`, as `assuming { ... }` writes them",
     )
@@ -333,8 +340,10 @@ def _parser() -> argparse.ArgumentParser:
     _asking(ask, "the answer")
     ask.add_argument(
         "query",
+        type=_literal,
         metavar="QUERY",
-        help="literals `{ a, -b }`, or one pattern `{ p(X) }`, as `@query`",
+        help="literals, `not` before any, `{ a, not -b }`, or one pattern `{ p(X) }`, "
+        "as `@query`; a full stop may end it",
     )
     commands.add_parser(
         "version",
@@ -346,6 +355,34 @@ def _parser() -> argparse.ArgumentParser:
             "rest", nargs=argparse.REMAINDER
         )
     return parser
+
+
+_LITERAL: Final = re.compile(r"-[a-z_]")
+"""How a classical literal starts, `-p(X)`, which argparse would take for an option."""
+
+
+def _literals(arguments: list[str]) -> list[str]:
+    """Keep a literal given to `why` or `ask`, such as `-p(X)`, from being read as an option.
+
+    argparse reads an argument with a space in it as positional, so each one after the command
+    that starts as a classical literal does, and is not an option, gets a trailing space; the
+    `_literal` type drops it again.
+    """
+    at = next((i for i, a in enumerate(arguments) if a in DECIDED), len(arguments))
+    if at == len(arguments) or arguments[at] not in {"why", "ask"}:
+        return arguments
+    ended = arguments.index("--") if "--" in arguments else len(arguments)
+    return [
+        f"{argument} "
+        if at < index < ended and _LITERAL.match(argument) and argument not in BARE | {"-v"}
+        else argument
+        for index, argument in enumerate(arguments)
+    ]
+
+
+def _literal(text: str) -> str:
+    """Take a literal as it was written, without the space `_literals` gave it."""
+    return text.removesuffix(" ")
 
 
 def _explicit_icons(argv: Iterable[str]) -> list[str]:
@@ -1038,7 +1075,7 @@ def _home(variables: Mapping[str, str]) -> Path | None:
 def main(argv: Sequence[str] | None = None) -> Outcome:
     """Run a command and return its outcome, which is the status to exit with."""
     parser = _parser()
-    arguments = parser.parse_args(_normalized(sys.argv[1:] if argv is None else argv))
+    arguments = parser.parse_args(_literals(_normalized(sys.argv[1:] if argv is None else argv)))
     if arguments.command is None and not arguments.show_version:
         parser.error("the following arguments are required: COMMAND")
     variables = os.environ  # the one place that reads the environment

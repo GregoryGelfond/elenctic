@@ -1294,11 +1294,41 @@ def test_ask_refuses_a_query_the_query_tag_refuses(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = write(tmp_path, "ab.lp", CHOICE)
-    code, out, err = run_both(capsys, "ask", path, "{ not a }")
+    code, out, err = run_both(capsys, "ask", path, "{ a ; b }")
     assert (code, out) == (AskExit.FAULT, "")
-    assert err.startswith("error: query uses `not`\n --> QUERY:1:1\n")
+    assert err.startswith("error: query uses a semicolon\n --> QUERY:1:5\n")
     code, _, err = run_both(capsys, "ask", tmp_path / "absent.lp", "a")
     assert code == AskExit.FAULT
+
+
+def test_ask_of_not_answers_as_the_literal_is_absent_or_not(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    _, out = run(capsys, "ask", path, "not c")
+    assert "  = answer: yes\n" in out
+    _, out = run(capsys, "ask", path, "{ not a, not -c }.")
+    assert out.startswith("ask: { not a, not -c }\n")
+    assert "  = answer: no\n" in out
+
+
+@pytest.mark.parametrize("command", ["ask", "why"])
+def test_a_query_or_atom_that_starts_with_a_classical_negation_is_not_an_option(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    code, out = run(capsys, command, path, "-c", "--over", "optimal")
+    assert code == 0
+    assert "-c" in out.splitlines()[0]
+
+
+def test_a_query_with_a_classical_negation_and_variables_is_not_an_option(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "-p(3).\n")
+    code, out = run(capsys, "ask", path, "-p(X)")
+    assert code == AskExit.ANSWERED
+    assert out.startswith("ask: { -p(X) }\n")
 
 
 def test_ask_without_answer_sets_shows_the_refutation(
@@ -1323,7 +1353,7 @@ def test_why_and_ask_write_json_under_their_names(
     assert answered["kind"] == "answered"
     assert answered["answer"] == "unknown"
     assert [t["index"] for t in answered["taken"]] == [1, 3]
-    code, out = run(capsys, "ask", path, "{ not a }", "--json")
+    code, out = run(capsys, "ask", path, "{ a ; b }", "--json")
     assert (code, json.loads(out)["ask"]["kind"]) == (AskExit.FAULT, "fault")
     code, out = run(capsys, "why", path, "a", "--answer-set", "9", "--json")
     assert json.loads(out) == {
