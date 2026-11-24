@@ -76,19 +76,25 @@ class Grounded:
             for name, arity, positive in control.symbolic_atoms.signatures
         )
 
+    def _solver_literal(self, literal: Literal) -> int | None:
+        """Return the solver literal of `literal`'s atom; `None` if no answer set can hold it.
+
+        clingo names some atoms no answer set can hold, such as one only under `not`, with solver
+        literal 0, and ignores an assumption of 0: such an atom is as absent as one it never names.
+        """
+        atom = self._control.symbolic_atoms[literal.symbol]
+        return None if atom is None or atom.literal == 0 else atom.literal
+
     def _derivable(self, literal: Literal) -> bool:
-        return literal.symbol in self._control.symbolic_atoms
+        return self._solver_literal(literal) is not None
 
     def _assumed(self, scenario: Iterable[Assumption]) -> dict[int, Assumption]:
         """Map the clingo literal of each assumption that says something about the grounding."""
-        atoms = self._control.symbolic_atoms
         assumed: dict[int, Assumption] = {}
         for a in scenario:
-            symbol = a.literal.symbol
-            atom = atoms[symbol] if symbol in atoms else None  # noqa: SIM401
-            if atom is None:
-                continue
-            assumed[atom.literal if a.holds else -atom.literal] = a
+            found = self._solver_literal(a.literal)
+            if found is not None:
+                assumed[found if a.holds else -found] = a
         return assumed
 
     def _impossible(self, scenario: Iterable[Assumption]) -> frozenset[Assumption]:

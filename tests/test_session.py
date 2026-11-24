@@ -1486,3 +1486,31 @@ def test_an_unknowns_witnesses_are_the_first_answer_sets_not_true_and_not_false(
     firsts = [first(Answer.NO, Answer.UNKNOWN), first(Answer.YES, Answer.UNKNOWN)]
     assert [each.index for each in warrant.witnesses] == list(dict.fromkeys(firsts))
     assert len(answered.taken) == 3
+
+
+UNFOUNDED = "q(2). p(X) :- p(X), not q(X). q(X) :- q(X), not p(X)."
+"""A program whose grounding names `p(2)`, under `not`, though no answer set can hold it."""
+P2 = Literal("p", (Number(2),))
+
+
+def test_an_atom_no_answer_set_can_hold_is_none_holds_bravely() -> None:
+    answered = opened(UNFOUNDED).answer(All((P2,)), mode=AnswerMode.BRAVE)
+    assert isinstance(answered, Answered)
+    assert answered.answer is Answer.NONE_HOLDS
+
+
+def test_an_atom_no_answer_set_can_hold_is_no_where_its_contrary_holds() -> None:
+    answered = opened(f"{UNFOUNDED} -p(2).").answer(All((P2,)))
+    assert isinstance(answered, Answered)
+    assert answered.answer is Answer.NO
+
+
+def test_an_atom_no_answer_set_can_hold_cannot_be_assumed_true_but_can_be_assumed_false() -> None:
+    made = opened(UNFOUNDED)
+    assert not isinstance(made.counterexample(1, frozenset({Assumption(P2)})), Counterexample)
+    held = made.counterexample(1, frozenset({Assumption(P2, holds=False)}))
+    assert isinstance(held, Counterexample)
+    claims = "% @expect unsat assuming { p(2) }\n% @expect sat assuming { not p(2) }\n"
+    report = check(Program(f"{UNFOUNDED}\n{claims}", "t.lp"))
+    assert isinstance(report, Report)
+    assert report.verdict is Verdict.PASS

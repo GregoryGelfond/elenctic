@@ -115,6 +115,10 @@ All notable changes are recorded here. The format follows
   warning on stderr; 2.0 removes them.
 
 ### Fixed
+- An atom the grounding names but no answer set can hold, such as `p(2)` in `q(2). p(X) :- p(X),
+  not q(X). q(X) :- q(X), not p(X).`, was taken to be assumable: `assuming { p(2) }` admitted
+  answer sets without it, so `@expect sat` passed and `@expect unsat` failed, and `ask` gave
+  `unknown` for `no` and, bravely, `yes` for `none holds`. Assuming it now admits no answer set.
 - A linked program is held by default to the directory its file resolves to, as on the command
   line; `check` refused it for lying outside its link's directory.
 - The root holds every file clingo loads. An `#include` is found as clingo finds it: as written,
