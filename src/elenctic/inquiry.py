@@ -12,7 +12,7 @@ from typing import TypedDict, Unpack, overload
 from elenctic.determination import Range, Refutation
 from elenctic.engine import containment
 from elenctic.explanation import Counterexample, Explanation
-from elenctic.gates import lacks_objective
+from elenctic.gates import lacks_objective, theoretical
 from elenctic.literals import Literal, Scenario, Symbol
 from elenctic.program import Fault, Locus, Program
 from elenctic.query import Answered, AnswerMode, Query, Warrant
@@ -85,8 +85,8 @@ def _opened(
 ) -> Session | Fault:
     """Open `program` as `check` would: contained under `root`, by the solver it declares.
 
-    It needs no contract beyond that. Its optimal answer sets are refused, as an optimal claim is,
-    when nothing ranks them.
+    It needs no contract beyond that. Its theory is refused where the solver cannot read the
+    answer sets by it, and its optimal answer sets, as an optimal claim is, when nothing ranks them.
     """
     if (refused := containment(program, root)) is not None:
         return refused
@@ -94,7 +94,11 @@ def _opened(
     if misdeclared:
         return Fault(Locus.REQUEST, tuple(misdeclared))
     opened = session(program, solver, limits=limits, interrupt=interrupt)
-    if isinstance(opened, Session) and over is Range.OPTIMAL and not opened.facts.optimizes:
+    if not isinstance(opened, Session):
+        return opened
+    if theory := theoretical(solver, opened.facts):
+        return Fault(Locus.REQUEST, tuple(theory))
+    if over is Range.OPTIMAL and not opened.facts.optimizes:
         where = Span.whole("over", Range.OPTIMAL.value)
         return Fault(
             Locus.REQUEST, (lacks_objective(where, "the optimal answer sets are asked for"),)

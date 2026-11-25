@@ -264,3 +264,38 @@ def test_why_of_a_literal_whose_only_truth_a_cut_probe_left_unsettled_ends(
         Program("p. {q}.", "t.lp"), All((Literal("p"),)), mode=mode, interrupt=_FirstCheckOnly()
     )
     assert found == Ended(Truncation.INTERRUPTED)
+
+
+_CLINGCON_OBJECTIVE = (
+    "% @elenctic solver clingcon\n&dom { 0..3 } = x.\n{ big }.\n"
+    "&sum { x } >= 2 :- big.\n&sum { x } <= 1 :- not big.\n&minimize { x }.\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        (
+            "#theory t { c { }; &k/0 : c, any }.\n{ big }. &k { 1 }.\n",
+            "clingo ignores theory atoms",
+        ),
+        (_CLINGCON_OBJECTIVE, "theory objective is not seen by the cost"),
+    ],
+)
+@pytest.mark.parametrize("mode", AnswerMode)
+def test_a_theory_the_solver_cannot_read_answer_sets_by_is_refused_as_a_contract_is(
+    text: str, message: str, mode: AnswerMode
+) -> None:
+    program = Program(text, "t.lp")
+    query = All((Literal("big"),))
+    for found in (ask(program, query, mode=mode), why(program, query, mode=mode)):
+        assert isinstance(found, Fault)
+        assert found.locus is Locus.REQUEST
+        assert [each.message for each in found.diagnostics] == [message]
+
+
+def test_a_clingcon_program_without_a_theory_objective_is_asked() -> None:
+    program = Program("% @elenctic solver clingcon\n&dom { 0..3 } = x.\n{ big }.\n", "t.lp")
+    found = ask(program, All((Literal("big"),)))
+    assert isinstance(found, Answered)
+    assert found.answer is Answer.UNKNOWN

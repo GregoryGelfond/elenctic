@@ -57,7 +57,11 @@ def _read(reading: Reading) -> frozenset[Signature]:
 def unsound(contract: Contract, grounded: Grounded) -> list[Diagnostic]:
     """Find what would make a verdict untrustworthy: a claim asks what the program lacks."""
     return [
-        *_theoretical(contract.solver, grounded.facts, contract.claims),
+        *theoretical(
+            contract.solver,
+            grounded.facts,
+            answers=not all(isinstance(claim.reading, Satisfiable) for claim in contract.claims),
+        ),
         *(
             diagnostic
             for claim in contract.claims
@@ -84,10 +88,12 @@ def hidden_reads(claims: list[Claim] | tuple[Claim, ...], grounded: Grounded) ->
     ]
 
 
-def _theoretical(
-    solver: Solver, facts: Facts, claims: tuple[Claim, ...] | list[Claim]
-) -> list[Diagnostic]:
-    """Find theory atoms clingo ignores, or a theory objective non-`@expect` claims cannot use."""
+def theoretical(solver: Solver, facts: Facts, *, answers: bool = True) -> list[Diagnostic]:
+    """Find theory atoms clingo ignores, or a theory objective that reading answer sets cannot use.
+
+    `answers` says whether anything is read of the answer sets beyond that one exists: clingcon
+    applies a theory objective in every search, so the answer sets read are only its optima.
+    """
     if facts.theory is not None and solver is Solver.CLINGO:
         return [
             failure(
@@ -97,9 +103,7 @@ def _theoretical(
                 help=("declare `% @elenctic solver clingcon` to check them with clingcon",),
             )
         ]
-    if facts.objective is not None and not all(
-        isinstance(claim.reading, Satisfiable) for claim in claims
-    ):
+    if facts.objective is not None and answers:
         return [
             failure(
                 facts.objective,
