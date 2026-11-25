@@ -30,7 +30,7 @@ from elenctic.paint import Role, paint
 from elenctic.patterns import Pattern
 from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
-from elenctic.query import All, Warrant
+from elenctic.query import All, Answered, Warrant
 from elenctic.report import Entry, Internal, Run
 from elenctic.spans import Child, Diagnostic, Severity, Span, split_lines
 from elenctic.verdicts import Ended, Finding, Report, Verdict
@@ -318,9 +318,15 @@ def render_ask(  # noqa: PLR0913
     if isinstance(result, Fault | Internal):
         return refused(result, presentation, form=form, source=question.source, text=text)
     style = presentation.stdout
+    lints = result.lints if isinstance(result, Answered | Warrant) else ()
+    noted = [
+        line for each in lints for line in _diagnostic_lines(each, None, presentation.stderr, form)
+    ]
     if isinstance(result, Warrant):
-        return Rendered(_lines(warrant_lines(question.source, result, style, spans=spans)), "")
-    return Rendered(_lines(ask_lines(question, query, result, style, unknown=unknown)), "")
+        shown = warrant_lines(question.source, result, style, spans=spans)
+    else:
+        shown = ask_lines(question, query, result, style, unknown=unknown)
+    return Rendered(_lines(shown), _lines(noted))
 
 
 def reserved(command: str, style: Style) -> str:

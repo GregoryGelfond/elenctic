@@ -328,7 +328,8 @@ unqualified `@query`, reads all the answer sets AS(P) whatever the program optim
 `optimal` claims (including `@query optimal`) and `@cost` read the optimal ones, Opt(P) ⊆ AS(P).
 `@query` evaluates over the full answer sets (every atom), not only those `#show` selects; a query
 that reads a derivable unshown literal gets a note in the report, which does not change the exit
-([Semantics](../explanation/semantics.md)).
+([Semantics](../explanation/semantics.md)). `ask` and `why` read the full answer sets too, and note
+such a literal the same way, on stderr and in their `lints`.
 
 `@note` is ignored. `% @elenctic solver clingcon` (or `clingo`, the default) names the solver the
 contract is checked with; it needs `elenctic[theory]`, and is a fault (`FAULT`, 2) when clingcon is
@@ -488,7 +489,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `answered` | a query answered over answer sets given in the order read: an `Answered` |
 | `Answers` | the `Bound` instances of a query's variables, in its mode's answer order then value order, and the `answer_sets` they name, each once, `Numbered`; `giving(answer)` selects the values of one, `count(answer)` counts them, `taken(bound)` gives the `Taken` a binding names |
 | `answers` | the `Answers` of a query with variables over answer sets, as `mode=` answers it: each instance of its positive parts entertained is grounded and answered |
-| `Answered` | a query's `answer`, or its `Answers` for a query with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached`, and, for a brave answer found before the search was `cut`, what cut it |
+| `Answered` | a query's `answer`, or its `Answers` for a query with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached`, and, for a brave answer found before the search was `cut`, what cut it; `lints` note each literal it reads that the program derives and does not `#show` |
 | `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it, and that `answer_set` |
 | `TakenAt` | a `Taken` without its answer set, which the `Answers` or `Warrant` holding it names by `index` |
 | `Numbered` | an `answer_set` and its `index` among those the search read |
@@ -497,7 +498,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `bindings` | the `Bindings` of a `Pattern` or a conjunction with variables over a `WorldView`: its default `answers` grouped by answer |
 | `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set, a `TakenAt` |
 | `stream` | the bindings of an `Answered` as `ask` writes them, one per `next()`: `yes`, then `no` by default, `unknown` too with `unknown=True`; a ground query yields its one answer with no values |
-| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, each a `TakenAt`, the `derivations` explaining in each, in turn, what the instance's truth there rests on, which hold its answer set (`taken()` gives each witness as a `Taken`), and the `refutation` that no answer set overturns it, when the answer needs every one; the answers a cut search left `unreached`, and the `over`, `read` and `mode` it was answered with |
+| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, each a `TakenAt`, the `derivations` explaining in each, in turn, what the instance's truth there rests on, which hold its answer set (`taken()` gives each witness as a `Taken`), and the `refutation` that no answer set overturns it, when the answer needs every one; the answers a cut search left `unreached`, and the `over`, `read` and `mode` it was answered with, and its `lints`, as an `Answered` has them |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |

@@ -49,9 +49,13 @@ def _read(reading: Reading) -> frozenset[Signature]:
     """Name the predicates a query reads, including each contrary, whatever its answer."""
     match reading:
         case Asks(_, query) | Binds(_, query, _):
-            return frozenset[Signature]().union(*(_signatures(part) for part in _parts(query)))
+            return _reads(query)
         case _:
             return frozenset()
+
+
+def _reads(query: Query) -> frozenset[Signature]:
+    return frozenset[Signature]().union(*(_signatures(part) for part in _parts(query)))
 
 
 def unsound(contract: Contract, grounded: Grounded) -> list[Diagnostic]:
@@ -78,14 +82,26 @@ def hidden_reads(claims: list[Claim] | tuple[Claim, ...], grounded: Grounded) ->
     these notes to faults; that flag is not built yet.
     """
     return [
-        note(
-            claim.span,
-            f"reads `{signature}`, which the program can derive and does not `#show`",
-        )
-        for claim in claims
-        for signature in sorted(_read(claim.reading))
-        if signature in grounded.signatures and not grounded.facts.shown.covers(signature)
+        each for claim in claims for each in _hidden(_read(claim.reading), claim.span, grounded)
     ]
+
+
+def hidden_in(query: Query, grounded: Grounded) -> tuple[Diagnostic, ...]:
+    """Note each literal `query` reads that the program can derive and does not `#show`.
+
+    `ask` and `why` read the full answer sets, past what `#show` selects, as a claim's query does.
+    """
+    return _hidden(_reads(query), None, grounded)
+
+
+def _hidden(
+    signatures: frozenset[Signature], span: Span | None, grounded: Grounded
+) -> tuple[Diagnostic, ...]:
+    return tuple(
+        note(span, f"reads `{signature}`, which the program can derive and does not `#show`")
+        for signature in sorted(signatures)
+        if signature in grounded.signatures and not grounded.facts.shown.covers(signature)
+    )
 
 
 def theoretical(solver: Solver, facts: Facts, *, answers: bool = True) -> list[Diagnostic]:

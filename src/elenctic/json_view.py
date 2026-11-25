@@ -188,11 +188,13 @@ def _schema_alternative(hint: object) -> Json:
 
 
 _OPTIONAL_FIELDS: Final = {
+    "answered": frozenset({"lints"}),
     "diagnostic": frozenset({"label", "children"}),
     "entry": frozenset({"text", "libraries"}),
     "finding": frozenset({"evidence"}),
     "report": frozenset({"lints"}),
     "run": frozenset({"notes"}),
+    "warrant": frozenset({"lints"}),
 }
 
 

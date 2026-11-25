@@ -324,6 +324,21 @@ def test_a_with_file_is_read_before_the_case_as_clingo_reads_the_files_it_is_giv
     assert f"note: constant also defined here\n --> {library}:1:1\n" in err
 
 
+@pytest.mark.parametrize("command", ["ask", "why"])
+def test_a_question_reading_a_literal_show_hides_notes_it_on_stderr_and_in_its_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    path = write(tmp_path, "p.lp", "{ a }. b.\n#show a/0.\n")
+    hidden = "reads `b/0`, which the program can derive and does not `#show`"
+    code, out, err = run_both(capsys, "--color", "never", command, path, "b")
+    assert code == 0
+    assert err == f"note: {hidden}\n"
+    assert "= answer: yes" in out
+    code, out, err = run_both(capsys, command, path, "b", "--json")
+    (lint,) = json.loads(out)[command]["lints"]
+    assert (code, lint["severity"], lint["message"]) == (0, "note", hidden)
+
+
 def test_a_named_file_without_a_contract_is_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

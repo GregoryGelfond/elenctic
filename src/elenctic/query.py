@@ -13,6 +13,7 @@ from elenctic.extension import Extension
 from elenctic.literals import Assumption, Atoms, Literal, Symbol
 from elenctic.patterns import Pattern
 from elenctic.relation import Relation, Row
+from elenctic.spans import Diagnostic
 from elenctic.substitution import Substitution
 from elenctic.terms import Variable
 from elenctic.unify import unify
@@ -492,6 +493,8 @@ class Answered:
     unreached: tuple[Unreached, ...] = ()
     mode: AnswerMode = AnswerMode.DEFAULT
     cut: Truncation | None = None
+    lints: tuple[Diagnostic, ...] = ()
+    """Notes on the query: each literal it reads that the program derives and does not `#show`."""
 
 
 _NAMED: Final[Mapping[Answer, frozenset[Answer]]] = {
@@ -643,6 +646,8 @@ class Warrant:
     over: Range = Range.ALL
     read: int | None = None
     mode: AnswerMode = AnswerMode.DEFAULT
+    lints: tuple[Diagnostic, ...] = ()
+    """Notes on the query, as an answer has them."""
 
     def taken(self) -> tuple[Taken, ...]:
         """Return the witnesses, each with the answer set its derivation holds."""

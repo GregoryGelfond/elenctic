@@ -5,6 +5,7 @@ a query's answer; `ask` answers a query over every answer set. Each opens the pr
 does: contained under its root, and run by the solver its contract names, if it has one.
 """
 
+from dataclasses import replace
 from enum import IntEnum
 from pathlib import Path
 from typing import TypedDict, Unpack, overload
@@ -12,7 +13,7 @@ from typing import TypedDict, Unpack, overload
 from elenctic.determination import Range, Refutation
 from elenctic.engine import containment
 from elenctic.explanation import Counterexample, Explanation
-from elenctic.gates import lacks_objective, theoretical
+from elenctic.gates import hidden_in, lacks_objective, theoretical
 from elenctic.literals import Literal, Scenario, Symbol
 from elenctic.program import Fault, Locus, Program
 from elenctic.query import Answered, AnswerMode, Query, Warrant
@@ -162,7 +163,7 @@ def why(  # noqa: PLR0913
         return session_
     if index is None or not isinstance(asked, Literal):
         answered = session_.answer(asked, scenario, over=over, mode=mode)
-        return _warranted(session_, answered, values, scenario, max_depth)
+        return _noted(asked, session_, _warranted(session_, answered, values, scenario, max_depth))
     found = session_.counterexample(index, scenario, over=over)
     if found is None:
         return _past(session_, index, scenario, over)
@@ -220,4 +221,11 @@ def ask(  # noqa: PLR0913
     session_ = _opened(program, over, limits=limits, interrupt=interrupt, root=root)
     if isinstance(session_, Fault):
         return session_
-    return session_.answer(query, scenario, over=over, mode=mode)
+    return _noted(query, session_, session_.answer(query, scenario, over=over, mode=mode))
+
+
+def _noted[Found](query: Query, session_: Session, found: Found) -> Found:
+    """Note on an answer, or a warrant, each literal its query reads that `#show` hides."""
+    if isinstance(found, Answered | Warrant):
+        return replace(found, lints=hidden_in(query, session_))
+    return found

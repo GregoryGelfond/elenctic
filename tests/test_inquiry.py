@@ -299,3 +299,25 @@ def test_a_clingcon_program_without_a_theory_objective_is_asked() -> None:
     found = ask(program, All((Literal("big"),)))
     assert isinstance(found, Answered)
     assert found.answer is Answer.UNKNOWN
+
+
+HIDING = Program("{ a }. b.\n#show a/0.\n", "t.lp")
+
+
+@pytest.mark.parametrize("mode", AnswerMode)
+def test_ask_and_why_note_a_literal_the_program_derives_and_does_not_show(mode: AnswerMode) -> None:
+    hidden = "reads `b/0`, which the program can derive and does not `#show`"
+    query = All((Literal("b"),))
+    asked = ask(HIDING, query, mode=mode)
+    warranted = why(HIDING, query, mode=mode)
+    assert isinstance(asked, Answered)
+    assert isinstance(warranted, Warrant)
+    assert asked.answer is warranted.answer
+    assert [each.message for each in asked.lints] == [hidden]
+    assert [each.message for each in warranted.lints] == [hidden]
+
+
+def test_ask_notes_nothing_of_a_literal_the_program_shows() -> None:
+    asked = ask(HIDING, All((Not(Literal("a")),)))
+    assert isinstance(asked, Answered)
+    assert asked.lints == ()

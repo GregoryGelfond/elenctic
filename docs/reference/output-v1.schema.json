@@ -306,6 +306,12 @@
               "type": "null"
             }
           ]
+        },
+        "lints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
+          }
         }
       },
       "additionalProperties": false
@@ -1899,6 +1905,12 @@
             "cautious",
             "brave"
           ]
+        },
+        "lints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/diagnostic"
+          }
         }
       },
       "additionalProperties": false
