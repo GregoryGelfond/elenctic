@@ -1437,6 +1437,18 @@ def test_an_option_that_would_do_nothing_is_refused(
     assert err.startswith(f"error: {error}")
 
 
+@pytest.mark.parametrize("command", ["test", "explain", "why", "ask"])
+def test_help_gives_the_default_time_limit_as_the_reference_does(
+    capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    with pytest.raises(SystemExit):
+        main([command, "--help"])
+    shown = " ".join(capsys.readouterr().out.split())
+    assert "for no limit (default: 30)" in shown
+    reference = (Path(__file__).parent.parent / "docs/reference/reference.md").read_text()
+    assert "or `all` for no limit (default: 30) |" in reference
+
+
 @pytest.mark.parametrize("old", ["full", "short"])
 def test_json_with_a_format_1_0_took_is_still_json_with_a_note(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], old: str

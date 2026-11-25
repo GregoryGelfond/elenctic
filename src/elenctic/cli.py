@@ -239,7 +239,7 @@ def _limited(command: argparse.ArgumentParser) -> None:
         type=_seconds_limit,
         default=DEFAULT_MAX_SECONDS,
         metavar="SECONDS|all",
-        help="time allowed per search, or `all` for no limit (default: %(default)s)",
+        help=f"time allowed per search, or `all` for no limit (default: {DEFAULT_MAX_SECONDS:g})",
     )
     command.add_argument(
         option(Truncation.MAX_ANSWER_SETS),
