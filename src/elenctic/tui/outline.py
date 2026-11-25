@@ -17,7 +17,6 @@ from elenctic.legend import (
     EVIDENCE,
     EVIDENCE_HEADING,
     EXPECTS_NONE,
-    GUARANTEE,
     MARKS,
     OUTRANKED,
     VERDICT_ROLES,
@@ -28,12 +27,12 @@ from elenctic.legend import (
     conjoined,
     counterexample,
     faulted,
+    guaranteed,
     heading,
     helped,
     judged,
     label,
     mark,
-    noted,
     overturned,
     paying,
     ranking,
@@ -41,11 +40,11 @@ from elenctic.legend import (
     said,
     shared,
     shows_why,
-    stopped,
     streamed,
     taken,
     unfound,
     unreached,
+    warranted,
     words,
 )
 from elenctic.literals import Literal
@@ -192,10 +191,7 @@ def explained(
     if not explanation.roots:
         rows.append(Row((), (Piece(EXPECTS_NONE, Role.ASIDE),)))
     rows += steps(explanation, glyphs, block, own)
-    rows.append(Row((), noted(GUARANTEE[explanation.minimality])))
-    if not explanation.complete:
-        rows.append(Row((), noted(stopped(explanation.max_depth))))
-    return rows
+    return rows + [Row((), note) for note in guaranteed(explanation)]
 
 
 def _paying(outranked: Outranked) -> Paying:
@@ -339,7 +335,7 @@ def ask(
     if isinstance(result, Warrant):
         instance = conjoined(result.query)
         top = Row((), heading(Role.NOTE, WHY, queried(instance)))
-        top.children = _answering(source, instance, result, result.answer, glyphs)
+        top.children = _warranting(source, instance, result, glyphs)
         return [top]
     top = Row((), heading(Role.NOTE, ASK, queried(query)))
     if not isinstance(result, Answered):
@@ -353,18 +349,29 @@ def ask(
 
 
 def _answering(
-    source: str, query: All, result: Answered | Warrant, answer: Answer, glyphs: Glyphs
+    source: str, query: All, result: Answered, answer: Answer, glyphs: Glyphs
 ) -> list[Row]:
     """Build the rows of a ground query's answer and the answer sets that show it, as the text."""
-    shown = result.taken if isinstance(result, Answered) else result.witnesses
+    shown = result.taken
     rows = [Row((), said(answering(answer))), *_named(query, result, shown, glyphs)]
     rows += [Row(*_answer_set(unreached(past, query), glyphs)) for past in result.unreached]
-    kept = overturned(result) if isinstance(result, Warrant) else None
-    rows += [] if kept is None else [Row((), kept)]
     alone = alone_of(query)
     if alone is not None and shown:
         rows.append(Row((), helped(shows_why(source, alone, shown[0], result.over))))
     return rows
+
+
+def _warranting(source: str, query: All, warrant: Warrant, glyphs: Glyphs) -> list[Row]:
+    """Build the rows of a warrant, as the text: each witness holds its derivation."""
+    rows = [Row((), said(answering(warrant.answer)))]
+    named = _named(query, warrant, warrant.witnesses, glyphs)
+    for block, (row, derivation) in enumerate(zip(named, warrant.derivations, strict=True)):
+        row.children = steps(derivation, glyphs, block, source)
+        rows.append(row)
+    rows += [Row(*_answer_set(unreached(past, query), glyphs)) for past in warrant.unreached]
+    kept = overturned(warrant)
+    rows += [] if kept is None else [Row((), kept)]
+    return rows + [Row((), note) for note in warranted(warrant, query)]
 
 
 def _named(

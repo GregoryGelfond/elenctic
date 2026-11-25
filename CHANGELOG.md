@@ -13,10 +13,11 @@ All notable changes are recorded here. The format follows
   `--max-depth N|all` bounds how many absences deep it goes (default 3).
 - `elenctic why PATH QUERY`: what warrants the answer `ask` gives a query, in its `--mode`, or one
   binding's, `--binding 'X = a'`, under `--assuming L,…`, of all or `--over optimal` (refused,
-  as an optimal claim is, for a program with no objective): the
-  `Warrant` below, in `ask`'s block, headed `why:` and the instance. `--answer-set K`: why
+  as an optimal claim is, for a program with no objective): the `Warrant` below, headed `why:`
+  and the instance, each witness with the tree `explain` draws of what the instance's truth there
+  rests on, part by part; `--max-depth` and `--spans` as for `explain`. `--answer-set K`: why
   `QUERY`, a ground literal, holds, or not, in the K-th answer set; the block of `explain`, headed
-  `why:` and the atom as it was asked, `not` kept. An option of one form given to the other is
+  `why:` and the atom as it was asked, `not` kept. `--mode` and `--binding` with `--answer-set` are
   refused.
 - `elenctic ask PATH QUERY`: a query, written as `@query` writes it, answered over the answer sets,
   with the first answer set taking each value, or a pattern's bindings. A query, in `ask`, `why`
@@ -34,7 +35,7 @@ All notable changes are recorded here. The format follows
   short keeps the `yes` it found, `Answered.cut` saying what cut it, and exits 1.
 - `Session.warrant` gives what shows an answer, or a binding's: `Warrant`, its witnesses (one
   answer set where it is true for `yes`; for `unknown`, one where it is not true and one where it
-  is not false) and, for an answer every answer set must give, the refutation of the program kept
+  is not false, which may be one answer set, noted), the derivation in each, and, for an answer every answer set must give, the refutation of the program kept
   to the answer sets that would overturn it. `why` and `ask` each exit with their own outcome,
   `WhyExit` or `AskExit`; `repl` stays reserved.
 - `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base

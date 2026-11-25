@@ -12,7 +12,7 @@ from pathlib import Path
 from elenctic.about import Package, Solvers
 from elenctic.determination import Range, Refutation
 from elenctic.display import legible
-from elenctic.evidence_view import ask_lines, evidence_lines, why_lines
+from elenctic.evidence_view import ask_lines, evidence_lines, warrant_lines, why_lines
 from elenctic.explanation import Explanation
 from elenctic.inquiry import Ask
 from elenctic.legend import (
@@ -311,12 +311,15 @@ def render_ask(  # noqa: PLR0913
     form: Format = Format.FULL,
     text: str | None = None,
     unknown: bool = False,
+    spans: bool = False,
 ) -> Rendered:
     """Write what `ask` found, or `why`'s warrant, or, as diagnostics, why it could not look."""
     if isinstance(result, Fault | Internal):
         return refused(result, presentation, form=form, source=source, text=text)
-    lines = ask_lines(source, query, result, presentation.stdout, unknown=unknown)
-    return Rendered(_lines(lines), "")
+    style = presentation.stdout
+    if isinstance(result, Warrant):
+        return Rendered(_lines(warrant_lines(source, result, style, spans=spans)), "")
+    return Rendered(_lines(ask_lines(source, query, result, style, unknown=unknown)), "")
 
 
 def reserved(command: str, style: Style) -> str:

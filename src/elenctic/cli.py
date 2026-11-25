@@ -257,15 +257,12 @@ def _program_options(command: argparse.ArgumentParser) -> None:
     )
 
 
-def _depth(command: argparse.ArgumentParser, default: int | None = DEFAULT_MAX_DEPTH) -> None:
-    """Give a command that explains the options of how deep and how fully it shows the tree.
-
-    A `default` of `None` lets the command tell an option given from one left out.
-    """
+def _depth(command: argparse.ArgumentParser) -> None:
+    """Give a command that explains the options of how deep and how fully it shows the tree."""
     command.add_argument(
         "--max-depth",
         type=_depth_limit,
-        default=default,
+        default=DEFAULT_MAX_DEPTH,
         metavar="N|all",
         help=(
             "how many absent atoms deep an explanation goes, or `all` for no limit "
@@ -376,7 +373,7 @@ def _parser() -> argparse.ArgumentParser:
         metavar="L,...",
         help="literals assumed, `p` or `not p`, as `assuming { ... }` writes them",
     )
-    _depth(why, None)
+    _depth(why)
     ask = commands.add_parser("ask", parents=options, help="answer one query over the answer sets")
     _asking(ask, "the answer")
     ask.add_argument("query", type=_literal, metavar="QUERY", help=QUERY_HELP)
@@ -856,22 +853,17 @@ def _refused_all[Outcome: IntEnum](
 
 _WARRANTING: Final = {"mode": "--mode", "binding": "--binding"}
 """The options only a query's warrant takes, by their names in the arguments."""
-_EXPLAINING: Final = {"max_depth": "--max-depth", "spans": "--spans"}
-"""The options only an explanation of one answer set takes, by their names in the arguments."""
 
 
 def _unused(arguments: argparse.Namespace) -> Diagnostic | None:
-    """Refuse an option of one form of `why` given to the other, where it would do nothing."""
-    explaining = arguments.answer_set is not None
-    given = _WARRANTING if explaining else _EXPLAINING
-    found = next((f for k, f in given.items() if getattr(arguments, k) not in {None, False}), None)
+    """Refuse an option of a query's warrant given with `--answer-set`, where it does nothing."""
+    if arguments.answer_set is None:
+        return None
+    found = next((f for k, f in _WARRANTING.items() if getattr(arguments, k) is not None), None)
     if found is None:
         return None
-    if explaining:
-        message, takes = f"`{found}` has no effect with `--answer-set`", "a query's warrant takes"
-    else:
-        message, takes = f"`{found}` has no effect without `--answer-set`", "an explanation takes"
-    return failure(None, message, help=(f"drop `{found}`, which only {takes}",))
+    message = f"`{found}` has no effect with `--answer-set`"
+    return failure(None, message, help=(f"drop `{found}`, which only a query's warrant takes",))
 
 
 def _why(arguments: argparse.Namespace, presentation: Presentation, home: Path | None) -> WhyExit:
@@ -913,8 +905,7 @@ def _explain(
         )
     atom, negated = read
     explained = _Explaining(program, root, scenario, arguments.over, _searching(arguments))
-    depth = DEFAULT_MAX_DEPTH if arguments.max_depth is None else arguments.max_depth
-    result = explained(atom, arguments.answer_set, depth)
+    result = explained(atom, arguments.answer_set, arguments.max_depth)
     outcome = WhyExit.of(result)
     if arguments.view is View.JSON:
         sys.stdout.write(inquiry_json("why", result, outcome))
@@ -983,7 +974,7 @@ def _answer_view(
         lines_of=source_lines(text),
         diagnosed=_diagnosed(style),
         why_of=explaining,
-        max_depth=DEFAULT_MAX_DEPTH,
+        max_depth=arguments.max_depth if arguments.command == "why" else DEFAULT_MAX_DEPTH,
         text=text,
         unknown=arguments.command == "ask" and arguments.unknown,
     )
@@ -1021,6 +1012,7 @@ def _warrant(
             over=arguments.over,
             limits=limits,
             interrupt=interrupt,
+            max_depth=arguments.max_depth,
             root=root,
         )
     except Exception as error:  # noqa: BLE001
@@ -1059,7 +1051,10 @@ def _show_warrant(
         case Warrant() if interactive:
             _answer_view(arguments, presentation, query, result, explaining)
         case Warrant():
-            _write(render_ask(source, query, result, presentation, form=form, text=text))
+            spans = arguments.spans
+            _write(
+                render_ask(source, query, result, presentation, form=form, text=text, spans=spans)
+            )
         case Fault() | Internal():
             _write(refused(result, presentation, form=form, source=source, text=text))
         case _ if interactive:
@@ -1098,7 +1093,7 @@ def _why_view(
         lines_of=source_lines(text),
         diagnosed=_diagnosed(style),
         explained=found.deeper,
-        max_depth=DEFAULT_MAX_DEPTH if arguments.max_depth is None else arguments.max_depth,
+        max_depth=arguments.max_depth,
         text=text,
     )
     tui.show(shown, style)

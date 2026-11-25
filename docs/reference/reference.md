@@ -88,13 +88,12 @@ directory is a usage error. And these:
 | `--over all\|optimal` | all the answer sets (default), or only the optimal ones; refused (`FAULT`, 2) for a program with no objective, as an optimal claim is |
 | `--answer-set K` | `why`: explain `QUERY` in the K-th answer set, counted from 1 among those `--over` reads, rather than warrant its answer |
 | `--assuming L,…` | `why`: literals assumed, `p` or `not p`, as `assuming { … }` writes them |
-| `--max-depth N\|all`, `--spans` | `why --answer-set`: as for `explain` |
+| `--max-depth N\|all`, `--spans` | `why`: as for `explain`, for each tree it draws |
 | `--mode default\|cautious\|brave` | `ask`, and `why` without `--answer-set`: how the query is answered ([Semantics](../explanation/semantics.md)); default, the Gelfond–Kahl three-valued semantics |
 | `--binding 'X = V, …'` | `why`: the binding of a query with variables whose answer is warranted, as `ask` writes it (`X = a, Y = 1`); a query with variables is warranted one binding at a time |
 | `--unknown` | `ask`: write the bindings whose answer is `unknown` too, not only their count; refused for a query without variables |
 
-An option of one form of `why` given to the other, where it does nothing, is refused: `--mode` and
-`--binding` with `--answer-set`, `--max-depth` and `--spans` without it.
+`--mode` and `--binding` with `--answer-set`, where they do nothing, are refused.
 
 `repl` is reserved: it writes a note on stderr and exits `FAULT` (2). `--color` and `--icons`
 apply to every command.
@@ -177,12 +176,15 @@ answer set. A query with variables writes how many bindings give each answer, `=
 no answer set, each shows the refutation; a search cut short shows what ended it, after the `yes`
 bindings a brave search found before it was cut.
 
-`why` of a query writes `ask`'s block for its answer under `why:` and the instance it is of
-(`why: { not c(a), r(a) }` for the binding `X = a`), naming only the answer sets that witness the
-answer. An answer every answer set must give then has `= refutation: kept to the answer sets where
-it is not true, …`, the refutation of the program kept to those that would overturn it, or, `--over
-optimal`, `= read: all 4 optimal answer sets`. A binding a brave search did not reach before it
-was cut shows what ended it.
+`why` of a query writes its answer under `why:` and the instance it is of (`why: { not c(a), r(a)
+}` for the binding `X = a`), then each answer set that witnesses the answer, named as `ask` names
+it, with the tree `explain` draws of what the instance's truth there rests on: each part's literal,
+or its contrary, whichever holds there, both where neither does, and `l` for `not l`. An answer
+every answer set must give then has `= refutation: kept to the answer sets where it is not true,
+…`, the refutation of the program kept to those that would overturn it, or, `--over optimal`, `=
+read: all 4 optimal answer sets`. One answer set that witnesses an `unknown` both ways ends with `=
+note: one answer set shows both: nothing derives zz or -zz in it`. A binding a brave search did
+not reach before it was cut shows what ended it.
 
 An outranked result first shows the costs with and without the claim's literals, by priority, and
 the weak-constraint instances paid differently, each at its place in the source. A refuted `@expect
@@ -373,10 +375,10 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 | Why does a claim fail? | `evidenced(report, program)`, or `Session.evidence(finding)` | each failed `Finding` with its `evidence` |
 | Which is the k-th answer set, of all or of the optima? | `Session.counterexample(k, scenario, over=range)` | a `Counterexample`, the search stopping at it; the `Refutation` when there is none; `Ended`; or `None` past the last |
 | What does a query come to over the answer sets? | `Session.answer(query, scenario, over=range)` | an `Answered`, the `Refutation` when there are none, or `Ended` |
-| What shows an answer `Session.answer` gave, or one binding's? | `Session.warrant(answered, values, scenario)` | a `Warrant`: its witnesses, and for an answer that needs every answer set, over all of them, the `Refutation` of the program kept to those that would overturn it; or `Ended` |
+| What shows an answer `Session.answer` gave, or one binding's? | `Session.warrant(answered, values, scenario, max_depth=…)` | a `Warrant`: its witnesses, each with its derivation, and for an answer that needs every answer set, over all of them, the `Refutation` of the program kept to those that would overturn it; or `Ended` |
 | Why does an atom hold, or not, in an answer set? | `session(program).explain(literals, counterexample)` | an `Explanation` |
 | Why does an atom hold, or not, in the k-th answer set? | `why(program, atom, index=k, scenario=…, over=…)` | an `Explanation`, the `Refutation`, `Ended`, or a `Fault` |
-| What warrants the answer a query comes to, or one binding's? | `why(program, query, values=…, mode=…)` | a `Warrant`, the `Refutation`, `Ended`, or a `Fault` |
+| What warrants the answer a query comes to, or one binding's? | `why(program, query, values=…, mode=…, max_depth=…)` | a `Warrant`, the `Refutation`, `Ended`, or a `Fault` |
 | What does a query come to over a program's answer sets? | `ask(program, query, over=…)` | an `Answered`, the `Refutation`, `Ended`, or a `Fault` |
 | How does the objective rank some literals? | `Session.outrank(literals, scenario)` | `Outranked`, `Ended`, or `None` |
 | Do two patterns have a common instance? | `mgu(first, second)` | a `Unifier`, or `None` |
@@ -484,7 +486,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `bindings` | the `Bindings` of a `Pattern` or a conjunction with variables over a `WorldView`: its default `answers` grouped by answer |
 | `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set |
 | `stream` | the bindings of an `Answered` as `ask` writes them, one per `next()`: `yes`, then `no` by default, `unknown` too with `unknown=True`; a ground query yields its one answer with no values |
-| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, and the `refutation` that no answer set overturns it, when the answer needs every one; the answers a cut search left `unreached`, and the `over`, `read` and `mode` it was answered with |
+| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, the `derivations` explaining in each what the instance's truth there rests on, and the `refutation` that no answer set overturns it, when the answer needs every one; the answers a cut search left `unreached`, and the `over`, `read` and `mode` it was answered with |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |

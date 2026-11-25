@@ -1607,10 +1607,12 @@ def test_why_of_a_query_shows_what_warrants_its_answer_as_ask_names_the_answer_s
         "  |\n"
         "  = answer: yes\n"
         "  = true in answer set 1: { -c }\n"
+        "  |\n"
+        "  -c                                fact, line 2\n"
+        "  |\n"
         "  = refutation: kept to the answer sets where it is not true, the program has no answer"
         " set, and nothing is assumed\n"
-        "  |\n"
-        f"  = help: `elenctic why {path} -c --answer-set 1` shows why\n"
+        "  = note: support is sound, not minimal\n"
         "\n"
     )
     _, asked = run(capsys, "ask", path, "-c")
@@ -1634,7 +1636,12 @@ def test_why_names_its_witnesses_in_the_order_ask_names_them(
     path = write(tmp_path, "ab.lp", "{ a; -a } = 1.\n")
     _, asked = run(capsys, "ask", path, query)
     _, warranted = run(capsys, "why", path, query)
-    assert warranted.splitlines()[3:6] == asked.splitlines()[3:6]
+    assert named(warranted) == named(asked)
+
+
+def named(out: str) -> list[str]:
+    """Return the lines of a block that name an answer set and show it."""
+    return [line for line in out.splitlines() if "answer set " in line and line.endswith("}")]
 
 
 @pytest.mark.parametrize(
@@ -1687,11 +1694,8 @@ def test_why_over_the_optima_is_shown_by_the_search_that_read_them_all(
 ) -> None:
     path = write(tmp_path, "ab.lp", TIED)
     _, out = run(capsys, "why", path, "-c", "--over", "optimal")
-    assert (
-        "  = true in optimal answer set 1 of 4: { -c }\n  = read: all 4 optimal answer sets\n"
-        in out
-    )
-    assert "--answer-set 1 --over optimal` shows why" in out
+    assert named(out) == ["  = true in optimal answer set 1 of 4: { -c }"]
+    assert "\n  = read: all 4 optimal answer sets\n" in out
 
 
 def test_why_of_a_query_with_variables_warrants_the_binding_written_as_ask_writes_it(
@@ -1715,8 +1719,6 @@ def test_why_of_a_query_with_variables_warrants_the_binding_written_as_ask_write
         (["r(a)", "--binding", "X = a"], "error: `X` is not a variable of the query\n"),
         (["r(a)", "--mode", "brave", "--answer-set", "1"], "error: `--mode` has no effect with"),
         (["r(a)", "--binding", "X = a", "--answer-set", "1"], "error: `--binding` has no effect"),
-        (["r(a)", "--max-depth", "2"], "error: `--max-depth` has no effect without `--answer-set`"),
-        (["r(a)", "--spans"], "error: `--spans` has no effect without `--answer-set`\n"),
         (["{ r(a) ; c(c) }"], "error: query uses a semicolon\n --> QUERY:1:8\n"),
     ],
 )
@@ -1727,6 +1729,30 @@ def test_why_refuses_a_query_binding_or_option_as_ask_does_where_it_does_nothing
     code, out, err = run_both(capsys, "why", path, *argv)
     assert (code, out) == (WhyExit.FAULT, "")
     assert err.startswith(error)
+
+
+def test_why_of_a_query_derives_each_part_in_its_witness_as_deep_as_asked(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "r.lp", "r(a). s(X) :- r(X), not t(X). t(X) :- u(X). { u(a) }.\n")
+    query = "s(a), not t(a)"
+    _, out = run(capsys, "why", path, query, "--mode", "brave", "--max-depth", "1", "--spans")
+    assert out.splitlines()[4:] == [
+        "  = true in answer set 1 of 2: { r(a), s(a) }",
+        "  |",
+        "  s(a) :- r(a), not t(a).           line 1",
+        f"  │   = {path}:1: s(X) :- r(X), not t(X). {{X=a}}",
+        "  └── r(a)                          fact, line 1",
+        f"          = {path}:1: r(a).",
+        "  not t(a)                          no rule fires (1 candidate)",
+        "  └── t(a) :- u(a).                 line 1: blocked by u(a)",
+        f"          = {path}:1: t(X) :- u(X). {{X=a}}",
+        "      ... not u(a)                  not expanded (depth 1); `--max-depth` goes further",
+        "  |",
+        "  = note: support is sound, not minimal",
+        "  = note: some branches stop at depth 1; `--max-depth` goes further",
+        "",
+    ]
 
 
 def test_why_of_a_query_with_variables_and_no_binding_says_how_to_name_one(
@@ -1770,7 +1796,25 @@ def test_why_of_a_query_writes_its_warrant_as_json(
         "default",
     )
     assert [each["index"] for each in warrant["witnesses"]] == [1]
+    assert [each["counterexample"]["index"] for each in warrant["derivations"]] == [1]
     assert warrant["refutation"]["kind"] == "no_assumptions"
+
+
+@pytest.mark.parametrize(
+    ("query", "note"),
+    [
+        ("zz", "nothing derives zz or -zz in it"),
+        ("a, -c", "the query is neither true nor false in it"),
+    ],
+)
+def test_why_notes_one_answer_set_that_witnesses_an_unknown_both_ways(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], query: str, note: str
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    _, out = run(capsys, "why", path, query)
+    assert "  = answer: unknown\n" in out
+    assert len(named(out)) == 1
+    assert out.endswith(f"  = note: one answer set shows both: {note}\n\n")
 
 
 def test_why_help_names_both_forms_and_the_modes_ask_names(

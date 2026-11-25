@@ -28,6 +28,7 @@ from elenctic.query import (
     bindings,
     bodies,
     bravely,
+    deciding,
     evaluate,
     instance_of,
     settled,
@@ -576,3 +577,12 @@ def test_a_brave_answer_cut_short_names_only_where_it_is_true_past_what_was_read
     found = settled(All((P,)), reading, {Truth.TRUE, Truth.UNKNOWN}, AnswerMode.BRAVE)
     assert (found.answer, found.taken) == (Answer.YES, ())
     assert [each.answer for each in found.unreached] == [Answer.YES]
+
+
+def test_a_query_rests_on_the_literal_of_each_part_that_holds_or_on_both_where_neither_does() -> (
+    None
+):
+    a, b, c = Literal("a"), Literal("b"), Literal("c")
+    member = frozenset({a, b.contrary})
+    query = All((a, b, Not(c), Any((c,))))
+    assert deciding(query, member) == (a, b.contrary, c, c, c.contrary)

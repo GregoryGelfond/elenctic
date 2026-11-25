@@ -49,11 +49,13 @@ from elenctic.query import (
     Held,
     Query,
     ReadAnswers,
+    Taken,
     Truth,
     Warrant,
     answered,
     bodies,
     bravely,
+    deciding,
     evaluate,
     instance_of,
     literal_of,
@@ -412,15 +414,21 @@ class Session(Grounded):
         return frozenset(truths)
 
     def warrant(
-        self, answered: Answered, values: tuple[Symbol, ...] = (), scenario: Scenario = frozenset()
+        self,
+        answered: Answered,
+        values: tuple[Symbol, ...] = (),
+        scenario: Scenario = frozenset(),
+        *,
+        max_depth: int | Limit = Limit.UNBOUNDED,
     ) -> Warrant | Ended:
         """Find what shows an answer this session gave, of the query or of its binding to `values`.
 
-        Its witnesses are answer sets the search read. An answer that needs every answer set is
-        also shown by the refutation of the program with a constraint that keeps only the answer
-        sets that would overturn it; over the optima, the search having read them all shows it.
-        `Ended` when that search is cut, or the cut search that answered did not read the binding.
-        Raises `ValueError` for values the query has no binding to.
+        Its witnesses are answer sets the search read, each with the derivation of what the
+        instance's truth there rests on, `max_depth` absences deep. An answer that needs every
+        answer set is also shown by the refutation of the program with a constraint that keeps only
+        the answer sets that would overturn it; over the optima, the search having read them all
+        shows it. `Ended` when that search is cut, or the cut search that answered did not read the
+        binding. Raises `ValueError` for values the query has no binding to.
         """
         answer, taken, unreached = answered.answer, answered.taken, answered.unreached
         if isinstance(answer, Answers):
@@ -441,7 +449,21 @@ class Session(Grounded):
             refutation = overturned
         witnesses, past = witnessed(answer, taken, unreached)
         over, read, mode = answered.over, answered.read, answered.mode
-        return Warrant(query, answer, witnesses, refutation, past, over, read, mode)
+        derivations = self._derivations(query, witnesses, read, max_depth)
+        return Warrant(query, answer, witnesses, derivations, refutation, past, over, read, mode)
+
+    def _derivations(
+        self, query: Query, witnesses: tuple[Taken, ...], read: int | None, max_depth: int | Limit
+    ) -> tuple[Explanation, ...]:
+        """Derive in each witness what the query's truth there rests on, part by part."""
+        return tuple(
+            self.explain(
+                deciding(query, each.answer_set.atoms),
+                Counterexample(each.answer_set, each.index, read),
+                max_depth=max_depth,
+            )
+            for each in witnesses
+        )
 
     def _overturned(
         self, query: Query, truth: Truth, held: Held, scenario: Scenario

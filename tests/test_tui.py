@@ -158,6 +158,8 @@ COMMANDS = [
     ("why", str(EXAMPLES / "team.lp"), "balanced"),
     ("why", str(EXAMPLES / "team.lp"), "{ team(X) }", "--binding", "X = ann", "--mode", "brave"),
     ("why", str(EXAMPLES / "team.lp"), "zz", "--mode", "brave"),
+    ("why", str(EXAMPLES / "team.lp"), "zz"),
+    ("why", str(EXAMPLES / "team.lp"), "{ team(ann), not balanced }", "--mode", "brave"),
     ("why", str(EXAMPLES / "team.lp"), "balanced", "--assuming", "team(bob), team(cy)"),
 ]
 
@@ -189,6 +191,14 @@ def test_every_claim_test_lists_is_a_row(
     text = capsys.readouterr().out
     assert follows_the_text_view(view.rows, style, text)
     assert len(list(flat(view.rows))) == text.count("[PASS]") + text.count("[FAIL]") + 1
+
+
+def test_a_warrants_witness_holds_its_derivation(monkeypatch: pytest.MonkeyPatch) -> None:
+    _, view, style = viewed(monkeypatch, "why", str(EXAMPLES / "team.lp"), "balanced")
+    (top,) = view.rows
+    witness = top.children[1]
+    assert _normal(painted(witness, style)).startswith("= neither balanced nor -balanced in")
+    assert _normal(painted(witness.children[0], style)).startswith("not balanced no rule fires")
 
 
 def test_a_pattern_nothing_binds_still_says_it_has_no_yes_bindings(

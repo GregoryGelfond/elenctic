@@ -83,8 +83,8 @@ neither has an undecided claim. `test` computes none, so it is as fast as it was
 for.** `ask` keeps the three values: an atom in no answer set and whose contrary is in none is
 `unknown`, never `no`. Beside the answer it names, for each value the query takes in one answer set
 alone, the first answer set taking it; that answer set depends on enumeration order, the answer does
-not. `why` of a query shows that answer by those answer sets, and an answer every answer set must
-give also by a refutation: no answer set of the program would overturn it, which no order changes.
+not. `why` of a query shows that answer by those answer sets, each with the derivation of the query's
+truth there, and an answer every answer set must give also by a refutation: no answer set of the program would overturn it, which no order changes.
 `why --answer-set K` picks the K-th answer set the search reads, of AS(P) or of Opt(P), and
 explains its atom by the two rules below: present, or absent by default negation, whether or not
 its contrary holds. Which answer set is K-th depends on enumeration order too.

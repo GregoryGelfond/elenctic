@@ -8,6 +8,7 @@ from itertools import chain, combinations
 from typing import Final, override
 
 from elenctic.determination import AnswerSet, Range, Refutation, Truncation, WorldView
+from elenctic.explanation import Explanation
 from elenctic.extension import Extension
 from elenctic.literals import Atoms, Literal, Symbol
 from elenctic.patterns import Pattern
@@ -110,6 +111,23 @@ def _present(literal: Literal, member: Atoms) -> Truth:
     if literal in member:
         return Truth.TRUE
     return Truth.FALSE if literal.contrary in member else Truth.UNKNOWN
+
+
+def deciding(query: Query, member: Atoms) -> tuple[Literal, ...]:
+    """Name the literals a ground query's truth in one answer set rests on, part by part.
+
+    A literal's is itself if it is in the answer set, else its contrary if that is, else both, for
+    neither holds; that of `not l` is `l`.
+    """
+    match query:
+        case Pattern() | Literal():
+            literal = _ground(query)
+            held = tuple(each for each in (literal, literal.contrary) if each in member)
+            return held or (literal, literal.contrary)
+        case Not(part):
+            return (_ground(part),)
+        case All(parts) | Any(parts):
+            return tuple(chain.from_iterable(deciding(part, member) for part in parts))
 
 
 def literal_of(query: Query) -> Literal | None:
@@ -552,8 +570,9 @@ class Warrant:
 
     `witnesses` are answer sets that show it, each with the answer the instance takes there alone:
     one where it is true for a `yes`, false for a `no`; for an `unknown`, one where it is not true
-    and one where it is not false, one answer set when it is unknown there. An answer that needs
-    every answer set also has the `refutation` of the program asked for one that would overturn it,
+    and one where it is not false, one answer set when it is unknown there. `derivations` explain,
+    in each witness, the literals of each part its truth there rests on. An answer that needs every
+    answer set also has the `refutation` of the program asked for one that would overturn it,
     over all of them; over the optima, the search having `read` them all shows it. A witness past
     the answer sets a cut search read is not among them: `unreached` names it. `over` and `mode`
     are those the query was answered with.
@@ -562,6 +581,7 @@ class Warrant:
     query: Query
     answer: Answer
     witnesses: tuple[Taken, ...]
+    derivations: tuple[Explanation, ...]
     refutation: Refutation | None
     unreached: tuple[Unreached, ...] = ()
     over: Range = Range.ALL

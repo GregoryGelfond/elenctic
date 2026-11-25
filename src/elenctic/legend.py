@@ -26,6 +26,7 @@ from elenctic.explanation import (
     Chosen,
     Counterexample,
     Derived,
+    Explanation,
     Fact,
     Minimality,
     Node,
@@ -595,6 +596,32 @@ GUARANTEE: Final[Mapping[Minimality, str]] = {Minimality.NONE: "support is sound
 def stopped(max_depth: int | Limit) -> str:
     """Word the note on an explanation whose branches stop at its depth."""
     return f"some branches stop at depth {max_depth}; {_FURTHER}"
+
+
+def guaranteed(explanation: Explanation) -> list[Phrase]:
+    """Word the notes on an explanation: what it guarantees, and where its branches stop."""
+    notes = [GUARANTEE[explanation.minimality]]
+    return [
+        noted(each)
+        for each in notes + ([] if explanation.complete else [stopped(explanation.max_depth)])
+    ]
+
+
+def warranted(warrant: Warrant, query: All) -> list[Phrase]:
+    """Word the notes on a warrant: those on its derivations, each once, and on a lone witness.
+
+    One answer set witnesses an `unknown` when the query is neither true nor false in it.
+    """
+    notes = dict.fromkeys(note for each in warrant.derivations for note in guaranteed(each))
+    if warrant.answer is not Answer.UNKNOWN or len(warrant.witnesses) != 1:
+        return list(notes)
+    alone = alone_of(query)
+    unsettled = (
+        "the query is neither true nor false in it"
+        if alone is None
+        else f"nothing derives {alone} or {alone.contrary} in it"
+    )
+    return [*notes, noted(f"one answer set shows both: {unsettled}")]
 
 
 def heading(role: Role, word: str, subject: str) -> Phrase:

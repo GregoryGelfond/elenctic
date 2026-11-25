@@ -104,18 +104,13 @@ def _opened(
 
 
 class _Searched(TypedDict, total=False):
-    """How either form of `why` searches the program."""
+    """How either form of `why` searches the program, and how deep it explains an answer set."""
 
     scenario: Scenario
     over: Range
     limits: Limits
     interrupt: Interrupt | None
     root: Path | None
-
-
-class _Explained(_Searched, total=False):
-    """How deep `why` explains an answer set."""
-
     max_depth: int | Limit
 
 
@@ -128,7 +123,7 @@ class _Warranted(_Searched, total=False):
 
 @overload
 def why(
-    program: Program, asked: Literal, *, index: int, **given: Unpack[_Explained]
+    program: Program, asked: Literal, *, index: int, **given: Unpack[_Searched]
 ) -> Explanation | Refutation | Ended | Fault: ...
 @overload
 def why(
@@ -151,8 +146,10 @@ def why(  # noqa: PLR0913
     """Explain why a ground literal holds, or not, in the `index`-th answer set of `scenario`.
 
     Given no `index`, show what warrants the answer `asked` comes to as `ask` answers it in
-    `mode`, or the answer of its binding to `values`. `over` counts all the answer sets or only
-    the optima. Past the last one is a fault. An index of anything but a literal is a `TypeError`.
+    `mode`, or the answer of its binding to `values`, with its derivation in each witness. `over`
+    counts all the answer sets or only the optima; `max_depth` bounds how many absences deep an
+    answer set is explained. Past the last one is a fault. An index of anything but a literal is
+    a `TypeError`.
     """
     if index is not None and not isinstance(asked, Literal):
         message = "an answer set is explained for one ground literal"
@@ -162,7 +159,7 @@ def why(  # noqa: PLR0913
         return session_
     if index is None or not isinstance(asked, Literal):
         answered = session_.answer(asked, scenario, over=over, mode=mode)
-        return _warranted(session_, answered, values, scenario)
+        return _warranted(session_, answered, values, scenario, max_depth)
     found = session_.counterexample(index, scenario, over=over)
     if found is None:
         return _past(session_, index, scenario, over)
@@ -176,12 +173,13 @@ def _warranted(
     answered: Answered | Refutation | Ended,
     values: tuple[Symbol, ...],
     scenario: Scenario,
+    max_depth: int | Limit,
 ) -> Warrant | Refutation | Ended | Fault:
     """Show what warrants an answer, or its binding to `values`; a refused one is a fault."""
     if not isinstance(answered, Answered):
         return answered
     try:
-        return session_.warrant(answered, values, scenario)
+        return session_.warrant(answered, values, scenario, max_depth=max_depth)
     except ValueError as refused:
         return Fault(Locus.REQUEST, (failure(None, str(refused)),))
 

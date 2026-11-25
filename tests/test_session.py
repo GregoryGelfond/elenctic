@@ -1565,8 +1565,10 @@ def test_a_warrant_of_a_program_read_from_its_file_refutes_the_answer_sets_that_
     assert isinstance(made, Session)
     answered = made.answer(B)
     assert isinstance(answered, Answered)
-    assert made.warrant(answered) == Warrant(
-        B, Answer.YES, answered.taken, NoAssumptions(), read=answered.read
+    warrant = made.warrant(answered)
+    assert isinstance(warrant, Warrant)
+    assert warrant == Warrant(
+        B, Answer.YES, answered.taken, warrant.derivations, NoAssumptions(), read=answered.read
     )
 
 

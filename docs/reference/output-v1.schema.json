@@ -1750,6 +1750,7 @@
         "query",
         "answer",
         "witnesses",
+        "derivations",
         "refutation",
         "unreached",
         "over",
@@ -1790,6 +1791,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/taken"
+          }
+        },
+        "derivations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/explanation"
           }
         },
         "refutation": {
