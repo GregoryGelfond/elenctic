@@ -21,7 +21,8 @@ like a command is written `./why`.
 | `--with FILE` | a library loaded with every case, as clingo loads the files it is given, such as a base encoding; may be repeated |
 
 `--format full` and `--format short`, the spellings of 1.0, still work: they are `--format text`
-and `--format text --short`, with a warning on stderr naming the new spelling. 2.0 removes them.
+and `--format text --short`, with a warning on stderr naming the new spelling; beside `--json`,
+which 1.0 also took with them, the output is JSON and the warning names `--json`. 2.0 removes them.
 
 Zero and negative values of `--max-seconds` and `--max-answer-sets` are a usage error (`FAULT`, 2). In the library the same
 choice is `Limits(max_seconds=…, max_answer_sets=…)`, each a number or `Limit.UNBOUNDED`, which is the default of the library; only the command line has default limits.

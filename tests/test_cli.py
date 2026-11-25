@@ -1437,13 +1437,14 @@ def test_an_option_that_would_do_nothing_is_refused(
     assert err.startswith(f"error: {error}")
 
 
-def test_json_with_a_format_1_0_took_is_still_json(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("old", ["full", "short"])
+def test_json_with_a_format_1_0_took_is_still_json_with_a_note(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], old: str
 ) -> None:
     path = write(tmp_path, "p.lp", "a.\n% @expect sat\n")
-    _, out, err = run_both(capsys, "test", path, "--json", "--format", "full")
+    _, out, err = run_both(capsys, "test", path, "--json", "--format", old)
     assert json.loads(out)["exit_code"] == 0
-    assert "deprecated" not in err
+    assert err == f"warning: `--format {old}` is deprecated and removed in 2.0; write `--json`\n"
 
 
 def test_why_on_a_search_cut_short_says_so_and_exits_unmet(

@@ -1483,12 +1483,17 @@ def _conflicting(arguments: argparse.Namespace) -> Diagnostic | None:
 
 
 def _named(arguments: argparse.Namespace, presentation: Presentation) -> str | None:
-    """Name the view `--json` or `--format` asks for; a value 1.0 took is read anew, with a note."""
-    named: str | None = "json" if arguments.json else arguments.format
+    """Name the view `--json` or `--format` asks for; a value 1.0 took is read anew, with a note.
+
+    The note is written beside `--json` too, which 1.0 took with it, and which alone then asks
+    for the same.
+    """
+    named: str | None = arguments.format
     if named in DEPRECATED:
-        sys.stderr.write(deprecated(f"--format {named}", DEPRECATED[named], presentation.stderr))
-        return View.TEXT
-    return named
+        instead = "--json" if arguments.json else DEPRECATED[named]
+        sys.stderr.write(deprecated(f"--format {named}", instead, presentation.stderr))
+        named = View.TEXT
+    return "json" if arguments.json else named
 
 
 def _tui_refusal(*, terminal: bool) -> Fault | None:
