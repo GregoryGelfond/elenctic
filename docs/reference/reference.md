@@ -386,6 +386,10 @@ so `from elenctic import *` brings `All` and `Any`, the parts of a `Query`; `Any
 | Do two patterns have a common instance? | `mgu(first, second)` | a `Unifier`, or `None` |
 | The same, their variables shared by name? | `unify(first, second)` | a `Substitution`, or `None` |
 
+A `Fault` of `why` or `ask` in one of their parameters is placed at it, its span's source the
+parameter's name: `index`, `values` or `over`; a help names it so too. The command line names the
+option instead.
+
 `mgu` renames the two patterns apart, so that a variable of one is not the variable of the other for
 having the same name, and returns a `Unifier`: the two renamed patterns, the `Substitution` that
 makes them one, and `instance`, the pattern both become (the most general common instance). `unify`

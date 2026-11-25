@@ -54,7 +54,16 @@ from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.session import ONE_BINDING, Session, evidenced, session
-from elenctic.spans import Diagnostic, Parsed, Span, failure, first_unlexable, note, unreadable
+from elenctic.spans import (
+    Diagnostic,
+    Parsed,
+    Severity,
+    Span,
+    failure,
+    first_unlexable,
+    note,
+    unreadable,
+)
 from elenctic.syntax import binding_shape, read_asked, read_binding, read_scenario
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
@@ -852,6 +861,31 @@ def _refuse[Outcome: IntEnum](
     return outcome
 
 
+_OPTIONS: Final = {"over": "--over", "values": "--binding", "index": "--answer-set"}
+"""The option that gives each parameter of `why` and `ask` the library places a fault at."""
+
+
+def _optioned[Result](result: Result) -> Result:
+    """Place a fault the library places at a parameter at the option that gives it."""
+    if not isinstance(result, Fault):
+        return result
+    return replace(result, diagnostics=tuple(map(_at_option, result.diagnostics)))
+
+
+def _at_option(diagnostic: Diagnostic) -> Diagnostic:
+    """Place a diagnostic at the option for its parameter, and name the option in its help."""
+    if diagnostic.span is None or diagnostic.span.source not in _OPTIONS:
+        return diagnostic
+    parameter, option = diagnostic.span.source, _OPTIONS[diagnostic.span.source]
+    children = tuple(
+        replace(child, message=child.message.replace(f"`{parameter}`", f"`{option}`"))
+        if child.severity is Severity.HELP
+        else child
+        for child in diagnostic.children
+    )
+    return replace(diagnostic, span=replace(diagnostic.span, source=option), children=children)
+
+
 _GIVEN: Final = {
     "QUERY": "query",
     "--binding": "binding",
@@ -1012,16 +1046,18 @@ class _Explaining:
         """Explain `literal` in the `index`-th answer set, `depth` absences deep."""
         limits, interrupt = self.searching
         try:
-            return why(
-                self.program,
-                literal,
-                index=index,
-                scenario=self.scenario,
-                over=self.over,
-                limits=limits,
-                interrupt=interrupt,
-                max_depth=depth,
-                root=self.root,
+            return _optioned(
+                why(
+                    self.program,
+                    literal,
+                    index=index,
+                    scenario=self.scenario,
+                    over=self.over,
+                    limits=limits,
+                    interrupt=interrupt,
+                    max_depth=depth,
+                    root=self.root,
+                )
             )
         except Exception as error:  # noqa: BLE001
             return Internal.of(error)
@@ -1072,17 +1108,19 @@ def _warrant(
     limits, interrupt = explaining.searching
     mode = AnswerMode.DEFAULT if arguments.mode is None else arguments.mode
     try:
-        result: Warrant | Refutation | Ended | Fault | Internal = why(
-            program,
-            query,
-            values=values,
-            mode=mode,
-            scenario=scenario,
-            over=arguments.over,
-            limits=limits,
-            interrupt=interrupt,
-            max_depth=arguments.max_depth,
-            root=root,
+        result: Warrant | Refutation | Ended | Fault | Internal = _optioned(
+            why(
+                program,
+                query,
+                values=values,
+                mode=mode,
+                scenario=scenario,
+                over=arguments.over,
+                limits=limits,
+                interrupt=interrupt,
+                max_depth=arguments.max_depth,
+                root=root,
+            )
         )
     except Exception as error:  # noqa: BLE001
         result = Internal.of(error)
@@ -1210,14 +1248,16 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         return _refuse("ask", query, arguments, presentation, outcome=AskExit.FAULT)
     limits, interrupt = _searching(arguments)
     try:
-        result: Ask | Internal = ask(
-            program,
-            query,
-            mode=arguments.mode,
-            over=arguments.over,
-            limits=limits,
-            interrupt=interrupt,
-            root=root,
+        result: Ask | Internal = _optioned(
+            ask(
+                program,
+                query,
+                mode=arguments.mode,
+                over=arguments.over,
+                limits=limits,
+                interrupt=interrupt,
+                root=root,
+            )
         )
     except Exception as error:  # noqa: BLE001
         result = Internal.of(error)

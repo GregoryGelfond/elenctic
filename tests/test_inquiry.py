@@ -50,6 +50,24 @@ def test_why_past_the_last_answer_set_is_a_fault_naming_how_many_there_are() -> 
     assert WhyExit.of(refused) is WhyExit.FAULT
 
 
+def test_a_fault_in_a_parameter_of_why_or_ask_is_placed_at_the_parameter() -> None:
+    program = Program("{ p(1) }.", "t.lp")
+    past = why(program, Literal("p", (Number(1),)), index=3)
+    unbound = why(program, Pattern("p", (Variable("X"),)), values=(Number(2),))
+    optimal = ask(program, All((Literal("p", (Number(1),)),)), over=Range.OPTIMAL)
+    found = [
+        each.diagnostics[0].span.source
+        if isinstance(each, Fault) and each.diagnostics[0].span
+        else None
+        for each in (past, unbound, optimal)
+    ]
+    assert found == ["index", "values", "over"]
+    assert isinstance(past, Fault)
+    assert [child.message for child in past.diagnostics[0].children] == [
+        "`index` counts from 1 to 2"
+    ]
+
+
 def test_why_without_answer_sets_gives_the_refutation() -> None:
     assert why(Program("a. :- a.", "t.lp"), Literal("a")) == NoAssumptions()
     clash = frozenset({Assumption(Literal("a")), Assumption(Literal("a"), holds=False)})

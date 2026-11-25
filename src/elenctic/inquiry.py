@@ -95,7 +95,7 @@ def _opened(
         return Fault(Locus.REQUEST, tuple(misdeclared))
     opened = session(program, solver, limits=limits, interrupt=interrupt)
     if isinstance(opened, Session) and over is Range.OPTIMAL and not opened.facts.optimizes:
-        where = Span.whole("--over", Range.OPTIMAL.value)
+        where = Span.whole("over", Range.OPTIMAL.value)
         return Fault(Locus.REQUEST, (lacks_objective(where, "the optimal answer sets asked for"),))
     return opened
 
@@ -178,7 +178,7 @@ def _warranted(
     try:
         return session_.warrant(answered, values, scenario, max_depth=max_depth)
     except ValueError as refused:
-        where = Span.whole("--binding", "")
+        where = Span.whole("values", "")
         return Fault(Locus.REQUEST, (failure(where, str(refused)),))
 
 
@@ -188,10 +188,10 @@ def _past(session_: Session, index: int, scenario: Scenario, over: Range) -> Fau
     read = last.read if isinstance(last, Counterexample) else 0
     kind = "optimal answer set" if over is Range.OPTIMAL else "answer set"
     problem = failure(
-        Span.whole("--answer-set", str(index)),
+        Span.whole("index", str(index)),
         f"there is no {kind} {index}: the search read {read}",
         label=f"past the last {kind}",
-        help=(f"`--answer-set` counts from 1 to {read}",),
+        help=(f"`index` counts from 1 to {read}",),
     )
     return Fault(Locus.REQUEST, (problem,))
 
