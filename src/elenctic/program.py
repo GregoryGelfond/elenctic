@@ -3,10 +3,11 @@
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum, auto
+from errno import EINVAL, EISDIR
 from os import PathLike
 from pathlib import Path
 from stat import S_ISDIR, S_ISFIFO, S_ISREG, S_ISSOCK
-from typing import Final, Self
+from typing import Final, Self, override
 
 from elenctic.spans import Diagnostic, Span, in_characters, split_lines
 
@@ -64,7 +65,19 @@ class Program:
 
 
 class IrregularFileError(OSError):
-    """That a file is not a regular file: clingo would wait on it, or read nothing from it."""
+    """That a file is not a regular file: clingo would wait on it, or read nothing from it.
+
+    It carries an `errno` and the `filename`, as an `OSError` from opening the file would, and
+    reads as its reason alone.
+    """
+
+    @override
+    def __str__(self) -> str:
+        return str(self.strerror)
+
+
+class IrregularDirectoryError(IrregularFileError, IsADirectoryError):
+    """That a file is a directory: also an `IsADirectoryError`, as opening it would raise."""
 
 
 def irregular(path: Path) -> IrregularFileError | None:
@@ -79,16 +92,10 @@ def irregular(path: Path) -> IrregularFileError | None:
         return None
     if S_ISREG(mode):
         return None
-    kind = (
-        "a directory"
-        if S_ISDIR(mode)
-        else "a FIFO"
-        if S_ISFIFO(mode)
-        else "a socket"
-        if S_ISSOCK(mode)
-        else "a device"
-    )
-    return IrregularFileError(f"it is {kind}, not a regular file")
+    if S_ISDIR(mode):
+        return IrregularDirectoryError(EISDIR, "it is a directory, not a regular file", str(path))
+    kind = "a FIFO" if S_ISFIFO(mode) else "a socket" if S_ISSOCK(mode) else "a device"
+    return IrregularFileError(EINVAL, f"it is {kind}, not a regular file", str(path))
 
 
 def regular_text(path: Path) -> str:

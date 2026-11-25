@@ -414,6 +414,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | Name | What it is |
 |---|---|
 | `Program` | ASP source text, where it came from, and the `libraries` loaded with it |
+| `IrregularFileError` | the `OSError` `Program.read` raises for a file that is not a regular file, with its `errno` and `filename`; for a directory, also an `IsADirectoryError` |
 | `Grounded` | a program grounded once, to be searched under any number of scenarios |
 | `ground` | ground a program for a `Solver`: a `Grounded`, or a `Fault` saying why not |
 | `solve` | enumerate the answer sets of a program under a scenario |

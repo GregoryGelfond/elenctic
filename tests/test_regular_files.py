@@ -1,5 +1,6 @@
 """Pin that a file which is not a regular file is refused before elenctic or clingo reads it."""
 
+import errno
 import os
 import platform
 import socket
@@ -11,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import elenctic
 from conftest import Link
 from elenctic.check import check
 from elenctic.cli import main
@@ -89,6 +91,25 @@ def test_a_program_is_not_read_from_a_file_that_is_not_regular(
     path = special(kind, tmp_path / "case.lp", pipe)
     with pytest.raises(OSError, match=f"^it is a {kind}, not a regular file$"):
         Program.read(path)
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_the_refusal_of_a_file_that_is_not_regular_names_it_with_an_errno(
+    tmp_path: Path, pipe: Pipe, kind: str
+) -> None:
+    path = special(kind, tmp_path / "case.lp", pipe)
+    with pytest.raises(elenctic.IrregularFileError) as raised:
+        Program.read(path)
+    expected = errno.EISDIR if kind == "directory" else errno.EINVAL
+    assert (raised.value.filename, raised.value.errno) == (str(path), expected)
+
+
+def test_a_directory_read_as_a_program_is_also_an_is_a_directory_error(tmp_path: Path) -> None:
+    with pytest.raises(IsADirectoryError) as raised:
+        Program.read(tmp_path)
+    assert isinstance(raised.value, elenctic.IrregularFileError)
+    assert (raised.value.filename, raised.value.errno) == (str(tmp_path), errno.EISDIR)
+    assert str(raised.value) == "it is a directory, not a regular file"
 
 
 @pytest.mark.parametrize("kind", KINDS)

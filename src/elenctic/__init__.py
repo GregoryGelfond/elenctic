@@ -79,7 +79,7 @@ from elenctic.literals import (
     Signature,
 )
 from elenctic.patterns import Pattern
-from elenctic.program import Fault, Locus, Program
+from elenctic.program import Fault, IrregularFileError, Locus, Program
 from elenctic.query import (
     All,
     Answer,
@@ -171,6 +171,7 @@ __all__ = [
     "Incumbent",
     "Internal",
     "Interrupt",
+    "IrregularFileError",
     "Keep",
     "Limit",
     "Limits",

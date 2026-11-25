@@ -198,6 +198,10 @@ All notable changes are recorded here. The format follows
 - A NUL in a program file is worded as any unexpected character (``unexpected `\x00` ``); clingo's
   message ended at it, `lexer error, unexpected`. A NUL in a tag, or in a program given as text,
   is refused where it stands: clingo was given the text up to it alone.
+- `Program.read` of a file that is not a regular file raises `IrregularFileError`, an `OSError`
+  now exported, with its `errno` and `filename`; of a directory, one that is also an
+  `IsADirectoryError`, as 1.0.0 raised. A FIFO, a socket or a device such as `/dev/null`, which
+  1.0.0 read, is refused as the command line refuses it: clingo would wait on it or read nothing.
 
 ## [1.0.0] - 2026-11-06
 
