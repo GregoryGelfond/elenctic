@@ -1,9 +1,12 @@
 import json
+import os
 import shlex
 import signal
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from types import FrameType
 
 import pytest
 
@@ -143,6 +146,41 @@ def test_an_interrupted_consequence_search_is_undecided_and_not_a_pass(
     code, out = run(capsys, path)
     assert code == Exit.CLAIM_UNMET
     assert "[UNDECIDED] @cautious { assign(2,g) } (line 6): search ended: interrupted" in out
+
+
+type Handler = Callable[[int, FrameType | None], object] | int | signal.Handlers
+
+
+def test_two_sigints_sent_before_python_handles_one_end_the_process_as_a_second_does(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While clingo grounds, Python handles no signal: two sent then come to one call of it."""
+    path = write(tmp_path, "path_coloring.lp", path_coloring(FEW_NODES))
+    send, install, before = signal.raise_signal, signal.signal, signal.getsignal(signal.SIGINT)
+    ended: list[object] = []
+
+    def sent_twice() -> None:
+        if ended:
+            return
+        wakeup = signal.set_wakeup_fd(-1)
+        signal.set_wakeup_fd(wakeup, warn_on_full_buffer=False)
+        os.write(wakeup, signal.SIGINT.to_bytes())
+        send(signal.SIGINT)
+
+    def installing(number: int, handler: Handler) -> Handler | None:
+        if handler is signal.SIG_DFL:
+            ended.append(handler)
+            return None
+        return install(number, handler)
+
+    at_first_answer_set(monkeypatch, sent_twice)
+    monkeypatch.setattr(signal, "signal", installing)
+    monkeypatch.setattr(signal, "raise_signal", ended.append)
+    try:
+        run(capsys, path)
+    finally:
+        install(signal.SIGINT, before)
+    assert ended == [signal.SIG_DFL, signal.SIGINT]
 
 
 @pytest.mark.parametrize("seconds", SMALL_TIME_LIMITS)

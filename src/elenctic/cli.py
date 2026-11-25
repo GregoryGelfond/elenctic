@@ -5,11 +5,12 @@ import io
 import os
 import re
 import signal
+import socket
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum, auto
-from functools import partial
+from functools import cache, partial
 from importlib import import_module
 from math import inf
 from pathlib import Path
@@ -736,11 +737,43 @@ def _presentation(arguments: argparse.Namespace, environment: Environment) -> Pr
     )
 
 
+@cache
+def _deliveries() -> tuple[socket.socket, socket.socket]:
+    """Open what counts each signal the process is sent, as it is sent.
+
+    Python runs a handler only between its own steps: two SIGINTs sent while clingo grounds come
+    to one call. The interpreter writes a byte here for each, so the handler can count them all.
+    """
+    reader, writer = socket.socketpair()
+    reader.settimeout(0)
+    writer.settimeout(0)
+    signal.set_wakeup_fd(writer.fileno(), warn_on_full_buffer=False)
+    return reader, writer
+
+
+def _sent(reader: socket.socket) -> int:
+    """Count the SIGINTs sent since the last count: at least the one being handled."""
+    received = b""
+    while True:
+        try:
+            chunk = reader.recv(256)
+        except BlockingIOError:
+            break
+        if not chunk:
+            break
+        received += chunk
+    return max(1, received.count(signal.SIGINT.to_bytes()))
+
+
 def _sigint(interrupt: Interrupt) -> Callable[[int, object], None]:
-    """First SIGINT asks the search to stop; a second restores the default handler and re-raises."""
+    """First SIGINT asks the search to stop; a second restores the default handler and re-raises.
+
+    Two sent before the handler runs, as while clingo grounds, are the second too.
+    """
+    reader, _ = _deliveries()
 
     def handle(_signum: int, _frame: object) -> None:
-        if interrupt.pulled:
+        if interrupt.pulled or _sent(reader) > 1:
             signal.signal(signal.SIGINT, signal.SIG_DFL)
             signal.raise_signal(signal.SIGINT)
             return
