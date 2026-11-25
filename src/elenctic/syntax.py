@@ -250,11 +250,16 @@ def _variable(text: str, where: Span) -> Diagnostic | None:
         if alone is not None:
             first = start + len(part) - len(part.lstrip()) + alone.start("variable")
             name = alone["variable"]
+            tip = (
+                "put a named variable in an atom, such as `p(X)`: `_` names no binding"
+                if name == "_"
+                else f"put the variable in an atom, such as `p({name})`"
+            )
             return failure(
                 _at(text, where, first, first + len(name)),
                 f"expected a literal, found the variable `{name}`",
                 label="a variable alone is no literal",
-                help=(f"put the variable in an atom, such as `p({name})`",),
+                help=(tip,),
             )
     return None
 

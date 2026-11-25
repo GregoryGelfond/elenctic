@@ -475,3 +475,11 @@ def test_a_variable_alone_in_a_query_is_refused_as_no_literal(
     assert isinstance(refused, Diagnostic)
     assert refused.message == f"expected a literal, found the variable `{name}`"
     assert refused.span == Span("QUERY", Position(1, start), Position(1, start + len(name)))
+
+
+def test_an_anonymous_variable_alone_is_told_to_take_a_name_not_to_stand_in_an_atom() -> None:
+    refused = read_query("_", "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert refused.message == "expected a literal, found the variable `_`"
+    tip = "put a named variable in an atom, such as `p(X)`: `_` names no binding"
+    assert [child.message for child in refused.children] == [tip]
