@@ -211,6 +211,8 @@ All notable changes are recorded here. The format follows
 - The `Containerfile` gives its build the `LICENSE` the package metadata names.
 - A fault in an argument that begins with a line break is placed on the line it stands on, not
   on the first.
+- A lone surrogate in an argument, in a string too, is refused as text UTF-8 cannot encode
+  instead of raising; only one Python keeps for a byte of `0x80` to `0xFF` is named as that byte.
 
 ## [1.0.0] - 2026-11-06
 

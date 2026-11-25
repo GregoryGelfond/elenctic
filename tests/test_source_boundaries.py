@@ -347,6 +347,17 @@ def test_an_included_file_that_is_not_utf8_is_refused_not_loaded(tmp_path: Path)
     assert note.message == "not valid UTF-8 at line 1, column 3 (byte 3): invalid continuation byte"
 
 
+def test_a_byte_that_is_not_utf8_after_a_first_empty_line_is_placed_on_the_second(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "lib.lp").write_bytes(b"\np(\xe9).\n")
+    (tmp_path / "main.lp").write_text('#include "lib.lp".\n% @expect sat\n')
+    refused = ground(Program.read(tmp_path / "main.lp"))
+    assert isinstance(refused, Fault)
+    (note,) = refused.diagnostics[0].children
+    assert note.message == "not valid UTF-8 at line 2, column 3 (byte 4): invalid continuation byte"
+
+
 def test_a_library_and_its_includes_are_loaded_and_held_to_the_root(tmp_path: Path) -> None:
     (tmp_path / "case.lp").write_text("% @expect sat\n")
     (tmp_path / "base.lp").write_text('#include "leaf.lp".\n')

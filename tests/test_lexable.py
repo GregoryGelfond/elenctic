@@ -12,8 +12,9 @@ from hypothesis import strategies as st
 from elenctic.check import check
 from elenctic.cli import main
 from elenctic.program import Fault, Locus, Program
+from elenctic.queries import read_query
 from elenctic.report import Exit
-from elenctic.spans import first_unlexable
+from elenctic.spans import Diagnostic, Position, Span, first_unlexable
 
 
 def write(directory: Path, name: str, text: str) -> Path:
@@ -126,3 +127,34 @@ def test_subprocess_does_not_die_silently_on_non_ascii(tmp_path: Path) -> None:
     assert completed.returncode == Exit.FAULT
     document = json.loads(completed.stdout)
     assert document["exit_code"] == Exit.FAULT
+
+
+def test_first_unlexable_marks_the_one_character() -> None:
+    found = first_unlexable("b :- a, é.\n", "t.lp")
+    assert found is not None
+    assert found.span == Span("t.lp", Position(1, 9), Position(1, 10))
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("p(\udcff)", "expected UTF-8, found the byte `0xFF`"),
+        ('p("\udc80")', "expected UTF-8, found the byte `0x80`"),
+        ('p("\ud800")', "expected UTF-8, found the lone surrogate `U+D800`"),
+        ('p("\udc7f")', "expected UTF-8, found the lone surrogate `U+DC7F`"),
+        ("p(\udd00)", "expected UTF-8, found the lone surrogate `U+DD00`"),
+    ],
+)
+def test_a_character_utf8_cannot_encode_is_refused_in_a_string_too(text: str, message: str) -> None:
+    """Python keeps a byte of 0x80 to 0xFF it could not decode as a lone surrogate; none other."""
+    found = first_unlexable(text, "t.lp")
+    assert found is not None
+    assert found.message == message
+    column = text.index(next(c for c in text if 0xD800 <= ord(c) < 0xE000)) + 1
+    assert found.span == Span("t.lp", Position(1, column), Position(1, column + 1))
+
+
+def test_a_query_with_a_lone_surrogate_in_a_string_is_refused_not_raised() -> None:
+    found = read_query('p("\ud800")', "QUERY")
+    assert isinstance(found, Diagnostic)
+    assert found.message == "expected UTF-8, found the lone surrogate `U+D800`"

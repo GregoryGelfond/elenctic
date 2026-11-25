@@ -255,14 +255,22 @@ def in_code(text: str) -> tuple[bool, ...]:
     return tuple(mask)
 
 
-_ESCAPED: Final = range(0xDC00, 0xDD00)
-"""The lone surrogates Python reads a byte that is not UTF-8 in an argument as, from `0x00`."""
+_ESCAPED: Final = range(0xDC80, 0xDD00)
+"""The lone surrogates Python reads a byte of an argument that is not UTF-8 as, `0x80` to `0xFF`."""
+_SURROGATES: Final = range(0xD800, 0xE000)
+"""The code points UTF-8 cannot encode, alone in a text."""
 
 
-def _not_utf8(where: Span, byte: int) -> Diagnostic:
+def _not_utf8(where: Span, point: int) -> Diagnostic:
+    """Refuse a lone surrogate: a byte Python could not decode, if it keeps one, else itself."""
+    found = (
+        f"the byte `0x{point - 0xDC00:02X}`"
+        if point in _ESCAPED
+        else f"the lone surrogate `U+{point:04X}`"
+    )
     return failure(
         where,
-        f"expected UTF-8, found the byte `0x{byte:02X}`",
+        f"expected UTF-8, found {found}",
         label="not UTF-8",
         help=("clingo reads only UTF-8; write the text in UTF-8",),
     )
@@ -276,9 +284,8 @@ def first_nul(text: str, where: Span) -> Diagnostic | None:
     index = text.find(_NUL)
     if index < 0:
         return None
-    line = text.count("\n", 0, index) + 1
-    column = index - text.rfind("\n", 0, index)
-    at = Span(where.source, Position(line, column), Position(line, column + 1))
+    found = position(text, index)
+    at = Span(where.source, found, Position(found.line, found.column + 1))
     return failure(
         at.shifted(where.start), f"unexpected `{_NUL}`", label="a NUL ends clingo's text"
     )
@@ -297,9 +304,9 @@ def first_unlexable(text: str, source: str) -> Diagnostic | None:
     code = in_code(text)
     line, column = 1, 1
     for index, character in enumerate(text):
-        if _ESCAPED.start <= ord(character) < _ESCAPED.stop:
+        if ord(character) in _SURROGATES:
             where = Span(source, Position(line, column), Position(line, column + 1))
-            return _not_utf8(where, ord(character) - _ESCAPED.start)
+            return _not_utf8(where, ord(character))
         if code[index] and ord(character) > _ASCII_MAX:
             where = Span(source, Position(line, column), Position(line, column + 1))
             if character == "\ufeff":

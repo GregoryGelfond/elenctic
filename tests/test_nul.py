@@ -52,5 +52,17 @@ def test_first_nul_places_the_nul_where_the_text_was_written() -> None:
     assert first_nul("abc", Span("T", Position(1, 1), Position(1, 1))) is None
 
 
+@pytest.mark.parametrize(
+    ("text", "at"),
+    [("\x00ab", Position(1, 1)), ("\n\x00", Position(2, 1)), ("\nab\x00", Position(2, 3))],
+)
+def test_first_nul_finds_a_nul_at_the_start_or_after_a_first_empty_line(
+    text: str, at: Position
+) -> None:
+    found = first_nul(text, Span("T", Position(1, 1), Position(1, 1)))
+    assert found is not None
+    assert found.span == Span("T", at, Position(at.line, at.column + 1))
+
+
 def test_a_term_with_a_nul_is_not_evaluable() -> None:
     assert not evaluable('p("a\x00b")')
