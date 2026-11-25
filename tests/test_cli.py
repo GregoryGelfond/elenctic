@@ -1732,6 +1732,15 @@ def test_why_takes_the_modes_ask_takes(
     assert "refutation" not in out
 
 
+def test_a_cautious_not_entailed_names_only_answer_sets_where_the_query_is_not_true(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "ab.lp", "a :- not b. b :- not a.\n")
+    _, asked = run(capsys, "ask", path, "a", "--mode", "cautious")
+    _, warranted = run(capsys, "why", path, "a", "--mode", "cautious")
+    assert named(asked) == named(warranted) == ["  = neither a nor -a in answer set 1: { b }"]
+
+
 def test_why_of_a_brave_answer_none_holds_refutes_any_answer_set_where_it_is_true(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

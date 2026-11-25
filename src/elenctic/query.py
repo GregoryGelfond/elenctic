@@ -426,7 +426,7 @@ def answers(
         Bound(
             values,
             answer_,
-            tuple(TakenAt(each, at) for each, at in first.items() if each in _NAMED[mode]),
+            tuple(TakenAt(each, at) for each, at in first.items() if each in _NAMED[answer_]),
         )
         for values, answer_, first in judged
     )
@@ -468,12 +468,17 @@ class Answered:
     cut: Truncation | None = None
 
 
-_NAMED: Final[Mapping[AnswerMode, frozenset[Answer]]] = {
-    AnswerMode.DEFAULT: frozenset(ANSWERS[AnswerMode.DEFAULT]),
-    AnswerMode.CAUTIOUS: frozenset(ANSWERS[AnswerMode.DEFAULT]),
-    AnswerMode.BRAVE: frozenset({Answer.YES}),
+_NAMED: Final[Mapping[Answer, frozenset[Answer]]] = {
+    Answer.YES: frozenset({Answer.YES}),
+    Answer.NO: frozenset({Answer.NO}),
+    Answer.UNKNOWN: frozenset(ANSWERS[AnswerMode.DEFAULT]),
+    Answer.NOT_ENTAILED: frozenset({Answer.NO, Answer.UNKNOWN}),
+    Answer.NONE_HOLDS: frozenset(),
 }
-"""The answers alone whose first answer set each mode names: bravely, only where it is true."""
+"""The answers alone whose first answer set each answer names: those that show it.
+
+A cautious `not entailed` names only where the query is not true; a brave `yes` only where it is.
+"""
 
 _ALONE: Final = {Truth.TRUE: Answer.YES, Truth.FALSE: Answer.NO, Truth.UNKNOWN: Answer.UNKNOWN}
 """The answer a query has in one answer set, from its truth there."""
@@ -493,7 +498,7 @@ def answered(
     if variables_of(query):
         return Answered(query, over, answers(query, members, mode=mode), (), read, mode=mode)
     found = answer(query, WorldView(frozenset(member.atoms for member in members), over), mode=mode)
-    return Answered(query, over, found, taken(query, members, mode), read, mode=mode)
+    return Answered(query, over, found, taken(query, members, found), read, mode=mode)
 
 
 def bravely(
@@ -683,28 +688,27 @@ def settled(
     stopped it: an answer none of them gives is unreached. `read` counts them if they are all.
     """
     members, cut, read = reading.members, reading.cut, reading.count
-    first = taken(query, members, mode)
+    found = decided(truths, mode)
+    first = taken(query, members, found)
     given = {each.answer for each in first}
-    wanted = {_ALONE[truth] for truth in truths} & _NAMED[mode]
+    wanted = {_ALONE[truth] for truth in truths} & _NAMED[found]
     unreached = tuple(
         Unreached(each, len(members), cut)
         for each in ANSWERS[AnswerMode.DEFAULT]
         if cut is not None and each in wanted and each not in given
     )
-    return Answered(query, Range.ALL, decided(truths, mode), first, read, unreached, mode)
+    return Answered(query, Range.ALL, found, first, read, unreached, mode)
 
 
-def taken(
-    query: Query, members: Sequence[AnswerSet], mode: AnswerMode = AnswerMode.DEFAULT
-) -> tuple[Taken, ...]:
+def taken(query: Query, members: Sequence[AnswerSet], found: Answer) -> tuple[Taken, ...]:
     """Find the first of `members`, in their order, to give each answer `query` takes alone.
 
-    Only the answers `mode` names are found: bravely, an answer set where it is not true says
-    nothing.
+    Only the answers that show the answer `found` are found: an answer set where a brave `yes` is
+    not true, or a cautious `not entailed` is, says nothing of it.
     """
     first: dict[Answer, Taken] = {}
     for index, member in enumerate(members, 1):
         alone = _ALONE[evaluate(query, member.atoms)]
-        if alone in _NAMED[mode]:
+        if alone in _NAMED[found]:
             first.setdefault(alone, Taken(alone, index, member))
     return tuple(first.values())

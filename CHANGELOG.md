@@ -24,7 +24,8 @@ All notable changes are recorded here. The format follows
   and `@query`, may put `not` before a literal (true where the literal is absent), may end with a
   full stop after its closing brace, and refuses `;`; a query that starts with `-`, `ask PATH -p(X)`, is not taken for an
   option. `ask --mode default|cautious|brave`: the Gelfond–Kahl three-valued answer, or `yes` /
-  `not entailed` (true in every answer set or not), or `yes` / `none holds` (true in some or none,
+  `not entailed` (true in every answer set or not, naming for `not entailed` only answer sets
+  where it is not true), or `yes` / `none holds` (true in some or none,
   naming only answer sets where it is true); `Answer` gains `NOT_ENTAILED` and `NONE_HOLDS`.
 - A query with variables may be a conjunction, `{ p(X), not q(X) }`, each instance answered over
   every answer set: `answers`, `Answers` of `Bound`, and the JSON `answers` kind, which lists
