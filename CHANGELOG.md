@@ -25,13 +25,11 @@ All notable changes are recorded here. The format follows
   full stop after its closing brace, and refuses `;`; a query that starts with `-`, `ask PATH -p(X)`, is not taken for an
   option. `ask --mode default|cautious|brave`: the Gelfond–Kahl three-valued answer, or `yes` /
   `not entailed` (true in every answer set or not), or `yes` / `none holds` (true in some or none,
-  naming only answer sets where it is true); `Answer` gains `NOT_ENTAILED` and `NONE_HOLDS`, and
-  `Answered` its `mode`.
+  naming only answer sets where it is true); `Answer` gains `NOT_ENTAILED` and `NONE_HOLDS`.
 - A query with variables may be a conjunction, `{ p(X), not q(X) }`, each instance answered over
-  every answer set: `answers`, `Answers` of `Bound`, and the JSON `answers` kind, which replaces
-  `bindings` in `ask` output. `ask` writes the bindings one a line, `= yes: X = a`, after their
-  counts, and ends with `= no more bindings`, in place of the grouped `= yes bindings: { … }`;
-  `unknown` ones only with `--unknown`. `stream` yields them in that order. A brave search cut
+  every answer set: `answers`, `Answers` of `Bound`, and the JSON `answers` kind, which lists
+  every binding. `ask` writes the bindings one a line, `= yes: X = a`, after their counts, and
+  ends with `= no more bindings`; `unknown` ones only with `--unknown`. `stream` yields them in that order. A brave search cut
   short keeps the `yes` it found, `Answered.cut` saying what cut it, and exits 1.
 - `Session.warrant` gives what shows an answer, or a binding's: `Warrant`, its witnesses (one
   answer set where it is true for `yes`; for `unknown`, one where it is not true and one where it
@@ -97,6 +95,8 @@ All notable changes are recorded here. The format follows
   diagnostics.
 
 ### Changed
+- A `@query` whose parts `;` separates is refused (`query uses a semicolon`, exit 2): write `,`.
+  clingo reads `;` in a body as `,`, where a Prolog reader takes it for `or`.
 - JSON lists a set of literals or valuations in their own order, `p(2)` before `p(10)`, as the text
   does; it sorted them by their encoding. The schema is unchanged.
 - A refutation lists its assumptions in the order the claim writes them, `(not b, c)`; it sorted

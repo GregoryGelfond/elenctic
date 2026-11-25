@@ -1,7 +1,7 @@
 # Semantics
 
 **Answers are three-valued per answer set.** Over a set of answer sets, a ground query
-(singleton, conjunctive or disjunctive) is `yes` if true in every one, `no` if false in every
+(a literal, a conjunction, or the library's disjunction, `Any`) is `yes` if true in every one, `no` if false in every
 one, and `unknown` otherwise. A literal absent from an answer set is unknown there unless its
 contrary is present (Gelfond and Kahl, Definition 2.2.2, with the errata that this rule holds for
 every ground query). A query may put `not` before a literal: `not l` is true in an answer set
@@ -28,7 +28,7 @@ parts' unifiers are joined on their shared variables. Each candidate is ground a
 ground query over every answer set, in the mode asked, so a binding is `yes`, `no` or `unknown` by
 the rule above; infinitely many other instances are in no answer set and are not listed. A variable
 only under `not`, as in `{ p(X), not q(X, Y) }`, has no candidates and is refused, as is an
-anonymous variable, `_`, and a disjunction with variables. A binding claim
+anonymous variable, `_`, and the library's disjunction with variables. A binding claim
 `@query A { p(X), not q(X) } = { … }` holds when the bindings with answer `A` equal the stated set;
 no other relation (subset, superset) is offered.
 
