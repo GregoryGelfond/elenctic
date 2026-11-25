@@ -9,8 +9,8 @@ like a command is written `./why`.
 | Option | Meaning |
 |---|---|
 | `--format text\|json\|tui` | how to write the run: text (default), JSON, or the [interactive view](#the-interactive-view) |
-| `--short` | write each diagnostic on one line, in the gcc form ([diagnostics](#diagnostics)); text only |
-| `--json` | write the run as JSON (same as `--format json`) |
+| `--short` | write each diagnostic on one line, in the gcc form ([diagnostics](#diagnostics)); text only, refused with JSON |
+| `--json` | write the run as JSON (same as `--format json`); refused with `--format text` or `tui` |
 | `-V`, `--version` | print the version and exit; stands before the command (below) |
 | `-v`, `--verbose` | list the claims that passed |
 | `--color WHEN` | color the text: `auto` (default), `always` or `never` |
@@ -91,7 +91,7 @@ directory is a usage error. And these:
 | `--max-depth N\|all`, `--spans` | `why`: as for `explain`, for each tree it draws |
 | `--mode default\|cautious\|brave` | `ask`, and `why` without `--answer-set`: how the query is answered ([Semantics](../explanation/semantics.md)); default, the Gelfond–Kahl three-valued semantics |
 | `--binding 'X = V, …'` | `why`: the binding of a query with variables whose answer is warranted, as `ask` writes it (`X = a, Y = 1`); a query with variables is warranted one binding at a time |
-| `--unknown` | `ask`: write the bindings whose answer is `unknown` too, not only their count; refused for a query without variables |
+| `--unknown` | `ask`: write the bindings whose answer is `unknown` too, not only their count; refused for a query without variables, and with `--mode cautious` or `brave`, which answer none `unknown` |
 
 `--mode` and `--binding` with `--answer-set`, where they do nothing, are refused.
 

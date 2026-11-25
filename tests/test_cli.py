@@ -1213,6 +1213,39 @@ def test_a_fault_in_an_argument_is_placed_at_it(
     assert str(path) not in err
 
 
+@pytest.mark.parametrize(
+    ("argv", "error"),
+    [
+        (
+            ["ask", "p(X)", "--mode", "cautious", "--unknown"],
+            "the cautious mode answers no binding",
+        ),
+        (["ask", "p(X)", "--mode", "brave", "--unknown"], "the brave mode answers no binding"),
+        (["test", "--json", "--short"], "a JSON document has no short form"),
+        (["ask", "a", "--format", "json", "--short"], "a JSON document has no short form"),
+        (["test", "--json", "--format", "text"], "`--json` and `--format text` ask for two views"),
+    ],
+)
+def test_an_option_that_would_do_nothing_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str], error: str
+) -> None:
+    path = write(tmp_path, "p.lp", "p(1..2). { a }.\n% @expect sat\n")
+    command, *rest = argv
+    query, options = (rest[:1], rest[1:]) if command == "ask" else ([], rest)
+    code, out, err = run_both(capsys, command, path, *query, *options)
+    assert (code, out) == (2, "")
+    assert err.startswith(f"error: {error}")
+
+
+def test_json_with_a_format_1_0_took_is_still_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "a.\n% @expect sat\n")
+    _, out, err = run_both(capsys, "test", path, "--json", "--format", "full")
+    assert json.loads(out)["exit_code"] == 0
+    assert "deprecated" not in err
+
+
 def test_why_on_a_search_cut_short_says_so_and_exits_unmet(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

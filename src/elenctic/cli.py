@@ -1139,9 +1139,21 @@ def _why_view(
 
 
 def _asked_query(arguments: argparse.Namespace) -> Parsed[All | Pattern]:
-    """Read the query `ask` was given, which `--unknown` needs to have variables."""
+    """Read the query `ask` was given; `--unknown` needs one with variables, in the default mode.
+
+    Only the default mode answers `unknown`.
+    """
     query = read_query(arguments.query, "QUERY")
-    if isinstance(query, Diagnostic) or not arguments.unknown or variables_of(query):
+    if isinstance(query, Diagnostic) or not arguments.unknown:
+        return query
+    if arguments.mode is not AnswerMode.DEFAULT:
+        return failure(
+            Span.whole("--mode", ""),
+            f"the {arguments.mode} mode answers no binding `unknown`",
+            label="not the default mode",
+            help=("drop `--unknown`, which shows the unknown bindings of the default mode",),
+        )
+    if variables_of(query):
         return query
     return failure(
         Span.whole("QUERY", ""),
@@ -1261,8 +1273,28 @@ def _chosen(
     if named is None:
         tui = arguments.command != "test" and terminal and _installed()
         return (View.TUI if tui else View.TEXT), form
-    refusal = _tui_refusal(terminal=terminal) if named == View.TUI else None
+    refusal = _refusal(arguments, named, terminal=terminal)
     return (View(named), form) if refusal is None else refusal
+
+
+def _refusal(arguments: argparse.Namespace, named: str, *, terminal: bool) -> Fault | None:
+    """Refuse a view the options ask for twice over, or the interactive view off a terminal."""
+    if (conflict := _conflicting(arguments)) is not None:
+        return Fault(Locus.REQUEST, (conflict,))
+    return _tui_refusal(terminal=terminal) if named == View.TUI else None
+
+
+def _conflicting(arguments: argparse.Namespace) -> Diagnostic | None:
+    """Refuse `--short` of JSON, which has no short form, and `--json` with another view.
+
+    1.0 took `--json` with `--format full`, `short` or `json`, and still does.
+    """
+    if arguments.short and (arguments.json or arguments.format == View.JSON):
+        return failure(None, "a JSON document has no short form", help=("drop `--short`",))
+    if arguments.json and arguments.format in {View.TEXT, View.TUI}:
+        message = f"`--json` and `--format {arguments.format}` ask for two views"
+        return failure(None, message, help=("drop one of them",))
+    return None
 
 
 def _named(arguments: argparse.Namespace, presentation: Presentation) -> str | None:
