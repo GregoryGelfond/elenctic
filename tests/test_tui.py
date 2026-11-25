@@ -201,6 +201,15 @@ def test_a_warrants_witness_holds_its_derivation(monkeypatch: pytest.MonkeyPatch
     assert _normal(painted(witness.children[0], style)).startswith("not balanced no rule fires")
 
 
+def test_a_ground_answer_cut_short_has_a_row_saying_what_cut_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    argv = ("ask", str(EXAMPLES / "consequences.lp"), "{ not p(1), not p(2) }", "--mode", "brave")
+    _, view, style = viewed(monkeypatch, *argv, "--max-answer-sets", "1")
+    rows = [painted(row, style) for row in flat(view.rows)]
+    assert rows[-1] == "= search ended: answer-set limit reached (--max-answer-sets)"
+
+
 def test_a_pattern_nothing_binds_still_says_it_has_no_yes_bindings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

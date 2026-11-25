@@ -26,6 +26,7 @@ from elenctic.legend import (
     cited,
     conjoined,
     counterexample,
+    cut_short,
     guaranteed,
     heading,
     helped,
@@ -295,6 +296,7 @@ def _answering(
     lines = [pen.line(said(answering(answer)))]
     lines += [pen.answer_set(taken(each, query, result)) for each in shown]
     lines += [pen.answer_set(unreached(each, query)) for each in result.unreached]
+    lines += [pen.line(each) for each in cut_short(result)]
     alone = alone_of(query)
     if alone is not None and shown:
         helping = helped(shows_why(question, alone, shown[0], result.over))

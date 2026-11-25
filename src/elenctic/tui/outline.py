@@ -27,6 +27,7 @@ from elenctic.legend import (
     answering,
     conjoined,
     counterexample,
+    cut_short,
     faulted,
     guaranteed,
     heading,
@@ -356,6 +357,7 @@ def _answering(
     shown = result.taken
     rows = [Row((), said(answering(answer))), *_named(query, result, shown, glyphs)]
     rows += [Row(*_answer_set(unreached(past, query), glyphs)) for past in result.unreached]
+    rows += [Row((), each) for each in cut_short(result)]
     alone = alone_of(query)
     if alone is not None and shown:
         rows.append(Row((), helped(shows_why(question, alone, shown[0], result.over))))

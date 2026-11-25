@@ -505,6 +505,11 @@ def unreached(found: Unreached, query: All) -> Phrase:
     )
 
 
+def cut_short(result: Answered) -> tuple[Phrase, ...]:
+    """Word what cut the search, unless an answer past what it read already says so."""
+    return () if result.cut is None or result.unreached else (unfound(Ended(result.cut)),)
+
+
 _KEPT: Final[Mapping[tuple[Truth, Held], str]] = {
     (Truth.TRUE, Held.EVERYWHERE): "not true",
     (Truth.FALSE, Held.EVERYWHERE): "not false",

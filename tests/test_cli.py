@@ -1403,6 +1403,19 @@ def test_ask_of_a_cautious_query_counts_the_bindings_not_entailed_and_shows_its_
     )
 
 
+def test_ask_of_a_ground_brave_query_cut_short_shows_its_yes_and_what_cut_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "{ a; b }.\n")
+    query = "{ not a, not b }"
+    code, out = run(capsys, "ask", path, query, "--mode", "brave", "--max-answer-sets", "1")
+    assert code == AskExit.ENDED
+    assert out.endswith(
+        "  = answer: yes\n  = true in answer set 1: { }\n"
+        "  = search ended: answer-set limit reached (--max-answer-sets)\n\n"
+    )
+
+
 def test_ask_of_a_brave_query_cut_short_shows_the_yes_bindings_found_and_what_cut_it(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
