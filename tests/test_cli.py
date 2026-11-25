@@ -411,6 +411,30 @@ def test_ask_and_why_take_no_abbreviation_of_icons_but_read_it_as_the_query(
     assert "required: QUERY" not in err
 
 
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0, reason="needs a directory it cannot read"
+)
+@pytest.mark.parametrize("locked", ["sub", "."])
+def test_a_directory_the_walk_cannot_read_is_refused_not_passed_over(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], locked: str
+) -> None:
+    walked = tmp_path / "cases"
+    (walked / "sub").mkdir(parents=True)
+    write(walked / "sub", "bad.lp", "% @expect unsat\np.\n")
+    write(walked, "ok.lp", "% @expect sat\np.\n")
+    shut = (walked / locked).resolve()
+    shut.chmod(0)
+    try:
+        code, out, err = run_both(capsys, "--color", "never", walked)
+    finally:
+        shut.chmod(0o755)
+    named = walked if locked == "." else walked / "sub"
+    assert code == Exit.FAULT
+    assert f"error: cannot read `{named}`\n" in err
+    assert "Permission denied" in err
+    assert out == ("0/1 passed, 1 error\n" if locked == "." else "1/2 passed, 1 error\n")
+
+
 def test_a_named_file_without_a_contract_is_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

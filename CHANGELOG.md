@@ -179,6 +179,8 @@ All notable changes are recorded here. The format follows
   or a bare exit 1; it writes nothing there, and the command exits with its own status.
 - Two SIGINTs sent while clingo grounds end the process, as a second one does (130), once the
   grounding returns: Python handled them as one, so the search was only cut.
+- A directory a walk cannot read, the one named or one under it, is refused (`cannot read`,
+  `FAULT`, 2); the walk passed over it, so a run whose cases it held all went unchecked passed.
 - A case whose file begins with a byte order mark is refused for it (`FAULT`, 2) when a directory
   is walked, as when it is named: the mark hid its first tag, so a walk passed over it, unchecked,
   and a named one with tags on later lines was refused for a missing `@expect`.

@@ -7,9 +7,10 @@ import re
 import signal
 import socket
 import sys
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import IntEnum, StrEnum, auto
+from fnmatch import fnmatch
 from functools import cache, partial
 from importlib import import_module
 from math import inf
@@ -604,12 +605,36 @@ def _planned(
     return refusals, ([] if refusals else _plan(paths, boundary, libraries))
 
 
-def _sources(path: Path, boundary: Path | None) -> list[_Source]:
-    """Return the `.lp` files of `path` with their root: `boundary`, else the path's own."""
+def _sources(path: Path, boundary: Path | None) -> list[_Source | Entry]:
+    """Return the `.lp` files of `path` with their root: `boundary`, else the path's own.
+
+    A directory the walk cannot read is refused where it stands, in the order of the paths: what
+    it holds would otherwise go unchecked.
+    """
     root = held_root(path, boundary)
     if not path.is_dir():
         return [(path, True, root)]
-    return [(found, False, root) for found in sorted(path.rglob("*.lp"))]
+    found: dict[Path, _Source | Entry] = {}
+    for at, error in _walked(path):
+        if error is None:
+            found[at] = (at, False, root)
+        else:
+            found[at] = Entry(str(at), Fault(Locus.REQUEST, (unreadable(str(at), error),)))
+    return [found[at] for at in sorted(found)]
+
+
+def _walked(path: Path) -> Iterator[tuple[Path, OSError | None]]:
+    """Yield each `.lp` under `path`, as `rglob` finds it, and each directory it cannot read."""
+    errors: list[OSError] = []
+    for directory, folders, files in os.walk(path, onerror=errors.append):
+        for name in (*folders, *files):
+            if fnmatch(name, "*.lp"):
+                yield Path(directory, name), None
+        for error in errors:
+            yield Path(error.filename or directory), error
+        errors.clear()
+    for error in errors:
+        yield Path(error.filename or path), error
 
 
 def _outside(path: Path, root: Path) -> Entry:
