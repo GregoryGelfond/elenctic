@@ -53,7 +53,11 @@ All notable changes are recorded here. The format follows
 - Library: `why(program, query, …)`, a `Warrant`, or given an `index`, an atom's `Explanation`,
   and `ask(program, query, …)`; `Session.answer(query, scenario, over=)`, `answered`, `Answered`
   and `Taken`. `Session.counterexample` gives the refutation when
-  there is no answer set.
+  there is no answer set. `Why` and `Ask` name what `why` and `ask` come to, and `Internal` a
+  failure of elenctic's own; a query part `Not(literal)` is its default negation, answered in an
+  `AnswerMode`; `Numbered` is an answer set with its index, `TakenAt` an answer one answer set
+  alone gives with the first index to give it, and `Unreached` one a cut search did not reach.
+  `evidenced(report, program)` gives each failed finding of a report its evidence.
 - JSON: `why` and `ask` write their result under their names, `{"schema": 1, "why": …}`; the schema
   gains them, `answered`, `taken`, `answers`, `bound`, `taken_at`, `numbered`, `warrant` and the
   query part `not`, and a run is written as before. A binding names each answer set by its index;
