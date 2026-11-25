@@ -175,6 +175,8 @@ All notable changes are recorded here. The format follows
   stands, unread: clingo's reader opened the file it named, so a FIFO hung the run and a file
   outside the root was read. `ask` and `why` refuse it the same way in a query, `--binding` or
   `--assuming`.
+- A stdout or stderr closed before the command started (`>&-`, `2>&-`) ended it with a traceback
+  or a bare exit 1; it writes nothing there, and the command exits with its own status.
 - A case whose file begins with a byte order mark is refused for it (`FAULT`, 2) when a directory
   is walked, as when it is named: the mark hid its first tag, so a walk passed over it, unchecked,
   and a named one with tags on later lines was refused for a missing `@expect`.

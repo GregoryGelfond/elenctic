@@ -296,6 +296,8 @@ values are fixed. `elenctic test`, `elenctic explain` (and the refusal of a rese
 
 A usage error is argparse's, status 2, before any command runs. A reader that stops reading,
 as in `elenctic … | head`, ends the process by `SIGPIPE`, as it ends `ls`, with nothing on stderr.
+A standard stream closed before elenctic starts (`<&-`, `>&-`, `2>&-`) reads or writes nothing,
+and the command exits with its own status.
 
 Stderr lines use one of two prefixes: `elenctic: …` for a failure of the command (a reserved-command note, or an internal error), and `path:line:col: error: …` (or the rustc multi-line form) for a fault in a source. A fault in an argument of `why` or `ask` names the argument in place of the path: `QUERY:1:1`, `--binding:1:1`, `--assuming:1:1`, `--answer-set:1:1`, `--over:1:1`, `--mode:1:1`.
 

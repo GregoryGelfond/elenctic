@@ -2078,6 +2078,18 @@ def test_why_help_names_both_forms_and_the_modes_ask_names(
     assert "rather than warrant its answer" in why_help
 
 
+@pytest.mark.parametrize("closed", ["stdin", "stdout", "stderr"])
+@pytest.mark.parametrize("expected", ["sat", "unsat"])
+def test_a_standard_stream_closed_from_the_start_leaves_the_outcome_its_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, closed: str, expected: str
+) -> None:
+    """Python leaves a standard stream `None` when it is closed as the process starts."""
+    path = write(tmp_path, "c.lp", f"% @expect {expected}\np.\n")
+    status = Exit.CLAIMS_HOLD if expected == "sat" else Exit.CLAIM_UNMET
+    monkeypatch.setattr(sys, closed, None)
+    assert main(["test", str(path), "--format", "text"]) == status
+
+
 @pytest.mark.skipif(not hasattr(signal, "SIGPIPE"), reason="no SIGPIPE on this platform")
 def test_a_reader_that_stops_reading_ends_the_command_quietly(tmp_path: Path) -> None:
     """As `ls | head` does: the closed pipe ends the process, with nothing on stderr.

@@ -1,6 +1,7 @@
 """The command line: a thin client over the library, one subcommand per kind of inquiry."""
 
 import argparse
+import io
 import os
 import re
 import signal
@@ -13,7 +14,7 @@ from importlib import import_module
 from math import inf
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final
+from typing import Final, override
 
 from elenctic.about import VersionExit, package
 from elenctic.check import check
@@ -1420,14 +1421,41 @@ def _home(variables: Mapping[str, str]) -> Path | None:
     return Path(home).resolve() if home else None
 
 
+class _Nowhere(io.TextIOBase):
+    """A stream that takes what is written and keeps none of it, as the null device does."""
+
+    @override
+    def writable(self) -> bool:
+        return True
+
+    @override
+    def write(self, text: str, /) -> int:
+        return len(text)
+
+
+def _reopened() -> None:
+    """Give each standard stream the process started without one that is empty or keeps nothing.
+
+    Python leaves a stream it found closed `None`, which nothing here can read or write.
+    """
+    if sys.stdin is None:
+        sys.stdin = io.StringIO()
+    if sys.stdout is None:
+        sys.stdout = _Nowhere()
+    if sys.stderr is None:
+        sys.stderr = _Nowhere()
+
+
 def main(argv: Sequence[str] | None = None) -> Outcome:
     """Run a command and return its outcome, which is the status to exit with.
 
     Run on the process's own command line (`argv` none), a closed stdout ends the process as it
-    ends `ls` or `git`: by `SIGPIPE`, quietly, rather than as an error of elenctic's.
+    ends `ls` or `git`: by `SIGPIPE`, quietly, rather than as an error of elenctic's. A standard
+    stream closed before it starts reads and writes nothing, and the outcome is the status still.
     """
     if argv is None and hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    _reopened()
     parser = _parser()
     arguments = parser.parse_args(
         _literals(_normalized(sys.argv[1:] if argv is None else argv), parser)
