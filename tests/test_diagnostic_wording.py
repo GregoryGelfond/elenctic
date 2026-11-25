@@ -554,3 +554,33 @@ def test_a_snippet_of_a_long_line_quotes_the_part_its_caret_marks(
     assert len(caret) < 200
     marked = caret.index("^") - len("  | ")
     assert quoted[len("1 | ") + marked] == ";"
+
+
+WIDE = "".join(chr(ord("a") + each % 26) for each in range(400))
+"""A line of 400 characters, each told from its neighbours."""
+
+
+def _quoted(line: str, start: int, end: int) -> tuple[str, str]:
+    """Render a fault marked on `line` from column `start` up to `end`, as its quote and caret."""
+    span = Span("w.lp", Position(1, start), Position(1, end))
+    fault = Fault(Locus.PROGRAM, (Diagnostic(span, Severity.ERROR, "bad", label="here"),))
+    stderr = render_run(Run((Entry("w.lp", fault, line + "\n"),)), PLAIN).stderr
+    quoted, caret = stderr.splitlines()[3:5]
+    return quoted.removeprefix("1 | "), caret.removeprefix("  | ")
+
+
+@pytest.mark.parametrize(
+    ("line", "start", "end", "quoted", "caret"),
+    [
+        (WIDE[:160], 150, 153, WIDE[:160], " " * 149 + "^^^ here"),
+        (WIDE, 100, 103, f"…{WIDE[59:219]}…", " " * 41 + "^^^ here"),
+        (WIDE, 5, 8, f"{WIDE[:160]}…", " " * 4 + "^^^ here"),
+        (WIDE, 390, 393, f"…{WIDE[240:]}", " " * 150 + "^^^ here"),
+        (WIDE, 100, 350, f"…{WIDE[59:219]}…", " " * 41 + "^" * 120 + " here"),
+        (WIDE, 380, 401, f"…{WIDE[240:]}", " " * 140 + "^" * 21 + " here"),
+    ],
+)
+def test_a_long_line_is_quoted_around_its_span_and_the_caret_stays_on_what_is_quoted(
+    line: str, start: int, end: int, quoted: str, caret: str
+) -> None:
+    assert _quoted(line, start, end) == (quoted, caret)
