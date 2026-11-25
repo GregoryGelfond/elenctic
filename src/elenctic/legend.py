@@ -6,8 +6,9 @@ decides only where things go.
 """
 
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from enum import StrEnum, auto
-from shlex import quote
+from shlex import join
 from typing import Final, TypeIs, cast
 
 from elenctic.determination import (
@@ -578,13 +579,31 @@ def streamed(result: Answered, found: Answers, *, unknown: bool) -> list[Phrase]
     return [*lines, end]
 
 
-def shows_why(source: str, literal: Literal, found: Taken, over: Range) -> str:
-    """Word the help on asking `why` of the answer set a query was answered in, for a shell."""
-    optimal = " --over optimal" if over is Range.OPTIMAL else ""
-    asked = (
-        f"elenctic why {quote(source)} {quote(str(literal))} --answer-set {found.index}{optimal}"
+@dataclass(frozen=True, slots=True)
+class Question:
+    """The file a question was put to, and the options, as given, that read its program."""
+
+    source: str
+    options: tuple[str, ...] = ()
+
+
+def shows_why(question: Question, literal: Literal, found: Taken, over: Range) -> str:
+    """Word the help on asking `why` of the answer set a query was answered in, for a shell.
+
+    It reads the program as the query's was read, so the answer set is the same one.
+    """
+    optimal = ("--over", "optimal") if over is Range.OPTIMAL else ()
+    words = (
+        "elenctic",
+        "why",
+        question.source,
+        str(literal),
+        "--answer-set",
+        str(found.index),
+        *optimal,
+        *question.options,
     )
-    return f"`{asked}` shows why"
+    return f"`{join(words)}` shows why"
 
 
 EXPECTS_NONE: Final = "the program has this answer set, and the claim expects none"

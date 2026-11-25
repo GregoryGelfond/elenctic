@@ -9,7 +9,7 @@ from itertools import count
 
 from elenctic.determination import Range
 from elenctic.explanation import Explanation
-from elenctic.legend import ASK, WHY, tally, titled
+from elenctic.legend import ASK, WHY, Question, tally, titled
 from elenctic.literals import Literal
 from elenctic.patterns import Pattern
 from elenctic.presentation import Style
@@ -109,7 +109,7 @@ def why_view(  # noqa: PLR0913
 
 
 def ask_view(  # noqa: PLR0913
-    source: str,
+    question: Question,
     query: All | Pattern,
     result: outline.Answering | Warrant,
     style: Style,
@@ -126,6 +126,7 @@ def ask_view(  # noqa: PLR0913
 
     An answer set it names opens `why` on its literal.
     """
+    source = question.source
 
     def why(asking: Asking) -> View:
         first = why_of(asking.literal, asking.index, max_depth)
@@ -145,7 +146,7 @@ def ask_view(  # noqa: PLR0913
             text=text,
         )
 
-    rows = outline.ask(source, query, result, style.glyphs, unknown=unknown)
+    rows = outline.ask(question, query, result, style.glyphs, unknown=unknown)
     command = WHY if isinstance(result, Warrant) else ASK
     return View(
         titled(command, source), (), rows, lines_of, max_depth, lambda _b, _d: [], why, steps=False

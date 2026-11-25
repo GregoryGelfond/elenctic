@@ -22,6 +22,7 @@ from elenctic.legend import (
     VERDICT_ROLES,
     WHY,
     Mark,
+    Question,
     alone_of,
     answering,
     conjoined,
@@ -319,7 +320,7 @@ def why(
 
 
 def ask(
-    source: str,
+    question: Question,
     query: All | Pattern,
     result: Answering | Warrant,
     glyphs: Glyphs,
@@ -335,7 +336,7 @@ def ask(
     if isinstance(result, Warrant):
         instance = conjoined(result.query)
         top = Row((), heading(Role.NOTE, WHY, queried(instance)))
-        top.children = _warranting(source, instance, result, glyphs)
+        top.children = _warranting(question.source, instance, result, glyphs)
         return [top]
     top = Row((), heading(Role.NOTE, ASK, queried(query)))
     if not isinstance(result, Answered):
@@ -344,12 +345,12 @@ def ask(
         found = streamed(result, result.answer, unknown=unknown)
         top.children = [Row((), each) for each in found]
     else:
-        top.children = _answering(source, cast("All", query), result, result.answer, glyphs)
+        top.children = _answering(question, cast("All", query), result, result.answer, glyphs)
     return [top]
 
 
 def _answering(
-    source: str, query: All, result: Answered, answer: Answer, glyphs: Glyphs
+    question: Question, query: All, result: Answered, answer: Answer, glyphs: Glyphs
 ) -> list[Row]:
     """Build the rows of a ground query's answer and the answer sets that show it, as the text."""
     shown = result.taken
@@ -357,7 +358,7 @@ def _answering(
     rows += [Row(*_answer_set(unreached(past, query), glyphs)) for past in result.unreached]
     alone = alone_of(query)
     if alone is not None and shown:
-        rows.append(Row((), helped(shows_why(source, alone, shown[0], result.over))))
+        rows.append(Row((), helped(shows_why(question, alone, shown[0], result.over))))
     return rows
 
 

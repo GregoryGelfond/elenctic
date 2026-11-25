@@ -1731,6 +1731,19 @@ def test_why_refuses_a_query_binding_or_option_as_ask_does_where_it_does_nothing
     assert err.startswith(error)
 
 
+def test_the_why_ask_helps_with_reads_the_program_as_ask_read_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = write(tmp_path, "base.lp", "{ a; b } = 1.\n")
+    case = write(tmp_path, "case.lp", "c :- a. c :- b.\n")
+    _, out = run(capsys, "ask", "--with", base, "--root", str(tmp_path), case, "a")
+    helping = out.splitlines()[-2]
+    command = helping.split("`")[1]
+    assert command == (f"elenctic why {case} a --answer-set 1 --with {base} --root {tmp_path}")
+    _, explained = run(capsys, *shlex.split(command)[1:])
+    assert "  = answer set 1: { a, c }\n" in explained
+
+
 def test_why_of_a_query_derives_each_part_in_its_witness_as_deep_as_asked(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

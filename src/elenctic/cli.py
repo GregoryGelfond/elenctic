@@ -34,7 +34,7 @@ from elenctic.human import (
 )
 from elenctic.inquiry import Ask, AskExit, WhyExit, ask, why
 from elenctic.json_view import inquiry_json, to_json
-from elenctic.legend import conjoined, signed
+from elenctic.legend import Question, conjoined, signed
 from elenctic.literals import Literal, Scenario, Symbol
 from elenctic.patterns import Pattern
 from elenctic.presentation import (
@@ -966,7 +966,7 @@ def _answer_view(
 
     style, text = presentation.stdout, explaining.program.text
     shown = tui.ask_view(
-        str(arguments.path),
+        _question(arguments),
         query,
         result,
         style,
@@ -1052,8 +1052,9 @@ def _show_warrant(
             _answer_view(arguments, presentation, query, result, explaining)
         case Warrant():
             spans = arguments.spans
+            shown = Question(source)
             _write(
-                render_ask(source, query, result, presentation, form=form, text=text, spans=spans)
+                render_ask(shown, query, result, presentation, form=form, text=text, spans=spans)
             )
         case Fault() | Internal():
             _write(refused(result, presentation, form=form, source=source, text=text))
@@ -1139,17 +1140,23 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
     if arguments.view is View.JSON:
         sys.stdout.write(inquiry_json("ask", result, outcome))
         return outcome
-    source = str(arguments.path)
     if arguments.view is View.TUI and not isinstance(result, Fault | Internal):
         explaining = _Explaining(program, root, frozenset(), arguments.over, (limits, interrupt))
         _answer_view(arguments, presentation, query, result, explaining)
         return outcome
-    form = arguments.form
+    form, asked, text = arguments.form, _question(arguments), program.text
     rendered = render_ask(
-        source, query, result, presentation, form=form, text=program.text, unknown=arguments.unknown
+        asked, query, result, presentation, form=form, text=text, unknown=arguments.unknown
     )
     _write(rendered)
     return outcome
+
+
+def _question(arguments: argparse.Namespace) -> Question:
+    """Name the file a question was put to, and the options, as given, that read its program."""
+    libraries = [("--with", str(each)) for each in arguments.libraries]
+    root = [] if arguments.root is None else [("--root", str(arguments.root))]
+    return Question(str(arguments.path), tuple(word for pair in libraries + root for word in pair))
 
 
 def _version(presentation: Presentation) -> VersionExit:

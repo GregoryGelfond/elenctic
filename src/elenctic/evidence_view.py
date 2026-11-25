@@ -20,6 +20,7 @@ from elenctic.legend import (
     OUTRANKED,
     WHY,
     Mark,
+    Question,
     alone_of,
     answering,
     cited,
@@ -245,7 +246,7 @@ def why_lines(  # noqa: PLR0913
 
 
 def ask_lines(
-    source: str,
+    question: Question,
     query: All | Pattern,
     result: Answered | Refutation | Ended,
     style: Style,
@@ -257,13 +258,13 @@ def ask_lines(
     A query with variables shows its bindings instead, one a line, those `unknown` if asked.
     """
     pen = _Pen(style)
-    lines = pen.heading(Role.NOTE, ASK, queried(query), source)
+    lines = pen.heading(Role.NOTE, ASK, queried(query), question.source)
     if not isinstance(result, Answered):
         return [*lines, pen.line(unfound(result)), ""]
     if isinstance(result.answer, Answers):
         found = streamed(result, result.answer, unknown=unknown)
         return [*lines, *(pen.line(each) for each in found), ""]
-    return [*lines, *_answering(pen, source, cast("All", query), result, result.answer), ""]
+    return [*lines, *_answering(pen, question, cast("All", query), result, result.answer), ""]
 
 
 def warrant_lines(source: str, warrant: Warrant, style: Style, *, spans: bool) -> list[str]:
@@ -286,7 +287,9 @@ def warrant_lines(source: str, warrant: Warrant, style: Style, *, spans: bool) -
     return [*lines, *(pen.line(each) for each in warranted(warrant, instance)), ""]
 
 
-def _answering(pen: _Pen, source: str, query: All, result: Answered, answer: Answer) -> list[str]:
+def _answering(
+    pen: _Pen, question: Question, query: All, result: Answered, answer: Answer
+) -> list[str]:
     """Write a ground query's answer, the answer sets that show it, and how to ask `why` of one."""
     shown = result.taken
     lines = [pen.line(said(answering(answer)))]
@@ -294,6 +297,6 @@ def _answering(pen: _Pen, source: str, query: All, result: Answered, answer: Ans
     lines += [pen.answer_set(unreached(each, query)) for each in result.unreached]
     alone = alone_of(query)
     if alone is not None and shown:
-        helping = helped(shows_why(source, alone, shown[0], result.over))
+        helping = helped(shows_why(question, alone, shown[0], result.over))
         lines += [pen.margin("  |"), pen.line(helping)]
     return lines

@@ -170,7 +170,7 @@ answer, and the search stops at the first answer set to give the last of them. I
 first, the query is still answered, and an answer it did not reach is `true in an answer set past the 100000 read:
 search ended: …`. A conjunction, a disjunction, or a query `--over optimal` reads every answer set,
 and names them `answer set 3 of 7`. A one-literal query ends with a `= help:` line giving the `why` command for that
-answer set. A query with variables writes how many bindings give each answer, `= bindings: 2 yes,
+answer set, with the `--with` and `--root` it was given. A query with variables writes how many bindings give each answer, `= bindings: 2 yes,
 1 no, 3 unknown`, then a line for each, `= yes: X = a, Y = 1`, in the order `stream` yields them:
 `yes`, then `no` by default, and `unknown` only with `--unknown`; it ends `= no more bindings`. With
 no answer set, each shows the refutation; a search cut short shows what ended it, after the `yes`

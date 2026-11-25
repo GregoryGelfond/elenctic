@@ -20,6 +20,7 @@ from elenctic.legend import (
     MARKS,
     SEVERITY_ROLES,
     VERDICT_ROLES,
+    Question,
     judged,
     reported,
     tally,
@@ -303,7 +304,7 @@ def render_why(  # noqa: PLR0913
 
 
 def render_ask(  # noqa: PLR0913
-    source: str,
+    question: Question,
     query: All | Pattern,
     result: Ask | Warrant | Internal,
     presentation: Presentation,
@@ -315,11 +316,11 @@ def render_ask(  # noqa: PLR0913
 ) -> Rendered:
     """Write what `ask` found, or `why`'s warrant, or, as diagnostics, why it could not look."""
     if isinstance(result, Fault | Internal):
-        return refused(result, presentation, form=form, source=source, text=text)
+        return refused(result, presentation, form=form, source=question.source, text=text)
     style = presentation.stdout
     if isinstance(result, Warrant):
-        return Rendered(_lines(warrant_lines(source, result, style, spans=spans)), "")
-    return Rendered(_lines(ask_lines(source, query, result, style, unknown=unknown)), "")
+        return Rendered(_lines(warrant_lines(question.source, result, style, spans=spans)), "")
+    return Rendered(_lines(ask_lines(question, query, result, style, unknown=unknown)), "")
 
 
 def reserved(command: str, style: Style) -> str:
