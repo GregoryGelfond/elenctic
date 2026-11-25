@@ -1646,6 +1646,22 @@ def test_ask_refuses_a_query_the_query_tag_refuses(
     assert code == AskExit.FAULT
 
 
+@pytest.mark.parametrize("command", ["ask", "why"])
+def test_a_fault_in_the_query_shows_the_query_not_a_file_named_query(
+    command: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = write(tmp_path, "ab.lp", CHOICE)
+    write(tmp_path, "QUERY", "this is a file\n")
+    monkeypatch.chdir(tmp_path)
+    code, out, err = run_both(capsys, command, path, "a ; b")
+    assert (code, out) == (AskExit.FAULT, "")
+    assert " --> QUERY:1:3\n  |\n1 | a ; b\n" in err
+    assert "this is a file" not in err
+
+
 def test_ask_of_not_answers_as_the_literal_is_absent_or_not(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

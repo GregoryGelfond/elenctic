@@ -24,6 +24,7 @@ from elenctic.determination import Range, Refutation, Truncation, option
 from elenctic.engine import common_root, held_root, loaded_libraries, shared_root
 from elenctic.explanation import Explanation
 from elenctic.human import (
+    Argument,
     Format,
     Rendered,
     deprecated,
@@ -985,16 +986,17 @@ _GIVEN: Final = {
 
 def _at_argument[Text: str | None](
     arguments: argparse.Namespace, fault: Fault, text: Text
-) -> tuple[Fault, str | Text]:
+) -> tuple[Fault, Argument | Text]:
     """Show a fault placed at an argument with the argument's text, else with `text`.
 
     A span that covers nothing names the argument a fault is about, by one who did not know the
     text it was given as: it is widened to all of it.
     """
     sources = {each.span.source for each in fault.diagnostics if each.span is not None}
-    name = _GIVEN.get(sources.pop()) if len(sources) == 1 else None
+    source = sources.pop() if len(sources) == 1 else None
+    name = None if source is None else _GIVEN.get(source)
     value = None if name is None else getattr(arguments, name, None)
-    if value is None:
+    if source is None or value is None:
         return fault, text
     given = str(value)
     diagnostics = tuple(
@@ -1003,7 +1005,7 @@ def _at_argument[Text: str | None](
         else each
         for each in fault.diagnostics
     )
-    return Fault(fault.locus, diagnostics), given
+    return Fault(fault.locus, diagnostics), Argument(source, given)
 
 
 def _inquired(
@@ -1106,9 +1108,10 @@ def _explain(
         deeper = partial(explained, atom, arguments.answer_set)
         _why_view(arguments, presentation, explained, _Found(asked, result, deeper))
         return outcome
-    form, spans, over, text = arguments.form, arguments.spans, arguments.over, program.text
+    form, spans, over = arguments.form, arguments.spans, arguments.over
+    text: str | Argument = program.text
     if isinstance(result, Fault):
-        result, text = _at_argument(arguments, result, text)
+        result, text = _at_argument(arguments, result, program.text)
     written = render_why(
         source, asked, result, presentation, form=form, spans=spans, over=over, text=text
     )
@@ -1355,9 +1358,10 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         explaining = _Explaining(program, root, frozenset(), arguments.over, (limits, interrupt))
         _answer_view(arguments, presentation, query, result, explaining)
         return outcome
-    form, question, text = arguments.form, _question(arguments), program.text
+    form, question = arguments.form, _question(arguments)
+    text: str | Argument = program.text
     if isinstance(result, Fault):
-        result, text = _at_argument(arguments, result, text)
+        result, text = _at_argument(arguments, result, program.text)
     rendered = render_ask(
         question, query, result, presentation, form=form, text=text, unknown=arguments.unknown
     )

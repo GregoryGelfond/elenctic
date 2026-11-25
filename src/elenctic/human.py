@@ -91,8 +91,23 @@ def _caret_line(span: Span, label: str, style: Style, role: Role) -> str:
     return f"{_margin(style, '  |')} {marked} {legible(label)}"
 
 
-def _file_text(span: Span, text: str | None) -> str | None:
-    """Return text for `span.source`, reading the file when it is on disk."""
+@dataclass(frozen=True, slots=True)
+class Argument:
+    """The text an argument was given, which a span names by the argument's name, as `QUERY`."""
+
+    name: str
+    text: str
+
+
+def _file_text(span: Span, text: str | Argument | None) -> str | None:
+    """Return text for `span.source`: an argument's own, else the file on disk, else `text`.
+
+    An argument is never read from a file, whatever the working directory holds.
+    """
+    if isinstance(text, Argument):
+        if span.source == text.name:
+            return text.text
+        text = None
     try:
         path = Path(span.source)
         if path.is_file():
@@ -102,7 +117,7 @@ def _file_text(span: Span, text: str | None) -> str | None:
     return text
 
 
-def _snippet(diagnostic: Diagnostic, text: str | None, style: Style) -> list[str]:
+def _snippet(diagnostic: Diagnostic, text: str | Argument | None, style: Style) -> list[str]:
     span = diagnostic.span
     if span is None:
         return []
@@ -136,7 +151,7 @@ def _child_lines(children: tuple[Child, ...], style: Style) -> list[str]:
 
 
 def _full(
-    diagnostic: Diagnostic, text: str | None, style: Style, source: str | None = None
+    diagnostic: Diagnostic, text: str | Argument | None, style: Style, source: str | None = None
 ) -> list[str]:
     """Render the rustc multi-line form: header, location, snippet, notes and help."""
     lines = [_header(diagnostic, style)]
@@ -150,7 +165,7 @@ def _full(
 
 def _diagnostic_lines(
     diagnostic: Diagnostic,
-    text: str | None,
+    text: str | Argument | None,
     style: Style,
     form: Format,
     source: str | None = None,
@@ -161,7 +176,11 @@ def _diagnostic_lines(
 
 
 def _fault(
-    fault: Fault, text: str | None, style: Style, form: Format, source: str | None = None
+    fault: Fault,
+    text: str | Argument | None,
+    style: Style,
+    form: Format,
+    source: str | None = None,
 ) -> list[str]:
     lines = [
         line
@@ -276,7 +295,7 @@ def refused(
     *,
     form: Format = Format.FULL,
     source: str | None = None,
-    text: str | None = None,
+    text: str | Argument | None = None,
 ) -> Rendered:
     """Write why a question could not be answered, as diagnostics: a fault, or an internal error."""
     style = presentation.stderr
@@ -294,7 +313,7 @@ def render_why(  # noqa: PLR0913
     form: Format = Format.FULL,
     spans: bool,
     over: Range = Range.ALL,
-    text: str | None = None,
+    text: str | Argument | None = None,
 ) -> Rendered:
     """Write what `why` found, headed by what was `asked`, or why it could not look."""
     if isinstance(result, Fault | Internal):
@@ -310,7 +329,7 @@ def render_ask(  # noqa: PLR0913
     presentation: Presentation,
     *,
     form: Format = Format.FULL,
-    text: str | None = None,
+    text: str | Argument | None = None,
     unknown: bool = False,
     spans: bool = False,
 ) -> Rendered:
