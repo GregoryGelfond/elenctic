@@ -334,6 +334,28 @@ def test_a_named_file_with_a_bom_is_a_loud_fault(
     assert "byte order mark" in err or "BOM" in err
 
 
+def test_a_walked_case_with_a_bom_is_refused_as_a_named_one_is(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(tmp_path, "good.lp", "% @expect sat\np.\n")
+    (tmp_path / "bom.lp").write_bytes("\ufeff% @expect unsat\np.\n".encode())
+    code, out, err = run_both(capsys, "--color", "never", tmp_path)
+    assert code == Exit.FAULT
+    assert "error: byte order mark at the start of the file" in err
+    assert "1/2 passed, 1 error" in out
+
+
+def test_a_named_case_with_a_bom_and_tags_on_later_lines_is_refused_for_the_bom(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "bom.lp"
+    path.write_bytes("\ufeff% @expect sat\n% @count 2\np.\n".encode())
+    code, _out, err = run_both(capsys, "--color", "never", path)
+    assert code == Exit.FAULT
+    assert "error: byte order mark at the start of the file" in err
+    assert "missing `@expect`" not in err
+
+
 def test_a_walked_near_miss_is_a_note_and_does_not_fail(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -65,7 +65,10 @@ class Block:
         return self.whole if element is None else self.span(element.start, element.end)
 
 
-_TAG: Final = re.compile(r"(?P<lead>\s*%\s*)@(?P<tag>\w+(?:-\w+)*)\b(?P<gap>\s*)(?P<rest>.*?)\s*")
+_TAG: Final = re.compile(
+    r"(?P<lead>\ufeff?\s*%\s*)@(?P<tag>\w+(?:-\w+)*)\b(?P<gap>\s*)(?P<rest>.*?)\s*"
+)
+"""A tag line; a byte order mark may lead the first, making the file a case clingo refuses."""
 
 
 _CONTINUATION: Final = re.compile(r"(?P<lead>\s*%\s*)(?P<rest>.*?)\s*")
