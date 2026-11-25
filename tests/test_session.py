@@ -17,6 +17,7 @@ from elenctic.determination import (
     AnswerSet,
     Consequences,
     Consistent,
+    Exhausted,
     Inconclusive,
     Incumbent,
     Mode,
@@ -61,7 +62,7 @@ from elenctic.query import (
     Warrant,
     evaluate,
 )
-from elenctic.search import KEEP_SHOWN, Interrupt, Limit, Limits
+from elenctic.search import KEEP_SHOWN, Cut, Interrupt, Limit, Limits, Plan, Seen, drain
 from elenctic.session import Session, evidenced, session
 from elenctic.terms import Variable
 from elenctic.verdicts import Ended, Finding, Report, Verdict
@@ -1634,3 +1635,28 @@ def test_a_literal_whose_only_truth_a_cut_probe_left_unsettled_ends_rather_than_
     assert isinstance(made, Session)
     found = made.answer(All((Literal("p"),)), mode=mode)
     assert found == Ended(Truncation.INTERRUPTED)
+
+
+@pytest.mark.parametrize("query", [Literal("p"), Not(Literal("a"))])
+def test_a_literals_probes_stop_at_the_first_answer_set_giving_a_truth(
+    monkeypatch: pytest.MonkeyPatch, query: Literal | Not
+) -> None:
+    reads: list[int] = []
+
+    def counted(
+        handle: clingo.SolveHandle, plan: Plan, cut: Cut, read: Callable[[clingo.Model], Seen]
+    ) -> tuple[list[Seen], Exhausted | Truncation]:
+        reads.append(0)
+
+        def reading(model: clingo.Model) -> Seen:
+            reads[-1] += 1
+            return read(model)
+
+        return drain(handle, plan, cut, reading)
+
+    monkeypatch.setattr(grounded, "drain", counted)
+    found = opened("p. { a; b; c }.").answer(All((query,)))
+    assert isinstance(found, Answered)
+    *probes, _reach = reads
+    assert probes
+    assert max(probes) <= 1

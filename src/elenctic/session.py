@@ -65,7 +65,7 @@ from elenctic.query import (
     witnessed,
 )
 from elenctic.relaxation import Reading, read
-from elenctic.search import KEEP_ALL, Interrupt, Keep, Limit, Limits, Seen, seen
+from elenctic.search import KEEP_ALL, KEEP_NONE, Interrupt, Keep, Limit, Limits, Seen, seen
 from elenctic.substitution import Substitution
 from elenctic.support import explain
 from elenctic.terms import Variable
@@ -81,6 +81,11 @@ class _Prepared:
 
     reading: Reading | None = None
     instances: Instances | None = None
+
+
+def _one(_found: list[Seen]) -> bool:
+    """Stop at the first answer set: one shows a truth is given, and more say no more of it."""
+    return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,7 +401,11 @@ class Session(Grounded):
         unsettled: dict[Truth, Truncation] = {}
         for truth, assumed in given.items():
             match self._apart("").solve(
-                scenario | assumed, limits=limits, interrupt=self.interrupt
+                scenario | assumed,
+                limits=limits,
+                interrupt=self.interrupt,
+                enough=_one,
+                keep=KEEP_NONE,
             ):
                 case Inconclusive(cut):
                     unsettled[truth] = cut
