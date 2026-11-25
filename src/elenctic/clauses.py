@@ -16,7 +16,6 @@ from clingo.ast import (
     ASTType,
     ComparisonOperator,
     Sign,
-    Transformer,
 )
 
 from elenctic import tree
@@ -165,51 +164,47 @@ class Weak:
     variables: tuple[str, ...]
 
 
-class _Names(Transformer):
-    """A collector of the named variables of a statement, in the order they are first written.
+_ELEMENTS: Final = frozenset(
+    {
+        ASTType.BodyAggregateElement,
+        ASTType.ConditionalLiteral,
+        ASTType.TheoryAtomElement,
+        ASTType.HeadAggregateElement,
+    }
+)
+"""The elements of an aggregate, a condition or a theory atom, whose variables are their own."""
 
-    Variables whose names begin with `fresh` were named by the relaxation, and are left out.
+
+def _names(node: AST, fresh: str, apart: frozenset[ASTType]) -> list[str]:
+    """Name the variables of `node` in the order they are first written, not those in `apart`.
+
+    `_` and the variables whose names begin with `fresh`, named by the relaxation, are left out.
+    The tree is walked from a list of pending nodes, so a term of any depth is read.
     """
-
-    def __init__(self, fresh: str) -> None:
-        self._fresh = fresh
-        self.found: list[str] = []
-
-    def visit_Variable(self, variable: AST) -> AST:  # noqa: N802
-        name = tree.name(variable)
-        if name != _ANONYMOUS and name not in self.found and not name.startswith(self._fresh):
-            self.found.append(name)
-        return variable
-
-
-class _GlobalNames(_Names):
-    """A collector of a rule's variables outside its elements, whose variables are their own."""
-
-    def visit_BodyAggregateElement(self, element: AST) -> AST:  # noqa: N802
-        return element
-
-    def visit_ConditionalLiteral(self, element: AST) -> AST:  # noqa: N802
-        return element
-
-    def visit_TheoryAtomElement(self, element: AST) -> AST:  # noqa: N802
-        return element
-
-    def visit_HeadAggregateElement(self, element: AST) -> AST:  # noqa: N802
-        return element
+    found: list[str] = []
+    pending = [node]
+    while pending:
+        each = pending.pop()
+        match tree.kind(each):
+            case ASTType.Variable:
+                name = tree.name(each)
+                if name != _ANONYMOUS and name not in found and not name.startswith(fresh):
+                    found.append(name)
+            case kind if kind in apart:
+                pass
+            case _:
+                pending.extend(reversed(tuple(tree.subtrees(each))))
+    return found
 
 
 def names_in(node: AST, fresh: str) -> list[str]:
     """Name the variables of `node`, in the order they are first written, without `_`."""
-    names = _Names(fresh)
-    names.visit(node)
-    return names.found
+    return _names(node, fresh, frozenset())
 
 
 def global_names_in(node: AST, fresh: str) -> list[str]:
     """Name the variables of a rule that stand outside its elements, in the order written."""
-    names = _GlobalNames(fresh)
-    names.visit(node)
-    return names.found
+    return _names(node, fresh, _ELEMENTS)
 
 
 def ground_text(node: AST, values: Mapping[str, Symbol]) -> str:

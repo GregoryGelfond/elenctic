@@ -1,14 +1,15 @@
 """The rule instances that could derive each atom, read from the grounded relaxation."""
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 
-from clingo import Function, Number, Symbol, Tuple_
+from clingo import Function, Number, Symbol, SymbolType, Tuple_
 
 from elenctic.clauses import Instance, Kind, Weak, tuple_text
 from elenctic.literals import integer, is_function
 from elenctic.relaxation import Reading
+from elenctic.traversal import fold
 
 
 def _arguments(symbol: Symbol) -> list[Symbol]:
@@ -147,14 +148,33 @@ def order(instance: Instance) -> tuple[int, int, tuple[str, ...]]:
     return (
         instance.clause.rule.statement,
         instance.clause.number,
-        tuple(map(_spelled, instance.values)),
+        tuple(map(spelled, instance.values)),
     )
 
 
 @cache
-def _spelled(symbol: Symbol) -> str:
-    """Spell a symbol as `repr` does, once: clingo spells it in Python, a part at a time.
+def spelled(symbol: Symbol) -> str:
+    """Spell a symbol as `repr` does, once, without recursion: clingo's `repr` recurses in Python.
 
     clingo keeps every symbol for as long as the process runs, so this keeps no more than it does.
     """
-    return repr(symbol)
+    return fold(symbol, _parts, _spelling)
+
+
+def _parts(symbol: Symbol) -> Sequence[Symbol]:
+    return symbol.arguments if symbol.type is SymbolType.Function else ()
+
+
+def _spelling(symbol: Symbol, arguments: list[str]) -> str:
+    """Spell `symbol` as `repr` does, from the spellings of its arguments."""
+    match symbol.type:
+        case SymbolType.Infimum:
+            return "Infimum"
+        case SymbolType.Supremum:
+            return "Supremum"
+        case SymbolType.Number:
+            return f"Number({symbol.number!r})"
+        case SymbolType.String:
+            return f"String({symbol.string!r})"
+        case _:
+            return f"Function({symbol.name!r}, [{', '.join(arguments)}], {symbol.positive!r})"
