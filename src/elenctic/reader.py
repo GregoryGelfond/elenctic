@@ -4,7 +4,7 @@ from collections.abc import Callable
 from difflib import get_close_matches
 from typing import Final
 
-from elenctic.contract import Claim, Contract, Reading
+from elenctic.contract import Claim, Contract, Reading, Solver
 from elenctic.determination import Range
 from elenctic.directives import declared
 from elenctic.literals import Scenario
@@ -80,6 +80,11 @@ def _claims(each: list[Block]) -> tuple[list[Claim], list[Diagnostic]]:
         [c for c in parsed if isinstance(c, Claim)],
         [c for c in parsed if isinstance(c, Diagnostic)],
     )
+
+
+def read_solver(text: str, source: str = TEXT) -> tuple[Solver, list[Diagnostic]]:
+    """Read only the solver `text` declares, clingo if none, and what is wrong with declaring it."""
+    return declared(blocks(text, source))
 
 
 def parse_contract(text: str, source: str = TEXT) -> Contract:

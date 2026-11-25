@@ -9,7 +9,6 @@ from enum import IntEnum
 from pathlib import Path
 from typing import TypedDict, Unpack, overload
 
-from elenctic.contract import Solver
 from elenctic.determination import Range, Refutation
 from elenctic.engine import containment
 from elenctic.explanation import Counterexample, Explanation
@@ -17,12 +16,11 @@ from elenctic.gates import lacks_objective
 from elenctic.literals import Literal, Scenario, Symbol
 from elenctic.program import Fault, Locus, Program
 from elenctic.query import Answered, AnswerMode, Query, Warrant
-from elenctic.reader import parse_contract
+from elenctic.reader import read_solver
 from elenctic.report import Internal
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.session import Session, session
 from elenctic.spans import Span, failure
-from elenctic.tags import is_case
 from elenctic.verdicts import Ended
 
 type Why = Explanation | Warrant | Refutation | Ended | Fault
@@ -85,18 +83,16 @@ def _opened(
     interrupt: Interrupt | None = None,
     root: Path | None = None,
 ) -> Session | Fault:
-    """Open `program` as `check` would: contained under `root`, by its contract's solver.
+    """Open `program` as `check` would: contained under `root`, by the solver it declares.
 
-    Its optimal answer sets are refused, as an optimal claim is, when nothing ranks them.
+    It needs no contract beyond that. Its optimal answer sets are refused, as an optimal claim is,
+    when nothing ranks them.
     """
     if (refused := containment(program, root)) is not None:
         return refused
-    solver = Solver.CLINGO
-    if is_case(program.text):
-        contract = parse_contract(program.text, program.source)
-        if contract.diagnostics:
-            return Fault(Locus.REQUEST, contract.diagnostics)
-        solver = contract.solver
+    solver, misdeclared = read_solver(program.text, program.source)
+    if misdeclared:
+        return Fault(Locus.REQUEST, tuple(misdeclared))
     opened = session(program, solver, limits=limits, interrupt=interrupt)
     if isinstance(opened, Session) and over is Range.OPTIMAL and not opened.facts.optimizes:
         where = Span.whole("--over", Range.OPTIMAL.value)

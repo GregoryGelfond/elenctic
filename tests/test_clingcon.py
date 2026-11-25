@@ -204,3 +204,15 @@ def test_a_theory_objective_in_another_file_is_placed_in_its_characters(
     assert isinstance(result, Fault)
     (diagnostic,) = result.diagnostics
     assert diagnostic.span == Span(str(library), Position(1, 10), Position(1, 26))
+
+
+def test_a_program_that_declares_clingcon_is_asked_without_a_contract(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "x.lp"
+    path.write_text("% @elenctic solver clingcon\n&dom{1..3} = x.\na :- &sum{x} > 2.\n")
+    assert main(["ask", str(path), "a", "--format", "text"]) == 0
+    assert "  = true in answer set 3: { a } where { x=3 }\n" in capsys.readouterr().out
+    path.write_text("% @elenctic solver nosuch\na.\n")
+    assert main(["ask", str(path), "a", "--format", "text"]) == 2
+    assert "error: unknown solver `nosuch`" in capsys.readouterr().err

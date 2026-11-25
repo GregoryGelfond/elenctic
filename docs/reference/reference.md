@@ -81,7 +81,8 @@ one binding's; with `--answer-set K` it explains instead why `QUERY`, one ground
 not, in the K-th answer set, a leading `not` dropped, since the answer set says which. Each takes `--format`, `--short`, `--json`, `--root`,
 `--with`, `--max-seconds` and `--max-answer-sets` as `test` does, a refused root or `--with` file
 stopping it before it runs, and opens the interactive view as `explain` does; a `PATH` that is a
-directory is a usage error. And these:
+directory is a usage error. Each reads the program with the solver its `% @elenctic solver` names,
+and needs no other tag. And these:
 
 | Option | Meaning |
 |---|---|
