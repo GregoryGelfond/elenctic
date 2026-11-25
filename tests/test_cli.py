@@ -1957,7 +1957,7 @@ def test_why_of_a_query_writes_its_warrant_as_json(
         "yes",
         "default",
     )
-    assert [each["index"] for each in warrant["witnesses"]] == [1]
+    assert warrant["witnesses"] == [{"kind": "taken_at", "answer": "yes", "index": 1}]
     assert [each["counterexample"]["index"] for each in warrant["derivations"]] == [1]
     assert warrant["refutation"]["kind"] == "no_assumptions"
 

@@ -239,6 +239,10 @@ class Taken:
     index: int
     answer_set: AnswerSet
 
+    def at(self) -> TakenAt:
+        """Name the answer set by its index alone."""
+        return TakenAt(self.answer, self.index)
+
 
 @dataclass(frozen=True, slots=True)
 class Unreached:
@@ -533,7 +537,7 @@ def stream(result: Answered, *, unknown: bool = False) -> Iterator[Bound]:
     """
     found = result.answer
     if not isinstance(found, Answers):
-        yield Bound((), found, tuple(TakenAt(each.answer, each.index) for each in result.taken))
+        yield Bound((), found, tuple(each.at() for each in result.taken))
         return
     shown = _SHOWN[result.mode] | {Answer.UNKNOWN} if unknown else _SHOWN[result.mode]
     yield from (each for each in found.bound if each.answer in shown)
@@ -597,10 +601,11 @@ def _product(each: Sequence[tuple[Body, ...]]) -> tuple[Body, ...]:
 class Warrant:
     """What shows the answer of a ground query, or of one binding: the instance it is about.
 
-    `witnesses` are answer sets that show it, each with the answer the instance takes there alone:
-    one where it is true for a `yes`, false for a `no`; for an `unknown`, one where it is not true
-    and one where it is not false, one answer set when it is unknown there. `derivations` explain,
-    in each witness, the literals of each part its truth there rests on. An answer that needs every
+    `witnesses` name, by index, answer sets that show it, each with the answer the instance takes
+    there alone: one where it is true for a `yes`, false for a `no`; for an `unknown`, one where it
+    is not true and one where it is not false, one answer set when it is unknown there.
+    `derivations` explain, in each witness in turn, the literals of each part its truth there rests
+    on, and hold the witness's answer set. An answer that needs every
     answer set also has the `refutation` of the program asked for one that would overturn it,
     over all of them; over the optima, the search having `read` them all shows it. A witness past
     the answer sets a cut search read is not among them: `unreached` names it. `over` and `mode`
@@ -609,13 +614,20 @@ class Warrant:
 
     query: Query
     answer: Answer
-    witnesses: tuple[Taken, ...]
+    witnesses: tuple[TakenAt, ...]
     derivations: tuple[Explanation, ...]
     refutation: Refutation | None
     unreached: tuple[Unreached, ...] = ()
     over: Range = Range.ALL
     read: int | None = None
     mode: AnswerMode = AnswerMode.DEFAULT
+
+    def taken(self) -> tuple[Taken, ...]:
+        """Return the witnesses, each with the answer set its derivation holds."""
+        return tuple(
+            Taken(each.answer, each.index, derivation.counterexample.answer_set)
+            for each, derivation in zip(self.witnesses, self.derivations, strict=True)
+        )
 
 
 _WITNESSED: Final[Mapping[Answer, tuple[frozenset[Answer], ...]]] = {

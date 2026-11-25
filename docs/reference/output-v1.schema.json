@@ -1844,7 +1844,7 @@
         "witnesses": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/taken"
+            "$ref": "#/$defs/taken_at"
           }
         },
         "derivations": {

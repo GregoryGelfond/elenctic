@@ -451,7 +451,8 @@ class Session(Grounded):
         witnesses, past = witnessed(answer, taken, unreached)
         over, read, mode = answered.over, answered.read, answered.mode
         derivations = self._derivations(query, witnesses, read, max_depth)
-        return Warrant(query, answer, witnesses, derivations, refutation, past, over, read, mode)
+        named = tuple(each.at() for each in witnesses)
+        return Warrant(query, answer, named, derivations, refutation, past, over, read, mode)
 
     def _derivations(
         self, query: Query, witnesses: tuple[Taken, ...], read: int | None, max_depth: int | Limit

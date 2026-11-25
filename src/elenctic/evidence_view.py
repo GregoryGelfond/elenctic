@@ -278,7 +278,7 @@ def warrant_lines(source: str, warrant: Warrant, style: Style, *, spans: bool) -
     instance = conjoined(warrant.query)
     lines = pen.heading(Role.NOTE, WHY, queried(instance), source)
     lines.append(pen.line(said(answering(warrant.answer))))
-    for each, derivation in zip(warrant.witnesses, warrant.derivations, strict=True):
+    for each, derivation in zip(warrant.taken(), warrant.derivations, strict=True):
         lines += [pen.answer_set(taken(each, instance, warrant)), pen.margin("  |")]
         lines += [*_tree(pen, derivation, spans=spans, own=source), pen.margin("  |")]
     lines += [pen.answer_set(unreached(each, instance)) for each in warrant.unreached]

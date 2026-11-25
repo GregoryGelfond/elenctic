@@ -35,7 +35,8 @@ All notable changes are recorded here. The format follows
   short keeps the `yes` it found, `Answered.cut` saying what cut it, and exits 1.
 - `Session.warrant` gives what shows an answer, or a binding's: `Warrant`, its witnesses (one
   answer set where it is true for `yes`; for `unknown`, one where it is not true and one where it
-  is not false, which may be one answer set, noted), the derivation in each, and, for an answer every answer set must give, the refutation of the program kept
+  is not false, which may be one answer set, noted), named by index, the derivation in each, which
+  holds its answer set, and, for an answer every answer set must give, the refutation of the program kept
   to the answer sets that would overturn it. `why` and `ask` each exit with their own outcome,
   `WhyExit` or `AskExit`; `repl` stays reserved.
 - `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base

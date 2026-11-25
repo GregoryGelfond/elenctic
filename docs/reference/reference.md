@@ -483,14 +483,14 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `answers` | the `Answers` of a query with variables over answer sets, as `mode=` answers it: each instance of its positive parts entertained is grounded and answered |
 | `Answered` | a query's `answer`, or its `Answers` for a query with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached`, and, for a brave answer found before the search was `cut`, what cut it |
 | `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it, and that `answer_set` |
-| `TakenAt` | a `Taken` without its answer set, which the `Answers` holding it names by `index` |
+| `TakenAt` | a `Taken` without its answer set, which the `Answers` or `Warrant` holding it names by `index` |
 | `Numbered` | an `answer_set` and its `index` among those the search read |
 | `Unreached` | an `answer` a query takes in some answer set alone, past the `read` answer sets a search read before `cut` stopped it |
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
 | `bindings` | the `Bindings` of a `Pattern` or a conjunction with variables over a `WorldView`: its default `answers` grouped by answer |
 | `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set, a `TakenAt` |
 | `stream` | the bindings of an `Answered` as `ask` writes them, one per `next()`: `yes`, then `no` by default, `unknown` too with `unknown=True`; a ground query yields its one answer with no values |
-| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, the `derivations` explaining in each what the instance's truth there rests on, and the `refutation` that no answer set overturns it, when the answer needs every one; the answers a cut search left `unreached`, and the `over`, `read` and `mode` it was answered with |
+| `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, each a `TakenAt`, the `derivations` explaining in each, in turn, what the instance's truth there rests on, which hold its answer set (`taken()` gives each witness as a `Taken`), and the `refutation` that no answer set overturns it, when the answer needs every one; the answers a cut search left `unreached`, and the `over`, `read` and `mode` it was answered with |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |
 | `world_view` | close a consistent search over answer sets into its `WorldView`, or give the `Truncation` that left it open |
 | `optimal_view` | close a proven optimum into the `WorldView` of its optimal answer sets, or give the `Truncation` that left it open |
@@ -571,7 +571,8 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 
 `{"schema": 1, "run": {"entries": [...]}, "exit_code": n}`, where `n` is the `Exit` of that `test` run (0, 1, 2, or 3); see `elenctic.json_view.encode`. `why` writes `{"schema": 1, "why": …, "exit_code": n}`, the value an `explanation` or a `warrant`, a refutation, `ended`, a `fault` or `internal`; `ask` writes `"ask"` the same way, its value an `answered` in place of the explanation, and `n` is the command's own exit. An
 `answered` lists every binding, `unknown` ones too, whatever `--unknown` says, each naming its
-answer sets by index in the `answer_sets` of its `answers`. A
+answer sets by index in the `answer_sets` of its `answers`; a `warrant` names each witness by
+index, its answer set held once, in the `counterexample` of the derivation in it. A
 dataclass becomes `{"kind": type_name, field: …}`, the `kind` being the type's name in snake case (`Census` is `census`, `AnswerSet` is `answer_set`), an enum its value, a set a sorted list. Keys and enum values are snake_case (`max_answer_sets`);
 the command-line flags keep their hyphens (`--max-answer-sets`). A `Substitution` is a string,
 `"{X=b, Y=c}"`, as a literal is. A finding has an `evidence` key only when it has evidence, so a

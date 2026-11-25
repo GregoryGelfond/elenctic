@@ -1376,7 +1376,7 @@ def _warranted(
     assert isinstance(answered, Answered)
     found = made.warrant(answered, values)
     assert isinstance(found, Warrant)
-    for each in found.witnesses:
+    for each in found.taken():
         assert evaluate(found.query, each.answer_set.atoms) is _TRUTH[each.answer]
     return found
 
@@ -1470,7 +1470,7 @@ def test_a_witness_past_the_answer_sets_a_cut_search_read_is_left_to_what_it_did
     assert answered.answer is Answer.UNKNOWN
     warrant = made.warrant(answered)
     assert isinstance(warrant, Warrant)
-    assert set(warrant.witnesses) <= set(answered.taken)
+    assert set(warrant.taken()) <= set(answered.taken)
     assert len(answered.taken) == 1
 
 
@@ -1568,8 +1568,14 @@ def test_a_warrant_of_a_program_read_from_its_file_refutes_the_answer_sets_that_
     warrant = made.warrant(answered)
     assert isinstance(warrant, Warrant)
     assert warrant == Warrant(
-        B, Answer.YES, answered.taken, warrant.derivations, NoAssumptions(), read=answered.read
+        B,
+        Answer.YES,
+        tuple(each.at() for each in answered.taken),
+        warrant.derivations,
+        NoAssumptions(),
+        read=answered.read,
     )
+    assert warrant.taken() == answered.taken
 
 
 EXTERNAL = "#external e. a :- e. b :- not e."

@@ -365,7 +365,7 @@ def _answering(
 def _warranting(source: str, query: All, warrant: Warrant, glyphs: Glyphs) -> list[Row]:
     """Build the rows of a warrant, as the text: each witness holds its derivation."""
     rows = [Row((), said(answering(warrant.answer)))]
-    named = _named(query, warrant, warrant.witnesses, glyphs)
+    named = _named(query, warrant, warrant.taken(), glyphs)
     for block, (row, derivation) in enumerate(zip(named, warrant.derivations, strict=True)):
         row.children = steps(derivation, glyphs, block, source)
         rows.append(row)
