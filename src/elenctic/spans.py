@@ -33,6 +33,11 @@ class Span:
         """Place this span, read as relative to `origin`, in the enclosing source."""
         return Span(self.source, _shift(self.start, origin), _shift(self.end, origin))
 
+    @classmethod
+    def whole(cls, source: str, text: str) -> Span:
+        """Span all of `text`, a one-line source such as an argument a command was given."""
+        return cls(source, Position(1, 1), Position(1, len(text) + 1))
+
 
 def _shift(position: Position, origin: Position) -> Position:
     return Position(

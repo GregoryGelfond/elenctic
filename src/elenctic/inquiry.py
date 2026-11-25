@@ -21,7 +21,7 @@ from elenctic.reader import parse_contract
 from elenctic.report import Internal
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.session import Session, session
-from elenctic.spans import failure
+from elenctic.spans import Span, failure
 from elenctic.tags import is_case
 from elenctic.verdicts import Ended
 
@@ -99,7 +99,8 @@ def _opened(
         solver = contract.solver
     opened = session(program, solver, limits=limits, interrupt=interrupt)
     if isinstance(opened, Session) and over is Range.OPTIMAL and not opened.facts.optimizes:
-        return Fault(Locus.REQUEST, (lacks_objective(None, "the optimal answer sets asked for"),))
+        where = Span.whole("--over", Range.OPTIMAL.value)
+        return Fault(Locus.REQUEST, (lacks_objective(where, "the optimal answer sets asked for"),))
     return opened
 
 
@@ -181,7 +182,8 @@ def _warranted(
     try:
         return session_.warrant(answered, values, scenario, max_depth=max_depth)
     except ValueError as refused:
-        return Fault(Locus.REQUEST, (failure(None, str(refused)),))
+        where = Span.whole("--binding", "")
+        return Fault(Locus.REQUEST, (failure(where, str(refused)),))
 
 
 def _past(session_: Session, index: int, scenario: Scenario, over: Range) -> Fault:
@@ -190,8 +192,9 @@ def _past(session_: Session, index: int, scenario: Scenario, over: Range) -> Fau
     read = last.read if isinstance(last, Counterexample) else 0
     kind = "optimal answer set" if over is Range.OPTIMAL else "answer set"
     problem = failure(
-        None,
+        Span.whole("--answer-set", str(index)),
         f"there is no {kind} {index}: the search read {read}",
+        label=f"past the last {kind}",
         help=(f"`--answer-set` counts from 1 to {read}",),
     )
     return Fault(Locus.REQUEST, (problem,))

@@ -53,7 +53,7 @@ from elenctic.reader import suggestion
 from elenctic.report import Entry, Exit, Internal, Run
 from elenctic.search import Interrupt, Limit, Limits
 from elenctic.session import ONE_BINDING, Session, evidenced, session
-from elenctic.spans import Diagnostic, Parsed, failure, first_unlexable, note, unreadable
+from elenctic.spans import Diagnostic, Parsed, Span, failure, first_unlexable, note, unreadable
 from elenctic.syntax import binding_shape, read_asked, read_binding, read_scenario
 from elenctic.tags import is_case, near_misses
 from elenctic.theory import loaded_solvers
@@ -797,23 +797,57 @@ def _write(rendered: Rendered) -> None:
     sys.stdout.write(rendered.stdout)
 
 
-def _refuse[Outcome: IntEnum](  # noqa: PLR0913
+def _refuse[Outcome: IntEnum](
     command: str,
     refusal: Fault | Diagnostic,
     arguments: argparse.Namespace,
     presentation: Presentation,
     *,
-    text: str | None,
     outcome: Outcome,
 ) -> Outcome:
-    """Write a refusal of the program or an argument, whose `text` it shows, and exit `outcome`."""
+    """Write the refusal of an argument, showing it as it was given, and exit `outcome`."""
     fault = refusal if isinstance(refusal, Fault) else Fault(Locus.REQUEST, (refusal,))
     if arguments.view is View.JSON:
         sys.stdout.write(inquiry_json(command, fault, outcome))
-    else:
-        source = str(arguments.path)
-        _write(refused(fault, presentation, form=arguments.form, source=source, text=text))
+        return outcome
+    fault, text = _at_argument(arguments, fault, None)
+    source = str(arguments.path)
+    _write(refused(fault, presentation, form=arguments.form, source=source, text=text))
     return outcome
+
+
+_GIVEN: Final = {
+    "QUERY": "query",
+    "--binding": "binding",
+    "--assuming": "assuming",
+    "--answer-set": "answer_set",
+    "--over": "over",
+    "--mode": "mode",
+}
+"""The arguments a fault can be placed at, by their names in the arguments."""
+
+
+def _at_argument[Text: str | None](
+    arguments: argparse.Namespace, fault: Fault, text: Text
+) -> tuple[Fault, str | Text]:
+    """Show a fault placed at an argument with the argument's text, else with `text`.
+
+    A span that covers nothing names the argument a fault is about, by one who did not know the
+    text it was given as: it is widened to all of it.
+    """
+    sources = {each.span.source for each in fault.diagnostics if each.span is not None}
+    name = _GIVEN.get(sources.pop()) if len(sources) == 1 else None
+    value = None if name is None else getattr(arguments, name, None)
+    if value is None:
+        return fault, text
+    given = str(value)
+    diagnostics = tuple(
+        replace(each, span=Span.whole(each.span.source, given))
+        if each.span is not None and each.span.start == each.span.end
+        else each
+        for each in fault.diagnostics
+    )
+    return Fault(fault.locus, diagnostics), given
 
 
 def _inquired(
@@ -862,8 +896,13 @@ def _unused(arguments: argparse.Namespace) -> Diagnostic | None:
     found = next((f for k, f in _WARRANTING.items() if getattr(arguments, k) is not None), None)
     if found is None:
         return None
-    message = f"`{found}` has no effect with `--answer-set`"
-    return failure(None, message, help=(f"drop `{found}`, which only a query's warrant takes",))
+    message, where = f"`{found}` has no effect with `--answer-set`", Span.whole(found, "")
+    return failure(
+        where,
+        message,
+        label="no effect",
+        help=(f"drop `{found}`, which only a query's warrant takes",),
+    )
 
 
 def _why(arguments: argparse.Namespace, presentation: Presentation, home: Path | None) -> WhyExit:
@@ -879,12 +918,10 @@ def _why(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         frozenset() if assumed is None else read_scenario(assumed, "--assuming")
     )
     if isinstance(scenario, Diagnostic):
-        return _refuse(
-            "why", scenario, arguments, presentation, text=assumed, outcome=WhyExit.FAULT
-        )
+        return _refuse("why", scenario, arguments, presentation, outcome=WhyExit.FAULT)
     unused = _unused(arguments)
     if unused is not None:
-        return _refuse("why", unused, arguments, presentation, text=None, outcome=WhyExit.FAULT)
+        return _refuse("why", unused, arguments, presentation, outcome=WhyExit.FAULT)
     if arguments.answer_set is None:
         return _warrant(arguments, presentation, inquired, scenario)
     return _explain(arguments, presentation, inquired, scenario)
@@ -900,9 +937,7 @@ def _explain(
     program, root = inquired
     read = read_asked(arguments.query, "QUERY")
     if isinstance(read, Diagnostic):
-        return _refuse(
-            "why", read, arguments, presentation, text=arguments.query, outcome=WhyExit.FAULT
-        )
+        return _refuse("why", read, arguments, presentation, outcome=WhyExit.FAULT)
     atom, negated = read
     explained = _Explaining(program, root, scenario, arguments.over, _searching(arguments))
     result = explained(atom, arguments.answer_set, arguments.max_depth)
@@ -915,9 +950,11 @@ def _explain(
         deeper = partial(explained, atom, arguments.answer_set)
         _why_view(arguments, presentation, explained, _Found(asked, result, deeper))
         return outcome
-    form, spans, over = arguments.form, arguments.spans, arguments.over
+    form, spans, over, text = arguments.form, arguments.spans, arguments.over, program.text
+    if isinstance(result, Fault):
+        result, text = _at_argument(arguments, result, text)
     written = render_why(
-        source, asked, result, presentation, form=form, spans=spans, over=over, text=program.text
+        source, asked, result, presentation, form=form, spans=spans, over=over, text=text
     )
     _write(written)
     return outcome
@@ -991,14 +1028,10 @@ def _warrant(
     program, root = inquired
     query = read_query(arguments.query, "QUERY")
     if isinstance(query, Diagnostic):
-        return _refuse(
-            "why", query, arguments, presentation, text=arguments.query, outcome=WhyExit.FAULT
-        )
-    values = _binding(arguments.binding, query)
+        return _refuse("why", query, arguments, presentation, outcome=WhyExit.FAULT)
+    values = _binding(arguments, query)
     if isinstance(values, Diagnostic):
-        return _refuse(
-            "why", values, arguments, presentation, text=arguments.binding, outcome=WhyExit.FAULT
-        )
+        return _refuse("why", values, arguments, presentation, outcome=WhyExit.FAULT)
     explaining = _Explaining(program, root, scenario, arguments.over, _searching(arguments))
     limits, interrupt = explaining.searching
     mode = AnswerMode.DEFAULT if arguments.mode is None else arguments.mode
@@ -1026,12 +1059,14 @@ def _warrant(
     return outcome
 
 
-def _binding(text: str | None, query: All | Pattern) -> Parsed[tuple[Symbol, ...]]:
+def _binding(arguments: argparse.Namespace, query: All | Pattern) -> Parsed[tuple[Symbol, ...]]:
     """Read the values of the binding `--binding` names, in the order of the query's variables."""
     variables = tuple(each.name for each in variables_of(query))
+    text = arguments.binding
     if text is None and variables:
         name = f"name one with `--binding '{binding_shape(variables)}'`, as `ask` writes it"
-        return failure(None, ONE_BINDING, help=(name,))
+        where = Span.whole("QUERY", "")
+        return failure(where, ONE_BINDING, label="has variables", help=(name,))
     if text is None:
         return ()
     return read_binding(text, variables, "--binding")
@@ -1056,7 +1091,10 @@ def _show_warrant(
             _write(
                 render_ask(shown, query, result, presentation, form=form, text=text, spans=spans)
             )
-        case Fault() | Internal():
+        case Fault():
+            fault, given = _at_argument(arguments, result, text)
+            _write(refused(fault, presentation, form=form, source=source, text=given))
+        case Internal():
             _write(refused(result, presentation, form=form, source=source, text=text))
         case _ if interactive:
             unfound = _Found(queried(query), result, lambda _depth: result)
@@ -1106,8 +1144,9 @@ def _asked_query(arguments: argparse.Namespace) -> Parsed[All | Pattern]:
     if isinstance(query, Diagnostic) or not arguments.unknown or variables_of(query):
         return query
     return failure(
-        None,
+        Span.whole("QUERY", ""),
         "a query without variables has no unknown bindings to show",
+        label="has no variables",
         help=("drop `--unknown`, which shows the unknown bindings of a query with variables",),
     )
 
@@ -1120,9 +1159,7 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
     program, root = inquired
     query = _asked_query(arguments)
     if isinstance(query, Diagnostic):
-        return _refuse(
-            "ask", query, arguments, presentation, text=arguments.query, outcome=AskExit.FAULT
-        )
+        return _refuse("ask", query, arguments, presentation, outcome=AskExit.FAULT)
     limits, interrupt = _searching(arguments)
     try:
         result: Ask | Internal = ask(
@@ -1144,9 +1181,11 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         explaining = _Explaining(program, root, frozenset(), arguments.over, (limits, interrupt))
         _answer_view(arguments, presentation, query, result, explaining)
         return outcome
-    form, asked, text = arguments.form, _question(arguments), program.text
+    form, question, text = arguments.form, _question(arguments), program.text
+    if isinstance(result, Fault):
+        result, text = _at_argument(arguments, result, text)
     rendered = render_ask(
-        asked, query, result, presentation, form=form, text=text, unknown=arguments.unknown
+        question, query, result, presentation, form=form, text=text, unknown=arguments.unknown
     )
     _write(rendered)
     return outcome

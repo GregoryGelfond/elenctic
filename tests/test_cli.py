@@ -1182,12 +1182,35 @@ def test_why_past_the_last_answer_set_is_a_fault_on_stderr(
     assert (code, out) == (WhyExit.FAULT, "")
     assert err == (
         "error: there is no answer set 9: the search read 4\n"
-        f" --> {path}\n"
+        " --> --answer-set:1:1\n"
+        "  |\n"
+        "1 | 9\n"
+        "  | ^ past the last answer set\n"
         "  |\n"
         "  = help: `--answer-set` counts from 1 to 4\n"
     )
     _, _, short = run_both(capsys, "why", path, "a", "--answer-set", "9", "--short")
-    assert short == f"{path}: error: there is no answer set 9: the search read 4\n"
+    assert short == "--answer-set:1:1-2: error: there is no answer set 9: the search read 4\n"
+
+
+@pytest.mark.parametrize(
+    ("argv", "placed"),
+    [
+        (["why", "a", "--mode", "brave", "--answer-set", "1"], "--mode:1:1\n  |\n1 | brave\n"),
+        (["why", "p(X)", "--binding", "X=3"], "--binding:1:1\n  |\n1 | X=3\n  | ^^^\n"),
+        (["ask", "a", "--over", "optimal"], "--over:1:1\n  |\n1 | optimal\n"),
+        (["ask", "a", "--unknown"], "QUERY:1:1\n  |\n1 | a\n"),
+    ],
+)
+def test_a_fault_in_an_argument_is_placed_at_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str], placed: str
+) -> None:
+    path = write(tmp_path, "p.lp", "p(1..2). { a }.\n")
+    command, *rest = argv
+    code, _, err = run_both(capsys, command, path, *rest)
+    assert code == 2
+    assert f"\n --> {placed}" in err
+    assert str(path) not in err
 
 
 def test_why_on_a_search_cut_short_says_so_and_exits_unmet(
@@ -1791,7 +1814,10 @@ def test_why_of_a_query_with_variables_and_no_binding_says_how_to_name_one(
     code, out, err = run_both(capsys, "why", path, "{ r(X), r(Y) }")
     assert (code, out) == (WhyExit.FAULT, "")
     assert err == (
-        f"error: a query with variables is warranted one binding at a time\n --> {path}\n  |\n"
+        "error: a query with variables is warranted one binding at a time\n --> QUERY:1:1\n  |\n"
+        "1 | { r(X), r(Y) }\n"
+        "  | ^^^^^^^^^^^^^^ has variables\n"
+        "  |\n"
         "  = help: name one with `--binding 'X = \N{HORIZONTAL ELLIPSIS},"
         " Y = \N{HORIZONTAL ELLIPSIS}'`, as `ask` writes it\n"
     )

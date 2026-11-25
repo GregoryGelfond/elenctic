@@ -205,7 +205,7 @@ def asked(given: str, source: str) -> Asked:
     if text.startswith("{") and text.endswith("}"):
         text, lead = text[1:-1], lead + 1
     at = Span(source, Position(1, lead + 1), Position(1, lead + len(text) + 1))
-    return Asked(text, at, Span(source, Position(1, 1), Position(1, len(given) + 1)))
+    return Asked(text, at, Span.whole(source, given))
 
 
 def read_asked(text: str, source: str) -> Parsed[tuple[Literal, bool]]:
