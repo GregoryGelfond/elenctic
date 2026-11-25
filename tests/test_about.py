@@ -53,3 +53,15 @@ def test_every_build_takes_a_hatchling_that_writes_the_license_expression() -> N
 def test_the_recipe_tests_the_version_its_metadata_gives() -> None:
     recipe = (ROOT / "recipe" / "recipe.yaml").read_text(encoding="utf-8")
     assert "      - elenctic --version\n" in recipe
+
+
+def test_the_image_build_is_given_every_file_the_package_metadata_names() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    named = {project["readme"], *project["license-files"]}
+    copied = {
+        word
+        for line in (ROOT / "Containerfile").read_text(encoding="utf-8").splitlines()
+        if line.startswith("COPY ") and "--from" not in line
+        for word in line.split()[1:-1]
+    }
+    assert named <= copied

@@ -9,7 +9,7 @@ FROM docker.io/library/python:3.14-slim-trixie@sha256:af8a5aa14780025dbfbcfbc81b
 COPY --from=docker.io/astral/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /src
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 COPY docs/reference/output-v1.schema.json ./docs/reference/output-v1.schema.json
 RUN uv venv /opt/elenctic \
