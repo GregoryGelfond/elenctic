@@ -455,6 +455,32 @@ def test_a_crlf_file_is_placed_and_shown_by_its_lines_without_their_returns(
     assert f" --> {path}:3:6\n  |\n3 | :- q(.\n  |      ^\n" in err
 
 
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("ask", "-dash.lp", "p"),
+        ("ask", "-dash.lp", "p", "--with", "-lib.lp"),
+        ("ask", "-dash.lp", "p", "--root", "-dir"),
+        ("why", "-dash.lp", "p", "--answer-set", "1"),
+    ],
+)
+def test_a_path_that_starts_as_a_literal_does_names_the_file_as_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argv: tuple[str, ...],
+) -> None:
+    (tmp_path / "-dir").mkdir()
+    write(tmp_path / "-dir", "-dash.lp", "p.\n")
+    write(tmp_path / "-dir", "-lib.lp", "q.\n")
+    monkeypatch.chdir(tmp_path / "-dir" if "--root" not in argv else tmp_path)
+    if "--root" in argv:
+        argv = (argv[0], "-dir/-dash.lp", *argv[2:])
+    code, out, err = run_both(capsys, "--color", "never", *argv)
+    assert (code, err) == (0, "")
+    assert "-dash.lp\n" in out
+
+
 def test_a_named_file_without_a_contract_is_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

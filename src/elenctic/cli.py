@@ -119,7 +119,7 @@ def _path_reader(*, directory: bool, otherwise: str) -> Callable[[str], Path]:
     """Make the reader of a path that is a `directory`, or is not one; else it is `otherwise`."""
 
     def parse(text: str) -> Path:
-        path = Path(text)
+        path = _path(text)
         if path.is_dir() is not directory:
             message = f"`{text}` {otherwise}"
             raise argparse.ArgumentTypeError(message)
@@ -284,7 +284,7 @@ def _program_options(command: argparse.ArgumentParser, *, held: str, loaded: str
     command.add_argument(
         "--with",
         action="append",
-        type=Path,
+        type=_path,
         default=[],
         dest="libraries",
         metavar="FILE",
@@ -469,6 +469,11 @@ def _queried(argument: str, command: _Parser) -> bool:
 def _literal(text: str) -> str:
     """Take a literal as it was written, without the space `_literals` gave it."""
     return text.removesuffix(" ")
+
+
+def _path(text: str) -> Path:
+    """Take a path as it was written: one that starts as a literal does was given a space too."""
+    return Path(_literal(text))
 
 
 _EXACT: Final = frozenset({"why", "ask"})
