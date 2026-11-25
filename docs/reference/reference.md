@@ -287,7 +287,8 @@ values are fixed. `elenctic test`, `elenctic explain` (and the refusal of a rese
 | `FAULT` | 2 | the program or an argument was refused, there is no answer set `K`, or none at all (the refutation is shown) |
 | `INTERNAL_ERROR` | 3 | elenctic itself failed; one line on stderr |
 
-A usage error is argparse's, status 2, before any command runs.
+A usage error is argparse's, status 2, before any command runs. A reader that stops reading,
+as in `elenctic … | head`, ends the process by `SIGPIPE`, as it ends `ls`, with nothing on stderr.
 
 Stderr lines use one of two prefixes: `elenctic: …` for a failure of the command (a reserved-command note, or an internal error), and `path:line:col: error: …` (or the rustc multi-line form) for a fault in a source. A fault in an argument of `why` or `ask` names the argument in place of the path: `QUERY:1:1`, `--binding:1:1`, `--assuming:1:1`.
 

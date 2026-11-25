@@ -1783,3 +1783,26 @@ def test_why_help_names_both_forms_and_the_modes_ask_names(
     assert mode in why_help
     assert "--binding X = V,..." in why_help
     assert "rather than warrant its answer" in why_help
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGPIPE"), reason="no SIGPIPE on this platform")
+def test_a_reader_that_stops_reading_ends_the_command_quietly(tmp_path: Path) -> None:
+    """As `ls | head` does: the closed pipe ends the process, with nothing on stderr.
+
+    No time limit: a search cut on a slow machine writes a few lines and exits 1 before the pipe
+    closes.
+    """
+    write(tmp_path, "many.lp", "p(1..20000).\n")
+    with subprocess.Popen(
+        [sys.executable, "-m", "elenctic", "ask", "--max-seconds", "all", "many.lp", "p(X)"],
+        cwd=tmp_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as process:
+        assert process.stdout is not None
+        assert process.stderr is not None
+        process.stdout.readline()
+        process.stdout.close()
+        error = process.stderr.read()
+        status = process.wait()
+    assert (status, error) == (-signal.SIGPIPE, b"")

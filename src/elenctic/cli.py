@@ -1272,7 +1272,13 @@ def _home(variables: Mapping[str, str]) -> Path | None:
 
 
 def main(argv: Sequence[str] | None = None) -> Outcome:
-    """Run a command and return its outcome, which is the status to exit with."""
+    """Run a command and return its outcome, which is the status to exit with.
+
+    Run on the process's own command line (`argv` none), a closed stdout ends the process as it
+    ends `ls` or `git`: by `SIGPIPE`, quietly, rather than as an error of elenctic's.
+    """
+    if argv is None and hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     parser = _parser()
     arguments = parser.parse_args(_literals(_normalized(sys.argv[1:] if argv is None else argv)))
     if arguments.command is None and not arguments.show_version:

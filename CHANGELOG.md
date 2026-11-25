@@ -126,6 +126,8 @@ All notable changes are recorded here. The format follows
   external, with an internal error (`KeyError`, exit 3): clingo's core names the externals' values
   too, which are the program's, not assumptions. `assuming { e }` of an external `e` that is false
   admits no answer set, as for any atom no answer set holds.
+- A closed stdout, as in `elenctic … | head`, ended the command with an internal error
+  (`BrokenPipeError`, exit 3); it ends the process by `SIGPIPE`, quietly, as it ends `ls`.
 - An atom the grounding names but no answer set can hold, such as `p(2)` in `q(2). p(X) :- p(X),
   not q(X). q(X) :- q(X), not p(X).`, was taken to be assumable: `assuming { p(2) }` admitted
   answer sets without it, so `@expect sat` passed and `@expect unsat` failed, and `ask` gave
