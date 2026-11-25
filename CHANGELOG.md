@@ -202,6 +202,9 @@ All notable changes are recorded here. The format follows
   now exported, with its `errno` and `filename`; of a directory, one that is also an
   `IsADirectoryError`, as 1.0.0 raised. A FIFO, a socket or a device such as `/dev/null`, which
   1.0.0 read, is refused as the command line refuses it: clingo would wait on it or read nothing.
+- The build requires hatchling 1.27 or later, the first to write the `License-Expression` that
+  `elenctic --version` reads; an older one built a package whose `--version` failed. The conda
+  recipe asks for it too, and tests `elenctic --version`.
 
 ## [1.0.0] - 2026-11-06
 

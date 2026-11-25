@@ -24,7 +24,7 @@ build:
 requirements:
   host:
     - python ${{ python_min }}.*
-    - hatchling
+    - hatchling >=1.27
     - pip
   run:
     - python >=${{ python_min }}
@@ -39,6 +39,7 @@ tests:
         - "*"
   - script:
       - elenctic --help
+      - elenctic --version
 
 about:
   homepage: https://github.com/GregoryGelfond/elenctic

@@ -26,7 +26,7 @@ elenctic = "elenctic.cli:main"
 dev = ["clingcon>=5.2.1,<5.3", "import-linter>=2.5", "mypy>=2.4", "pyright>=1.1.414", "ruff>=0.17", "pytest>=9", "hypothesis>=6.170", "textual>=8.2.8,<9", "pytest-textual-snapshot>=1"]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

@@ -37,3 +37,19 @@ def test_the_license_is_mit_and_the_holder_is_the_author() -> None:
 def test_the_year_and_holder_are_those_of_the_copyright_line_of_the_license_file() -> None:
     lines = COPYRIGHT_LINE.findall(LICENSE.read_text(encoding="utf-8"))
     assert lines == [(str(package().year), package().holder)]
+
+
+LICENSE_EXPRESSION_SINCE = "1.27"
+"""The first hatchling to write `License-Expression`, which `package` reads."""
+
+
+def test_every_build_takes_a_hatchling_that_writes_the_license_expression() -> None:
+    declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert declared["build-system"]["requires"] == [f"hatchling>={LICENSE_EXPRESSION_SINCE}"]
+    recipe = (ROOT / "recipe" / "recipe.yaml").read_text(encoding="utf-8")
+    assert f"    - hatchling >={LICENSE_EXPRESSION_SINCE}\n" in recipe
+
+
+def test_the_recipe_tests_the_version_its_metadata_gives() -> None:
+    recipe = (ROOT / "recipe" / "recipe.yaml").read_text(encoding="utf-8")
+    assert "      - elenctic --version\n" in recipe
