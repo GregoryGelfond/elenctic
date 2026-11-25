@@ -2278,7 +2278,7 @@ def test_why_help_names_both_forms_and_the_modes_ask_names(
     mode = ask_help[ask_help.index("default: the") :].split("--unknown")[0].strip()
     assert mode in why_help
     assert "--binding 'X = V,...'" in why_help
-    assert "rather than warrant its answer" in why_help
+    assert "rather than warrant its answer; --mode and --binding are refused with it" in why_help
 
 
 @pytest.mark.parametrize("closed", ["stdin", "stdout", "stderr"])

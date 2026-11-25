@@ -395,7 +395,7 @@ def _parser() -> _Parser:
         type=_index,
         metavar="K",
         help="explain QUERY in the K-th answer set, counted from 1 among those --over reads, "
-        "rather than warrant its answer",
+        "rather than warrant its answer; --mode and --binding are refused with it",
     )
     _mode(why, None)
     why.add_argument(
