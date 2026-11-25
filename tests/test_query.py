@@ -613,3 +613,9 @@ def test_truths_found_settle_what_the_unsettled_cannot_change() -> None:
     assert settles({Truth.TRUE}, {Truth.FALSE}, AnswerMode.BRAVE)
     assert settles({Truth.FALSE}, {Truth.TRUE}, AnswerMode.CAUTIOUS)
     assert not settles({Truth.FALSE}, {Truth.TRUE}, AnswerMode.DEFAULT)
+
+
+def test_the_stream_says_its_bindings_are_shown_one_a_line_as_ask_writes_them() -> None:
+    documented = stream.__doc__ or ""
+    assert "`;`" not in documented
+    assert "in the order `ask` shows them, one a line" in documented

@@ -582,7 +582,7 @@ _SHOWN: Final[Mapping[AnswerMode, frozenset[Answer]]] = {
 
 
 def stream(result: Answered, *, unknown: bool = False) -> Iterator[Bound]:
-    """Yield the bindings of an answered query in the order they are shown, each one a `;`.
+    """Yield the bindings of an answered query in the order `ask` shows them, one a line.
 
     A ground query yields its one answer, with no values. Bindings with `unknown` are yielded only
     when asked for, and in cautious and brave modes only `yes` bindings are.
