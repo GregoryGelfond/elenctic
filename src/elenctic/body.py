@@ -41,7 +41,9 @@ def place(where: Span, inner: Span) -> Span:
 
 
 def _first_error(where: Span, messages: list[str], text: str) -> Diagnostic:
-    found = diagnose("".join(messages), prefixed(text))[0]
+    lines = prefixed(text).split("\n")
+    ends = Position(len(lines), len(lines[-1]))
+    found = diagnose("".join(messages), prefixed(text), ends)[0]
     if found.span is None:
         return failure(where, found.message)
     notes = tuple(child.message for child in found.children)

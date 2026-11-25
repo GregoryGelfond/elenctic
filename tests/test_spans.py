@@ -27,9 +27,34 @@ def test_a_located_error_becomes_a_diagnostic_with_its_span() -> None:
         Diagnostic(
             Span("<string>", Position(1, 4), Position(1, 5)),
             Severity.ERROR,
-            "syntax error, unexpected ., expecting ) or ;",
+            "expected `)` or `;`, found `.`",
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("clingo", "worded"),
+    [
+        (
+            'syntax error, unexpected :-, expecting : or "," or . or ;',
+            "expected `:`, `,`, `.` or `;`, found `:-`",
+        ),
+        ("syntax error, unexpected <IDENTIFIER>", "unexpected identifier"),
+        ("syntax error, unexpected EOF, expecting )", "expected `)`, found end of input"),
+        ('lexer error, unexpected "', 'unexpected `"`'),
+        ("syntax error, unexpected <=", "unexpected `<=`"),
+        ("atom undefined: p/0", "atom undefined: p/0"),
+    ],
+)
+def test_a_syntax_error_reads_expected_x_found_y(clingo: str, worded: str) -> None:
+    (found,) = diagnose(f"<string>:1:4-5: error: {clingo}\n")
+    assert found.message == worded
+
+
+def test_what_a_syntax_error_finds_past_the_text_written_is_the_end_of_input() -> None:
+    message = "<string>:1:7-8: error: syntax error, unexpected ., expecting ) or ;\n"
+    (found,) = diagnose(message, ":- p(1.", Position(1, 7))
+    assert found.message == "expected `)` or `;`, found end of input"
 
 
 def test_a_note_line_is_a_child_of_the_error_it_follows() -> None:

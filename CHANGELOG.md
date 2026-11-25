@@ -96,6 +96,9 @@ All notable changes are recorded here. The format follows
   diagnostics.
 
 ### Changed
+- A syntax error reads ``expected `)` or `;`, found end of input``, not clingo's `syntax error,
+  unexpected EOF, expecting ) or ;`; what an argument or tag lacks at its end is the end of input,
+  not the `.` appended to read it.
 - A `@query` whose parts `;` separates is refused (`query uses a semicolon`, exit 2): write `,`.
   clingo reads `;` in a body as `,`, where a Prolog reader takes it for `or`.
 - JSON lists a set of literals or valuations in their own order, `p(2)` before `p(10)`, as the text

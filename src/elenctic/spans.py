@@ -270,13 +270,16 @@ _HEADER: Final = re.compile(
 _SEVERITY: Final = {"error": Severity.ERROR, "warning": Severity.WARNING}
 
 
-def diagnose(message: str, text: str | None = None) -> tuple[Diagnostic, ...]:
+def diagnose(
+    message: str, text: str | None = None, ends: Position | None = None
+) -> tuple[Diagnostic, ...]:
     """Read clingo's text for a problem as one diagnostic per located line.
 
     Clingo counts columns in UTF-8 bytes: given the `text` it read, each span is converted to
     Unicode columns; without it, each keeps clingo's columns and source name.
     Continuation lines become `note` children of the header they follow. An empty message yields
-    no diagnostic.
+    no diagnostic. A syntax error is worded `expected X, found Y`; what it finds at or past `ends`,
+    text appended to the one written, is the end of the input.
     """
     if not message.strip():
         return ()
@@ -284,13 +287,15 @@ def diagnose(message: str, text: str | None = None) -> tuple[Diagnostic, ...]:
     heads = [(i, found) for i, line in enumerate(lines) if (found := _HEADER.fullmatch(line))]
     bounds = [*(i for i, _ in heads), len(lines)]
     found_all = tuple(
-        _located(found, lines[i + 1 : end], text)
+        _located(found, lines[i + 1 : end], text, ends)
         for (i, found), end in zip(heads, bounds[1:], strict=True)
     )
     return found_all or (failure(None, message.strip()),)
 
 
-def _located(header: re.Match[str], continuation: list[str], text: str | None) -> Diagnostic:
+def _located(
+    header: re.Match[str], continuation: list[str], text: str | None, ends: Position | None
+) -> Diagnostic:
     start = Position(int(header["line"]), int(header["column"]))
     end = Position(
         int(header["end_line"] or start.line),
@@ -303,9 +308,35 @@ def _located(header: re.Match[str], continuation: list[str], text: str | None) -
     return Diagnostic(
         span,
         _SEVERITY.get(header["severity"], Severity.NOTE),
-        header["message"],
+        _worded(header["message"], ended=ends is not None and span.start >= ends),
         children=children,
     )
+
+
+_SYNTAX: Final = re.compile(
+    r"(?:syntax|lexer) error, unexpected (?P<found>.+?)(?:, expecting (?P<expected>.+))?"
+)
+
+
+def _worded(message: str, *, ended: bool) -> str:
+    """Word clingo's `syntax error, unexpected Y, expecting X or Z`: `expected X or Z, found Y`."""
+    if (error := _SYNTAX.fullmatch(message)) is None:
+        return message
+    found = "end of input" if ended else _token(error["found"])
+    if error["expected"] is None:
+        return f"unexpected {found}"
+    *others, last = (_token(token) for token in error["expected"].split(" or "))
+    expected = f"{', '.join(others)} or {last}" if others else last
+    return f"expected {expected}, found {found}"
+
+
+def _token(name: str) -> str:
+    """Name a token of clingo's grammar: `<IDENTIFIER>` an identifier, `EOF` the end of input."""
+    if name == "EOF":
+        return "end of input"
+    if name.startswith("<") and name.endswith(">"):
+        return name[1:-1].lower()
+    return f"`{name.strip('"') or name}`"
 
 
 def unreadable(source: str, error: OSError | UnicodeDecodeError) -> Diagnostic:

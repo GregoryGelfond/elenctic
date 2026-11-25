@@ -267,7 +267,7 @@ def test_an_atom_asked_about_reads_with_or_without_default_negation() -> None:
         ("p(X)", "atom asked about is not ground"),
         ("p, q", "expected one atom, found `p, q`"),
         ("", "expected one atom, found nothing"),
-        ("p :- q", "syntax error"),
+        ("p :- q", "found `:-`"),
         ("X < 2", "expected a literal"),
     ],
 )
@@ -437,3 +437,9 @@ def test_a_binding_without_a_value_for_some_variable_is_refused_naming_it() -> N
     assert [child.message for child in refused.children] == [
         "bind each of the query's variables: `X = …, Y = …`"
     ]
+
+
+def test_a_query_over_several_lines_ends_where_its_last_line_does() -> None:
+    refused = read_query("p(1),\nq(", "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert refused.message == "expected `)` or `;`, found end of input"
