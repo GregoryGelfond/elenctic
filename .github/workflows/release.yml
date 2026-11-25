@@ -61,6 +61,12 @@ jobs:
               ).read_bytes():
                   raise SystemExit("wheel must ship the output schema")
           PYTHON
+      - name: Install the built wheel alone and run it
+        run: |
+          uv venv --python 3.14 "$RUNNER_TEMP/installed"
+          uv pip install --python "$RUNNER_TEMP/installed" dist/*.whl
+          "$RUNNER_TEMP/installed/bin/elenctic" --version
+          "$RUNNER_TEMP/installed/bin/elenctic" --help
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: distributions

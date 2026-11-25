@@ -46,3 +46,11 @@ def test_a_release_caches_nothing_it_builds_from() -> None:
     setups = re.findall(r"uses: astral-sh/setup-uv@\S+.*\n((?:        .*\n)*)", release)
     assert setups
     assert [s for s in setups if "enable-cache: false" not in s] == []
+
+
+def test_a_release_runs_the_wheel_it_built_before_it_publishes_it() -> None:
+    release = (DIRECTORY / "release.yml").read_text().partition("\njobs:\n")[2]
+    build = release.partition("\n  build:\n")[2].partition("\n  publish:\n")[0]
+    assert 'uv pip install --python "$RUNNER_TEMP/installed" dist/*.whl' in build
+    assert '"$RUNNER_TEMP/installed/bin/elenctic" --version' in build
+    assert build.index("dist/*.whl") < build.index("actions/upload-artifact")
