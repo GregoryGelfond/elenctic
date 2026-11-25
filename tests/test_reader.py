@@ -82,6 +82,14 @@ def test_a_query_tag_may_end_with_a_full_stop_as_ask_reads_one() -> None:
     assert only_diagnostic("% @query yes { p } . .").message.startswith("expected `ANSWER")
 
 
+def test_a_query_tag_with_bindings_may_end_with_a_full_stop_too() -> None:
+    bound = "% @query no { p(X), not q(X) } = { 1, 2, 3 }"
+    assert only(f"{bound}.").reading == only(bound).reading
+    assert only(f"{bound} .").reading == only(bound).reading
+    assert only_diagnostic(f"{bound}. .").message.startswith("expected `ANSWER")
+    assert only_diagnostic("% @query no { p(X) } = . { 1 }").message.startswith("expected `ANSWER")
+
+
 def test_a_query_tag_refuses_a_semicolon_as_ask_does() -> None:
     found = only_diagnostic("% @query yes { p ; q }")
     assert found.message == "query uses a semicolon"

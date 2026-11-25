@@ -33,10 +33,10 @@ _BINDS: Final = [False, True, False, True]
 
 
 def _stopped(rest: list[Element]) -> list[Element]:
-    """Drop the full stop that may end a query, as `ask` reads one: after its closing brace."""
+    """Drop the full stop that may end a query, as `ask` reads one: after its last closing brace."""
     match rest:
-        case [answer, braced, stop] if braced.braced and not stop.braced and stop.text == ".":
-            return [answer, braced]
+        case [*claim, braced, stop] if braced.braced and not stop.braced and stop.text == ".":
+            return [*claim, braced]
         case _:
             return rest
 
