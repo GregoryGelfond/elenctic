@@ -940,7 +940,7 @@ def _refuse[Outcome: IntEnum](
     """Write the refusal of an argument, showing it as it was given, and exit `outcome`."""
     fault = refusal if isinstance(refusal, Fault) else Fault(Locus.REQUEST, (refusal,))
     if arguments.view is View.JSON:
-        sys.stdout.write(inquiry_json(command, fault, outcome))
+        sys.stdout.write(_inquiry_json(command, fault, outcome, arguments))
         return outcome
     fault, text = _at_argument(arguments, fault, None)
     source = str(arguments.path)
@@ -984,21 +984,24 @@ _GIVEN: Final = {
 """The arguments a fault can be placed at, by their names in the arguments."""
 
 
-def _at_argument[Text: str | None](
-    arguments: argparse.Namespace, fault: Fault, text: Text
-) -> tuple[Fault, Argument | Text]:
-    """Show a fault placed at an argument with the argument's text, else with `text`.
-
-    A span that covers nothing names the argument a fault is about, by one who did not know the
-    text it was given as: it is widened to all of it.
-    """
+def _given(arguments: argparse.Namespace, fault: Fault) -> tuple[str, str] | None:
+    """Name the one argument every placed diagnostic of a fault is at, and the text it was given."""
     sources = {each.span.source for each in fault.diagnostics if each.span is not None}
     source = sources.pop() if len(sources) == 1 else None
     name = None if source is None else _GIVEN.get(source)
     value = None if name is None else getattr(arguments, name, None)
-    if source is None or value is None:
-        return fault, text
-    given = str(value)
+    return None if source is None or value is None else (source, str(value))
+
+
+def _widened(arguments: argparse.Namespace, fault: Fault) -> tuple[Fault, Argument | None]:
+    """Place a fault at the argument it is about, if it is about one, and give its text.
+
+    A span that covers nothing names the argument a fault is about, by one who did not know the
+    text it was given as: it is widened to all of it.
+    """
+    if (found := _given(arguments, fault)) is None:
+        return fault, None
+    source, given = found
     diagnostics = tuple(
         replace(each, span=Span.whole(each.span.source, given))
         if each.span is not None and each.span.start == each.span.end
@@ -1006,6 +1009,22 @@ def _at_argument[Text: str | None](
         for each in fault.diagnostics
     )
     return Fault(fault.locus, diagnostics), Argument(source, given)
+
+
+def _at_argument[Text: str | None](
+    arguments: argparse.Namespace, fault: Fault, text: Text
+) -> tuple[Fault, Argument | Text]:
+    """Show a fault placed at an argument with the argument's text, else with `text`."""
+    widened, given = _widened(arguments, fault)
+    return widened, text if given is None else given
+
+
+def _inquiry_json(
+    command: str, result: object, outcome: IntEnum, arguments: argparse.Namespace
+) -> str:
+    """Write what `ask` or `why` found as JSON, a fault at an argument placed as the text is."""
+    placed = _widened(arguments, result)[0] if isinstance(result, Fault) else result
+    return inquiry_json(command, placed, outcome)
 
 
 def _inquired(
@@ -1101,7 +1120,7 @@ def _explain(
     result = explained(atom, arguments.answer_set, arguments.max_depth)
     outcome = WhyExit.of(result)
     if arguments.view is View.JSON:
-        sys.stdout.write(inquiry_json("why", result, outcome))
+        sys.stdout.write(_inquiry_json("why", result, outcome, arguments))
         return outcome
     source, asked = str(arguments.path), signed(atom, negated=negated)
     if arguments.view is View.TUI and not isinstance(result, Fault | Internal):
@@ -1215,7 +1234,7 @@ def _warrant(
         result = Internal.of(error)
     outcome = WhyExit.of(result)
     if arguments.view is View.JSON:
-        sys.stdout.write(inquiry_json("why", result, outcome))
+        sys.stdout.write(_inquiry_json("why", result, outcome, arguments))
     else:
         asked = conjoined(instance_of(query, values)) if values else query
         _show_warrant(arguments, presentation, asked, result, explaining)
@@ -1352,7 +1371,7 @@ def _ask(arguments: argparse.Namespace, presentation: Presentation, home: Path |
         result = Internal.of(error)
     outcome = AskExit.of(result)
     if arguments.view is View.JSON:
-        sys.stdout.write(inquiry_json("ask", result, outcome))
+        sys.stdout.write(_inquiry_json("ask", result, outcome, arguments))
         return outcome
     if arguments.view is View.TUI and not isinstance(result, Fault | Internal):
         explaining = _Explaining(program, root, frozenset(), arguments.over, (limits, interrupt))

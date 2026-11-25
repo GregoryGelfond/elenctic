@@ -1830,6 +1830,18 @@ def test_why_is_headed_by_the_atom_as_it_was_asked_written_as_a_step_writes_it(
     assert out.startswith(heading)
 
 
+def test_a_fault_at_a_whole_argument_is_placed_alike_in_json_and_text(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "p(1). p(2).\n")
+    code, out = run(capsys, "why", path, "p(X)", "--json")
+    span = json.loads(out)["why"]["diagnostics"][0]["span"]
+    assert code == WhyExit.FAULT
+    assert (span["source"], span["start"]["column"], span["end"]["column"]) == ("QUERY", 1, 5)
+    _, _, err = run_both(capsys, "why", path, "p(X)", "--color", "never")
+    assert " --> QUERY:1:1\n  |\n1 | p(X)\n  | ^^^^ has variables\n" in err
+
+
 def test_why_as_json_names_the_literal_by_its_roots_with_or_without_not(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
