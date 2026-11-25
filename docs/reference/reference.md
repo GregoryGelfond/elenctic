@@ -309,7 +309,7 @@ of the same kind are independent claims: two `@answer-set` claims are two existe
 | `@assign { x=1, … }` | some answer set assigns each variable that integer (clingcon) |
 | `@cautious { L }` | `L` is in every answer set (⋂ AS(P)); computed by the solver |
 | `@brave { L }` | `L` is in some answer set (∪ AS(P)); computed by the solver |
-| `@query A { L, not L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`), over AS(P); only `,` separates its parts (`;` is refused) |
+| `@query A { L, not L, … }` | the three-valued answer to the query is `A` (`yes`, `no`, `unknown`), over AS(P); only `,` separates its parts (`;` is refused); a full stop may follow the `}` |
 | `@query A { p(X, b), not q(X) } = { 1, 2 }` | the bindings of `X` with answer `A` are exactly these; every variable is named (`_` is refused) and one part without `not` binds it |
 | `@query optimal A { L, … }`, `@query optimal A { p(X) } = { … }` | the same, over the optimal answer sets Opt(P) |
 | `@answer-set optimal { L }`, `@cautious optimal { L }`, `@brave optimal { L }` | the same, over the optimal answer sets Opt(P); `@optimal { L }` is `@answer-set optimal { L }` |

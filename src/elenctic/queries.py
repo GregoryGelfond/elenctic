@@ -32,15 +32,24 @@ _ASKS: Final = [False, True]
 _BINDS: Final = [False, True, False, True]
 
 
+def _stopped(rest: list[Element]) -> list[Element]:
+    """Drop the full stop that may end a query, as `ask` reads one: after its closing brace."""
+    match rest:
+        case [answer, braced, stop] if braced.braced and not stop.braced and stop.text == ".":
+            return [answer, braced]
+        case _:
+            return rest
+
+
+_SHAPES: Final = "expected `ANSWER { query }` or `ANSWER { query } = { bindings }`"
+
+
 def query(block: Block, head: list[Element]) -> Parsed[Reading]:
     over, rest = read_range(head)
+    rest = _stopped(rest)
     shape = [e.braced for e in rest]
     if shape not in (_ASKS, _BINDS):
-        return failure(
-            pointing(block, rest),
-            "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
-            label="expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
-        )
+        return failure(pointing(block, rest), _SHAPES, label=_SHAPES)
     answer = _answer(block, rest[0])
     if isinstance(answer, Diagnostic):
         return answer

@@ -76,6 +76,12 @@ def test_a_ground_query_may_ask_that_a_literal_does_not_hold() -> None:
     assert claim.reading == Asks(Answer.YES, All((Literal("p"), Not(Literal("q", positive=False)))))
 
 
+def test_a_query_tag_may_end_with_a_full_stop_as_ask_reads_one() -> None:
+    assert only("% @query yes { p }.").reading == only("% @query yes { p }").reading
+    assert only("% @query yes { p } .").reading == Asks(Answer.YES, All((Literal("p"),)))
+    assert only_diagnostic("% @query yes { p } . .").message.startswith("expected `ANSWER")
+
+
 def test_a_query_tag_refuses_a_semicolon_as_ask_does() -> None:
     found = only_diagnostic("% @query yes { p ; q }")
     assert found.message == "query uses a semicolon"
@@ -265,7 +271,7 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
         ),
         (
             "% @query yes { p(X) } 1",
-            "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
+            "expected `ANSWER { query }` or `ANSWER { query } = { bindings }`",
             P(2, 10),
             P(2, 24),
         ),
@@ -373,11 +379,11 @@ def test_optimal_is_a_range_a_claim_may_name_and_the_tag_is_sugar_for_it() -> No
         ("% @count optimal { 1 }", "expected a non-negative integer, found `{ 1 }`"),
         (
             "% @query optimal",
-            "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
+            "expected `ANSWER { query }` or `ANSWER { query } = { bindings }`",
         ),
         (
             "% @query yes optimal { p }",
-            "expected `ANSWER { query }` or `ANSWER { q(X) } = { bindings }`",
+            "expected `ANSWER { query }` or `ANSWER { query } = { bindings }`",
         ),
     ],
 )
