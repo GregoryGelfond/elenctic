@@ -1,6 +1,7 @@
 import annotationlib
 import importlib
 import importlib.util
+import json
 import typing
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -148,3 +149,12 @@ def test_the_reference_has_a_row_for_every_exported_name() -> None:
 def test_a_generic_annotation_yields_its_origin() -> None:
     names = {t.__name__ for t in _elenctic_types(Consistent[AnswerSets]) if isinstance(t, type)}
     assert names == {"Consistent", "AnswerSets"}
+
+
+def test_the_reference_says_of_a_diagnostic_code_what_the_schema_says() -> None:
+    schema = json.loads((ROOT / "docs/reference/output-v1.schema.json").read_text(encoding="utf-8"))
+    said = schema["$defs"]["diagnostic"]["properties"]["code"]["description"]
+    assert said == "Reserved; unused in schema 1."
+    reference = (ROOT / "docs" / "reference" / "reference.md").read_text(encoding="utf-8")
+    row = next(line for line in reference.splitlines() if line.startswith("| `Diagnostic` |"))
+    assert row.endswith("an optional `code` (reserved, unused in schema 1) |")
