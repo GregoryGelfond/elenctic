@@ -51,7 +51,11 @@ class Program:
     source: str = TEXT
     path: Path | None = None
     libraries: tuple[Path, ...] = ()
-    """Files loaded after the text, as clingo loads the files it is given: a base encoding."""
+    """Files loaded with the text, such as a base encoding.
+
+    With a `path`, clingo is given them after the file and reads them before it, the last first, as
+    it reads the files it is given; a text without one includes them after itself, in order.
+    """
 
     @classmethod
     def read(cls, path: str | PathLike[str], libraries: Iterable[str | PathLike[str]] = ()) -> Self:

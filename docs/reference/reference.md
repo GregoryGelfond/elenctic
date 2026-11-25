@@ -410,7 +410,7 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 
 | Name | What it is |
 |---|---|
-| `Program` | ASP source text, where it came from, and the `libraries` loaded after it |
+| `Program` | ASP source text, where it came from, and the `libraries` loaded with it |
 | `Grounded` | a program grounded once, to be searched under any number of scenarios |
 | `ground` | ground a program for a `Solver`: a `Grounded`, or a `Fault` saying why not |
 | `solve` | enumerate the answer sets of a program under a scenario |

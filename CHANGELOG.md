@@ -40,7 +40,8 @@ All notable changes are recorded here. The format follows
   to the answer sets that would overturn it. `why` and `ask` each exit with their own outcome,
   `WhyExit` or `AskExit`; `repl` stays reserved.
 - `--with FILE`, repeatable, for `test`, `explain`, `why` and `ask`: a library, such as a base
-  encoding, loaded with every case after its own text, as clingo loads the files it is given. A
+  encoding, loaded with every case as clingo loads the files it is given, before the case's own
+  text, the last given first. A
   file the case already loads is not loaded again. The root defaults to the directory that holds
   every path and `--with` file, and is refused when that is the file system's root or holds the
   home directory. A `--with` file that cannot be read, lies outside `--root` or carries a contract

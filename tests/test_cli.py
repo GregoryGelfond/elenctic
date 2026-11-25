@@ -313,6 +313,17 @@ def test_a_nested_tuple_in_an_n_ary_binding_is_accepted(
     assert "1/1 passed" in out
 
 
+def test_a_with_file_is_read_before_the_case_as_clingo_reads_the_files_it_is_given(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = write(tmp_path, "case.lp", "% @expect sat\n#const n = 1.\nv(n).\n")
+    library = write(tmp_path, "lib.lp", "#const n = 2.\n")
+    code, _out, err = run_both(capsys, "--color", "never", case, "--with", library)
+    assert code == Exit.FAULT
+    assert f"error: redefinition of constant:\n --> {case}:2:1\n" in err
+    assert f"note: constant also defined here\n --> {library}:1:1\n" in err
+
+
 def test_a_named_file_without_a_contract_is_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
