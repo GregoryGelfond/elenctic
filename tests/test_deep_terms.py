@@ -1,5 +1,7 @@
 """A term nested deeper than Python's stack is read, answered and explained as a shallow one is."""
 
+import importlib
+
 import pytest
 from clingo import parse_term
 from clingo.ast import AST, parse_string
@@ -17,6 +19,7 @@ from elenctic.terms import Variable
 from elenctic.verdicts import Report
 
 DEPTH = 5000
+sessions = importlib.import_module("elenctic.session")
 
 
 def _nested(depth: int) -> str:
@@ -60,6 +63,17 @@ def test_a_failed_claim_of_a_deep_program_is_explained() -> None:
     report = check(program)
     assert isinstance(report, Report)
     assert isinstance(evidenced(report, program), Report)
+
+
+def test_a_failure_of_elenctic_reading_a_program_is_its_own_not_the_programs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def overflowing(*_: object) -> object:
+        raise RecursionError
+
+    monkeypatch.setattr(sessions, "read", overflowing)
+    with pytest.raises(RecursionError):
+        session(Program("p.", "t.lp"))
 
 
 @pytest.mark.parametrize(

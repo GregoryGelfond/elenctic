@@ -507,6 +507,10 @@ def controlled(
         control.ground([("base", [])])
         theory.prepare(control)
     except RuntimeError as error:
+        if type(error) is not RuntimeError:
+            # clingo reports a fault in the program as a `RuntimeError` itself; a subclass, such
+            # as `RecursionError`, is Python's own failure, and elenctic's.
+            raise
         return _fault(messages, error, source)
     facts = Facts(
         shown_by(statements),
