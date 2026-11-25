@@ -400,7 +400,7 @@ def _parser() -> _Parser:
     _mode(why, None)
     why.add_argument(
         "--binding",
-        metavar="X = V,...",
+        metavar="'X = V,...'",
         help="the binding of a query with variables whose answer is warranted, as `ask` writes "
         "it: `X = a, Y = 1`",
     )

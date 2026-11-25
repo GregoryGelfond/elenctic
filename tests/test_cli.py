@@ -1437,6 +1437,16 @@ def test_an_option_that_would_do_nothing_is_refused(
     assert err.startswith(f"error: {error}")
 
 
+def test_why_help_writes_a_binding_as_the_one_argument_it_is(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit):
+        main(["why", "--help"])
+    out = capsys.readouterr().out
+    assert "[--binding 'X = V,...']" in out
+    assert "[--binding X = V,...]" not in out
+
+
 @pytest.mark.parametrize("command", ["test", "explain", "why", "ask"])
 def test_help_gives_the_default_time_limit_as_the_reference_does(
     capsys: pytest.CaptureFixture[str], command: str
@@ -2267,7 +2277,7 @@ def test_why_help_names_both_forms_and_the_modes_ask_names(
     why_help, ask_help = helps
     mode = ask_help[ask_help.index("default: the") :].split("--unknown")[0].strip()
     assert mode in why_help
-    assert "--binding X = V,..." in why_help
+    assert "--binding 'X = V,...'" in why_help
     assert "rather than warrant its answer" in why_help
 
 
