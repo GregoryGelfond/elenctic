@@ -232,19 +232,30 @@ def _checking(command: argparse.ArgumentParser, written: str, default: str) -> N
     )
     _written(command, written, default)
     command.add_argument("--verbose", "-v", action="store_true", help="list the claims that passed")
-    _program_options(command)
+    _program_options(command, held=_CHECKED_ROOT, loaded="every case")
     _limited(command)
 
 
-def _program_options(command: argparse.ArgumentParser) -> None:
-    """Give a command that loads programs its root and libraries, in one place."""
+_CHECKED_ROOT: Final = (
+    "with `--with`, the directory that holds every path and library; else each directory "
+    "searched, or a named file's own directory"
+)
+_ASKED_ROOT: Final = (
+    "with `--with`, the directory that holds PATH and every library; else PATH's own directory"
+)
+
+
+def _program_options(command: argparse.ArgumentParser, *, held: str, loaded: str) -> None:
+    """Give a command that loads programs its root, the default `held`, and libraries.
+
+    Each library is loaded with `loaded`: every case `test` checks, or the program asked.
+    """
     command.add_argument(
         "--root",
         type=_directory,
         metavar="DIR",
-        help="the directory every path, `--with` file and `#include` must lie under (default: with "
-        "`--with`, the directory that holds every path and library; else each directory "
-        "searched, or a named file's own directory)",
+        help="the directory every path, `--with` file and `#include` must lie under "
+        f"(default: {held})",
     )
     command.add_argument(
         "--with",
@@ -253,7 +264,7 @@ def _program_options(command: argparse.ArgumentParser) -> None:
         default=[],
         dest="libraries",
         metavar="FILE",
-        help="a library loaded with every case, such as a base encoding; may be repeated",
+        help=f"a library loaded with {loaded}, such as a base encoding; may be repeated",
     )
 
 
@@ -280,7 +291,7 @@ def _asking(command: argparse.ArgumentParser, written: str) -> None:
     """Give a command that asks about one program its path and the options of its search."""
     command.add_argument("path", type=_file, metavar="PATH", help="the .lp file asked about")
     _written(command, written, INTERACTIVE)
-    _program_options(command)
+    _program_options(command, held=_ASKED_ROOT, loaded="the program")
     command.add_argument(
         "--over",
         choices=list(Range),

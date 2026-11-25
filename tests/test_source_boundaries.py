@@ -353,7 +353,7 @@ def test_a_library_and_its_includes_are_loaded_and_held_to_the_root(tmp_path: Pa
     assert loaded_libraries(program) == (tmp_path / "base.lp",)
     refused = check(program, root=tmp_path / "elsewhere")
     assert isinstance(refused, Fault)
-    assert "this case loads" in refused.diagnostics[0].message
+    assert "the program loads" in refused.diagnostics[0].message
 
 
 def test_a_library_already_loaded_is_given_to_clingo_once(tmp_path: Path) -> None:

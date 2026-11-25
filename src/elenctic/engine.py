@@ -425,11 +425,11 @@ def containment(program: Program, root: Path | None) -> Fault | None:
         (
             failure(
                 None,
-                f"this case loads {named}, which is outside the root {root}",
-                notes=("a case may only include files under its root",),
+                f"the program loads {named}, which is outside the root {root}",
+                notes=("a program may only include files under its root",),
                 help=(
                     (
-                        "test from a directory that holds every included file, or name one "
+                        "work from a directory that holds every included file, or name one "
                         "as the root (`--root` on the command line, `root=` to `check`)"
                     ),
                 ),

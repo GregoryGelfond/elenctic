@@ -514,7 +514,7 @@ def test_an_empty_include_in_a_file_named_from_the_working_directory_opens_what_
     refused = check(Program.read("case.lp"), root=root)
     assert isinstance(refused, Fault)
     assert refused.diagnostics[0].message == (
-        f"this case loads {outside}, which is outside the root {root}"
+        f"the program loads {outside}, which is outside the root {root}"
         if GLIBC
         else "cannot read `./`"
     )

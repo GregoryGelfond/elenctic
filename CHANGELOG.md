@@ -96,6 +96,8 @@ All notable changes are recorded here. The format follows
   diagnostics.
 
 ### Changed
+- A file loaded from outside the root reads `the program loads …`, not `this case loads …`: `ask`
+  and `why` load a program, not a case, and their help says so of `--with` and `--root`.
 - A syntax error reads ``expected `)` or `;`, found end of input``, not clingo's `syntax error,
   unexpected EOF, expecting ) or ;`; what an argument or tag lacks at its end is the end of input,
   not the `.` appended to read it.

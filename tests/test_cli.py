@@ -468,7 +468,7 @@ def test_an_include_outside_the_root_is_refused(
     assert code == Exit.FAULT
     assert f"which is outside the root {corpus}" in err
     assert (
-        "help: test from a directory that holds every included file, or name one as the root "
+        "help: work from a directory that holds every included file, or name one as the root "
         "(`--root` on the command line, `root=` to `check`)"
     ) in err
     assert "secret(42)" not in err
@@ -594,7 +594,7 @@ def test_a_walked_link_out_of_the_root_is_refused_by_containment(
     (root / "link.lp").symlink_to(outside)
     code, _out, err = run_both(capsys, "--root", root, root)
     assert code == Exit.FAULT
-    assert f"this case loads {outside}, which is outside the root {root}" in err
+    assert f"the program loads {outside}, which is outside the root {root}" in err
 
 
 @pytest.mark.parametrize("name", ["absent", "file.lp"])
@@ -767,7 +767,7 @@ def test_an_include_of_a_library_is_held_to_the_root(
     case = write(project, "case.lp", "% @expect sat\n")
     code, out, err = run_both(capsys, case, "--with", library)
     assert code == Exit.FAULT
-    assert f"this case loads {outside}, which is outside the root {project}" in err
+    assert f"the program loads {outside}, which is outside the root {project}" in err
     assert "secret(42)" not in err + out
 
 
@@ -1581,7 +1581,7 @@ def test_root_holds_an_include_that_clingo_finds_from_the_working_directory(
         assert (code, out) == (Exit.CLAIMS_HOLD, "1/1 passed\n")
     else:
         assert code == Exit.FAULT
-        assert f"this case loads {tmp_path / escaped}, which is outside the root" in err
+        assert f"the program loads {tmp_path / escaped}, which is outside the root" in err
 
 
 @pytest.mark.parametrize(
@@ -1616,6 +1616,19 @@ def test_ask_help_names_the_default_semantics(capsys: pytest.CaptureFixture[str]
     help_ = capsys.readouterr().out
     assert "Gelfond\N{EN DASH}Kahl three-valued" in help_
     assert "gk" not in help_
+
+
+@pytest.mark.parametrize("command", ["ask", "why"])
+def test_the_help_of_a_command_that_asks_speaks_of_its_program_not_of_cases(
+    command: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit):
+        main([command, "--help"])
+    help_ = " ".join(capsys.readouterr().out.split())
+    assert "a library loaded with the program" in help_
+    assert "else PATH's own directory" in help_
+    assert "case" not in help_
+    assert "searched" not in help_
 
 
 def test_ask_of_a_conjunction_with_variables_writes_its_bindings_in_each_mode(
