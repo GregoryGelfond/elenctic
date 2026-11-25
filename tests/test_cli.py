@@ -1113,6 +1113,8 @@ def test_the_explain_options_are_described_as_the_reference_describes_them(
 
 CHAIN = "edge(a,b). edge(b,c).\nreach(a).\nreach(Y) :- reach(X), edge(X,Y).\n"
 CHOICE = "{ a; b }.\n-c.\n"
+TIED = CHOICE + "#minimize { 1 : -c }.\n"
+"""`CHOICE` with an objective every answer set pays alike, so all four are optimal."""
 
 
 def test_why_explains_an_atom_in_the_first_answer_set(
@@ -1145,7 +1147,8 @@ def test_why_names_the_answer_set_asked_for_and_the_optima_as_optimal(
     _, out = run(capsys, "why", path, "not a", "--answer-set", "2")
     assert "  = answer set 2: { b, -c }\n" in out
     assert out.startswith("why: not a\n")
-    _, out = run(capsys, "why", path, "a", "--answer-set", "2", "--over", "optimal")
+    tied = write(tmp_path, "tied.lp", TIED)
+    _, out = run(capsys, "why", tied, "a", "--answer-set", "2", "--over", "optimal")
     assert "  = optimal answer set 2 of 4: " in out
     assert "counterexample" not in out
 
@@ -1285,7 +1288,7 @@ def test_ask_of_a_conjunction_says_neither_true_nor_false_and_offers_no_why(
 def test_ask_over_the_optima_names_them_and_its_help_keeps_the_range(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = write(tmp_path, "ab.lp", CHOICE)
+    path = write(tmp_path, "ab.lp", TIED)
     _, out = run(capsys, "ask", path, "a", "--over", "optimal")
     assert "in optimal answer set 1 of 4" in out
     assert "--answer-set 1 --over optimal` shows why" in out
@@ -1366,7 +1369,7 @@ def test_ask_of_not_answers_as_the_literal_is_absent_or_not(
 def test_a_query_or_atom_that_starts_with_a_classical_negation_is_not_an_option(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
 ) -> None:
-    path = write(tmp_path, "ab.lp", CHOICE)
+    path = write(tmp_path, "ab.lp", TIED)
     code, out = run(capsys, command, path, "-c", "--over", "optimal")
     assert code == 0
     assert "-c" in out.splitlines()[0]
@@ -1682,7 +1685,7 @@ def test_why_of_a_binding_a_cut_brave_search_did_not_read_says_the_search_ended(
 def test_why_over_the_optima_is_shown_by_the_search_that_read_them_all(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    path = write(tmp_path, "ab.lp", CHOICE)
+    path = write(tmp_path, "ab.lp", TIED)
     _, out = run(capsys, "why", path, "-c", "--over", "optimal")
     assert (
         "  = true in optimal answer set 1 of 4: { -c }\n  = read: all 4 optimal answer sets\n"
@@ -1806,3 +1809,14 @@ def test_a_reader_that_stops_reading_ends_the_command_quietly(tmp_path: Path) ->
         error = process.stderr.read()
         status = process.wait()
     assert (status, error) == (-signal.SIGPIPE, b"")
+
+
+@pytest.mark.parametrize("command", [("ask",), ("why",), ("why", "--answer-set", "1")])
+def test_the_optimal_answer_sets_of_a_program_without_an_objective_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: tuple[str, ...]
+) -> None:
+    """As an optimal claim is: Opt(P) is not read where nothing ranks the answer sets."""
+    path = write(tmp_path, "d.lp", DRINKS)
+    code, _, err = run_both(capsys, *command, "--format", "text", path, "tea", "--over", "optimal")
+    assert code == AskExit.FAULT
+    assert "the optimal answer sets asked for, but the program has no objective" in err

@@ -85,7 +85,7 @@ directory is a usage error. And these:
 
 | Option | Meaning |
 |---|---|
-| `--over all\|optimal` | all the answer sets (default), or only the optimal ones |
+| `--over all\|optimal` | all the answer sets (default), or only the optimal ones; refused (`FAULT`, 2) for a program with no objective, as an optimal claim is |
 | `--answer-set K` | `why`: explain `QUERY` in the K-th answer set, counted from 1 among those `--over` reads, rather than warrant its answer |
 | `--assuming L,…` | `why`: literals assumed, `p` or `not p`, as `assuming { … }` writes them |
 | `--max-depth N\|all`, `--spans` | `why --answer-set`: as for `explain` |

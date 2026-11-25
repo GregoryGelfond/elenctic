@@ -18,7 +18,7 @@ from elenctic.grounded import Grounded
 from elenctic.literals import Literal, Signature
 from elenctic.patterns import Pattern
 from elenctic.query import All, Any, Not, Query
-from elenctic.spans import Diagnostic, failure, note
+from elenctic.spans import Diagnostic, Span, failure, note
 
 
 def _parts(query: Query) -> list[Literal | Pattern | Not]:
@@ -118,21 +118,26 @@ def _assigning(reading: Reading) -> bool:
     )
 
 
+def lacks_objective(where: Span | None, asking: str) -> Diagnostic:
+    """Refuse the optimal answer sets of a program that ranks none: Opt(P) needs an objective."""
+    return failure(
+        where,
+        f"{asking}, but the program has no objective",
+        label="needs an objective",
+        notes=(
+            (
+                "the program declares no `#minimize`, `#maximize`, or `:~`, "
+                "or its elements ground away"
+            ),
+        ),
+    )
+
+
 def _lacks(claim: Claim, grounded: Grounded, solver: Solver) -> list[Diagnostic]:
     reading = claim.reading
-    objective = [
-        failure(
-            claim.span,
-            "optimal claim, but the program has no objective",
-            label="needs an objective",
-            notes=(
-                (
-                    "the program declares no `#minimize`, `#maximize`, or `:~`, "
-                    "or its elements ground away"
-                ),
-            ),
-        )
-    ] * (over(reading) is Range.OPTIMAL and not grounded.facts.optimizes)
+    objective = [lacks_objective(claim.span, "optimal claim")] * (
+        over(reading) is Range.OPTIMAL and not grounded.facts.optimizes
+    )
     assigned = [
         failure(
             claim.span,

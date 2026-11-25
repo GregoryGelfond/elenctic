@@ -12,7 +12,8 @@ All notable changes are recorded here. The format follows
   from a file other than the case's. `--spans` adds each rule as written with its substitution;
   `--max-depth N|all` bounds how many absences deep it goes (default 3).
 - `elenctic why PATH QUERY`: what warrants the answer `ask` gives a query, in its `--mode`, or one
-  binding's, `--binding 'X = a'`, under `--assuming L,…`, of all or `--over optimal`: the
+  binding's, `--binding 'X = a'`, under `--assuming L,…`, of all or `--over optimal` (refused,
+  as an optimal claim is, for a program with no objective): the
   `Warrant` below, in `ask`'s block, headed `why:` and the instance. `--answer-set K`: why
   `QUERY`, a ground literal, holds, or not, in the K-th answer set; the block of `explain`, headed
   `why:` and the atom as it was asked, `not` kept. An option of one form given to the other is

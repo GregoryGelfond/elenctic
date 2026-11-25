@@ -13,6 +13,7 @@ from elenctic.contract import Solver
 from elenctic.determination import Range, Refutation
 from elenctic.engine import containment
 from elenctic.explanation import Counterexample, Explanation
+from elenctic.gates import lacks_objective
 from elenctic.literals import Literal, Scenario, Symbol
 from elenctic.program import Fault, Locus, Program
 from elenctic.query import Answered, AnswerMode, Query, Warrant
@@ -78,12 +79,16 @@ class AskExit(IntEnum):
 
 def _opened(
     program: Program,
+    over: Range,
     *,
     limits: Limits = Limits(),
     interrupt: Interrupt | None = None,
     root: Path | None = None,
 ) -> Session | Fault:
-    """Open `program` as `check` would: contained under `root`, by its contract's solver."""
+    """Open `program` as `check` would: contained under `root`, by its contract's solver.
+
+    Its optimal answer sets are refused, as an optimal claim is, when nothing ranks them.
+    """
     if (refused := containment(program, root)) is not None:
         return refused
     solver = Solver.CLINGO
@@ -92,7 +97,10 @@ def _opened(
         if contract.diagnostics:
             return Fault(Locus.REQUEST, contract.diagnostics)
         solver = contract.solver
-    return session(program, solver, limits=limits, interrupt=interrupt)
+    opened = session(program, solver, limits=limits, interrupt=interrupt)
+    if isinstance(opened, Session) and over is Range.OPTIMAL and not opened.facts.optimizes:
+        return Fault(Locus.REQUEST, (lacks_objective(None, "the optimal answer sets asked for"),))
+    return opened
 
 
 class _Searched(TypedDict, total=False):
@@ -149,7 +157,7 @@ def why(  # noqa: PLR0913
     if index is not None and not isinstance(asked, Literal):
         message = "an answer set is explained for one ground literal"
         raise TypeError(message)
-    session_ = _opened(program, limits=limits, interrupt=interrupt, root=root)
+    session_ = _opened(program, over, limits=limits, interrupt=interrupt, root=root)
     if isinstance(session_, Fault):
         return session_
     if index is None or not isinstance(asked, Literal):
@@ -206,7 +214,7 @@ def ask(  # noqa: PLR0913
 
     By default it is answered as `@query` answers it.
     """
-    session_ = _opened(program, limits=limits, interrupt=interrupt, root=root)
+    session_ = _opened(program, over, limits=limits, interrupt=interrupt, root=root)
     if isinstance(session_, Fault):
         return session_
     return session_.answer(query, scenario, over=over, mode=mode)
