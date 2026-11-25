@@ -193,6 +193,15 @@ def test_a_small_time_limit_never_passes_a_cautious_claim_that_is_false(
     assert "1/1 passed" not in out
 
 
+def test_a_byte_that_is_not_utf8_is_placed_by_line_and_column_counted_from_1(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "late.lp"
+    path.write_bytes("p.\n% @expect sat\n% café ".encode() + b"\xff\n")
+    _, _, err = run_both(capsys, path)
+    assert "note: not valid UTF-8 at line 3, column 8 (byte 26): invalid start byte" in err
+
+
 def test_a_file_that_is_not_utf8_is_an_error_of_the_request(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -201,7 +210,7 @@ def test_a_file_that_is_not_utf8_is_an_error_of_the_request(
     code, out, err = run_both(capsys, path)
     assert code == Exit.FAULT
     assert "error: cannot read" in err
-    assert "not valid UTF-8 at byte 3" in err
+    assert "not valid UTF-8 at line 1, column 4 (byte 4)" in err
     assert out == "0/1 passed, 1 error\n"
 
 
@@ -1003,7 +1012,10 @@ def test_a_library_that_cannot_be_read_is_refused_as_any_path_is(
     (tmp_path / "latin1.lp").write_bytes(b"p(\xe9).\n")
     for library, note in (
         (tmp_path / "absent.lp", "No such file or directory"),
-        (tmp_path / "latin1.lp", "not valid UTF-8 at byte 2: invalid continuation byte"),
+        (
+            tmp_path / "latin1.lp",
+            "not valid UTF-8 at line 1, column 3 (byte 3): invalid continuation byte",
+        ),
     ):
         code, _out, err = run_both(capsys, case, "--with", library)
         assert code == Exit.FAULT

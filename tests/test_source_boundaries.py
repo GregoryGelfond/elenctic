@@ -340,7 +340,7 @@ def test_an_included_file_that_is_not_utf8_is_refused_not_loaded(tmp_path: Path)
     assert isinstance(refused, Fault)
     assert refused.diagnostics[0].message == f"cannot read `{tmp_path / 'lib.lp'}`"
     (note,) = refused.diagnostics[0].children
-    assert note.message == "not valid UTF-8 at byte 2: invalid continuation byte"
+    assert note.message == "not valid UTF-8 at line 1, column 3 (byte 3): invalid continuation byte"
 
 
 def test_a_library_and_its_includes_are_loaded_and_held_to_the_root(tmp_path: Path) -> None:

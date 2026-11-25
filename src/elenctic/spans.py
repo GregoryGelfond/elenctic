@@ -407,11 +407,20 @@ def _token(name: str) -> str:
     return f"`{name.strip('"') or name}`"
 
 
+def _undecoded(error: UnicodeDecodeError) -> str:
+    """Say where the byte that is not UTF-8 stands: its line, its column and its byte, from 1."""
+    data = bytes(error.object)
+    start = data.rfind(b"\n", 0, error.start) + 1
+    column = len(data[start : error.start].decode("utf-8", errors="replace")) + 1
+    line = data.count(b"\n", 0, error.start) + 1
+    return f"line {line}, column {column} (byte {error.start + 1})"
+
+
 def unreadable(source: str, error: OSError | UnicodeDecodeError) -> Diagnostic:
     """Say that the file `source` cannot be read, and why."""
     match error:
         case UnicodeDecodeError():
-            note = f"not valid UTF-8 at byte {error.start}: {error.reason}"
+            note = f"not valid UTF-8 at {_undecoded(error)}: {error.reason}"
         case _:
             note = str(error)
     return failure(None, f"cannot read `{source}`", notes=(note,))
