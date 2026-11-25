@@ -435,6 +435,26 @@ def test_a_directory_the_walk_cannot_read_is_refused_not_passed_over(
     assert out == ("0/1 passed, 1 error\n" if locked == "." else "1/2 passed, 1 error\n")
 
 
+def test_a_lone_carriage_return_ends_no_line_as_clingo_reads_the_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "cr.lp"
+    path.write_bytes(b"p.\r:- q(.\n% @expect sat\n")
+    code, _out, err = run_both(capsys, "--color", "never", path)
+    assert code == Exit.FAULT
+    assert f" --> {path}:1:9\n" in err
+
+
+def test_a_crlf_file_is_placed_and_shown_by_its_lines_without_their_returns(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "crlf.lp"
+    path.write_bytes(b"% @expect sat\r\np.\r\n:- q(.\r\n")
+    code, _out, err = run_both(capsys, "--color", "never", path)
+    assert code == Exit.FAULT
+    assert f" --> {path}:3:6\n  |\n3 | :- q(.\n  |      ^\n" in err
+
+
 def test_a_named_file_without_a_contract_is_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

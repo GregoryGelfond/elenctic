@@ -140,9 +140,10 @@ def split_lines(text: str) -> tuple[str, ...]:
     """Split a source's text into its lines, line 1 first.
 
     Each text is split once, however many of its lines are read: reading every rule's line of a
-    program stays linear in its length.
+    program stays linear in its length. A line ends at a line feed alone, as clingo counts lines;
+    the carriage return of a CRLF ending is left off, as no part of what the line says.
     """
-    return tuple(text.split("\n"))
+    return tuple(line.removesuffix("\r") for line in text.split("\n"))
 
 
 def _line_at(text: str, number: int) -> str:

@@ -96,7 +96,7 @@ def _file_text(span: Span, text: str | None) -> str | None:
     try:
         path = Path(span.source)
         if path.is_file():
-            return path.read_text(encoding="utf-8")
+            return path.read_text(encoding="utf-8", newline="")
     except OSError:
         pass
     return text

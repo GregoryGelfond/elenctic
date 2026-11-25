@@ -95,7 +95,7 @@ def regular_text(path: Path) -> str:
     """Return the text of the regular file at `path`; raise `IrregularFileError` for any other."""
     if (refused := irregular(path)) is not None:
         raise refused
-    return path.read_text(encoding="utf-8")
+    return path.read_text(encoding="utf-8", newline="")
 
 
 class Locus(StrEnum):
