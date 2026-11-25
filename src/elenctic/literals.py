@@ -5,6 +5,8 @@ from typing import NamedTuple, override
 
 from clingo import Function, Number, Symbol, SymbolType, parse_term
 
+from elenctic.arithmetic import evaluable
+
 # `Function`, `Number` and `Symbol` are re-exported, with `integer` and `is_function` to read a
 # symbol: a module that does not parse, ground or solve meets clingo's terms only here. Those that
 # do and use them, clauses, engine, instances, normalize, search and tree, import them from
@@ -63,6 +65,9 @@ class Literal:
     @classmethod
     def parse(cls, text: str) -> Literal:
         """Read `p(1,"a")` or `-p`; raises `ValueError` for anything else, as does `of`."""
+        if not evaluable(text):
+            message = f"not a literal: {text}"
+            raise ValueError(message)
         try:
             return cls.of(parse_term(text))
         except (RuntimeError, UnicodeDecodeError) as error:

@@ -187,6 +187,10 @@ All notable changes are recorded here. The format follows
 - A case whose file begins with a byte order mark is refused for it (`FAULT`, 2) when a directory
   is walked, as when it is named: the mark hid its first tag, so a walk passed over it, unchecked,
   and a named one with tags on later lines was refused for a missing `@expect`.
+- A division by zero, or of the least integer by -1, in a query tag, a query, `--binding`,
+  `--assuming` or `Literal.parse` is refused, as arithmetic with no value, as `1/0` already was:
+  clingo's term reader trapped on it, ending the process with no message. In a program it is
+  clingo's to ground.
 
 ## [1.0.0] - 2026-11-06
 

@@ -7,6 +7,7 @@ from clingo import MessageCode, Symbol, parse_term
 from clingo.ast import AST, ASTType, UnaryOperator
 
 from elenctic import tree
+from elenctic.arithmetic import evaluable
 from elenctic.program import TEXT
 from elenctic.spans import first_unlexable
 from elenctic.terms import Term, Variable, build
@@ -35,7 +36,7 @@ def _silent(_code: MessageCode, _message: str) -> None:
 
 def evaluate(text: str) -> Symbol | None:
     """Return the one ground term `text` stands for, or `None` if it stands for none."""
-    if first_unlexable(text, TEXT) is not None:
+    if first_unlexable(text, TEXT) is not None or not evaluable(text):
         return None
     try:
         return parse_term(text, _silent)

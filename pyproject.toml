@@ -101,7 +101,9 @@ layers = [
     "elenctic.classes | elenctic.patterns | elenctic.rows | elenctic.search",
     "elenctic.facts | elenctic.normalize | elenctic.relation | elenctic.substitution | elenctic.theory",
     "elenctic.body | elenctic.determination | elenctic.extension | elenctic.program | elenctic.tags | elenctic.terms",
-    "elenctic.about | elenctic.braces | elenctic.display | elenctic.literals | elenctic.paint | elenctic.partition | elenctic.tree",
+    "elenctic.about | elenctic.braces | elenctic.display | elenctic.literals | elenctic.paint | elenctic.partition",
+    "elenctic.arithmetic",
+    "elenctic.tree",
     "elenctic.spans | elenctic.traversal",
 ]
 
@@ -113,6 +115,7 @@ source_modules = ["elenctic"]
 forbidden_modules = ["clingo"]
 allow_indirect_imports = true
 ignore_imports = [
+    "elenctic.arithmetic -> clingo",
     "elenctic.body -> clingo",
     "elenctic.clauses -> clingo",
     "elenctic.engine -> clingo",
