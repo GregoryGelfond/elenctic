@@ -1440,6 +1440,31 @@ def test_a_query_with_a_classical_negation_and_variables_is_not_an_option(
     assert out.startswith("ask: { -p(X) }\n")
 
 
+@pytest.mark.parametrize("command", ["ask", "why"])
+def test_a_query_that_starts_as_an_option_is_read_as_a_query_not_an_abbreviation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    path = write(tmp_path, "p.lp", "p(1).\n")
+    code, _, err = run_both(capsys, command, path, "--a")
+    assert code == 2
+    assert err.splitlines()[1] == " --> QUERY:1:3"
+    with pytest.raises(SystemExit) as refused:
+        run(capsys, command, path, "p(1)", "--max-s", "5")
+    assert refused.value.code == 2
+    assert "unrecognized arguments: --max-s" in capsys.readouterr().err
+    code, out = run(capsys, command, path, "--json", "p(1)", "--max-seconds=5")
+    assert code == 0
+    assert json.loads(out)["schema"] == 1
+
+
+def test_a_command_without_a_query_still_takes_an_abbreviated_option(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "p(1).\n")
+    _, out = run(capsys, "test", path, "--js")
+    assert json.loads(out)["schema"] == 1
+
+
 def test_ask_without_answer_sets_shows_the_refutation(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

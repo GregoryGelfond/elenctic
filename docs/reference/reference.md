@@ -82,7 +82,8 @@ not, in the K-th answer set, a leading `not` dropped, since the answer set says 
 `--with`, `--max-seconds` and `--max-answer-sets` as `test` does, a refused root or `--with` file
 stopping it before it runs, and opens the interactive view as `explain` does; a `PATH` that is a
 directory is a usage error. Each reads the program with the solver its `% @elenctic solver` names,
-and needs no other tag. And these:
+and needs no other tag. Each takes an option only by its full name, so an argument that starts with
+`--` and names none of them is the query. And these:
 
 | Option | Meaning |
 |---|---|

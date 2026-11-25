@@ -23,7 +23,8 @@ All notable changes are recorded here. The format follows
   with the first answer set taking each value, or a pattern's bindings. A query, in `ask`, `why`
   and `@query`, may put `not` before a literal (true where the literal is absent), may end with a
   full stop after its closing brace, and refuses `;`; a query that starts with `-`, `ask PATH -p(X)`, is not taken for an
-  option. `ask --mode default|cautious|brave`: the Gelfond–Kahl three-valued answer, or `yes` /
+  option, nor one that starts with `--` and names none of the command's options, which take no
+  abbreviation. `ask --mode default|cautious|brave`: the Gelfond–Kahl three-valued answer, or `yes` /
   `not entailed` (true in every answer set or not, naming for `not entailed` only answer sets
   where it is not true), or `yes` / `none holds` (true in some or none,
   naming only answer sets where it is true); `Answer` gains `NOT_ENTAILED` and `NONE_HOLDS`.

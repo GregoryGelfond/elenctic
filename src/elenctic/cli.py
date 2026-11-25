@@ -12,6 +12,7 @@ from functools import partial
 from importlib import import_module
 from math import inf
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final
 
 from elenctic.about import VersionExit, package
@@ -135,13 +136,24 @@ def _index(text: str) -> int:
     return number
 
 
-def _output_options(*, defaults: bool) -> argparse.ArgumentParser:
+class _Parser(argparse.ArgumentParser):
+    """A parser that knows its options, and the commands that read a query among its own."""
+
+    asking: Mapping[str, _Parser] = MappingProxyType({})
+
+    def takes(self, argument: str) -> bool:
+        """Say whether `argument` is one of this parser's options, `--name` or `--name=value`."""
+        name = argument.split("=", 1)[0]
+        return any(name in action.option_strings for action in self._actions)
+
+
+def _output_options(*, defaults: bool) -> _Parser:
     """Make the parser of the options that decide how output looks.
 
     The main parser and every command take them. Only the main parser holds the defaults: a
     command that sets nothing leaves what stands before it, and one that does override it.
     """
-    options = argparse.ArgumentParser(add_help=False)
+    options = _Parser(add_help=False)
     options.add_argument(
         "--color",
         choices=list(When),
@@ -325,9 +337,9 @@ def _mode(command: argparse.ArgumentParser, default: AnswerMode | None) -> None:
     )
 
 
-def _parser() -> argparse.ArgumentParser:
+def _parser() -> _Parser:
     """Make the parser; its help and usage are colored as `argparse` does by default."""
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="elenctic",
         parents=[_output_options(defaults=True)],
         description="Test, debug and analyze answer set programs. "
@@ -355,6 +367,7 @@ def _parser() -> argparse.ArgumentParser:
     why = commands.add_parser(
         "why",
         parents=options,
+        allow_abbrev=False,
         help="show what warrants a query's answer, or why an atom holds, or not, in an answer set",
     )
     _asking(why, "the warrant or the explanation")
@@ -385,7 +398,9 @@ def _parser() -> argparse.ArgumentParser:
         help="literals assumed, `p` or `not p`, as `assuming { ... }` writes them",
     )
     _depth(why)
-    ask = commands.add_parser("ask", parents=options, help="answer one query over the answer sets")
+    ask = commands.add_parser(
+        "ask", parents=options, allow_abbrev=False, help="answer one query over the answer sets"
+    )
     _asking(ask, "the answer")
     ask.add_argument("query", type=_literal, metavar="QUERY", help=QUERY_HELP)
     _mode(ask, AnswerMode.DEFAULT)
@@ -403,6 +418,7 @@ def _parser() -> argparse.ArgumentParser:
         commands.add_parser(name, parents=options, help=f"{what} (reserved)").add_argument(
             "rest", nargs=argparse.REMAINDER
         )
+    parser.asking = MappingProxyType({"why": why, "ask": ask})
     return parser
 
 
@@ -411,23 +427,31 @@ _LITERAL: Final = re.compile(r"-[a-z_(]")
 either for an option."""
 
 
-def _literals(arguments: list[str]) -> list[str]:
-    """Keep a literal given to `why` or `ask`, such as `-p(X)`, from being read as an option.
+def _literals(arguments: list[str], parser: _Parser) -> list[str]:
+    """Keep a query given to `why` or `ask`, such as `-p(X)` or `--a`, from being read as an option.
 
     argparse reads an argument with a space in it as positional, so each one after the command
-    that starts as a classical literal does, and is not an option, gets a trailing space; the
-    `_literal` type drops it again.
+    that starts as a classical literal does, or with `--` and names none of the command's options
+    (which take no abbreviation), gets a trailing space; the `_literal` type drops it again.
     """
     at = next((i for i, a in enumerate(arguments) if a in DECIDED), len(arguments))
-    if at == len(arguments) or arguments[at] not in {"why", "ask"}:
+    command = parser.asking.get(arguments[at]) if at < len(arguments) else None
+    if command is None:
         return arguments
     ended = arguments.index("--") if "--" in arguments else len(arguments)
     return [
-        f"{argument} "
-        if at < index < ended and _LITERAL.match(argument) and argument not in BARE | {"-v"}
-        else argument
+        f"{argument} " if at < index < ended and _queried(argument, command) else argument
         for index, argument in enumerate(arguments)
     ]
+
+
+def _queried(argument: str, command: _Parser) -> bool:
+    """Say whether an argument is a query though it starts as an option does."""
+    if argument in BARE | {"-v", "--"}:
+        return False
+    if argument.startswith("--"):
+        return not command.takes(argument)
+    return bool(_LITERAL.match(argument))
 
 
 def _literal(text: str) -> str:
@@ -1365,7 +1389,9 @@ def main(argv: Sequence[str] | None = None) -> Outcome:
     if argv is None and hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     parser = _parser()
-    arguments = parser.parse_args(_literals(_normalized(sys.argv[1:] if argv is None else argv)))
+    arguments = parser.parse_args(
+        _literals(_normalized(sys.argv[1:] if argv is None else argv), parser)
+    )
     if arguments.command is None and not arguments.show_version:
         parser.error("the following arguments are required: COMMAND")
     variables = os.environ  # the one place that reads the environment
