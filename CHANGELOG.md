@@ -53,8 +53,9 @@ All notable changes are recorded here. The format follows
   and `Taken`. `Session.counterexample` gives the refutation when
   there is no answer set.
 - JSON: `why` and `ask` write their result under their names, `{"schema": 1, "why": …}`; the schema
-  gains them, `answered`, `taken`, `answers`, `bound`, `warrant` and the query part `not`, and a
-  run is written as before.
+  gains them, `answered`, `taken`, `answers`, `bound`, `taken_at`, `numbered`, `warrant` and the
+  query part `not`, and a run is written as before. A binding names each answer set by its index;
+  `answers` lists each answer set named once.
 - Library: `session(program, solver)` and `Session`, a `Grounded` with `counterexample(index,
   scenario, over=)`, `explain(literals, counterexample)`, `outrank(literals, scenario)` and
   `evidence(finding)`; `evidenced(report, program)`; the model: `Explanation`, `Counterexample`,

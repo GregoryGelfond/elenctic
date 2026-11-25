@@ -1580,6 +1580,22 @@ def test_ask_of_a_conjunction_with_variables_writes_its_bindings_in_each_mode(
     assert [(b["values"], b["answer"]) for b in found["bound"]] == [(["a"], "yes"), (["b"], "yes")]
 
 
+def test_ask_writes_each_answer_set_its_bindings_name_once_and_names_it_by_index(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "r.lp", "r(a). r(b). { c(b) }.\n")
+    _, out = run(capsys, "ask", path, "--json", "r(X), not c(X)")
+    found = json.loads(out)["ask"]["answer"]
+    assert [[(t["answer"], t["index"]) for t in b["taken"]] for b in found["bound"]] == [
+        [("yes", 1)],
+        [("yes", 1), ("no", 2)],
+    ]
+    assert [(each["index"], each["answer_set"]["atoms"]) for each in found["answer_sets"]] == [
+        (1, ["r(a)", "r(b)"]),
+        (2, ["c(b)", "r(a)", "r(b)"]),
+    ]
+
+
 def test_the_stream_of_the_library_is_the_order_ask_writes_its_bindings_in(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

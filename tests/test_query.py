@@ -18,9 +18,11 @@ from elenctic.query import (
     Bindings,
     Bound,
     Not,
+    Numbered,
     Query,
     ReadAnswers,
     Taken,
+    TakenAt,
     Truth,
     answer,
     answered,
@@ -372,14 +374,19 @@ def test_a_conjunction_with_variables_answers_each_binding_its_positive_parts_en
     assert found == Answers(
         ("X",),
         (
-            Bound((sym("a"),), Answer.YES, (Taken(Answer.YES, 1, first),)),
-            Bound(
-                (sym("b"),),
-                Answer.UNKNOWN,
-                (Taken(Answer.NO, 1, first), Taken(Answer.YES, 2, second)),
-            ),
+            Bound((sym("a"),), Answer.YES, (TakenAt(Answer.YES, 1),)),
+            Bound((sym("b"),), Answer.UNKNOWN, (TakenAt(Answer.NO, 1), TakenAt(Answer.YES, 2))),
         ),
+        (Numbered(1, first), Numbered(2, second)),
     )
+    assert found.taken(found.bound[1]) == (Taken(Answer.NO, 1, first), Taken(Answer.YES, 2, second))
+
+
+def test_each_answer_set_the_bindings_name_is_held_once_and_only_those() -> None:
+    sets = read(*(lits("r(a)", "r(b)") for _ in range(3)))
+    found = answers(REACH, sets)
+    assert [each.taken for each in found.bound] == [(TakenAt(Answer.YES, 1),)] * 2
+    assert found.answer_sets == (Numbered(1, sets[0]),)
 
 
 @pytest.mark.parametrize(
@@ -504,7 +511,7 @@ def test_the_stream_of_a_cautious_or_brave_query_shows_only_its_yes_bindings(
 
 def test_the_stream_of_a_ground_query_is_its_one_answer_with_no_values() -> None:
     found = answered(All((Literal("r", (sym("a"),)),)), ROADS)
-    assert list(stream(found)) == [Bound((), Answer.YES, found.taken)]
+    assert list(stream(found)) == [Bound((), Answer.YES, (TakenAt(Answer.YES, 1),))]
 
 
 def test_a_brave_search_cut_keeps_the_yes_bindings_it_found_and_says_what_cut_it() -> None:

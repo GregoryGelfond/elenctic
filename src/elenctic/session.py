@@ -435,7 +435,8 @@ class Session(Grounded):
             bound = _bound(answer, values, answered.cut)
             if isinstance(bound, Ended):
                 return bound
-            answer, taken, unreached = bound.answer, bound.taken, ()
+            taken = answer.taken(bound)
+            answer, unreached = bound.answer, ()
         elif values:
             message = "a query without variables has no binding to warrant"
             raise ValueError(message)

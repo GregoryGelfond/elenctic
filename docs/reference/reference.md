@@ -477,14 +477,16 @@ Each name in `elenctic.__all__`, once; a test fails on a name that has no row.
 | `evaluate` | a query's `Truth` in one answer set |
 | `answer` | a query's `Answer` over a `WorldView`, as `mode=` answers it (default `AnswerMode.DEFAULT`) |
 | `answered` | a query answered over answer sets given in the order read: an `Answered` |
-| `Answers` | the `Bound` instances of a query's variables, in its mode's answer order then value order; `giving(answer)` selects the values of one, `count(answer)` counts them |
+| `Answers` | the `Bound` instances of a query's variables, in its mode's answer order then value order, and the `answer_sets` they name, each once, `Numbered`; `giving(answer)` selects the values of one, `count(answer)` counts them, `taken(bound)` gives the `Taken` a binding names |
 | `answers` | the `Answers` of a query with variables over answer sets, as `mode=` answers it: each instance of its positive parts entertained is grounded and answered |
 | `Answered` | a query's `answer`, or its `Answers` for a query with variables, over the answer sets, `read` of them when the search read them all (else `None`), `over` all or the optima, with what it is `taken` to be in one answer set alone, and the answers `unreached`, and, for a brave answer found before the search was `cut`, what cut it |
-| `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it |
+| `Taken` | an `answer` a query takes in one answer set alone, and the `index` of the first that gives it, and that `answer_set` |
+| `TakenAt` | a `Taken` without its answer set, which the `Answers` holding it names by `index` |
+| `Numbered` | an `answer_set` and its `index` among those the search read |
 | `Unreached` | an `answer` a query takes in some answer set alone, past the `read` answer sets a search read before `cut` stopped it |
 | `Bindings` | the values of a pattern's variables that give each answer; `giving(answer)` selects those of one |
 | `bindings` | the `Bindings` of a `Pattern` or a conjunction with variables over a `WorldView`: its default `answers` grouped by answer |
-| `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set |
+| `Bound` | one instance of a query's variables: its `values`, its `answer`, and what it is `taken` to be in each answer set, a `TakenAt` |
 | `stream` | the bindings of an `Answered` as `ask` writes them, one per `next()`: `yes`, then `no` by default, `unknown` too with `unknown=True`; a ground query yields its one answer with no values |
 | `Warrant` | what shows a ground `query`'s `answer`, or a binding's instance's: the answer sets that are its `witnesses`, the `derivations` explaining in each what the instance's truth there rests on, and the `refutation` that no answer set overturns it, when the answer needs every one; the answers a cut search left `unreached`, and the `over`, `read` and `mode` it was answered with |
 | `WorldView` | the answer sets of a program, all of them: only an exhausted search yields one |

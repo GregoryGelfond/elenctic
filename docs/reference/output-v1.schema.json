@@ -315,7 +315,8 @@
       "required": [
         "kind",
         "variables",
-        "bound"
+        "bound",
+        "answer_sets"
       ],
       "properties": {
         "kind": {
@@ -331,6 +332,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/bound"
+          }
+        },
+        "answer_sets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/numbered"
           }
         }
       },
@@ -561,7 +568,7 @@
         "taken": {
           "type": "array",
           "items": {
-            "$ref": "#/$defs/taken"
+            "$ref": "#/$defs/taken_at"
           }
         }
       },
@@ -1303,6 +1310,26 @@
       },
       "additionalProperties": false
     },
+    "numbered": {
+      "type": "object",
+      "required": [
+        "kind",
+        "index",
+        "answer_set"
+      ],
+      "properties": {
+        "kind": {
+          "const": "numbered"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "answer_set": {
+          "$ref": "#/$defs/answer_set"
+        }
+      },
+      "additionalProperties": false
+    },
     "outranked": {
       "type": "object",
       "required": [
@@ -1582,6 +1609,33 @@
         },
         "answer_set": {
           "$ref": "#/$defs/answer_set"
+        }
+      },
+      "additionalProperties": false
+    },
+    "taken_at": {
+      "type": "object",
+      "required": [
+        "kind",
+        "answer",
+        "index"
+      ],
+      "properties": {
+        "kind": {
+          "const": "taken_at"
+        },
+        "answer": {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no",
+            "unknown",
+            "not_entailed",
+            "none_holds"
+          ]
+        },
+        "index": {
+          "type": "integer"
         }
       },
       "additionalProperties": false

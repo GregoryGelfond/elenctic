@@ -253,15 +253,32 @@ class Unreached:
 
 
 @dataclass(frozen=True, slots=True)
+class TakenAt:
+    """An answer a query takes in one answer set alone, and the index of the first that gives it."""
+
+    answer: Answer
+    index: int
+
+
+@dataclass(frozen=True, slots=True)
+class Numbered:
+    """An answer set, and its index among those the search read."""
+
+    index: int
+    answer_set: AnswerSet
+
+
+@dataclass(frozen=True, slots=True)
 class Bound:
     """A binding of a query's variables, their values in order of first occurrence, and its answer.
 
-    `taken` names the first answer set to give each answer its instance takes there alone.
+    `taken` names, by its index, the first answer set to give each answer its instance takes there
+    alone.
     """
 
     values: tuple[Symbol, ...]
     answer: Answer
-    taken: tuple[Taken, ...]
+    taken: tuple[TakenAt, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,10 +287,23 @@ class Answers:
 
     They are in the order their mode shows its answers, yes first, then in symbol order. Only the
     bindings each part without `not` entertains are answered: another instance is in no answer set.
+    `answer_sets` holds each answer set a binding names, once, in the order read.
     """
 
     variables: tuple[str, ...]
     bound: tuple[Bound, ...]
+    answer_sets: tuple[Numbered, ...]
+
+    def taken(self, bound: Bound) -> tuple[Taken, ...]:
+        """Return the answer sets a binding names, each with the answer it takes there alone."""
+        held = {each.index: each.answer_set for each in self.answer_sets}
+        return tuple(Taken(each.answer, each.index, held[each.index]) for each in bound.taken)
+
+    def kept(self, bound: Sequence[Bound]) -> Answers:
+        """Keep only the bindings `bound`, and the answer sets they name."""
+        named = {each.index for kept in bound for each in kept.taken}
+        sets = tuple(each for each in self.answer_sets if each.index in named)
+        return Answers(self.variables, tuple(bound), sets)
 
     def giving(self, answer: Answer) -> frozenset[tuple[Symbol, ...]]:
         """Return the values of the bindings with `answer`."""
@@ -392,21 +422,16 @@ def answers(
     Raises `ValueError` for a disjunction, a variable only under `not`, or `_`.
     """
     judged = _judged(query, [member.atoms for member in members], mode)
-    return Answers(
-        tuple(v.name for v in variables_of(query)),
-        tuple(
-            Bound(
-                values,
-                answer_,
-                tuple(
-                    Taken(each, at, members[at - 1])
-                    for each, at in first.items()
-                    if each in _NAMED[mode]
-                ),
-            )
-            for values, answer_, first in judged
-        ),
+    bound = tuple(
+        Bound(
+            values,
+            answer_,
+            tuple(TakenAt(each, at) for each, at in first.items() if each in _NAMED[mode]),
+        )
+        for values, answer_, first in judged
     )
+    every = tuple(Numbered(at, member) for at, member in enumerate(members, 1))
+    return Answers(tuple(v.name for v in variables_of(query)), (), every).kept(bound)
 
 
 def bindings(pattern: Pattern | All, view: WorldView) -> Bindings:
@@ -482,8 +507,7 @@ def bravely(
     found = answered(query, members, over, AnswerMode.BRAVE)
     kept = found.answer
     if isinstance(kept, Answers):
-        yes = tuple(each for each in kept.bound if each.answer is Answer.YES)
-        kept = Answers(kept.variables, yes)
+        kept = kept.kept([each for each in kept.bound if each.answer is Answer.YES])
     held = kept.count(Answer.YES) if isinstance(kept, Answers) else kept is Answer.YES
     return replace(found, answer=kept, read=None, cut=cut) if held else None
 
@@ -504,7 +528,7 @@ def stream(result: Answered, *, unknown: bool = False) -> Iterator[Bound]:
     """
     found = result.answer
     if not isinstance(found, Answers):
-        yield Bound((), found, result.taken)
+        yield Bound((), found, tuple(TakenAt(each.answer, each.index) for each in result.taken))
         return
     shown = _SHOWN[result.mode] | {Answer.UNKNOWN} if unknown else _SHOWN[result.mode]
     yield from (each for each in found.bound if each.answer in shown)
