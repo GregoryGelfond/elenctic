@@ -1,5 +1,9 @@
 from time import perf_counter
 
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
 from elenctic.program import Source
 from elenctic.spans import (
     Child,
@@ -7,6 +11,7 @@ from elenctic.spans import (
     Position,
     Severity,
     Span,
+    _byte_starts,
     char_column,
     diagnose,
     failure,
@@ -108,6 +113,31 @@ def test_locating_eight_times_as_many_lines_takes_about_eight_times_as_long_not_
     small = min(seconds_to_locate_every_line(1_000) for _ in range(3))
     large = min(seconds_to_locate_every_line(8_000) for _ in range(3))
     assert large < 24 * small
+
+
+def first_character_at_or_past(line: str, byte_column: int) -> int:
+    encoded = [len(line[:index].encode()) for index in range(len(line))]
+    return next(
+        (index + 1 for index, start in enumerate(encoded) if start >= byte_column - 1),
+        len(line) + 1,
+    )
+
+
+@given(st.text(max_size=12), st.integers(min_value=-2, max_value=60))
+def test_char_column_is_the_first_character_at_or_past_the_byte(
+    line: str, byte_column: int
+) -> None:
+    assert char_column(line, byte_column) == max(1, first_character_at_or_past(line, byte_column))
+
+
+@pytest.mark.parametrize("item", ["p(1)", "p(é)"])
+def test_every_column_of_a_long_line_is_found_with_the_line_measured_once(item: str) -> None:
+    line = ", ".join(item for _ in range(8_000))
+    _byte_starts.cache_clear()
+    for index in range(8_000):
+        byte = 1 + index * len((item + ", ").encode())
+        assert char_column(line, byte) == 1 + index * len(item + ", ")
+    assert _byte_starts.cache_info().misses == 1
 
 
 def test_the_text_of_a_span_is_what_it_covers_and_empty_where_it_reaches_past_its_source() -> None:

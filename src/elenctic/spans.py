@@ -1,9 +1,11 @@
 """Where things are: positions and spans in a source, and the diagnostics attached to them."""
 
 import re
+from bisect import bisect_left
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from functools import lru_cache
+from itertools import accumulate
 from typing import Final, override
 
 
@@ -110,16 +112,27 @@ def one_line(text: str) -> str:
 
 
 def char_column(line: str, byte_column: int) -> int:
-    """Map a 1-based UTF-8 byte column to a 1-based Unicode scalar column."""
+    """Map a 1-based UTF-8 byte column to a 1-based Unicode scalar column.
+
+    It is the first character to start at or past the byte, or the end of the line.
+    """
     if byte_column <= 1:
         return 1
-    target = byte_column - 1
-    offset = 0
-    for index, character in enumerate(line):
-        if offset >= target:
-            return index + 1
-        offset += len(character.encode())
-    return len(line) + 1
+    starts = _byte_starts(line)
+    if starts is None:
+        return min(byte_column, len(line) + 1)
+    return bisect_left(starts, byte_column - 1) + 1
+
+
+@lru_cache(maxsize=16)
+def _byte_starts(line: str) -> tuple[int, ...] | None:
+    """Return the UTF-8 byte offset each character of `line` starts at; `None` when all are ASCII.
+
+    A line is measured once, however many of its columns are mapped.
+    """
+    if line.isascii():
+        return None
+    return tuple(accumulate((len(character.encode()) for character in line[:-1]), initial=0))
 
 
 @lru_cache(maxsize=16)

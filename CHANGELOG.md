@@ -132,6 +132,9 @@ All notable changes are recorded here. The format follows
   admits no answer set, as for any atom no answer set holds.
 - A closed stdout, as in `elenctic … | head`, ended the command with an internal error
   (`BrokenPipeError`, exit 3); it ends the process by `SIGPIPE`, quietly, as it ends `ls`.
+- Reading a list of literals written on one line took time quadratic in its length: each literal's
+  place was found by counting from the start of the line. A query of 4,000 literals took 6 s; it
+  takes half a second.
 - An atom the grounding names but no answer set can hold, such as `p(2)` in `q(2). p(X) :- p(X),
   not q(X). q(X) :- q(X), not p(X).`, was taken to be assumable: `assuming { p(2) }` admitted
   answer sets without it, so `@expect sat` passed and `@expect unsat` failed, and `ask` gave
