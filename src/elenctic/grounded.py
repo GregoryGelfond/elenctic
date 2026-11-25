@@ -34,6 +34,7 @@ from elenctic.search import (
     Keep,
     Limit,
     Limits,
+    Literals,
     Plan,
     Request,
     Run,
@@ -68,6 +69,7 @@ class Grounded:
     def __init__(self, control: Control, facts: Facts, theory: Theory) -> None:
         self._control = control
         self._theory = theory
+        self._literals = Literals()
         self.facts = facts
         # Signatures from clingo; atom→literal looked up on demand so a sat-only case
         # never walks the whole symbolic atom table.
@@ -111,7 +113,7 @@ class Grounded:
 
     def _seen(self, answer_set: ClingoModel, keep: Keep) -> Seen:
         """Take note of an answer set clingo reports; a subclass may read more of it."""
-        return seen(answer_set, self._theory, keep)
+        return seen(answer_set, self._theory, keep, self._literals)
 
     def _run(self, scenario: Scenario, plan: Plan, cut: Cut) -> Run:
         assumed = self._assumed(scenario)

@@ -186,7 +186,7 @@ class Session(Grounded):
 
     @override
     def _seen(self, answer_set: ClingoModel, keep: Keep) -> Seen:
-        noted = seen(answer_set, self._theory, KEEP_ALL)
+        noted = seen(answer_set, self._theory, KEEP_ALL, self._literals)
         mine = tuple(s for s in noted.atoms if not self._added(s))
         shown = tuple(s for s in noted.shown if not self._added(s))
         kept = replace(noted, atoms=mine if keep.atoms else (), shown=shown if keep.shown else ())

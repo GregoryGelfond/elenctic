@@ -4,7 +4,6 @@ import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from enum import Enum
-from functools import lru_cache
 from math import inf
 from time import monotonic
 from typing import Final, Protocol, runtime_checkable
@@ -34,7 +33,6 @@ from elenctic.theory import Theory
 type Cut = Callable[[], Truncation | None]
 
 _SLICE: Final = 0.02
-_REMEMBERED: Final = 2**16
 
 
 class Limit(Enum):
@@ -103,15 +101,33 @@ class Request:
         return cut
 
 
-@lru_cache(maxsize=_REMEMBERED)
 def _literal(symbol: Symbol) -> Literal | None:
     """Read `symbol` as a classical literal; `#show` may also select numbers or strings."""
     return Literal.of(symbol) if is_function(symbol) and symbol.name else None
 
 
-def _literals(symbols: Iterable[Symbol]) -> Atoms:
-    """Keep the classical literals of `symbols`, each atom read once however often it recurs."""
-    return frozenset(literal for s in symbols if (literal := _literal(s)) is not None)
+@dataclass(frozen=True, slots=True, eq=False)
+class Literals:
+    """The literals the symbols of one grounding are read as, each symbol read once.
+
+    Every answer set of a grounding holds its symbols, so what is remembered is bounded by the
+    grounding, which clingo holds anyway, and an answer set of any size is read from memory.
+    """
+
+    read: dict[Symbol, Literal | None] = field(default_factory=dict[Symbol, Literal | None])
+
+    def __call__(self, symbols: Iterable[Symbol]) -> Atoms:
+        """Keep the classical literals of `symbols`, each atom read once however often it recurs."""
+        read = self.read
+        found: list[Literal] = []
+        for symbol in symbols:
+            if symbol in read:
+                literal = read[symbol]
+            else:
+                literal = read[symbol] = _literal(symbol)
+            if literal is not None:
+                found.append(literal)
+        return frozenset(found)
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,22 +155,30 @@ class Seen:
     assignment: Assignment
     cost: Cost
     proven: bool
+    literals: Literals = field(default_factory=Literals, compare=False, repr=False)
 
     @property
     def answer_set(self) -> AnswerSet:
+        read = self.literals
         return AnswerSet(
-            _literals(self.atoms), _literals(self.shown), assignment=self.assignment, cost=self.cost
+            read(self.atoms), read(self.shown), assignment=self.assignment, cost=self.cost
         )
 
 
-def seen(answer_set: ClingoModel, theory: Theory, keep: Keep = KEEP_ALL) -> Seen:
-    """Take note of an answer set that clingo reports; keep only the symbol sets claims need."""
+def seen(
+    answer_set: ClingoModel, theory: Theory, keep: Keep = KEEP_ALL, literals: Literals | None = None
+) -> Seen:
+    """Take note of an answer set that clingo reports; keep only the symbol sets claims need.
+
+    Its literals are read by `literals`, that of the grounding it is of, when it is given.
+    """
     return Seen(
         tuple(answer_set.symbols(atoms=True)) if keep.atoms else (),
         tuple(answer_set.symbols(shown=True)) if keep.shown else (),
         theory.assignment(answer_set),
         tuple(answer_set.cost),
         proven=answer_set.optimality_proven or not answer_set.cost,
+        literals=Literals() if literals is None else literals,
     )
 
 
