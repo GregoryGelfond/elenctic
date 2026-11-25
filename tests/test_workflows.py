@@ -32,3 +32,10 @@ def test_a_workflow_reads_its_repository_and_keeps_no_credentials(workflow: Path
     checkouts = re.findall(r"uses: actions/checkout@\S+.*\n((?:        .*\n)*)", text)
     assert checkouts
     assert [c for c in checkouts if "persist-credentials: false" not in c] == []
+
+
+@pytest.mark.parametrize("workflow", WORKFLOWS, ids=lambda path: path.name)
+def test_every_uv_run_and_tool_install_is_locked_or_pinned(workflow: Path) -> None:
+    text = workflow.read_text()
+    assert re.findall(r"uv run (?!--locked)", text) == []
+    assert re.findall(r"pixi global install [\w-]+(?!==)\s", text) == []

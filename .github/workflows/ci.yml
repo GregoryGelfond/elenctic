@@ -24,7 +24,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --locked --python ${{ matrix.python }} --extra theory --extra tui
-      - run: uv run pytest
+      - run: uv run --locked pytest
   pixi:
     # The gate: format, lint, strict types, import contracts, tests.
     runs-on: ubuntu-latest
@@ -41,7 +41,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: prefix-dev/setup-pixi@14c8aabd75893f83f4ab30c03e7cf853c8208961 # v0.8.10
-      - run: pixi global install rattler-build
+      - run: pixi global install rattler-build==0.81.0
       - name: Build the recipe from this checkout
         run: |
           mkdir -p "$RUNNER_TEMP/recipe"
