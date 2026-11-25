@@ -469,13 +469,45 @@ def _literal(text: str) -> str:
     return text.removesuffix(" ")
 
 
+_EXACT: Final = frozenset({"why", "ask"})
+"""The commands that take an option only by its full name."""
+
+
+def _icons(argument: str, *, exact: bool) -> bool:
+    """Say whether `argument` is a bare `--icons`, or, where abbreviations are taken, one of it."""
+    if exact:
+        return argument == "--icons"
+    return argument.startswith("--i") and "--icons".startswith(argument)
+
+
+def _command_at(arguments: Sequence[str]) -> int:
+    """Find where the command stands: after the main parser's options, each with its value."""
+    at = 0
+    while at < len(arguments):
+        argument = arguments[at]
+        if argument in BARE or argument.startswith(("--color=", "--icons=")):
+            at += 1
+        elif argument == "--color":
+            at += 2
+        elif _icons(argument, exact=False):
+            at += 1
+        else:
+            break
+    return at
+
+
 def _explicit_icons(argv: Iterable[str]) -> list[str]:
-    """Name the value of a bare `--icons` (or its abbreviation), so it cannot take the next path."""
+    """Name the value of a bare `--icons`, so it cannot take the next path.
+
+    The main parser, `test` and `explain` take an abbreviation of it too; `why` and `ask` do not.
+    """
     arguments = list(argv)
     ended = arguments.index("--") if "--" in arguments else len(arguments)
+    at = _command_at(arguments)
+    exact = at < len(arguments) and arguments[at] in _EXACT
     return [
         "--icons=auto"
-        if index < ended and argument.startswith("--i") and "--icons".startswith(argument)
+        if index < ended and _icons(argument, exact=exact and index > at)
         else argument
         for index, argument in enumerate(arguments)
     ]
@@ -484,15 +516,7 @@ def _explicit_icons(argv: Iterable[str]) -> list[str]:
 def _normalized(argv: Sequence[str]) -> list[str]:
     """Name the command: `test` unless one stands after the main parser's options."""
     arguments = _explicit_icons(argv)
-    at = 0
-    while at < len(arguments):
-        argument = arguments[at]
-        if argument in BARE or argument.startswith(("--color=", "--icons=")):
-            at += 1
-        elif argument == "--color":
-            at += 2
-        else:
-            break
+    at = _command_at(arguments)
     if at >= len(arguments) or arguments[at] in {*DECIDED, *RESERVED}:
         return arguments
     return [*arguments[:at], "test", *arguments[at:]]

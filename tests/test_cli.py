@@ -360,6 +360,19 @@ def test_an_argument_byte_that_is_not_utf8_is_refused_where_it_stands_even_in_a_
     assert refusal["span"]["source"] == source
 
 
+@pytest.mark.parametrize("command", [("ask",), ("why", "--answer-set", "1")])
+@pytest.mark.parametrize("word", ["--i", "--ic", "--ico", "--icon"])
+def test_ask_and_why_take_no_abbreviation_of_icons_but_read_it_as_the_query(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: tuple[str, ...], word: str
+) -> None:
+    path = write(tmp_path, "p.lp", "p.\n")
+    name, *rest = command
+    code, out, err = run_both(capsys, "--color", "never", name, path, word, *rest)
+    assert (code, out) == (2, "")
+    assert "\n --> QUERY:1:" in err
+    assert "required: QUERY" not in err
+
+
 def test_a_named_file_without_a_contract_is_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
