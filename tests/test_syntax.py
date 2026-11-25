@@ -269,6 +269,10 @@ def test_an_atom_asked_about_reads_with_or_without_default_negation() -> None:
         ("", "expected one atom, found nothing"),
         ("p :- q", "found `:-`"),
         ("X < 2", "expected a literal"),
+        ("X", "expected a literal, found the variable `X`"),
+        ("not X", "expected a literal, found the variable `X`"),
+        ("p; q", "query uses a semicolon"),
+        ("p }", "expected `:`, `,` or `.`, found `}`"),
     ],
 )
 def test_an_atom_that_is_not_one_ground_literal_is_refused(text: str, message: str) -> None:

@@ -1,8 +1,9 @@
 """The surface syntax of literal lists: patterns with or without default negation, and equations."""
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 from clingo.ast import AST, ASTType, ComparisonOperator, Sign
 
@@ -213,6 +214,68 @@ def asked(given: str, source: str) -> Asked:
     return Asked(text, at, Span.whole(source, given))
 
 
+_STRING: Final = re.compile(r'"(?:[^"\\]|\\.)*(?:"|\Z)', re.DOTALL)
+"""A string, which may hold `;` and parentheses; one left open runs to the end of the text."""
+
+
+def _between(text: str, character: str) -> list[int]:
+    """Find each `character` between the literals of `text`: outside strings and parentheses."""
+    bare = _STRING.sub(lambda found: " " * len(found.group()), text)
+    depth, found = 0, list[int]()
+    for at, each in enumerate(bare):
+        depth += {"(": 1, ")": -1}.get(each, 0)
+        if each == character and depth == 0:
+            found.append(at)
+    return found
+
+
+def _at(text: str, where: Span, start: int, end: int) -> Span:
+    """Place the characters `start` to `end` of `text`, written at `where`, on one of its lines."""
+    before = text[:start]
+    line = where.start.line + before.count("\n")
+    column = (start - before.rfind("\n")) if "\n" in before else where.start.column + start
+    return Span(where.source, Position(line, column), Position(line, column + end - start))
+
+
+_VARIABLE: Final = re.compile(r"(?:not\s+)?(?P<variable>_*[A-Z][\w']*|_)")
+"""A part that is a variable alone, `not` before it or not."""
+
+
+def _variable(text: str, where: Span) -> Diagnostic | None:
+    """Refuse the first part of `text` that is a variable alone, which no literal is."""
+    starts = [0, *(at + 1 for at in _between(text, ","))]
+    for start, end in zip(starts, [*starts[1:], len(text) + 1], strict=True):
+        part = text[start : end - 1]
+        alone = _VARIABLE.fullmatch(part.strip())
+        if alone is not None:
+            first = start + len(part) - len(part.lstrip()) + alone.start("variable")
+            name = alone["variable"]
+            return failure(
+                _at(text, where, first, first + len(name)),
+                f"expected a literal, found the variable `{name}`",
+                label="a variable alone is no literal",
+                help=(f"put the variable in an atom, such as `p({name})`",),
+            )
+    return None
+
+
+def read_parts(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
+    """Read the parts of a query, literals with or without `not`, which only `,` separates.
+
+    clingo reads `;` in a body as `,`, where Prolog reads it as `or`: a query refuses it.
+    """
+    separators = _between(text, ";")
+    if separators:
+        return failure(
+            _at(text, where, separators[0], separators[0] + 1),
+            "query uses a semicolon",
+            label="not a separator in a query",
+            help=("separate the literals with `,`",),
+        )
+    alone = _variable(text, where)
+    return alone if alone is not None else read_literals(text, where, refused=frozenset({";"}))
+
+
 def read_asked(text: str, source: str) -> Parsed[tuple[Literal, bool]]:
     """Read the one ground literal a command asks about, and whether `not` was written before it.
 
@@ -220,7 +283,7 @@ def read_asked(text: str, source: str) -> Parsed[tuple[Literal, bool]]:
     kept only to head the answer as it was asked.
     """
     body, at, where = asked(text, source)
-    items = read_literals(body, at)
+    items = read_parts(body, at)
     if isinstance(items, Diagnostic):
         return items
     if len(items) != 1:

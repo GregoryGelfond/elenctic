@@ -1,6 +1,5 @@
 """The query tag: a question put to the answer sets, with bindings if it has variables."""
 
-import re
 from typing import Final
 
 from elenctic.contract import Asks, Binds, Reading
@@ -10,8 +9,8 @@ from elenctic.operands import pointing, read_range, shown
 from elenctic.patterns import Pattern
 from elenctic.query import ANSWERS, All, Answer, AnswerMode, Not, unbound_of, variables_of
 from elenctic.rows import read_bindings
-from elenctic.spans import Diagnostic, Parsed, Position, Span, failure
-from elenctic.syntax import Item, asked, read_literals
+from elenctic.spans import Diagnostic, Parsed, Span, failure
+from elenctic.syntax import Item, asked, read_parts
 from elenctic.tags import Block, Element
 
 
@@ -55,7 +54,7 @@ def query(block: Block, head: list[Element]) -> Parsed[Reading]:
     if isinstance(answer, Diagnostic):
         return answer
     where = block.span(rest[1].start, rest[1].end)
-    items = _items(rest[1].text, where)
+    items = read_parts(rest[1].text, where)
     if isinstance(items, Diagnostic):
         return items
     return (
@@ -96,68 +95,6 @@ def _open(items: tuple[Item, ...], where: Span) -> Parsed[Pattern | All]:
             return alone
         case _:
             return query
-
-
-_STRING: Final = re.compile(r'"(?:[^"\\]|\\.)*(?:"|\Z)', re.DOTALL)
-"""A string, which may hold `;` and parentheses; one left open runs to the end of the text."""
-
-
-def _between(text: str, character: str) -> list[int]:
-    """Find each `character` between the literals of `text`: outside strings and parentheses."""
-    bare = _STRING.sub(lambda found: " " * len(found.group()), text)
-    depth, found = 0, list[int]()
-    for at, each in enumerate(bare):
-        depth += {"(": 1, ")": -1}.get(each, 0)
-        if each == character and depth == 0:
-            found.append(at)
-    return found
-
-
-def _at(text: str, where: Span, start: int, end: int) -> Span:
-    """Place the characters `start` to `end` of `text`, written at `where`, on one of its lines."""
-    before = text[:start]
-    line = where.start.line + before.count("\n")
-    column = (start - before.rfind("\n")) if "\n" in before else where.start.column + start
-    return Span(where.source, Position(line, column), Position(line, column + end - start))
-
-
-_VARIABLE: Final = re.compile(r"(?:not\s+)?(?P<variable>_*[A-Z][\w']*|_)")
-"""A part that is a variable alone, `not` before it or not."""
-
-
-def _variable(text: str, where: Span) -> Diagnostic | None:
-    """Refuse the first part of `text` that is a variable alone, which no literal is."""
-    starts = [0, *(at + 1 for at in _between(text, ","))]
-    for start, end in zip(starts, [*starts[1:], len(text) + 1], strict=True):
-        part = text[start : end - 1]
-        alone = _VARIABLE.fullmatch(part.strip())
-        if alone is not None:
-            first = start + len(part) - len(part.lstrip()) + alone.start("variable")
-            name = alone["variable"]
-            return failure(
-                _at(text, where, first, first + len(name)),
-                f"expected a literal, found the variable `{name}`",
-                label="a variable alone is no literal",
-                help=(f"put the variable in an atom, such as `p({name})`",),
-            )
-    return None
-
-
-def _items(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
-    """Read the parts of a query, literals with or without `not`, which only `,` separates.
-
-    clingo reads `;` in a body as `,`, where Prolog reads it as `or`: a query refuses it.
-    """
-    separators = _between(text, ";")
-    if separators:
-        return failure(
-            _at(text, where, separators[0], separators[0] + 1),
-            "query uses a semicolon",
-            label="not a separator in a query",
-            help=("separate the literals with `,`",),
-        )
-    alone = _variable(text, where)
-    return alone if alone is not None else read_literals(text, where, refused=frozenset({";"}))
 
 
 def _part(item: Item) -> Literal | Pattern | Not:
@@ -231,7 +168,7 @@ def read_query(text: str, source: str) -> Parsed[All | Pattern]:
     body, at, where = asked(text, source)
     if not body.strip():
         return _empty(where)
-    items = _items(body, at)
+    items = read_parts(body, at)
     if isinstance(items, Diagnostic):
         return items
     grounds = _grounds(items)
