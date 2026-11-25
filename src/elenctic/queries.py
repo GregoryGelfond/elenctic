@@ -8,7 +8,7 @@ from elenctic.determination import Range
 from elenctic.literals import Literal
 from elenctic.operands import pointing, read_range, shown
 from elenctic.patterns import Pattern
-from elenctic.query import All, Answer, Not, unbound_of, variables_of
+from elenctic.query import ANSWERS, All, Answer, AnswerMode, Not, unbound_of, variables_of
 from elenctic.rows import read_bindings
 from elenctic.spans import Diagnostic, Parsed, Position, Span, failure
 from elenctic.syntax import Item, asked, read_literals
@@ -16,14 +16,15 @@ from elenctic.tags import Block, Element
 
 
 def _answer(block: Block, word: Element) -> Parsed[Answer]:
-    try:
-        return Answer(word.text)
-    except ValueError:
+    """Read the answer a claim expects: one the default mode gives, as `@query` answers by it."""
+    found = next((each for each in ANSWERS[AnswerMode.DEFAULT] if each.value == word.text), None)
+    if found is None:
         return failure(
             block.covering(word),
             f"expected `yes`, `no`, or `unknown`, found `{word.text}`",
             label="expected `yes`, `no`, or `unknown`",
         )
+    return found
 
 
 _ASKS: Final = [False, True]

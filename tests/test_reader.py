@@ -264,6 +264,18 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
             P(2, 15),
         ),
         (
+            "% @query not_entailed { p }",
+            "expected `yes`, `no`, or `unknown`, found `not_entailed`",
+            P(2, 10),
+            P(2, 22),
+        ),
+        (
+            "% @query none_holds { p(X) } = { }",
+            "expected `yes`, `no`, or `unknown`, found `none_holds`",
+            P(2, 10),
+            P(2, 20),
+        ),
+        (
             "% @query yes { p(X) }",
             "query with variables states no bindings",
             P(2, 15),
