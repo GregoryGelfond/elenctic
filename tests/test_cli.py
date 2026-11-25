@@ -1865,6 +1865,18 @@ def test_a_fault_at_a_whole_argument_is_placed_alike_in_json_and_text(
     assert " --> QUERY:1:1\n  |\n1 | p(X)\n  | ^^^^ has variables\n" in err
 
 
+def test_a_fault_at_a_whole_argument_of_several_lines_ends_on_its_last(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "p(1). q(1).\n")
+    code, out = run(capsys, "why", path, "p(X),\nq(X)", "--json")
+    span = json.loads(out)["why"]["diagnostics"][0]["span"]
+    assert code == WhyExit.FAULT
+    assert (span["end"]["line"], span["end"]["column"]) == (2, 5)
+    _, _, err = run_both(capsys, "why", path, "p(X),\nq(X)", "--color", "never")
+    assert "1 | p(X),\n  | ^ has variables\n" in err
+
+
 def test_why_as_json_names_the_literal_by_its_roots_with_or_without_not(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

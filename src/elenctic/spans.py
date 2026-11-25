@@ -37,8 +37,9 @@ class Span:
 
     @classmethod
     def whole(cls, source: str, text: str) -> Span:
-        """Span all of `text`, a one-line source such as an argument a command was given."""
-        return cls(source, Position(1, 1), Position(1, len(text) + 1))
+        """Span all of `text`, such as an argument a command was given, to its last line's end."""
+        lines = text.split("\n")
+        return cls(source, Position(1, 1), Position(len(lines), len(lines[-1]) + 1))
 
 
 def _shift(position: Position, origin: Position) -> Position:
