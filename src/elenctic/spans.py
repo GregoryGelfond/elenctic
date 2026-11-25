@@ -208,8 +208,10 @@ def _comment_end(text: str, start: int) -> int:
     return index
 
 
-_OPENING: Final = re.compile(r'%|"|#!')
-"""Where a comment or a string may open; nothing else in code begins a lexeme."""
+_SCRIPT: Final = re.compile(r"#script\s*\(\s*\w+\s*\)")
+"""The head of an embedded script, whose code clingo's lexer passes over to the first `#end`."""
+_OPENING: Final = re.compile(r'%|"|#!|#script\b')
+"""Where a comment, a string or a script may open; nothing else in code begins a lexeme."""
 
 _LEXED: Final = 8
 """How many texts' lexemes are remembered: each text is read in turn by several readers."""
@@ -217,13 +219,20 @@ _LEXED: Final = 8
 
 @lru_cache(maxsize=_LEXED)
 def lexemes(text: str) -> tuple[Lexeme, ...]:
-    """Return the comments and strings of `text`, in order, as clingo's lexer reads them."""
+    """Return the comments, strings and scripts of `text`, in order, as clingo's lexer reads them.
+
+    A script's code, from its head to the first `#end`, clingo's lexer passes over, as a comment.
+    """
     found: list[Lexeme] = []
     index = 0
     while (opening := _OPENING.search(text, index)) is not None:
         index = opening.start()
         if text[index] == "%" or text.startswith("#!", index):
             found.append(Lexeme(index, end := _comment_end(text, index), string=False))
+        elif (script := _SCRIPT.match(text, index)) is not None:
+            closing = text.find("#end", script.end())
+            end = len(text) if closing < 0 else closing
+            found.append(Lexeme(script.end(), end, string=False))
         elif (string := _STRING.match(text, index)) is not None:
             found.append(Lexeme(index, end := string.end(), string=True))
         else:

@@ -59,6 +59,10 @@ from elenctic.verdicts import Report, Verdict
         [('"escaped \\\\"', False), ("p.", True)],
         [('"%* not a comment *%"', False), ("a.", True)],
         [('% " not a string', False), ("\np.", True)],
+        [("#script (python)", True), ('\n# é "\n', False), ("#end.\np.", True)],
+        [("#script(lua)", True), (" x = 1 ", False), ("#endx", True)],
+        [("#script (python)", True), ("\n# never closed", False)],
+        [("% #script (python)", False), ("\np(é).", True)],
     ],
 )
 def test_the_source_mask_marks_exactly_the_code(segments: list[tuple[str, bool]]) -> None:

@@ -202,6 +202,14 @@ def test_a_byte_that_is_not_utf8_is_placed_by_line_and_column_counted_from_1(
     assert "note: not valid UTF-8 at line 3, column 8 (byte 26): invalid start byte" in err
 
 
+def test_non_ascii_in_a_script_is_left_to_clingo_as_its_lexer_leaves_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "scr.lp", "% @expect sat\n#script (python)\n# é\n#end.\np.\n")
+    _, _, err = run_both(capsys, path)
+    assert "ASCII" not in err
+
+
 def test_a_file_that_is_not_utf8_is_an_error_of_the_request(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

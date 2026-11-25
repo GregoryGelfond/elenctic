@@ -205,6 +205,9 @@ All notable changes are recorded here. The format follows
 - The build requires hatchling 1.27 or later, the first to write the `License-Expression` that
   `elenctic --version` reads; an older one built a package whose `--version` failed. The conda
   recipe asks for it too, and tests `elenctic --version`.
+- The code of a `#script`, up to its `#end`, is passed over as clingo's lexer passes over it: a
+  non-ASCII character there was refused as one in code, a program clingo reads; a `;` or an
+  `#include` there is not taken for one in code.
 
 ## [1.0.0] - 2026-11-06
 
