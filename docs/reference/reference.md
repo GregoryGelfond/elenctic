@@ -169,8 +169,8 @@ access(ann,db)`), naming the program's path; its answer set is
 `counterexample:` stays for failed claims. `ask` writes `ask:` and the query, then `= answer: yes|no|unknown` and, for
 each answer the query takes in one answer set alone, the first answer set that gives it: `true in
 answer set 3: { … }`, `false in …`, or `neither p nor -p in …` (`neither true nor false` for a
-conjunction); `--mode brave` names only where it is true. A one-literal query asks apart which
-answers some answer set gives, ending only if a limit keeps it from one that could change the
+conjunction); `--mode brave` names only where it is true. A one-literal query, or one of `not`
+and a literal, asks apart which answers some answer set gives, ending only if a limit keeps it from one that could change the
 answer, and the search stops at the first answer set to give the last of them. If a limit stops it
 first, the query is still answered, and an answer it did not reach is `true in an answer set past the 100000 read:
 search ended: …`. A conjunction, or a query `--over optimal`, reads every answer set,

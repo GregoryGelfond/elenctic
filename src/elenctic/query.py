@@ -10,7 +10,7 @@ from typing import Final, override
 from elenctic.determination import AnswerSet, Range, Refutation, Truncation, WorldView
 from elenctic.explanation import Explanation
 from elenctic.extension import Extension
-from elenctic.literals import Atoms, Literal, Symbol
+from elenctic.literals import Assumption, Atoms, Literal, Symbol
 from elenctic.patterns import Pattern
 from elenctic.relation import Relation, Row
 from elenctic.substitution import Substitution
@@ -130,18 +130,38 @@ def deciding(query: Query, member: Atoms) -> tuple[Literal, ...]:
             return tuple(chain.from_iterable(deciding(part, member) for part in parts))
 
 
-def literal_of(query: Query) -> Literal | None:
-    """Return the one literal `query` asks of, when it has the literal's truth; else `None`.
+type Giving = Mapping[Truth, frozenset[Assumption]]
+"""What an answer set must hold for a query to take each truth it can take there."""
 
-    A ground pattern is its literal, and a conjunction or disjunction of one part is that part.
+
+def giving(query: Query) -> Giving | None:
+    """Return what gives each truth of a query of one literal, or of its negation; else `None`.
+
+    A ground pattern is its literal, and a conjunction or disjunction of one part is that part. A
+    literal is true where it holds, false where its contrary does, and unknown where neither does;
+    `not l` is true where `l` does not hold and false where it does.
     """
     match query:
-        case Literal():
-            return query
-        case Pattern():
-            return query.as_literal()
+        case Literal() | Pattern():
+            literal = query.as_literal() if isinstance(query, Pattern) else query
+            if literal is None:
+                return None
+            neither = {Assumption(literal, holds=False), Assumption(literal.contrary, holds=False)}
+            return {
+                Truth.TRUE: frozenset({Assumption(literal)}),
+                Truth.FALSE: frozenset({Assumption(literal.contrary)}),
+                Truth.UNKNOWN: frozenset(neither),
+            }
+        case Not(part):
+            literal = part.as_literal() if isinstance(part, Pattern) else part
+            if literal is None:
+                return None
+            return {
+                Truth.TRUE: frozenset({Assumption(literal, holds=False)}),
+                Truth.FALSE: frozenset({Assumption(literal)}),
+            }
         case All((part,)) | Any((part,)):
-            return literal_of(part)
+            return giving(part)
         case _:
             return None
 

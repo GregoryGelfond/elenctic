@@ -1403,6 +1403,29 @@ def test_ask_of_a_cautious_query_counts_the_bindings_not_entailed_and_shows_its_
     )
 
 
+@pytest.mark.parametrize(
+    ("query", "mode", "answer"),
+    [
+        ("not zz", "default", "yes"),
+        ("not zz", "cautious", "yes"),
+        ("not zz", "brave", "yes"),
+        ("{ not q }", "default", "no"),
+        ("not q", "cautious", "not entailed"),
+        ("not q", "brave", "none holds"),
+        ("not p(1)", "brave", "yes"),
+    ],
+)
+def test_ask_of_a_negated_literal_is_answered_from_its_truths_without_reading_every_answer_set(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], query: str, mode: str, answer: str
+) -> None:
+    path = write(tmp_path, "p.lp", "{ p(1..40) }. q.\n")
+    argv = ("ask", path, query, "--mode", mode, "--max-answer-sets", "1")
+    code, out = run(capsys, *argv)
+    assert code == AskExit.ANSWERED
+    assert f"  = answer: {answer}\n" in out
+    assert "search ended" not in out
+
+
 def test_ask_of_a_ground_brave_query_cut_short_shows_its_yes_and_what_cut_it(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

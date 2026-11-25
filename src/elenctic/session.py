@@ -46,6 +46,7 @@ from elenctic.query import (
     AnswerMode,
     Answers,
     Bound,
+    Giving,
     Held,
     Query,
     ReadAnswers,
@@ -57,8 +58,8 @@ from elenctic.query import (
     bravely,
     deciding,
     evaluate,
+    giving,
     instance_of,
-    literal_of,
     settled,
     settles,
     witnessed,
@@ -347,9 +348,9 @@ class Session(Grounded):
         some answer set gives. The refutation when there is none; `Ended` when the search stopped
         before reading what the answer needs.
         """
-        literal = literal_of(query)
-        if over is Range.ALL and literal is not None:
-            return self._settled(query, literal, scenario, mode)
+        given = giving(query)
+        if over is Range.ALL and given is not None:
+            return self._settled(query, given, scenario, mode)
         members = self._members(scenario, over)
         if not isinstance(members, _Reading):
             return members
@@ -361,20 +362,20 @@ class Session(Grounded):
         return answered(query, members.sets, over, mode)
 
     def _settled(
-        self, query: Query, literal: Literal, scenario: Scenario, mode: AnswerMode
+        self, query: Query, given: Giving, scenario: Scenario, mode: AnswerMode
     ) -> Answered | Refutation | Ended:
-        """Answer a query of one literal from its truths, read until each is first taken.
+        """Answer a query of one literal or its negation from its truths, read until each is taken.
 
         The answer is known before the search reads: one that stops it first leaves the truths not
         yet taken unreached.
         """
-        truths = self._truths(literal, scenario, mode)
+        truths = self._truths(given, scenario, mode)
         if isinstance(truths, Ended):
             return truths
         left = set(truths)
 
         def wanted(_: int, answer_set: AnswerSet) -> bool:
-            left.discard(evaluate(literal, answer_set.atoms))
+            left.discard(evaluate(query, answer_set.atoms))
             return not left
 
         reading = self._reach(scenario, wanted)
@@ -384,22 +385,16 @@ class Session(Grounded):
         return settled(query, ReadAnswers(reading.sets, cut, reading.read), truths, mode)
 
     def _truths(
-        self, literal: Literal, scenario: Scenario, mode: AnswerMode
+        self, given: Giving, scenario: Scenario, mode: AnswerMode
     ) -> frozenset[Truth] | Ended:
-        """Find the truths some answer set of `scenario` gives `literal`, on the grounding apart.
+        """Find the truths some answer set of `scenario` gives a query, on the grounding apart.
 
         `Ended` only when a truth the search could not settle would change what `mode` answers.
         """
-        contrary = literal.contrary
-        giving = {
-            Truth.TRUE: {Assumption(literal)},
-            Truth.FALSE: {Assumption(contrary)},
-            Truth.UNKNOWN: {Assumption(literal, holds=False), Assumption(contrary, holds=False)},
-        }
         limits = replace(self.limits, max_answer_sets=1)
         truths: set[Truth] = set()
         unsettled: dict[Truth, Truncation] = {}
-        for truth, assumed in giving.items():
+        for truth, assumed in given.items():
             match self._apart("").solve(
                 scenario | assumed, limits=limits, interrupt=self.interrupt
             ):
