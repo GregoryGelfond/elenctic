@@ -428,6 +428,53 @@ def test_ask_and_why_take_no_abbreviation_of_icons_but_read_it_as_the_query(
     assert "required: QUERY" not in err
 
 
+def test_an_abbreviated_icons_before_ask_leaves_an_abbreviation_after_it_to_the_query(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "p.\n")
+    code, out, err = run_both(capsys, "--color", "never", "--ico", "ask", path, "--ic")
+    assert (code, out) == (2, "")
+    assert "\n --> QUERY:1:" in err
+
+
+def test_test_takes_an_abbreviation_of_icons_after_the_command_without_its_next_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "% @expect sat\np.\n")
+    code, out, _err = run_both(capsys, "--color", "never", "test", "--ic", path)
+    assert (code, out) == (Exit.CLAIMS_HOLD, "1/1 passed\n")
+
+
+def test_a_program_fault_found_by_ask_quotes_the_line_of_the_program(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "p(.\n")
+    code, _out, err = run_both(capsys, "--color", "never", "ask", path, "p")
+    assert code == AskExit.FAULT
+    assert "\n1 | p(.\n" in err
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0, reason="needs a directory it cannot read"
+)
+def test_a_directory_the_walk_cannot_read_is_named_whatever_is_walked_after_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    walked = tmp_path / "cases"
+    for name in "abcdefghij":
+        (walked / name).mkdir(parents=True)
+        write(walked / name, "ok.lp", "% @expect sat\np.\n")
+    shut = walked / "e"
+    shut.chmod(0)
+    try:
+        code, out, err = run_both(capsys, "--color", "never", walked)
+    finally:
+        shut.chmod(0o755)
+    assert code == Exit.FAULT
+    assert f"error: cannot read `{shut}`\n" in err
+    assert out == "9/10 passed, 1 error\n"
+
+
 @pytest.mark.skipif(
     not hasattr(os, "geteuid") or os.geteuid() == 0, reason="needs a directory it cannot read"
 )
