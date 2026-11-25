@@ -39,3 +39,10 @@ def test_every_uv_run_and_tool_install_is_locked_or_pinned(workflow: Path) -> No
     text = workflow.read_text()
     assert re.findall(r"uv run (?!--locked)", text) == []
     assert re.findall(r"pixi global install [\w-]+(?!==)\s", text) == []
+
+
+def test_a_release_caches_nothing_it_builds_from() -> None:
+    release = (DIRECTORY / "release.yml").read_text()
+    setups = re.findall(r"uses: astral-sh/setup-uv@\S+.*\n((?:        .*\n)*)", release)
+    assert setups
+    assert [s for s in setups if "enable-cache: false" not in s] == []
