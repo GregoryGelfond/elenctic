@@ -46,7 +46,9 @@ def test_an_include_that_would_close_the_term_and_be_read_is_not_evaluable(
     assert not evaluable('1) . #include "lib.lp" . :- t(1')
 
 
-@pytest.mark.parametrize("text", ["p(4/2)", "p(2\\1)", "p(-2147483648/1)", 'p("1\\\\0")', "p(1)"])
+@pytest.mark.parametrize(
+    "text", ["p(4/2)", "p(2\\1)", "p(-2147483648/1)", 'p("1\\\\0")', "p(1)", "p(1/X)"]
+)
 def test_a_term_with_defined_arithmetic_is_evaluable(text: str) -> None:
     assert evaluable(text)
 

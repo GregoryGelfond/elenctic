@@ -23,7 +23,11 @@ def test_a_nul_in_a_program_file_reads_as_clingo_reads_it(
 
 @pytest.mark.parametrize(
     ("tag", "column"),
-    [("% @query yes { p(1)\x00, q }", 20), ('% @query yes { p("a\x00b") }', 20)],
+    [
+        ("% @query yes { p(1)\x00, q }", 20),
+        ('% @query yes { p("a\x00b") }', 20),
+        ("% @query yes { p(X) } = { 1\x00 }", 28),
+    ],
 )
 def test_a_nul_in_a_tag_is_refused_where_it_stands(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], tag: str, column: int
