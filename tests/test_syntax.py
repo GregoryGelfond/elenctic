@@ -483,3 +483,17 @@ def test_an_anonymous_variable_alone_is_told_to_take_a_name_not_to_stand_in_an_a
     assert refused.message == "expected a literal, found the variable `_`"
     tip = "put a named variable in an atom, such as `p(X)`: `_` names no binding"
     assert [child.message for child in refused.children] == [tip]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "p(1) %* a block *% , p(2)",
+        "p(1), p(2) %* x ; y *%",
+        "p(1), p(2) % to the end",
+        "p(1), %* , *% p(2)",
+    ],
+)
+def test_a_comment_in_a_query_is_read_as_clingo_reads_it_as_nothing(text: str) -> None:
+    one, two = Literal("p", (Number(1),)), Literal("p", (Number(2),))
+    assert read_query(text, "QUERY") == All((one, two))

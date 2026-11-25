@@ -14,7 +14,7 @@ from elenctic.literals import Assumption, Literal, Scenario, Symbol, integer
 from elenctic.normalize import NotAPattern, evaluate, function_of, normalize
 from elenctic.patterns import Pattern
 from elenctic.program import Source
-from elenctic.spans import Diagnostic, Parsed, Position, Span, failure, one_line
+from elenctic.spans import Diagnostic, Parsed, Position, Span, failure, in_code, one_line
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,13 +214,10 @@ def asked(given: str, source: str) -> Asked:
     return Asked(text, at, Span.whole(source, given))
 
 
-_STRING: Final = re.compile(r'"(?:[^"\\]|\\.)*(?:"|\Z)', re.DOTALL)
-"""A string, which may hold `;` and parentheses; one left open runs to the end of the text."""
-
-
 def _between(text: str, character: str) -> list[int]:
-    """Find each `character` between the literals of `text`: outside strings and parentheses."""
-    bare = _STRING.sub(lambda found: " " * len(found.group()), text)
+    """Find each `character` between the literals of `text`, outside parentheses and lexemes."""
+    code = in_code(text)
+    bare = "".join(each if code[at] else " " for at, each in enumerate(text))
     depth, found = 0, list[int]()
     for at, each in enumerate(bare):
         depth += {"(": 1, ")": -1}.get(each, 0)

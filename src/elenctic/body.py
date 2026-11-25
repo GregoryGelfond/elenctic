@@ -26,8 +26,11 @@ _INCLUDE: Final = re.compile(r"#include\b")
 
 
 def prefixed(text: str) -> str:
-    """Return the rule body clingo sees when reading a comma-separated list."""
-    return PREFIX + text + "."
+    """Return the rule body clingo sees when reading a comma-separated list.
+
+    Its full stop stands on a line of its own, so a comment that ends the text leaves it be.
+    """
+    return PREFIX + text + "\n."
 
 
 def span_of(node: AST, text: str) -> Span:
@@ -110,7 +113,7 @@ def read_body(
         parse_string(source, statements.append, logger=lambda _c, m: errors.append(m))
     except RuntimeError:
         return _first_error(where, errors, text, refused)
-    statements = [s for s in statements if tree.kind(s) is not ASTType.Program]
+    statements = [s for s in statements if tree.kind(s) not in {ASTType.Program, ASTType.Comment}]
     if len(statements) != 1:
         shown = one_line(text) or "{ }"
         return failure(where, f"expected a list of literals, found `{shown}`")
