@@ -339,6 +339,27 @@ def test_a_question_reading_a_literal_show_hides_notes_it_on_stderr_and_in_its_j
     assert (code, lint["severity"], lint["message"]) == (0, "note", hidden)
 
 
+@pytest.mark.parametrize(
+    ("argv", "source"),
+    [
+        (("ask", 'p("\udcff")'), "QUERY"),
+        (("why", "p(X)", "--binding", 'X = "\udcff"'), "--binding"),
+        (("why", "p", "--assuming", 'q("\udcff")'), "--assuming"),
+        (("why", "p", "--assuming", "q % \udcff"), "--assuming"),
+    ],
+)
+def test_an_argument_byte_that_is_not_utf8_is_refused_where_it_stands_even_in_a_string(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: tuple[str, ...], source: str
+) -> None:
+    path = write(tmp_path, "p.lp", "p.\n")
+    command, *rest = argv
+    code, out, err = run_both(capsys, command, path, *rest, "--json")
+    (refusal,) = json.loads(out)[command]["diagnostics"]
+    assert (code, err) == (2, "")
+    assert refusal["message"] == "expected UTF-8, found the byte `0xFF`"
+    assert refusal["span"]["source"] == source
+
+
 def test_a_named_file_without_a_contract_is_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -229,15 +229,33 @@ def in_code(text: str) -> list[bool]:
     return mask
 
 
-def first_unlexable(text: str, source: str) -> Diagnostic | None:
-    """Return a diagnostic for the first non-ASCII outside a string or comment.
+_ESCAPED: Final = range(0xDC00, 0xDD00)
+"""The lone surrogates Python reads a byte that is not UTF-8 in an argument as, from `0x00`."""
 
-    Clingo's lexer accepts only ASCII there. With a Python logger, a rejected character makes
-    pyclingo abort the process; elenctic refuses the text first so that never happens.
+
+def _not_utf8(where: Span, byte: int) -> Diagnostic:
+    return failure(
+        where,
+        f"expected UTF-8, found the byte `0x{byte:02X}`",
+        label="not UTF-8",
+        help=("clingo reads only UTF-8; write the text in UTF-8",),
+    )
+
+
+def first_unlexable(text: str, source: str) -> Diagnostic | None:
+    """Return a diagnostic for the first non-ASCII outside a string or comment, or non-UTF-8.
+
+    Clingo reads UTF-8 only: a byte that is not, kept in an argument as a lone surrogate, cannot
+    be given it, even in a string. Its lexer accepts only ASCII outside one; with a Python
+    logger, a rejected character makes pyclingo abort the process. elenctic refuses the text
+    first so that never happens.
     """
     code = in_code(text)
     line, column = 1, 1
     for index, character in enumerate(text):
+        if _ESCAPED.start <= ord(character) < _ESCAPED.stop:
+            where = Span(source, Position(line, column), Position(line, column + 1))
+            return _not_utf8(where, ord(character) - _ESCAPED.start)
         if code[index] and ord(character) > _ASCII_MAX:
             where = Span(source, Position(line, column), Position(line, column + 1))
             if character == "\ufeff":
