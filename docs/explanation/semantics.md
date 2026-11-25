@@ -13,7 +13,9 @@ is `yes` for an `l` nothing derives, though `l` is `unknown`.
 is `yes` if it is true in some answer set and `none holds` otherwise. So `default` and `cautious`
 agree on `yes`, and a `default` `no` is a `brave` `none holds`. `@query` answers by default.
 A `brave` `yes` stays true whatever answer sets follow, so a search cut short still gives the `yes`
-it found; every other answer needs every answer set.
+it found. A query of one literal, or of `not` and one, is answered from the truths some answer set
+gives it, each asked of the program apart, so it needs no answer set read past those that show its
+answer; any other query's other answers need every answer set.
 
 **Queries range over the full answer sets.** `@query` reads every atom of each answer set, not
 only those `#show` selects. `#show` still governs what `@answer-set`, `@count`, `@cautious` and
@@ -26,7 +28,9 @@ its positive parts that some answer set entertains: each part is unified with th
 consequences (∪ AS(P), over the full answer sets), and with their contraries by default, and the
 parts' unifiers are joined on their shared variables. Each candidate is ground and answered as a
 ground query over every answer set, in the mode asked, so a binding is `yes`, `no` or `unknown` by
-the rule above; infinitely many other instances are in no answer set and are not listed. A variable
+the rule above. The other instances, infinitely many, are not listed: each has a positive part no
+answer set entertains, so none is `yes`, though one can be `no` in every answer set, as
+`{ p(a), q(a) }` is where `-p(a)` holds; bindings stated as `no` are among the candidates. A variable
 only under `not`, as in `{ p(X), not q(X, Y) }`, has no candidates and is refused, as is an
 anonymous variable, `_`, and the library's disjunction with variables. A binding claim
 `@query A { p(X), not q(X) } = { … }` holds when the bindings with answer `A` equal the stated set;
