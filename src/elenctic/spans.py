@@ -207,14 +207,23 @@ def _comment_end(text: str, start: int) -> int:
     return index
 
 
+_OPENING: Final = re.compile(r'%|"|#!')
+"""Where a comment or a string may open; nothing else in code begins a lexeme."""
+
+_LEXED: Final = 8
+"""How many texts' lexemes are remembered: each text is read in turn by several readers."""
+
+
+@lru_cache(maxsize=_LEXED)
 def lexemes(text: str) -> tuple[Lexeme, ...]:
     """Return the comments and strings of `text`, in order, as clingo's lexer reads them."""
     found: list[Lexeme] = []
-    index, length = 0, len(text)
-    while index < length:
+    index = 0
+    while (opening := _OPENING.search(text, index)) is not None:
+        index = opening.start()
         if text[index] == "%" or text.startswith("#!", index):
             found.append(Lexeme(index, end := _comment_end(text, index), string=False))
-        elif text[index] == '"' and (string := _STRING.match(text, index)) is not None:
+        elif (string := _STRING.match(text, index)) is not None:
             found.append(Lexeme(index, end := string.end(), string=True))
         else:
             end = index + 1
@@ -222,12 +231,13 @@ def lexemes(text: str) -> tuple[Lexeme, ...]:
     return tuple(found)
 
 
-def in_code(text: str) -> list[bool]:
+@lru_cache(maxsize=_LEXED)
+def in_code(text: str) -> tuple[bool, ...]:
     """Mark each character that sits outside strings and comments."""
     mask = [True] * len(text)
     for lexeme in lexemes(text):
         mask[lexeme.start : lexeme.end] = [False] * (lexeme.end - lexeme.start)
-    return mask
+    return tuple(mask)
 
 
 _ESCAPED: Final = range(0xDC00, 0xDD00)
@@ -267,6 +277,8 @@ def first_unlexable(text: str, source: str) -> Diagnostic | None:
     logger, a rejected character makes pyclingo abort the process. elenctic refuses the text
     first so that never happens.
     """
+    if text.isascii():
+        return None
     code = in_code(text)
     line, column = 1, 1
     for index, character in enumerate(text):

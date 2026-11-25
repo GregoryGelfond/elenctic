@@ -10,6 +10,7 @@ import pytest
 from clingo.ast import parse_files
 
 from conftest import Link
+from elenctic import spans
 from elenctic.check import check
 from elenctic.engine import ground, included_sources, loaded_libraries
 from elenctic.explanation import Explanation
@@ -63,7 +64,7 @@ from elenctic.verdicts import Report, Verdict
 def test_the_source_mask_marks_exactly_the_code(segments: list[tuple[str, bool]]) -> None:
     text = "".join(fragment for fragment, _ in segments)
     expected = [code for fragment, code in segments for _ in fragment]
-    assert in_code(text) == expected
+    assert in_code(text) == tuple(expected)
 
 
 @pytest.mark.parametrize(
@@ -594,3 +595,12 @@ def test_a_program_without_a_path_is_held_only_to_a_root_named_for_it(
     assert isinstance(found, Report)
     assert found.verdict is Verdict.PASS
     assert isinstance(check(program, root=tmp_path / "encodings"), Fault)
+
+
+def test_a_program_is_lexed_once_however_many_readers_read_it(tmp_path: Path) -> None:
+    path = tmp_path / "once.lp"
+    path.write_text('% lexed once\np("once"). % one\n%* two *%\n')
+    before = spans.lexemes.cache_info()
+    assert not isinstance(ground(Program.read(path)), Fault)
+    after = spans.lexemes.cache_info()
+    assert (after.misses - before.misses, after.hits > before.hits) == (1, True)
