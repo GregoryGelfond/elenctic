@@ -1568,3 +1568,37 @@ def test_a_warrant_of_a_program_read_from_its_file_refutes_the_answer_sets_that_
     assert made.warrant(answered) == Warrant(
         B, Answer.YES, answered.taken, NoAssumptions(), read=answered.read
     )
+
+
+EXTERNAL = "#external e. a :- e. b :- not e."
+"""A program whose external `e` is false, as clingo leaves an external no one assigns."""
+
+
+def test_a_literal_is_answered_in_a_program_with_an_external() -> None:
+    made = opened(EXTERNAL)
+    b, e = Literal("b"), Literal("e")
+    answered = [
+        made.answer(All((b,))),
+        made.answer(All((e,))),
+        made.answer(All((e,)), mode=AnswerMode.BRAVE),
+    ]
+    assert [each.answer for each in answered if isinstance(each, Answered)] == [
+        Answer.YES,
+        Answer.UNKNOWN,
+        Answer.NONE_HOLDS,
+    ]
+
+
+def test_an_external_is_assumed_as_its_value_allows() -> None:
+    claims = (
+        "% @expect sat\n% @expect unsat assuming { e }\n% @expect sat assuming { not e }\n"
+        "% @expect unsat assuming { a }\n"
+    )
+    report = check(Program(f"{EXTERNAL}\n{claims}", "t.lp"))
+    assert isinstance(report, Report)
+    assert [finding.verdict for finding in report.findings] == [Verdict.PASS] * 4
+    held = check(
+        Program("#external e. [true]\na :- e.\n% @expect unsat assuming { not e }\n", "t.lp")
+    )
+    assert isinstance(held, Report)
+    assert held.verdict is Verdict.PASS

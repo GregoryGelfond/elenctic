@@ -97,6 +97,15 @@ class Grounded:
                 assumed[found if a.holds else -found] = a
         return assumed
 
+    @staticmethod
+    def _clashing(core: Iterable[int], assumed: dict[int, Assumption]) -> frozenset[Assumption]:
+        """Name the assumptions among the solver literals of a core.
+
+        clingo passes each external's value as an assumption of its own, so a core can hold the
+        literal of an external no assumption names; that value is the program's, not the scenario's.
+        """
+        return frozenset(assumed[lit] for lit in core if lit in assumed)
+
     def _impossible(self, scenario: Iterable[Assumption]) -> frozenset[Assumption]:
         return frozenset(a for a in scenario if a.holds and not self._derivable(a.literal))
 
@@ -120,9 +129,7 @@ class Grounded:
             found, conclusion = drain(handle, plan, cut, read)
             run = Run(tuple(found), conclusion, frozenset())
             core = (
-                frozenset(assumed[lit] for lit in handle.core())
-                if run.refuted
-                else frozenset[Assumption]()
+                self._clashing(handle.core(), assumed) if run.refuted else frozenset[Assumption]()
             )
         return replace(run, core=core)
 
