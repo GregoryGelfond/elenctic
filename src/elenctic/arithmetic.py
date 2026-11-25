@@ -47,10 +47,10 @@ def evaluable(text: str) -> bool:
     The reader evaluates as it reads, so it traps on an undefined division even in a text it then
     refuses. Only a text clingo's syntax reader reads, none of whose divisions is undefined, may be
     given; the terms beneath a division are checked before it, so no operand evaluated here traps.
-    An `#include` is no term and is not opened.
+    An `#include` is no term and is not opened; a NUL would end the text clingo is given.
     """
     code = in_code(text)
-    if any(code[found.start()] for found in _INCLUDE.finditer(text)):
+    if "\x00" in text or any(code[found.start()] for found in _INCLUDE.finditer(text)):
         return False
     statements: list[AST] = []
     try:

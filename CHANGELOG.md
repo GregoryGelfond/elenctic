@@ -191,6 +191,9 @@ All notable changes are recorded here. The format follows
   `--assuming` or `Literal.parse` is refused, as arithmetic with no value, as `1/0` already was:
   clingo's term reader trapped on it, ending the process with no message. In a program it is
   clingo's to ground.
+- A NUL in a program file is worded as any unexpected character (``unexpected `\x00` ``); clingo's
+  message ended at it, `lexer error, unexpected`. A NUL in a tag, or in a program given as text,
+  is refused where it stands: clingo was given the text up to it alone.
 
 ## [1.0.0] - 2026-11-06
 

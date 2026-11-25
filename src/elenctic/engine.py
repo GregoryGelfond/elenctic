@@ -32,8 +32,10 @@ from elenctic.search import Interrupt, Limits
 from elenctic.spans import (
     Diagnostic,
     Lexeme,
+    Span,
     diagnose,
     failure,
+    first_nul,
     first_unlexable,
     in_code,
     lexemes,
@@ -449,12 +451,21 @@ def _unloadable(loaded: _Loaded) -> Diagnostic | None:
             return None
 
 
+def _cut(program: Program) -> Diagnostic | None:
+    """Refuse a NUL in a program given as text, which clingo would read up to it alone."""
+    if program.path is not None:
+        return None
+    return first_nul(program.text, Span.whole(program.source, ""))
+
+
 def _lexable(program: Program) -> Fault | None:
     """Refuse a file that is not regular, and program text that would abort pyclingo's logger."""
     if program.path is not None and (irregular_file := irregular(program.path)) is not None:
         return Fault(Locus.REQUEST, (unreadable(str(program.path), irregular_file),))
-    refused = first_unlexable(program.text, program.source) or next(
-        filter(None, map(_unloadable, _loaded(program))), None
+    refused = (
+        first_unlexable(program.text, program.source)
+        or _cut(program)
+        or next(filter(None, map(_unloadable, _loaded(program))), None)
     )
     return None if refused is None else Fault(Locus.PROGRAM, (refused,))
 

@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from elenctic.literals import Symbol, is_function
 from elenctic.normalize import evaluate
-from elenctic.spans import Parsed, Span, failure, first_unlexable, one_line
+from elenctic.spans import Parsed, Span, failure, first_nul, first_unlexable, one_line
 
 
 def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symbol, ...], ...]]:
@@ -15,6 +15,8 @@ def read_bindings(text: str, arity: int, where: Span) -> Parsed[tuple[tuple[Symb
         if refused.span is None:
             return refused
         return replace(refused, span=refused.span.shifted(where.start))
+    if (cut := first_nul(text, where)) is not None:
+        return cut
     # Trailing comma: `(t,)` is a one-element tuple even when `t` is itself a tuple. Without it,
     # `((1,2))` and `(1,2)` are the same term, so `{ (1,2) }` would be read as `{ 1, 2 }`.
     term = evaluate(f"({text},)")

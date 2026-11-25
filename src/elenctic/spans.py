@@ -243,6 +243,22 @@ def _not_utf8(where: Span, byte: int) -> Diagnostic:
     )
 
 
+def first_nul(text: str, where: Span) -> Diagnostic | None:
+    """Refuse a NUL in `text`, written at `where`, which clingo is given as a string a NUL ends.
+
+    Clingo would read the text up to it alone, wherever it stands, even in a string or a comment.
+    """
+    index = text.find(_NUL)
+    if index < 0:
+        return None
+    line = text.count("\n", 0, index) + 1
+    column = index - text.rfind("\n", 0, index)
+    at = Span(where.source, Position(line, column), Position(line, column + 1))
+    return failure(
+        at.shifted(where.start), f"unexpected `{_NUL}`", label="a NUL ends clingo's text"
+    )
+
+
 def first_unlexable(text: str, source: str) -> Diagnostic | None:
     """Return a diagnostic for the first non-ASCII outside a string or comment, or non-UTF-8.
 
@@ -342,28 +358,31 @@ def _located(
 
 
 _SYNTAX: Final = re.compile(
-    r"(?:syntax|lexer) error, unexpected (?P<found>.+?)(?:, expecting (?P<expected>.+))?"
+    r"(?:syntax|lexer) error, unexpected (?P<found>.*?)(?:, expecting (?P<expected>.+))?"
 )
+_NUL: Final = "\x00"
 
 
 def _worded(message: str, *, ended: bool, refused: frozenset[str]) -> str:
     """Word clingo's `syntax error, unexpected Y, expecting X or Z`: `expected X or Z, found Y`.
 
-    A token in `refused` is not offered: if no other is, the error is `unexpected Y`.
+    A token in `refused` is not offered: if no other is, the error is `unexpected Y`. Clingo's
+    message ends at a NUL, so a character it names as nothing is one.
     """
     if (error := _SYNTAX.fullmatch(message)) is None:
         return message
-    found = "end of input" if ended else _token(error["found"])
-    offered = [
-        token
-        for token in (error["expected"] or "").split(" or ")
-        if token and token.strip('"') not in refused
-    ]
+    found = "end of input" if ended else _token(error["found"] or _NUL)
+    offered = _offered(error["expected"] or "", refused)
     if not offered:
         return f"unexpected {found}"
     *others, last = (_token(token) for token in offered)
     expected = f"{', '.join(others)} or {last}" if others else last
     return f"expected {expected}, found {found}"
+
+
+def _offered(expected: str, refused: frozenset[str]) -> list[str]:
+    """Return the tokens clingo's `expecting X or Z` offers, but those in `refused`."""
+    return [token for token in expected.split(" or ") if token and token.strip('"') not in refused]
 
 
 def _token(name: str) -> str:

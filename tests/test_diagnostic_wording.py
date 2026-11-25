@@ -520,10 +520,11 @@ def test_an_empty_include_in_a_file_named_from_the_working_directory_opens_what_
     )
 
 
-def test_an_include_naming_a_nul_is_refused_as_clingo_lexes_it() -> None:
+def test_an_include_naming_a_nul_is_refused_at_the_nul_clingo_would_stop_at() -> None:
     result = check(Program('#include "a\x00b".\n% @expect sat\n', "t.lp"))
     assert isinstance(result, Fault)
-    assert result.diagnostics[0].message == 'unexpected `"`'
+    assert result.diagnostics[0].message == "unexpected `\x00`"
+    assert result.diagnostics[0].span == Span("t.lp", Position(1, 12), Position(1, 13))
 
 
 def test_the_caret_of_a_theory_atom_after_non_ascii_text_sits_under_it() -> None:

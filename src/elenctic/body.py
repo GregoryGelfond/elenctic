@@ -14,6 +14,7 @@ from elenctic.spans import (
     Span,
     diagnose,
     failure,
+    first_nul,
     first_unlexable,
     in_characters,
     in_code,
@@ -104,7 +105,7 @@ def read_body(
         if unlexable.span is None:
             return unlexable
         return replace(unlexable, span=unlexable.span.shifted(where.start))
-    if (included := _included(text, where)) is not None:
+    if (included := _included(text, where) or first_nul(text, where)) is not None:
         return included
     statements: list[AST] = []
     errors: list[str] = []
