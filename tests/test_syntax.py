@@ -458,3 +458,16 @@ def test_a_query_is_never_offered_the_semicolon_it_refuses(query: str, message: 
     refused = read_query(query, "QUERY")
     assert isinstance(refused, Diagnostic)
     assert refused.message == message
+
+
+@pytest.mark.parametrize(
+    ("query", "start", "name"),
+    [("X", 1, "X"), ("not X", 5, "X"), ("X, p", 1, "X"), ("p, Y", 4, "Y"), ("{ p,  Y2 }", 7, "Y2")],
+)
+def test_a_variable_alone_in_a_query_is_refused_as_no_literal(
+    query: str, start: int, name: str
+) -> None:
+    refused = read_query(query, "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert refused.message == f"expected a literal, found the variable `{name}`"
+    assert refused.span == Span("QUERY", Position(1, start), Position(1, start + len(name)))

@@ -2025,4 +2025,4 @@ def test_the_optimal_answer_sets_of_a_program_without_an_objective_are_refused(
     path = write(tmp_path, "d.lp", DRINKS)
     code, _, err = run_both(capsys, *command, "--format", "text", path, "tea", "--over", "optimal")
     assert code == AskExit.FAULT
-    assert "the optimal answer sets asked for, but the program has no objective" in err
+    assert "the optimal answer sets are asked for, but the program has no objective" in err

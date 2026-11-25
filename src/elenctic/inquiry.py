@@ -96,7 +96,9 @@ def _opened(
     opened = session(program, solver, limits=limits, interrupt=interrupt)
     if isinstance(opened, Session) and over is Range.OPTIMAL and not opened.facts.optimizes:
         where = Span.whole("over", Range.OPTIMAL.value)
-        return Fault(Locus.REQUEST, (lacks_objective(where, "the optimal answer sets asked for"),))
+        return Fault(
+            Locus.REQUEST, (lacks_objective(where, "the optimal answer sets are asked for"),)
+        )
     return opened
 
 
