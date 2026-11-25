@@ -207,3 +207,60 @@ def test_a_program_whose_file_is_not_there_is_left_for_clingo_to_report(tmp_path
     refused = check(Program(CASE, str(absent), absent))
     assert isinstance(refused, Fault)
     assert refused.diagnostics[0].message.endswith(f"file could not be opened:\n  {absent}")
+
+
+def _refused_include(result: object) -> None:
+    assert isinstance(result, Fault)
+    (refusal,) = result.diagnostics
+    assert refusal.message == "expected a literal, found `#include`"
+
+
+@pytest.mark.parametrize(
+    "tag",
+    [
+        '% @query yes {{ p. #include "{0}" }}',
+        '% @cautious {{ p }} assuming {{ p. #include "{0}" }}',
+    ],
+)
+def test_an_include_in_a_tag_is_refused_before_its_file_is_opened(
+    tmp_path: Path, pipe: Pipe, tag: str
+) -> None:
+    fifo = pipe(tmp_path / "fifo")
+    found = check(Program(f"{CASE}p.\n{tag.format(fifo)}\n", str(tmp_path / "case.lp")))
+    _refused_include(found)
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["ask", "{case}", 'p. #include "{fifo}".'],
+        ["why", "{case}", 'p. #include "{fifo}".', "--answer-set", "1"],
+        ["why", "{case}", "p(X)", "--binding", 'X = 1. #include "{fifo}".'],
+        ["why", "{case}", "p(1)", "--assuming", 'p(1). #include "{fifo}".'],
+    ],
+)
+def test_an_include_in_an_argument_is_refused_at_it_before_its_file_is_opened(
+    tmp_path: Path,
+    pipe: Pipe,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+) -> None:
+    fifo, case = pipe(tmp_path / "fifo"), tmp_path / "case.lp"
+    case.write_text("p(1). p.\n")
+    given = [each.format(case=case, fifo=fifo) for each in arguments]
+    assert main([*given, "--format", "text"]) == Exit.FAULT
+    assert "expected a literal, found `#include`" in capsys.readouterr().err
+
+
+def test_an_include_in_a_query_of_a_file_outside_the_root_is_refused_at_the_query(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root, outside = tmp_path / "root", tmp_path / "outside.lp"
+    root.mkdir()
+    (root / "case.lp").write_text("p(1).\n")
+    outside.write_text("zz zz zz\n")
+    query = f'p(1), #include "{outside}"'
+    assert main(["ask", str(root / "case.lp"), query, "--format", "text"]) == Exit.FAULT
+    err = capsys.readouterr().err
+    assert "expected a literal, found `#include`" in err
+    assert "QUERY:1:7" in err

@@ -36,6 +36,8 @@ the including file, then under each directory of `CLINGOPATH`. Write it relative
 file and keep the working directory free of a file by the same name.
 A case, a `--with` file and an included file must each be a regular file, or a link to one; a
 FIFO, a directory or a device such as `/dev/null` is refused (`FAULT`, 2) before it is read.
+An `#include` inside a tag's braces, a query, `--binding` or `--assuming` is refused (`FAULT`, 2)
+where it is written, and its file is never opened.
 A case that includes a file outside it is refused (`FAULT`, 2) before it runs, naming the path and
 never its contents. With `--root`, a path not under DIR is refused the same way and the other paths
 still run; a `--root` that is not a directory is a usage error. In the library the root is

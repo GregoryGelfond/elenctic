@@ -170,6 +170,10 @@ All notable changes are recorded here. The format follows
 - A case, `--with` file or included file that is not a regular file is refused (`cannot read`,
   naming it as clingo does) before it is read: a FIFO hung the run, and a directory or a device
   such as `/dev/null` loaded as an empty file.
+- An `#include` inside a tag's braces (`@query`, `assuming { … }`) is refused (`FAULT`, 2) where it
+  stands, unread: clingo's reader opened the file it named, so a FIFO hung the run and a file
+  outside the root was read. `ask` and `why` refuse it the same way in a query, `--binding` or
+  `--assuming`.
 
 ## [1.0.0] - 2026-11-06
 
