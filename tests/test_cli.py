@@ -481,6 +481,16 @@ def test_a_path_that_starts_as_a_literal_does_names_the_file_as_written(
     assert "-dash.lp\n" in out
 
 
+def test_ask_reads_a_classical_literal_spelled_as_an_option_of_another_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "v.lp", "-v.\n")
+    code, out, err = run_both(capsys, "--color", "never", "ask", path, "-v")
+    assert (code, err) == (0, "")
+    assert out.startswith("ask: { -v }\n")
+    assert "  = answer: yes\n" in out
+
+
 def test_a_named_file_without_a_contract_is_a_fault(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

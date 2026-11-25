@@ -459,11 +459,9 @@ def _literals(arguments: list[str], parser: _Parser) -> list[str]:
 
 def _queried(argument: str, command: _Parser) -> bool:
     """Say whether an argument is a query though it starts as an option does."""
-    if argument in BARE | {"-v", "--"}:
+    if argument in BARE | {"--"} or command.takes(argument):
         return False
-    if argument.startswith("--"):
-        return not command.takes(argument)
-    return bool(_LITERAL.match(argument))
+    return argument.startswith("--") or bool(_LITERAL.match(argument))
 
 
 def _literal(text: str) -> str:
