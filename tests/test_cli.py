@@ -1631,6 +1631,23 @@ def test_the_help_of_a_command_that_asks_speaks_of_its_program_not_of_cases(
     assert "searched" not in help_
 
 
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        ("-(-a)", "error: unexpected end of input"),
+        ("#count{ X: p(X) } > 1", "error: expected a literal, found `#count{ X: p(X) } > 1`"),
+        ("p(1..3)", "error: `p(1..3)` is not one literal"),
+    ],
+)
+def test_a_query_that_is_no_literal_is_refused_as_written(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], query: str, message: str
+) -> None:
+    path = write(tmp_path, "p.lp", "p(1).\n")
+    code, _, err = run_both(capsys, "ask", path, query)
+    assert code == 2
+    assert err.splitlines()[0] == message
+
+
 def test_ask_of_a_conjunction_with_variables_writes_its_bindings_in_each_mode(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

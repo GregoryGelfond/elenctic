@@ -406,8 +406,9 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-_LITERAL: Final = re.compile(r"-[a-z_]")
-"""How a classical literal starts, `-p(X)`, which argparse would take for an option."""
+_LITERAL: Final = re.compile(r"-[a-z_(]")
+"""How a classical literal starts, `-p(X)`, or a term in parentheses, `-(p)`: argparse would take
+either for an option."""
 
 
 def _literals(arguments: list[str]) -> list[str]:

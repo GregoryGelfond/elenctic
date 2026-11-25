@@ -61,16 +61,16 @@ def test_a_term_with_a_variable_beneath_a_function_is_part_of_a_pattern() -> Non
 @pytest.mark.parametrize(
     ("text", "message", "label"),
     [
-        ("p(1..3)", "`(1..3)` is not a pattern", "an interval stands for several terms"),
-        ("p(a, (b;c))", "`(b;c)` is not a pattern", "a pool stands for several terms"),
+        ("p(1..3)", "`p(1..3)` is not one literal", "an interval stands for several terms"),
+        ("p(a, (b;c))", "`p(a, (b;c))` is not one literal", "a pool stands for several terms"),
         (
             "p(f(@g(X)))",
-            "`@g(X)` is not a pattern",
+            "`p(f(@g(X)))` is not one literal",
             "a call to an external function is not made",
         ),
         (
             "p(X+1)",
-            "`(X+1)` is not a pattern",
+            "`p(X+1)` is not one literal",
             "arithmetic over a variable or undefined has no value",
         ),
     ],
@@ -332,7 +332,7 @@ def test_a_semicolon_in_a_pool_is_refused_as_the_pool_not_as_a_separator() -> No
     refused = read_query("p(a, (b;c))", "QUERY")
     assert isinstance(refused, Diagnostic)
     assert (refused.message, refused.label) == (
-        "`(b;c)` is not a pattern",
+        "`p(a, (b;c))` is not one literal",
         "a pool stands for several terms",
     )
 

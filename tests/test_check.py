@@ -513,9 +513,9 @@ def test_arithmetic_in_a_query_is_evaluated_before_it_is_matched() -> None:
 
 def test_a_term_that_stands_for_no_one_term_is_a_fault_not_a_query_with_no_match() -> None:
     (message,) = faults(NESTED_PROGRAM + "% @query yes { p(f(1..2), a) } = { }\n")
-    assert message.endswith("is not a pattern")
+    assert message.endswith("`p(f(1..2), a)` is not one literal")
     (message,) = faults(NESTED_PROGRAM + "% @query yes { p(f(X+1), a) } = { }\n")
-    assert "is not a pattern" in message
+    assert "`p(f(X+1), a)` is not one literal" in message
 
 
 def test_a_nested_binding_query_over_a_hidden_contrary_is_judged_not_refused() -> None:

@@ -12,7 +12,8 @@ from elenctic.determination import Valuation
 from elenctic.literals import Assumption, Literal, Scenario, Symbol, integer
 from elenctic.normalize import NotAPattern, evaluate, function_of, normalize
 from elenctic.patterns import Pattern
-from elenctic.spans import Diagnostic, Parsed, Position, Span, failure
+from elenctic.program import Source
+from elenctic.spans import Diagnostic, Parsed, Position, Span, failure, one_line
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +40,9 @@ def _pattern(atom: AST) -> Pattern | NotAPattern | None:
 
 
 def _item(where: Span, literal: AST, source: str) -> Parsed[Item]:
-    span = place(where, span_of(literal, source))
+    inner = span_of(literal, source)
+    span = place(where, inner)
+    written = one_line(Source(inner.source, {inner.source: source}).text(inner))
     simple = (
         tree.kind(literal) is ASTType.Literal
         and tree.kind(tree.child(literal, "atom")) is ASTType.SymbolicAtom
@@ -47,9 +50,9 @@ def _item(where: Span, literal: AST, source: str) -> Parsed[Item]:
     pattern = _pattern(tree.child(literal, "atom")) if simple else None
     sign = tree.number(literal, "sign") if simple else Sign.NoSign
     if isinstance(pattern, NotAPattern):
-        return failure(span, f"`{pattern.term}` is not a pattern", label=pattern.reason)
+        return failure(span, f"`{written}` is not one literal", label=pattern.reason)
     if pattern is None or sign == Sign.DoubleNegation:
-        return failure(span, f"expected a literal, found `{literal}`", label="expected a literal")
+        return failure(span, f"expected a literal, found `{written}`", label="expected a literal")
     return Item(pattern, sign == Sign.Negation, span)
 
 

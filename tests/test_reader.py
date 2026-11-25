@@ -289,19 +289,19 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
         ),
         (
             "% @query yes { p(1) } = { 1 }",
-            "binding pattern has no variables",
+            "query with bindings has no variables",
             P(2, 15),
             P(2, 21),
         ),
         (
             "% @query yes { p(_, X) } = { 1 }",
-            "anonymous variable in a binding pattern",
+            "anonymous variable in a query",
             P(2, 15),
             P(2, 24),
         ),
         (
             "% @query yes { p(_) } = { }",
-            "anonymous variable in a binding pattern",
+            "anonymous variable in a query",
             P(2, 15),
             P(2, 21),
         ),
@@ -321,7 +321,7 @@ def test_a_brace_group_continues_over_comment_lines_and_keeps_its_places() -> No
         ("% @query yes { p. q }", "expected a list of literals, found `p. q`", P(2, 15), P(2, 21)),
         (
             "% @query yes { p(1..2) }",
-            "`(1..2)` is not a pattern",
+            "`p(1..2)` is not one literal",
             P(2, 16),
             P(2, 23),
         ),
@@ -345,7 +345,7 @@ def test_a_missing_expect_is_reported_without_a_span() -> None:
 
 def test_a_bad_literal_is_placed_in_the_comment_line_it_was_written_on() -> None:
     found = only_diagnostic("% @brave { p,", "%      q(1..2),", "%   r }")
-    assert found.message == "`(1..2)` is not a pattern"
+    assert found.message == "`q(1..2)` is not one literal"
     assert found.label == "an interval stands for several terms"
     assert found.span is not None
     assert (found.span.start, found.span.end) == (P(3, 8), P(3, 15))

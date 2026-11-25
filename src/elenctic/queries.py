@@ -67,7 +67,7 @@ def query(block: Block, head: list[Element]) -> Parsed[Reading]:
 def _anonymous(where: Span) -> Diagnostic:
     return failure(
         where,
-        "anonymous variable in a binding pattern",
+        "anonymous variable in a query",
         label="`_` has no binding to state",
         help=("name the variable",),
     )
@@ -180,9 +180,9 @@ def _binds(
     if _grounds(items) is not None:
         return failure(
             where,
-            "binding pattern has no variables",
+            "query with bindings has no variables",
             label="no variables",
-            notes=("a pattern with no variables is a ground query",),
+            notes=("a query with no variables is a ground query",),
             help=("ask it as `@query yes { … }` without `= { … }`",),
         )
     query = _open(items, where)
