@@ -623,8 +623,11 @@ def stopped(max_depth: int | Limit) -> str:
 
 
 def guaranteed(explanation: Explanation) -> list[Phrase]:
-    """Word the notes on an explanation: what it guarantees, and where its branches stop."""
-    notes = [GUARANTEE[explanation.minimality]]
+    """Word the notes on an explanation: what its support guarantees, and where its branches stop.
+
+    One that shows no support, as for `@expect unsat`, guarantees nothing of it.
+    """
+    notes = [GUARANTEE[explanation.minimality]] if explanation.nodes else []
     return [
         noted(each)
         for each in notes + ([] if explanation.complete else [stopped(explanation.max_depth)])

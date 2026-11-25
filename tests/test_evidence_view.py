@@ -243,6 +243,13 @@ def test_an_answer_set_the_claim_expects_none_of_says_so() -> None:
     assert "  the program has this answer set, and the claim expects none\n" in text
 
 
+@pytest.mark.parametrize("program", ["p.\n", "{ p }.\n"])
+def test_evidence_that_shows_no_support_claims_nothing_of_it(program: str) -> None:
+    text = shown(Program(f"{program}% @expect unsat\n", "t.lp"))
+    assert "support is sound" not in text
+    assert "  the program has this answer set, and the claim expects none\n\n" in text
+
+
 def test_text_a_program_writes_is_made_legible() -> None:
     program = Program('p("\x1b[2J").\nq :- r.\n% @expect sat\n% @cautious { q }\n', "t.lp")
     assert "\x1b" not in shown(program)

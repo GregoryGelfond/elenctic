@@ -179,7 +179,8 @@ def explanation_lines(
     if not explanation.roots:
         lines.append(f"  {pen(Role.ASIDE, EXPECTS_NONE)}")
     lines += _tree(pen, explanation, spans=spans, own=own)
-    return [*lines, pen.margin("  |"), *map(pen.line, guaranteed(explanation))]
+    notes = list(map(pen.line, guaranteed(explanation)))
+    return [*lines, pen.margin("  |"), *notes] if notes else lines
 
 
 def _tree(pen: _Pen, explanation: Explanation, *, spans: bool, own: str) -> list[str]:
