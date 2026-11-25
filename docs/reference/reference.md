@@ -258,7 +258,7 @@ it stands only on a `help` line; context stands on a `note`. The default is the
 rustc form: `error: message`, then ` --> path:line:col`, a source snippet with carets and a primary
 label, then `= note:` and `= help:` lines. `--short` prints one line per diagnostic in the
 gcc form `path:line:col-col: error: message`. Columns count Unicode scalars; clingo's byte columns
-are converted at the boundary. Syntax errors read `expected X, found Y`, or `unexpected Y` where clingo expects no one thing. Non-ASCII outside strings and comments is refused before clingo sees it (program text, `#include`d files, and tag payloads), so a bad character never aborts the process.
+are converted at the boundary. Syntax errors read `expected X, found Y`, or `unexpected Y` where clingo expects no one thing; in a query, which refuses `;`, `;` is never among the expected. Non-ASCII outside strings and comments is refused before clingo sees it (program text, `#include`d files, and tag payloads), so a bad character never aborts the process.
 
 ## Exit codes
 

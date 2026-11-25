@@ -40,10 +40,12 @@ def place(where: Span, inner: Span) -> Span:
     return Span(where.source, unprefixed(inner.start), unprefixed(inner.end)).shifted(where.start)
 
 
-def _first_error(where: Span, messages: list[str], text: str) -> Diagnostic:
+def _first_error(
+    where: Span, messages: list[str], text: str, refused: frozenset[str]
+) -> Diagnostic:
     lines = prefixed(text).split("\n")
     ends = Position(len(lines), len(lines[-1]))
-    found = diagnose("".join(messages), prefixed(text), ends)[0]
+    found = diagnose("".join(messages), prefixed(text), ends, refused=refused)[0]
     if found.span is None:
         return failure(where, found.message)
     notes = tuple(child.message for child in found.children)
@@ -64,19 +66,24 @@ def _within(where: Span, text: str, span: Span) -> Span:
     return span if span.end <= end else Span(span.source, span.start, end)
 
 
-def read_body(text: str, where: Span) -> Parsed[tuple[AST, ...]]:
-    """Read `text` as the body of a rule, the literals of a comma-separated list."""
-    if (refused := first_unlexable(text, where.source)) is not None:
-        if refused.span is None:
-            return refused
-        return replace(refused, span=refused.span.shifted(where.start))
+def read_body(
+    text: str, where: Span, *, refused: frozenset[str] = frozenset()
+) -> Parsed[tuple[AST, ...]]:
+    """Read `text` as the body of a rule, the literals of a comma-separated list.
+
+    A syntax error offers none of the tokens in `refused`, which the caller turns away.
+    """
+    if (unlexable := first_unlexable(text, where.source)) is not None:
+        if unlexable.span is None:
+            return unlexable
+        return replace(unlexable, span=unlexable.span.shifted(where.start))
     statements: list[AST] = []
     errors: list[str] = []
     source = prefixed(text)
     try:
         parse_string(source, statements.append, logger=lambda _c, m: errors.append(m))
     except RuntimeError:
-        return _first_error(where, errors, text)
+        return _first_error(where, errors, text, refused)
     statements = [s for s in statements if tree.kind(s) is not ASTType.Program]
     if len(statements) != 1:
         shown = one_line(text) or "{ }"

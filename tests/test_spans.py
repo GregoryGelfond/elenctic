@@ -57,6 +57,19 @@ def test_what_a_syntax_error_finds_past_the_text_written_is_the_end_of_input() -
     assert found.message == "expected `)` or `;`, found end of input"
 
 
+@pytest.mark.parametrize(
+    ("clingo", "worded"),
+    [
+        ("syntax error, unexpected EOF, expecting ) or ;", "expected `)`, found end of input"),
+        ("syntax error, unexpected ., expecting ;", "unexpected `.`"),
+        ('syntax error, unexpected ., expecting "," or ;', "expected `,`, found `.`"),
+    ],
+)
+def test_a_syntax_error_offers_no_token_the_reader_refuses(clingo: str, worded: str) -> None:
+    (found,) = diagnose(f"<string>:1:4-5: error: {clingo}\n", refused=frozenset({";"}))
+    assert found.message == worded
+
+
 def test_a_note_line_is_a_child_of_the_error_it_follows() -> None:
     message = (
         "f.lp:1:1-14: error: unsafe variables in:\n  p(X):-q(Y).\nf.lp:1:3-4: note: 'X' is unsafe\n"

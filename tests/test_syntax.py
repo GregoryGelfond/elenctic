@@ -442,4 +442,19 @@ def test_a_binding_without_a_value_for_some_variable_is_refused_naming_it() -> N
 def test_a_query_over_several_lines_ends_where_its_last_line_does() -> None:
     refused = read_query("p(1),\nq(", "QUERY")
     assert isinstance(refused, Diagnostic)
-    assert refused.message == "expected `)` or `;`, found end of input"
+    assert refused.message == "expected `)`, found end of input"
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        ("p(1", "expected `)`, found end of input"),
+        ("{ p(1)", "expected `}`, found end of input"),
+        ('p("a;"', "expected `)`, found end of input"),
+        ("p(f(1)", "expected `)`, found end of input"),
+    ],
+)
+def test_a_query_is_never_offered_the_semicolon_it_refuses(query: str, message: str) -> None:
+    refused = read_query(query, "QUERY")
+    assert isinstance(refused, Diagnostic)
+    assert refused.message == message

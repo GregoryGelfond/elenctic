@@ -271,7 +271,11 @@ _SEVERITY: Final = {"error": Severity.ERROR, "warning": Severity.WARNING}
 
 
 def diagnose(
-    message: str, text: str | None = None, ends: Position | None = None
+    message: str,
+    text: str | None = None,
+    ends: Position | None = None,
+    *,
+    refused: frozenset[str] = frozenset(),
 ) -> tuple[Diagnostic, ...]:
     """Read clingo's text for a problem as one diagnostic per located line.
 
@@ -279,7 +283,8 @@ def diagnose(
     Unicode columns; without it, each keeps clingo's columns and source name.
     Continuation lines become `note` children of the header they follow. An empty message yields
     no diagnostic. A syntax error is worded `expected X, found Y`; what it finds at or past `ends`,
-    text appended to the one written, is the end of the input.
+    text appended to the one written, is the end of the input. A token in `refused`, which the
+    reader turns away though clingo's grammar takes it, is not among the expected.
     """
     if not message.strip():
         return ()
@@ -287,14 +292,18 @@ def diagnose(
     heads = [(i, found) for i, line in enumerate(lines) if (found := _HEADER.fullmatch(line))]
     bounds = [*(i for i, _ in heads), len(lines)]
     found_all = tuple(
-        _located(found, lines[i + 1 : end], text, ends)
+        _located(found, lines[i + 1 : end], text, ends, refused)
         for (i, found), end in zip(heads, bounds[1:], strict=True)
     )
     return found_all or (failure(None, message.strip()),)
 
 
 def _located(
-    header: re.Match[str], continuation: list[str], text: str | None, ends: Position | None
+    header: re.Match[str],
+    continuation: list[str],
+    text: str | None,
+    ends: Position | None,
+    refused: frozenset[str],
 ) -> Diagnostic:
     start = Position(int(header["line"]), int(header["column"]))
     end = Position(
@@ -308,7 +317,7 @@ def _located(
     return Diagnostic(
         span,
         _SEVERITY.get(header["severity"], Severity.NOTE),
-        _worded(header["message"], ended=ends is not None and span.start >= ends),
+        _worded(header["message"], ended=ends is not None and span.start >= ends, refused=refused),
         children=children,
     )
 
@@ -318,14 +327,22 @@ _SYNTAX: Final = re.compile(
 )
 
 
-def _worded(message: str, *, ended: bool) -> str:
-    """Word clingo's `syntax error, unexpected Y, expecting X or Z`: `expected X or Z, found Y`."""
+def _worded(message: str, *, ended: bool, refused: frozenset[str]) -> str:
+    """Word clingo's `syntax error, unexpected Y, expecting X or Z`: `expected X or Z, found Y`.
+
+    A token in `refused` is not offered: if no other is, the error is `unexpected Y`.
+    """
     if (error := _SYNTAX.fullmatch(message)) is None:
         return message
     found = "end of input" if ended else _token(error["found"])
-    if error["expected"] is None:
+    offered = [
+        token
+        for token in (error["expected"] or "").split(" or ")
+        if token and token.strip('"') not in refused
+    ]
+    if not offered:
         return f"unexpected {found}"
-    *others, last = (_token(token) for token in error["expected"].split(" or "))
+    *others, last = (_token(token) for token in offered)
     expected = f"{', '.join(others)} or {last}" if others else last
     return f"expected {expected}, found {found}"
 

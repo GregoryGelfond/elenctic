@@ -68,9 +68,11 @@ def positive(items: Iterable[Item]) -> list[Literal] | None:
     return None if any(item.negated for item in kept) else literals(kept)
 
 
-def read_literals(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
-    """Read a comma-separated list of literals written at `where`."""
-    body = read_body(text, where)
+def read_literals(
+    text: str, where: Span, *, refused: frozenset[str] = frozenset()
+) -> Parsed[tuple[Item, ...]]:
+    """Read a comma-separated list of literals written at `where`; see `read_body` for `refused`."""
+    body = read_body(text, where, refused=refused)
     source = prefixed(text)
     return (
         body if isinstance(body, Diagnostic) else _all(_item(where, each, source) for each in body)

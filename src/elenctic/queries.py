@@ -119,7 +119,7 @@ def _items(text: str, where: Span) -> Parsed[tuple[Item, ...]]:
     """
     at = _separator(text)
     if at is None:
-        return read_literals(text, where)
+        return read_literals(text, where, refused=frozenset({";"}))
     before = text[:at]
     line = where.start.line + before.count("\n")
     column = (at - before.rfind("\n")) if "\n" in before else where.start.column + at
