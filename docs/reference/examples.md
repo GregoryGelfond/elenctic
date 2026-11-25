@@ -39,6 +39,40 @@ evidence: @cautious { access(ann,db) }
 
 Exit code 1.
 
+```
+$ elenctic ask docs/examples/absent.lp 'access(U,R)' --format text
+ask: { access(U,R) }
+ --> docs/examples/absent.lp
+  |
+  = bindings: 1 yes, 0 no, 0 unknown
+  = yes: U = bob, R = wiki
+  = no more bindings
+
+```
+
+Exit code 0.
+
+```
+$ elenctic why docs/examples/absent.lp 'access(ann,db)' --format text
+why: { access(ann,db) }
+ --> docs/examples/absent.lp
+  |
+  = answer: unknown
+  = neither access(ann,db) nor -access(ann,db) in answer set 1: { access(bob,wiki) }
+  |
+  not access(ann,db)                no rule fires (1 candidate)
+  └── access(ann,db) :- role(ann,admin), permits(admin,db), not suspended(ann).  line 6: blocked by not suspended(ann)
+      suspended(ann) :- flagged(ann), not cleared(ann).  line 5
+      flagged(ann)                  fact, line 4
+  not -access(ann,db)               no rule instance can derive it
+  |
+  = note: support is sound, not minimal
+  = note: one answer set shows both: nothing derives access(ann,db) or -access(ann,db) in it
+
+```
+
+Exit code 0.
+
 ## `chain.lp`
 
 ```

@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import shlex
 from pathlib import Path
 
 from elenctic.cli import main
@@ -11,6 +12,8 @@ EXAMPLES = ROOT / "docs" / "examples"
 TARGET = ROOT / "docs" / "reference" / "examples.md"
 EXPLAINED = frozenset({"absent.lp", "chain.lp", "laptop.lp", "late.lp", "team.lp"})
 """The examples shown with `explain`, which adds the evidence for each failed claim."""
+ASKED = {"absent.lp": {"ask": "access(U,R)", "why": "access(ann,db)"}}
+"""The query an example is asked by `ask`, and the one by `why`."""
 
 
 def command(path: Path) -> list[str]:
@@ -19,24 +22,34 @@ def command(path: Path) -> list[str]:
     return [*words, str(path.relative_to(ROOT))]
 
 
-def capture(path: Path) -> tuple[int, str]:
-    """Run an example's command from the repository root; its exit code and what it wrote.
+def asked(path: Path) -> list[list[str]]:
+    """Name the `ask` and `why` commands an example is shown with, if any."""
+    where = str(path.relative_to(ROOT))
+    queries = ASKED.get(path.name, {})
+    return [[verb, where, query, "--format", "text"] for verb, query in queries.items()]
+
+
+def capture(words: list[str]) -> tuple[int, str]:
+    """Run a command from the repository root; its exit code and what it wrote.
 
     Diagnostics come first, as a terminal shows them.
     """
     out, err = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-        code = main(command(path))
+        code = main(words)
     return code, err.getvalue() + out.getvalue()
 
 
+def shown(words: list[str]) -> str:
+    """Render one command: the command, its output and its exit code."""
+    code, output = capture(words)
+    return f"```\n$ elenctic {shlex.join(words)}\n{output}```\n\nExit code {code}.\n"
+
+
 def section(path: Path) -> str:
-    """Render one example: its source, the command, the output and the exit code."""
-    code, output = capture(path)
-    return (
-        f"## `{path.name}`\n\n```\n{path.read_text()}```\n\n"
-        f"```\n$ elenctic {' '.join(command(path))}\n{output}```\n\nExit code {code}.\n"
-    )
+    """Render one example: its source, then each command it is shown with."""
+    runs = "\n".join(shown(words) for words in [command(path), *asked(path)])
+    return f"## `{path.name}`\n\n```\n{path.read_text()}```\n\n{runs}"
 
 
 def render() -> str:

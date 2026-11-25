@@ -131,6 +131,7 @@ All notable changes are recorded here. The format follows
   warning on stderr; 2.0 removes them.
 
 ### Fixed
+- The README's links and image are absolute, so they work on PyPI, where relative ones break.
 - A program with an `#external` stopped a one-literal `ask` or `why`, and a claim assuming an
   external, with an internal error (`KeyError`, exit 3): clingo's core names the externals' values
   too, which are the program's, not assumptions. `assuming { e }` of an external `e` that is false

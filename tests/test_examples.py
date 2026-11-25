@@ -1,5 +1,5 @@
 import pytest
-from capture_examples import EXAMPLES, TARGET, capture, render
+from capture_examples import EXAMPLES, TARGET, asked, capture, command, render
 
 NEEDS_CLINGCON = {"clingcon.lp", "late.lp"}
 EXIT_CODES = {
@@ -23,8 +23,12 @@ EXIT_CODES = {
 def test_an_example_exits_as_the_documentation_says(name: str) -> None:
     if name in NEEDS_CLINGCON:
         pytest.importorskip("clingcon")
-    code, _ = capture(EXAMPLES / name)
+    code, _ = capture(command(EXAMPLES / name))
     assert code == EXIT_CODES[name]
+
+
+def test_an_example_asked_answers_with_exit_zero() -> None:
+    assert [capture(words)[0] for words in asked(EXAMPLES / "absent.lp")] == [0, 0]
 
 
 def test_every_example_is_listed() -> None:
