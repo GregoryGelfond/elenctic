@@ -181,6 +181,16 @@ def test_why_warrants_one_binding_of_a_query_with_variables() -> None:
         ),
         (Pattern("p", (Variable("X"),)), (Number(2),), "the query has no binding to X = 2"),
         (
+            Pattern("p", (Variable("X"),)),
+            (Number(1), Number(2)),
+            "expected a value for each of X, found 2",
+        ),
+        (
+            Pattern("q", (Variable("X"), Variable("Y"))),
+            (Number(1),),
+            "expected a value for each of X, Y, found 1",
+        ),
+        (
             All((Literal("p", (Number(1),)),)),
             (Number(1),),
             "a query without variables has no binding to warrant",
@@ -190,7 +200,7 @@ def test_why_warrants_one_binding_of_a_query_with_variables() -> None:
 def test_why_refuses_a_binding_the_query_does_not_have(
     query: Pattern | All, values: tuple[Symbol, ...], message: str
 ) -> None:
-    refused = why(Program("p(1).", "t.lp"), query, values=values)
+    refused = why(Program("p(1). q(1,2).", "t.lp"), query, values=values)
     assert isinstance(refused, Fault)
     assert (refused.locus, refused.diagnostics[0].message) == (Locus.REQUEST, message)
     assert WhyExit.of(refused) is WhyExit.FAULT

@@ -616,11 +616,15 @@ def _bound(answers: Answers, values: tuple[Symbol, ...], cut: Truncation | None)
     """
     if not values:
         raise ValueError(ONE_BINDING)
+    if len(values) != len(answers.variables):
+        names = ", ".join(str(each) for each in answers.variables)
+        message = f"expected a value for each of {names}, found {len(values)}"
+        raise ValueError(message)
     found = next((each for each in answers.bound if each.values == values), None)
     if found is None and cut is not None:
         return Ended(cut)
     if found is None:
-        named = zip(answers.variables, values, strict=False)
+        named = zip(answers.variables, values, strict=True)
         message = f"the query has no binding to {', '.join(f'{n} = {v}' for n, v in named)}"
         raise ValueError(message)
     return found
