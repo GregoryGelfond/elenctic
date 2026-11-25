@@ -19,6 +19,7 @@ from elenctic.spans import (
     in_characters,
     in_code,
     one_line,
+    position,
 )
 
 PREFIX: Final = ":- "
@@ -74,18 +75,13 @@ def _within(where: Span, text: str, span: Span) -> Span:
     return span if span.end <= end else Span(span.source, span.start, end)
 
 
-def _position(text: str, index: int) -> Position:
-    """Return where the character at `index` of `text` stands, line and column from 1."""
-    return Position(text.count("\n", 0, index) + 1, index - text.rfind("\n", 0, index))
-
-
 def _included(text: str, where: Span) -> Diagnostic | None:
     """Refuse an `#include` in `text`, before clingo's reader opens the file it names."""
     code = in_code(text)
     found = next((each for each in _INCLUDE.finditer(text) if code[each.start()]), None)
     if found is None:
         return None
-    start, end = _position(text, found.start()), _position(text, found.end())
+    start, end = position(text, found.start()), position(text, found.end())
     return failure(
         Span(where.source, start, end).shifted(where.start),
         "expected a literal, found `#include`",

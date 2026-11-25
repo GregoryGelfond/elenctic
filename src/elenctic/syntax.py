@@ -14,7 +14,16 @@ from elenctic.literals import Assumption, Literal, Scenario, Symbol, integer
 from elenctic.normalize import NotAPattern, evaluate, function_of, normalize
 from elenctic.patterns import Pattern
 from elenctic.program import Source
-from elenctic.spans import Diagnostic, Parsed, Position, Span, failure, in_code, one_line
+from elenctic.spans import (
+    Diagnostic,
+    Parsed,
+    Position,
+    Span,
+    failure,
+    in_code,
+    one_line,
+    position,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +219,7 @@ def asked(given: str, source: str) -> Asked:
         text = text[:-1].rstrip()
     if text.startswith("{") and text.endswith("}"):
         text, lead = text[1:-1], lead + 1
-    at = Span(source, Position(1, lead + 1), Position(1, lead + len(text) + 1))
+    at = Span(source, position(given, lead), position(given, lead + len(text)))
     return Asked(text, at, Span.whole(source, given))
 
 

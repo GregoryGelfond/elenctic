@@ -107,6 +107,11 @@ def note(
     )
 
 
+def position(text: str, index: int) -> Position:
+    """Return where the character at `index` of `text` stands, line and column from 1."""
+    return Position(text.count("\n", 0, index) + 1, index - text.rfind("\n", 0, index))
+
+
 def one_line(text: str) -> str:
     """Put text written over several comment lines on one line, single-spaced."""
     return " ".join(text.split())

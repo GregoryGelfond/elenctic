@@ -273,6 +273,15 @@ def test_an_include_in_an_argument_is_refused_at_it_before_its_file_is_opened(
     assert "expected a literal, found `#include`" in capsys.readouterr().err
 
 
+def test_an_include_after_a_first_empty_line_is_placed_on_its_own_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    case = tmp_path / "case.lp"
+    case.write_text("p.\n")
+    assert main(["ask", str(case), '\n#include "x.lp"', "--format", "text"]) == Exit.FAULT
+    assert "--> QUERY:2:1\n" in capsys.readouterr().err
+
+
 def test_an_include_in_a_query_of_a_file_outside_the_root_is_refused_at_the_query(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

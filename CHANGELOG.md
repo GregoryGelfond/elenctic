@@ -209,6 +209,8 @@ All notable changes are recorded here. The format follows
   non-ASCII character there was refused as one in code, a program clingo reads; a `;` or an
   `#include` there is not taken for one in code.
 - The `Containerfile` gives its build the `LICENSE` the package metadata names.
+- A fault in an argument that begins with a line break is placed on the line it stands on, not
+  on the first.
 
 ## [1.0.0] - 2026-11-06
 
