@@ -532,3 +532,25 @@ def test_the_caret_of_a_theory_atom_after_non_ascii_text_sits_under_it() -> None
     assert isinstance(result, Fault)
     stderr = render_run(Run((Entry("t.lp", result, THEORY),)), PLAIN).stderr
     assert '2 | p("é"). &a { }.\n  |         ^^^^^^^ theory atom' in stderr
+
+
+LONG = 2000
+"""A line far wider than a snippet quotes."""
+
+
+@pytest.mark.parametrize("before", [0, 900, LONG])
+def test_a_snippet_of_a_long_line_quotes_the_part_its_caret_marks(
+    tmp_path: Path, before: int
+) -> None:
+    padding = "x" * before
+    line = f"p :- q{padding}, ;, r{'y' * (LONG - before)}."
+    path = tmp_path / "long.lp"
+    path.write_text(f"{line}\n% @expect sat\n")
+    result = check(Program.read(path))
+    assert isinstance(result, Fault)
+    stderr = render_run(Run((Entry(str(path), result, line + "\n"),)), PLAIN).stderr
+    quoted, caret = stderr.splitlines()[3:5]
+    assert len(quoted) < 200
+    assert len(caret) < 200
+    marked = caret.index("^") - len("  | ")
+    assert quoted[len("1 | ") + marked] == ";"

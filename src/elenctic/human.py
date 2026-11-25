@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from pathlib import Path
+from typing import Final
 
 from elenctic.about import Package, Solvers
 from elenctic.determination import Range, Refutation
@@ -32,7 +33,7 @@ from elenctic.presentation import Presentation, Style
 from elenctic.program import Fault
 from elenctic.query import All, Answered, Warrant
 from elenctic.report import Entry, Internal, Run
-from elenctic.spans import Child, Diagnostic, Severity, Span, split_lines
+from elenctic.spans import Child, Diagnostic, Position, Severity, Span, split_lines
 from elenctic.verdicts import Ended, Finding, Report, Verdict
 
 
@@ -128,7 +129,7 @@ def _snippet(diagnostic: Diagnostic, text: str | Argument | None, style: Style) 
     lines = split_lines(source_text)
     if not (1 <= span.start.line <= len(lines)):
         return [arrow]
-    source_line = lines[span.start.line - 1]
+    source_line, shown = _window(lines[span.start.line - 1], span)
     number = str(span.start.line)
     gutter = _margin(style, f"{number} |")
     role = SEVERITY_ROLES[diagnostic.severity]
@@ -136,8 +137,33 @@ def _snippet(diagnostic: Diagnostic, text: str | Argument | None, style: Style) 
         arrow,
         _margin(style, "  |"),
         f"{gutter} {legible(source_line)}",
-        _caret_line(span, diagnostic.label, style, role),
+        _caret_line(shown, diagnostic.label, style, role),
     ]
+
+
+_WINDOW: Final = 160
+"""The most characters of a line a snippet quotes; a longer line is cut around its span."""
+_BEFORE: Final = 40
+"""How many characters before a span a cut line keeps."""
+_CUT: Final = "…"
+
+
+def _window(line: str, span: Span) -> tuple[str, Span]:
+    """Cut a long `line` to the part around where `span` starts, marking each cut with `…`.
+
+    The span is moved with the text it marks, and ends where the part shown does.
+    """
+    if len(line) <= _WINDOW:
+        return line, span
+    first = max(0, min(span.start.column - 1 - _BEFORE, len(line) - _WINDOW))
+    last = first + _WINDOW
+    shown = (_CUT if first else "") + line[first:last] + (_CUT if last < len(line) else "")
+    shift = first - (1 if first else 0)
+    start = Position(span.start.line, span.start.column - shift)
+    reach = len(shown) + 1 - (1 if last < len(line) else 0)
+    one_line = span.end.line == span.start.line
+    end = Position(span.end.line, min(span.end.column - shift, reach)) if one_line else span.end
+    return shown, Span(span.source, start, end)
 
 
 def _child_lines(children: tuple[Child, ...], style: Style) -> list[str]:
