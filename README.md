@@ -160,7 +160,7 @@ pixi run -e theory check   # format, lint, strict types, import contracts, tests
 pixi run -e py314 test     # or -e py315
 ```
 
-`pixi run check` is the one gate; `./check.sh` runs it. `uv.lock` is tracked so
+`pixi run -e theory check` is the one gate; `./check.sh` runs it. `uv.lock` is tracked so
 `uv sync --locked` reproduces the same dependencies.
 
 ## License
