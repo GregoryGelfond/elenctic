@@ -12,7 +12,7 @@ from elenctic.inquiry import AskExit, WhyExit, ask, why
 from elenctic.literals import Assumption, Function, Literal, Number, Symbol
 from elenctic.patterns import Pattern
 from elenctic.program import Fault, Locus, Program
-from elenctic.query import All, Answer, Answered, AnswerMode, Not, Unreached, Warrant
+from elenctic.query import All, Answer, Answered, AnswerMode, Any, Not, Query, Unreached, Warrant
 from elenctic.report import Internal
 from elenctic.search import Interrupt, Limits
 from elenctic.terms import Variable
@@ -331,3 +331,32 @@ def test_ask_notes_nothing_of_a_literal_the_program_shows() -> None:
     asked = ask(HIDING, All((Not(Literal("a")),)))
     assert isinstance(asked, Answered)
     assert asked.lints == ()
+
+
+X_ = Variable("X")
+
+
+@pytest.mark.parametrize(
+    ("query", "message"),
+    [
+        (
+            All((Not(Pattern("p", (X_,))),)),
+            "variable `X` occurs only under `not`, so no part binds it",
+        ),
+        (
+            Any((Pattern("p", (X_,)), Pattern("q", (X_,)))),
+            "a disjunction with variables has no bindings to give",
+        ),
+        (
+            Pattern("p", (Variable("_"),)),
+            "`p(_)` has an anonymous variable, which no binding can name",
+        ),
+    ],
+)
+def test_ask_and_why_refuse_a_query_with_neither_an_answer_nor_bindings_as_a_fault(
+    query: Query, message: str
+) -> None:
+    program = Program("p(1). q(2).", "t.lp")
+    for found in (ask(program, query), why(program, query)):
+        assert isinstance(found, Fault)
+        assert (found.locus, found.diagnostics[0].message) == (Locus.REQUEST, message)

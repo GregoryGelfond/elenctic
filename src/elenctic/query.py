@@ -371,7 +371,7 @@ def _conjuncts(query: Query) -> tuple[_Part, ...]:
         case All(parts):
             return tuple(each for part in parts for each in _conjuncts(part))
         case Any():
-            message = f"`{query}` is a disjunction, whose variables have no bindings to give"
+            message = "a disjunction with variables has no bindings to give"
             raise ValueError(message)
         case _:
             return (query,)
@@ -381,6 +381,33 @@ def unbound_of(query: Query) -> tuple[Variable, ...]:
     """Return the variables of a query that occur only under `not`, which no other part binds."""
     bound = {v for pattern, negated in _leaves(query) if not negated for v in pattern.variables}
     return tuple(v for v in variables_of(query) if v not in bound)
+
+
+def unanswerable(query: Query) -> str | None:
+    """Say why `query` has neither an answer nor bindings to give; `None` when it has one.
+
+    `_` names no binding, a disjunction's variables have none to give, and a variable only under
+    `not` is bound by no part.
+    """
+    anonymous = next((pattern for pattern, _ in _leaves(query) if pattern.anonymous), None)
+    if anonymous is not None:
+        return f"`{anonymous}` has an anonymous variable, which no binding can name"
+    if variables_of(query) and _disjoined(query):
+        return "a disjunction with variables has no bindings to give"
+    unbound = unbound_of(query)
+    if unbound:
+        return f"variable `{unbound[0].name}` occurs only under `not`, so no part binds it"
+    return None
+
+
+def _disjoined(query: Query) -> bool:
+    match query:
+        case Any():
+            return True
+        case All(parts):
+            return any(map(_disjoined, parts))
+        case _:
+            return False
 
 
 def _safe(query: Query) -> None:

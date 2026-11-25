@@ -16,7 +16,7 @@ from elenctic.explanation import Counterexample, Explanation
 from elenctic.gates import hidden_in, lacks_objective, theoretical
 from elenctic.literals import Literal, Scenario, Symbol
 from elenctic.program import Fault, Locus, Program
-from elenctic.query import Answered, AnswerMode, Query, Warrant
+from elenctic.query import Answered, AnswerMode, Query, Warrant, unanswerable
 from elenctic.reader import read_solver
 from elenctic.report import Internal
 from elenctic.search import Interrupt, Limit, Limits
@@ -158,6 +158,8 @@ def why(  # noqa: PLR0913
     if index is not None and not isinstance(asked, Literal):
         message = "an answer set is explained for one ground literal"
         raise TypeError(message)
+    if (refused := _unanswerable(asked)) is not None:
+        return refused
     session_ = _opened(program, over, limits=limits, interrupt=interrupt, root=root)
     if isinstance(session_, Fault):
         return session_
@@ -218,10 +220,20 @@ def ask(  # noqa: PLR0913
 
     By default it is answered as `@query` answers it.
     """
+    if (refused := _unanswerable(query)) is not None:
+        return refused
     session_ = _opened(program, over, limits=limits, interrupt=interrupt, root=root)
     if isinstance(session_, Fault):
         return session_
     return _noted(query, session_, session_.answer(query, scenario, over=over, mode=mode))
+
+
+def _unanswerable(query: Query) -> Fault | None:
+    """Refuse a query that has neither an answer nor bindings to give."""
+    message = unanswerable(query)
+    if message is None:
+        return None
+    return Fault(Locus.REQUEST, (failure(Span.whole("query", ""), message),))
 
 
 def _noted[Found](query: Query, session_: Session, found: Found) -> Found:
