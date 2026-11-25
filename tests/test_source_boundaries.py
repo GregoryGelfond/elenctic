@@ -501,8 +501,8 @@ def test_a_missing_include_loads_nothing_and_clingo_reports_it(tmp_path: Path) -
     refused = ground(program)
     assert isinstance(refused, Fault)
     (diagnostic,) = refused.diagnostics
-    assert diagnostic.message == "file could not be opened:"
-    assert [child.message.strip() for child in diagnostic.children] == ["absent.lp"]
+    assert diagnostic.message == "file could not be opened: `absent.lp`"
+    assert diagnostic.children == ()
 
 
 def test_a_program_without_a_path_and_without_libraries_never_reads_stdin() -> None:

@@ -197,7 +197,7 @@ def test_an_include_that_is_not_regular_is_refused_under_the_name_clingo_gives_i
     if kind == "socket" and platform.libc_ver()[0] != "glibc":
         # Without glibc, clingo tries to open a socket and fails; it does not load it.
         assert isinstance(result, Fault)
-        assert result.diagnostics[0].message == "file could not be opened:"
+        assert result.diagnostics[0].message == f"file could not be opened: `{target}`"
     else:
         refused_as(result, target, kind, Locus.PROGRAM)
 
@@ -227,7 +227,7 @@ def test_a_program_whose_file_is_not_there_is_left_for_clingo_to_report(tmp_path
     absent = tmp_path / "absent.lp"
     refused = check(Program(CASE, str(absent), absent))
     assert isinstance(refused, Fault)
-    assert refused.diagnostics[0].message.endswith(f"file could not be opened:\n  {absent}")
+    assert refused.diagnostics[0].message == f"file could not be opened: `{absent}`"
 
 
 def _refused_include(result: object) -> None:

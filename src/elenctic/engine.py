@@ -45,6 +45,7 @@ from elenctic.theory import Clingcon, Plain, Theory
 
 _EXTRA: Final = "theory"
 _UNDEFINED: Final = re.compile(r"no definition found for theory atom:\s+(?P<atom>\S+)")
+_UNOPENED: Final = re.compile(r"(?:<cmd>: error: )?file could not be opened:\n\s*(?P<name>.+)")
 
 
 def _clarified(diagnostic: Diagnostic) -> Diagnostic:
@@ -58,6 +59,15 @@ def _clarified(diagnostic: Diagnostic) -> Diagnostic:
         label="cannot be grounded",
         help=("define the theory, or declare `% @elenctic solver clingcon` for clingcon's",),
     )
+
+
+def _named(diagnostic: Diagnostic) -> Diagnostic:
+    """Name in its message the file clingo could not open, which it writes on a line after it."""
+    joined = "\n".join((diagnostic.message, *(child.message for child in diagnostic.children)))
+    if (found := _UNOPENED.fullmatch(joined.strip())) is None:
+        return diagnostic
+    message = f"file could not be opened: `{found['name'].strip()}`"
+    return replace(diagnostic, message=message, children=())
 
 
 def _relocated(diagnostic: Diagnostic, source: Source) -> Diagnostic:
@@ -78,7 +88,7 @@ def sources(program: Program) -> Source:
 def _fault(messages: list[str], error: RuntimeError, source: Source) -> Fault:
     # The logger may be silent (e.g. missing python/lua support); the exception text still locates.
     joined = "".join(messages) or str(error)
-    diagnostics = tuple(_clarified(_relocated(d, source)) for d in diagnose(joined))
+    diagnostics = tuple(_clarified(_named(_relocated(d, source))) for d in diagnose(joined))
     return Fault(Locus.PROGRAM, diagnostics or (failure(None, str(error).strip()),))
 
 
