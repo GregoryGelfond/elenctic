@@ -385,9 +385,9 @@ def test_what_a_command_was_given_is_placed_inside_its_braces_and_before_its_ful
     assert placed.whole == Span("QUERY", Position(1, 1), Position(1, 12))
 
 
-def test_a_ground_query_is_written_with_not_after_the_literal_without_it() -> None:
+def test_a_query_is_written_with_its_parts_in_the_order_they_were_written() -> None:
     p, q = Literal("p"), Literal("q")
-    assert queried(All((Not(p), q, p))) == "{ p, not p, q }"
+    assert queried(All((Not(p), q, p))) == "{ not p, q, p }"
 
 
 @pytest.mark.parametrize(

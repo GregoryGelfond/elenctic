@@ -1465,6 +1465,16 @@ def test_a_command_without_a_query_still_takes_an_abbreviated_option(
     assert json.loads(out)["schema"] == 1
 
 
+def test_a_claim_and_a_query_are_echoed_with_their_parts_as_written(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = write(tmp_path, "p.lp", "% @expect sat\np(1). q.\n% @query no { q, not r, p(1) }\n")
+    _, out = run(capsys, "test", path)
+    assert "@query no { q, not r, p(1) } (line 3)" in out
+    _, out = run(capsys, "ask", path, "q, not r, p(1)")
+    assert out.startswith("ask: { q, not r, p(1) }\n")
+
+
 def test_ask_without_answer_sets_shows_the_refutation(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1842,7 +1852,7 @@ def test_why_of_a_query_with_variables_warrants_the_binding_written_as_ask_write
     assert "  = yes: X = a\n" in listed
     code, out = run(capsys, "why", path, "{ r(X), not c(X) }", "--binding", "X = a")
     assert code == WhyExit.EXPLAINED
-    assert out.startswith("why: { not c(a), r(a) }\n")
+    assert out.startswith("why: { r(a), not c(a) }\n")
     assert "  = answer: yes\n  = true in answer set 1 of 2: { c(c), r(a), r(b) }\n" in out
     assert "help" not in out
 

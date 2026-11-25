@@ -178,8 +178,8 @@ answer set, with the `--with` and `--root` it was given. A query with variables 
 no answer set, each shows the refutation; a search cut short shows what ended it, after the `yes`
 bindings a brave search found before it was cut.
 
-`why` of a query writes its answer under `why:` and the instance it is of (`why: { not c(a), r(a)
-}` for the binding `X = a`), then each answer set that witnesses the answer, named as `ask` names
+`why` of a query writes its answer under `why:` and the instance it is of (`why: { r(a), not c(a)
+}` for the binding `X = a` of `{ r(X), not c(X) }`), then each answer set that witnesses the answer, named as `ask` names
 it, with the tree `explain` draws of what the instance's truth there rests on: each part's literal,
 or its contrary, whichever holds there, both where neither does, and `l` for `not l`. An answer
 every answer set must give then has `= refutation: kept to the answer sets where it is not true,

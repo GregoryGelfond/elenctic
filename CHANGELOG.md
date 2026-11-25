@@ -104,6 +104,8 @@ All notable changes are recorded here. The format follows
   not the `.` appended to read it.
 - A `@query` whose parts `;` separates is refused (`query uses a semicolon`, exit 2): write `,`.
   clingo reads `;` in a body as `,`, where a Prolog reader takes it for `or`.
+- A `@query` claim is echoed with its parts as written, `{ q, p(1) }`, as `ask` and `why` echo a
+  query; it sorted ground parts.
 - JSON lists a set of literals or valuations in their own order, `p(2)` before `p(10)`, as the text
   does; it sorted them by their encoding. The schema is unchanged.
 - A refutation lists its assumptions in the order the claim writes them, `(not b, c)`; it sorted
