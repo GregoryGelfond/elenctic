@@ -34,6 +34,7 @@ from elenctic.query import (
     evaluate,
     instance_of,
     settled,
+    settles,
     stream,
 )
 from elenctic.terms import Compound, Term, Variable
@@ -593,3 +594,22 @@ def test_a_query_rests_on_the_literal_of_each_part_that_holds_or_on_both_where_n
     member = frozenset({a, b.contrary})
     query = All((a, b, Not(c), Any((c,))))
     assert deciding(query, member) == (a, b.contrary, c, c, c.contrary)
+
+
+@pytest.mark.parametrize("mode", AnswerMode)
+def test_a_truth_no_probe_found_settles_no_answer(mode: AnswerMode) -> None:
+    assert not settles(frozenset(), {Truth.TRUE}, mode)
+
+
+@pytest.mark.parametrize("mode", [AnswerMode.CAUTIOUS, AnswerMode.BRAVE])
+def test_no_truth_found_settles_what_no_truth_and_the_unsettled_both_answer(
+    mode: AnswerMode,
+) -> None:
+    assert settles(frozenset(), {Truth.FALSE, Truth.UNKNOWN}, mode)
+    assert not settles(frozenset(), {Truth.FALSE}, AnswerMode.DEFAULT)
+
+
+def test_truths_found_settle_what_the_unsettled_cannot_change() -> None:
+    assert settles({Truth.TRUE}, {Truth.FALSE}, AnswerMode.BRAVE)
+    assert settles({Truth.FALSE}, {Truth.TRUE}, AnswerMode.CAUTIOUS)
+    assert not settles({Truth.FALSE}, {Truth.TRUE}, AnswerMode.DEFAULT)

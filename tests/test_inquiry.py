@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -13,7 +14,7 @@ from elenctic.patterns import Pattern
 from elenctic.program import Fault, Locus, Program
 from elenctic.query import All, Answer, Answered, AnswerMode, Not, Unreached, Warrant
 from elenctic.report import Internal
-from elenctic.search import Limits
+from elenctic.search import Interrupt, Limits
 from elenctic.terms import Variable
 from elenctic.verdicts import Ended
 
@@ -239,3 +240,27 @@ def test_why_of_a_query_without_answer_sets_or_cut_short_gives_no_warrant() -> N
     both = All((Literal("a"), Literal("b")))
     ended = why(Program("{ a; b }.", "t.lp"), both, limits=Limits(max_answer_sets=1))
     assert ended == Ended(Truncation.MAX_ANSWER_SETS)
+
+
+class _FirstCheckOnly(Interrupt):
+    """An interrupt pulled at its first check only, as a deadline that cuts only the first probe."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.checks = 0
+
+    @property
+    @override
+    def pulled(self) -> bool:
+        self.checks += 1
+        return self.checks == 1
+
+
+@pytest.mark.parametrize("mode", AnswerMode)
+def test_why_of_a_literal_whose_only_truth_a_cut_probe_left_unsettled_ends(
+    mode: AnswerMode,
+) -> None:
+    found = why(
+        Program("p. {q}.", "t.lp"), All((Literal("p"),)), mode=mode, interrupt=_FirstCheckOnly()
+    )
+    assert found == Ended(Truncation.INTERRUPTED)

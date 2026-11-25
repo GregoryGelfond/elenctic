@@ -2,7 +2,7 @@ import importlib
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Concatenate
+from typing import Concatenate, override
 
 import clingo
 import pytest
@@ -1610,3 +1610,27 @@ def test_an_external_is_assumed_as_its_value_allows() -> None:
     )
     assert isinstance(held, Report)
     assert held.verdict is Verdict.PASS
+
+
+class _FirstCheckOnly(Interrupt):
+    """An interrupt pulled at its first check only, as a deadline that cuts only the first probe."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.checks = 0
+
+    @property
+    @override
+    def pulled(self) -> bool:
+        self.checks += 1
+        return self.checks == 1
+
+
+@pytest.mark.parametrize("mode", AnswerMode)
+def test_a_literal_whose_only_truth_a_cut_probe_left_unsettled_ends_rather_than_answers(
+    mode: AnswerMode,
+) -> None:
+    made = session(Program("p. {q}.", "t.lp"), interrupt=_FirstCheckOnly())
+    assert isinstance(made, Session)
+    found = made.answer(All((Literal("p"),)), mode=mode)
+    assert found == Ended(Truncation.INTERRUPTED)

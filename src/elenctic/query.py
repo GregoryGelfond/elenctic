@@ -169,13 +169,15 @@ def decided(truths: AbstractSet[Truth], mode: AnswerMode = AnswerMode.DEFAULT) -
 
 
 def settles(truths: AbstractSet[Truth], unsettled: AbstractSet[Truth], mode: AnswerMode) -> bool:
-    """Say whether `truths` decide what `mode` answers, whichever of `unsettled` also occur."""
+    """Say whether `truths` decide what `mode` answers, whichever of `unsettled` also occur.
+
+    None of them may occur: with no truth found, an unsettled one is not known to be given.
+    """
     found = {
         decided(truths | set(more), mode)
         for more in chain.from_iterable(
             combinations(unsettled, n) for n in range(len(unsettled) + 1)
         )
-        if truths or more
     }
     return len(found) <= 1
 
