@@ -6,6 +6,8 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
 jobs:
   # A secondary check that the package installs and its tests pass under uv, on Python 3.14 and 3.15,
   # from the tracked uv.lock. The gate itself is the pixi job below.
@@ -18,6 +20,8 @@ jobs:
         python: ["3.14", "3.15"]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
       - run: uv sync --locked --python ${{ matrix.python }} --extra theory --extra tui
       - run: uv run pytest
@@ -26,12 +30,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: prefix-dev/setup-pixi@14c8aabd75893f83f4ab30c03e7cf853c8208961 # v0.8.10
       - run: pixi run -e theory check
   recipe:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: prefix-dev/setup-pixi@14c8aabd75893f83f4ab30c03e7cf853c8208961 # v0.8.10
       - run: pixi global install rattler-build
       - name: Build the recipe from this checkout
