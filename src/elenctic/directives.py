@@ -34,7 +34,14 @@ def _solver(block: Block) -> Parsed[Solver]:
                 label="expected a solver name",
                 help=_HELP,
             )
-        case [name, *_] | [name]:
+        case ["solver", _, *_]:
+            return failure(
+                pointing(block, words[1:]),
+                f"expected one solver name, found `{' '.join(e.text for e in words[1:])}`",
+                label="expected one solver name",
+                help=_HELP,
+            )
+        case [name, *_]:
             return failure(
                 pointing(block, words[0]),
                 f"unknown `@elenctic` directive `{name}`",

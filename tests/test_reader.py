@@ -507,12 +507,23 @@ def test_a_contract_declares_its_solver_and_defaults_to_clingo() -> None:
         ("% @elenctic solver", "missing solver name"),
         ("% @elenctic mode fast", "unknown `@elenctic` directive `mode`"),
         ("% @elenctic", "unknown `@elenctic` directive"),
+        (
+            "% @elenctic solver clingcon extra",
+            "expected one solver name, found `clingcon extra`",
+        ),
     ],
 )
 def test_a_misdeclared_solver_is_a_diagnostic_at_its_line(line: str, message: str) -> None:
     found = only_diagnostic(line)
     assert found.span is not None
     assert (found.message, found.span.start.line) == (message, 2)
+
+
+def test_words_after_the_solver_name_are_the_primary_span() -> None:
+    line = "% @elenctic solver clingcon extra"
+    found = only_diagnostic(line)
+    assert found.span is not None
+    assert line[found.span.start.column - 1 : found.span.end.column - 1] == "clingcon extra"
 
 
 def test_an_unknown_solver_name_is_the_primary_span() -> None:
