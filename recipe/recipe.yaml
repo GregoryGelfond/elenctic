@@ -11,7 +11,7 @@ package:
 
 source:
   url: https://pypi.org/packages/source/e/elenctic/elenctic-${{ version }}.tar.gz
-  sha256: "REPLACE_WITH_PYPI_SDIST_SHA256"
+  sha256: "1b371a930550af98ac7592365d21fcaa3916ddfdf2913ea372d4fd7d4f2f4e3d"
 
 build:
   number: 0
