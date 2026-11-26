@@ -112,8 +112,9 @@ All notable changes are recorded here. The format follows
   clingo reads `;` in a body as `,`, where a Prolog reader takes it for `or`.
 - A `@query` claim is echoed with its parts as written, `{ q, p(1) }`, as `ask` and `why` echo a
   query; it sorted ground parts.
-- JSON lists a set of literals or valuations in their own order, `p(2)` before `p(10)`, as the text
-  does; it sorted them by their encoding. The schema is unchanged.
+- JSON lists a set of literals or valuations, a scenario's assumptions too, in their own order,
+  `p(2)` before `p(10)`, as the text does; it sorted them by their encoding. The schema is
+  unchanged.
 - A refutation lists its assumptions in the order the claim writes them, `(not b, c)`; it sorted
   them as text. `Assumption` is ordered by literal, then sign.
 - A binding claim's detail writes its rows as the claim does: bare for one variable (`{ 2, 10 }`),
